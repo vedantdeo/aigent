@@ -13,21 +13,23 @@ from __future__ import annotations
 
 from anthropic.types import MessageParam
 
-from entropic.config import MODEL, describe_usage, get_client
+from entropic.config import MODEL, check_request, describe_usage, get_client
 
 PROMPT = (
     "Compare BM25 and dense-embedding retrieval for a question-answering system over 10,000 PDFs. "
     "Give me the two failure modes of each, then a one-paragraph recommendation."
 )
+MAX_TOKENS = 4096
 
 
 def main() -> None:
     client = get_client()
     messages: list[MessageParam] = [{"role": "user", "content": PROMPT}]
+    check_request(client, model=MODEL, max_tokens=MAX_TOKENS, messages=messages)
 
     with client.messages.stream(
         model=MODEL,
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS,
         thinking={"type": "adaptive", "display": "summarized"},
         messages=messages,
     ) as stream:

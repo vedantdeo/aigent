@@ -25,6 +25,17 @@ uv run python -m entropic.week01.tool_loop          # the agent loop, by hand
 uv run python -m entropic.week01.chat               # what `uv run entropic` runs
 ```
 
+## Budget guards
+
+Two ceilings in USD, each overridable in `.env`. A per-eval ceiling arrives with the eval harness in
+Week 2. A tripped guard raises `BudgetExceeded` with the
+numbers in the message. Trim the input, lower `max_tokens`, or raise the ceiling on purpose.
+
+| Guard | Default | Enforced where |
+|-------|---------|----------------|
+| per request | $0.25 | before every call: free token count, worst case is input plus the full `max_tokens` |
+| per run | $1.00 | after every call in a tool loop or a chat session |
+
 ## Checks
 
 ```bash

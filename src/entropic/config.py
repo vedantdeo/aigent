@@ -7,11 +7,13 @@ cost in every interview.
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import anthropic
-from anthropic.types import Usage
+from anthropic import Omit, omit
+from anthropic.types import MessageParam, ToolParam, Usage
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -84,6 +86,78 @@ def describe_usage(model: str, usage: Usage) -> str:
     )
 
 
+# --- Budget guards ---------------------------------------------------------------------------
+# Two ceilings in USD, each overridable from .env. A per-eval ceiling arrives with the eval
+# harness in Week 2; nothing consumes it before then. A tripped guard is information, not an
+# obstacle: the error says what you were about to spend and which knob to turn.
+
+MAX_USD_PER_REQUEST: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_REQUEST", "0.25"))
+MAX_USD_PER_RUN: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_RUN", "1.00"))
+
+
+class BudgetExceeded(RuntimeError):
+    """Raised before money is spent (per request) or right after a ceiling is crossed (per run)."""
+
+
+def worst_case_usd(model: str, input_tokens: int, max_tokens: int) -> float:
+    """The most one request can cost: all input at the input price, the full output cap at the
+    output price. Thinking counts against max_tokens, so this really is the ceiling."""
+    return cost_usd(model, input_tokens=input_tokens, output_tokens=max_tokens)
+
+
+def assert_request_within_budget(
+    model: str, input_tokens: int, max_tokens: int, limit_usd: float = MAX_USD_PER_REQUEST
+) -> float:
+    """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded."""
+    worst = worst_case_usd(model, input_tokens, max_tokens)
+    if worst > limit_usd:
+        raise BudgetExceeded(
+            f"request could cost up to ${worst:.4f} ({input_tokens} input tokens plus "
+            f"max_tokens={max_tokens} on {model}), above the per-request ceiling of "
+            f"${limit_usd:.4f}. Trim the input, lower max_tokens, or raise "
+            "ENTROPIC_MAX_USD_PER_REQUEST in .env."
+        )
+    return worst
+
+
+def check_request(
+    client: anthropic.Anthropic,
+    *,
+    model: str,
+    max_tokens: int,
+    messages: Sequence[MessageParam],
+    system: str | Omit = omit,
+    tools: Sequence[ToolParam] | Omit = omit,
+) -> int:
+    """Count the input tokens (a free call), then enforce the per-request ceiling.
+
+    Pass exactly what the real request will send, so the count is the real count. Returns the
+    input token count so callers can print it.
+    """
+    count = client.messages.count_tokens(model=model, messages=messages, system=system, tools=tools)
+    assert_request_within_budget(model, count.input_tokens, max_tokens)
+    return count.input_tokens
+
+
+@dataclass
+class Budget:
+    """Running spend for one run: a tool loop, a chat session, an eval. Trips after the call that
+    crosses the ceiling, so spent_usd always reflects what was actually billed."""
+
+    limit_usd: float = MAX_USD_PER_RUN
+    spent_usd: float = 0.0
+
+    def add(self, model: str, usage: Usage) -> float:
+        self.spent_usd += usage_cost(model, usage)
+        if self.spent_usd > self.limit_usd:
+            raise BudgetExceeded(
+                f"run has spent ${self.spent_usd:.4f}, above the per-run ceiling of "
+                f"${self.limit_usd:.4f}. Raise ENTROPIC_MAX_USD_PER_RUN in .env if this was "
+                "intended."
+            )
+        return self.spent_usd
+
+
 def has_credentials() -> bool:
     """True if the SDK will find something to authenticate with."""
     if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
@@ -92,10 +166,20 @@ def has_credentials() -> bool:
 
 
 def get_client() -> anthropic.Anthropic:
+    """Build the SDK client.
+
+    An organization-level API key is not tied to a workspace, and the API refuses such a key unless
+    every request names one via the `anthropic-workspace-id` header. A workspace-scoped key needs no
+    header. Set ANTHROPIC_WORKSPACE_ID in .env only if you use an org-level key.
+    """
     if not has_credentials():
         raise SystemExit(
             "No Anthropic credentials found.\n"
             "  Option 1: copy .env.example to .env and set ANTHROPIC_API_KEY\n"
             "  Option 2: install the `ant` CLI and run `ant auth login`\n"
         )
-    return anthropic.Anthropic()
+    headers: dict[str, str] = {}
+    workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    if workspace_id:
+        headers["anthropic-workspace-id"] = workspace_id
+    return anthropic.Anthropic(default_headers=headers)

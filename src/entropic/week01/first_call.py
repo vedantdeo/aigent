@@ -4,7 +4,8 @@
 
 What to notice:
   - The API is stateless. Everything the model knows about this conversation is in `messages`.
-  - count_tokens is free. Use it before you send anything large.
+  - count_tokens is free. The budget guard uses it to refuse a request whose worst case exceeds
+    the per-request ceiling, before any money is spent.
   - Always check stop_reason before reading content. `refusal` and `max_tokens` are not `end_turn`.
 """
 
@@ -12,22 +13,25 @@ from __future__ import annotations
 
 from anthropic.types import MessageParam
 
-from entropic.config import MODEL, describe_usage, get_client
+from entropic.config import MODEL, check_request, describe_usage, get_client
 
 SYSTEM = "You are Entropic, an engineer's personal assistant. Answer in at most three sentences."
 QUESTION = "What is a KV cache in a transformer decoder, and why does it speed up generation?"
+MAX_TOKENS = 1024
 
 
 def main() -> None:
     client = get_client()
     messages: list[MessageParam] = [{"role": "user", "content": QUESTION}]
 
-    preflight = client.messages.count_tokens(model=MODEL, system=SYSTEM, messages=messages)
-    print(f"pre-flight input tokens: {preflight.input_tokens}\n")
+    input_tokens = check_request(
+        client, model=MODEL, max_tokens=MAX_TOKENS, messages=messages, system=SYSTEM
+    )
+    print(f"pre-flight input tokens: {input_tokens}\n")
 
     response = client.messages.create(
         model=MODEL,
-        max_tokens=1024,
+        max_tokens=MAX_TOKENS,
         system=SYSTEM,
         messages=messages,
     )

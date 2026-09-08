@@ -15,13 +15,23 @@ What to notice:
     stop making parallel calls.
   - Errors go back as tool_result with is_error=True, not as exceptions. The model reads them.
   - A loop with no iteration cap is a cost bug waiting to happen.
+  - Two dollar ceilings back up the turn cap. The per-request check runs before each call and
+    refuses to send if the worst case is over budget. The per-run budget trips right after the
+    call that crosses it.
 """
 
 from __future__ import annotations
 
 from anthropic.types import MessageParam, ToolResultBlockParam
 
-from entropic.config import MODEL, describe_usage, get_client, usage_cost
+from entropic.config import (
+    MAX_USD_PER_RUN,
+    MODEL,
+    Budget,
+    check_request,
+    describe_usage,
+    get_client,
+)
 from entropic.tools import ALL_TOOLS, execute_tool
 
 SYSTEM = (
@@ -34,28 +44,37 @@ TASK = (
     "7 years? Also tell me the current UTC time, and how many hours until midnight UTC."
 )
 MAX_TURNS = 8
+MAX_TOKENS = 4096
 
 
 def run(task: str) -> str:
     client = get_client()
     messages: list[MessageParam] = [{"role": "user", "content": task}]
-    total_cost = 0.0
+    budget = Budget(limit_usd=MAX_USD_PER_RUN)
 
     for turn in range(1, MAX_TURNS + 1):
+        check_request(
+            client,
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            messages=messages,
+            system=SYSTEM,
+            tools=ALL_TOOLS,
+        )
         response = client.messages.create(
             model=MODEL,
-            max_tokens=4096,
+            max_tokens=MAX_TOKENS,
             system=SYSTEM,
             tools=ALL_TOOLS,
             messages=messages,
         )
-        total_cost += usage_cost(MODEL, response.usage)
+        budget.add(MODEL, response.usage)
         usage_line = describe_usage(MODEL, response.usage)
         print(f"turn {turn}: stop_reason={response.stop_reason}  {usage_line}")
 
         if response.stop_reason != "tool_use":
             final_text = "".join(b.text for b in response.content if b.type == "text")
-            print(f"\ntotal cost: ${total_cost:.5f}")
+            print(f"\ntotal cost: ${budget.spent_usd:.5f}")
             return final_text
 
         # Echo the assistant turn back exactly, tool_use blocks included.
