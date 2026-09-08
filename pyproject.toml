@@ -14,8 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-entropic = "entropic.week01.chat:main"
-entropic-steps = "entropic:main"
+entropic = "entropic.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.9,<0.13.0"]
@@ -43,3 +42,5 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["live: spends real API credits; run explicitly with `uv run pytest -m live`"]
+addopts = "-m 'not live'"

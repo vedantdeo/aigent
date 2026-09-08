@@ -9,21 +9,23 @@ what it cost.
 ```bash
 cp .env.example .env        # then paste your ANTHROPIC_API_KEY
 uv sync
-uv run entropic             # talk to the agent
-uv run entropic-steps       # list the build steps
+uv run entropic             # menu of the five modes (needs a real terminal)
+uv run entropic chat        # or: call, stream, extract, loop "task"
 ```
 
 Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK finds the profile itself.
 
 ## Week 1: the primitives Entropic is made of
 
-```bash
-uv run python -m entropic.week01.first_call         # one call, token count, cost
-uv run python -m entropic.week01.streaming          # stream thinking and text
-uv run python -m entropic.week01.structured_output  # schema in, validated object out
-uv run python -m entropic.week01.tool_loop          # the agent loop, by hand
-uv run python -m entropic.week01.chat               # what `uv run entropic` runs
-```
+| Mode | Module | What it shows |
+|------|--------|---------------|
+| `call` | `week01/first_call.py` | one call, token count, cost |
+| `stream` | `week01/streaming.py` | thinking and text arriving separately |
+| `extract` | `week01/structured_output.py` | schema in, validated object out |
+| `loop` | `week01/tool_loop.py` | the agent loop, by hand; takes a task |
+| `chat` | `week01/chat.py` | multi-turn conversation with a cost meter |
+
+Each module also runs on its own: `uv run python -m entropic.week01.first_call`.
 
 ## Budget guards
 
@@ -41,11 +43,13 @@ numbers in the message. Trim the input, lower `max_tokens`, or raise the ceiling
 ```bash
 uv run ruff check . && uv run ruff format --check .
 uv run pyright
-uv run pytest -q            # API smoke test skips itself when no credentials are set
+uv run pytest -q            # unit tests plus a free API smoke test; skips paid tests
+uv run pytest -m live       # the paid integration tests (about two cents)
 ```
 
 ## Layout
 
+- `src/entropic/cli.py`     the `entropic` command and its menu
 - `src/entropic/config.py`  credentials, model choice, cost accounting
 - `src/entropic/tools.py`   framework-free tools reused from Week 1 through the capstone
 - `src/entropic/week01/`    the five primitives

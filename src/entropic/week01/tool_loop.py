@@ -1,6 +1,6 @@
 """Week 1, step 4: the agent loop, written by hand.
 
-    uv run python -m entropic.week01.tool_loop
+    uv run python -m entropic.week01.tool_loop "your task for the agent"
 
 This is the whole secret. Every agent framework is a wrapper around this loop:
 
@@ -18,10 +18,16 @@ What to notice:
   - Two dollar ceilings back up the turn cap. The per-request check runs before each call and
     refuses to send if the worst case is over budget. The per-run budget trips right after the
     call that crosses it.
+  - The loop's logic is unit-tested with a scripted fake client in tests/test_tool_loop.py, so the
+    rules above are checked without spending anything. The live demo task lives there too, behind
+    the `live` marker.
 """
 
 from __future__ import annotations
 
+import sys
+
+import anthropic
 from anthropic.types import MessageParam, ToolResultBlockParam
 
 from entropic.config import (
@@ -39,16 +45,14 @@ SYSTEM = (
     "arithmetic. Use current_time when the answer depends on today's date. Show your final answer "
     "plainly."
 )
-TASK = (
-    "If I invest 250,000 rupees today at 11.5% compounded annually, what is it worth after "
-    "7 years? Also tell me the current UTC time, and how many hours until midnight UTC."
-)
 MAX_TURNS = 8
 MAX_TOKENS = 4096
 
 
-def run(task: str) -> str:
-    client = get_client()
+def run(task: str, client: anthropic.Anthropic | None = None) -> str:
+    """Drive the loop for one task. `client` is injectable so tests can script the responses."""
+    if client is None:
+        client = get_client()
     messages: list[MessageParam] = [{"role": "user", "content": task}]
     budget = Budget(limit_usd=MAX_USD_PER_RUN)
 
@@ -105,9 +109,15 @@ def run(task: str) -> str:
     raise RuntimeError(f"agent did not finish within {MAX_TURNS} turns")
 
 
-def main() -> None:
-    print(f"task: {TASK}\n")
-    answer = run(TASK)
+def main(argv: list[str] | None = None) -> None:
+    task = " ".join(sys.argv[1:] if argv is None else argv).strip()
+    if not task:
+        raise SystemExit(
+            'usage: uv run entropic loop "<task>"  '
+            'or  uv run python -m entropic.week01.tool_loop "<task>"'
+        )
+    print(f"task: {task}\n")
+    answer = run(task)
     print("\n--- answer ---")
     print(answer)
 
