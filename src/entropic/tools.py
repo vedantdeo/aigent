@@ -11,6 +11,7 @@ import ast
 import operator
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 from anthropic.types import ToolParam
 
@@ -24,6 +25,9 @@ _BINARY_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
 }
 
 _MAX_EXPONENT = 1000.0
+
+SANDBOX = Path(__file__).resolve().parents[2] / "sandbox"
+_MAX_FILE_READ = 20000  # 20k characters
 
 
 def calculate(expression: str) -> float:
@@ -64,6 +68,25 @@ def current_time() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def read_file(file_path: str, sandbox: Path = SANDBOX) -> str:
+    """Read the contents of a file and return it as a string."""
+    try:
+        resolved = (sandbox / file_path).resolve()
+        if not resolved.is_relative_to(sandbox.resolve()):
+            raise ValueError(f"path escapes the workspace: {file_path}")
+        if resolved.is_dir():
+            raise ValueError(f"{file_path or '.'} is a directory, not a file")
+        with open(resolved, encoding="utf-8", errors="replace") as f:
+            r = f.read(_MAX_FILE_READ + 1)  # one extra character tells us whether it was cut
+        if len(r) > _MAX_FILE_READ:
+            r = r[:_MAX_FILE_READ] + f"\n[truncated at {_MAX_FILE_READ} characters]"
+        return r
+    except FileNotFoundError as exc:
+        raise ValueError(f"File not found: {file_path}") from exc
+    except OSError as exc:
+        raise ValueError(f"Could not read {file_path}: {exc}") from exc
+
+
 CALCULATOR_TOOL: ToolParam = {
     "name": "calculate",
     "description": (
@@ -96,7 +119,29 @@ TIME_TOOL: ToolParam = {
     "strict": True,
 }
 
-ALL_TOOLS: list[ToolParam] = [CALCULATOR_TOOL, TIME_TOOL]
+READ_FILE_TOOL: ToolParam = {
+    "name": "read_file",
+    "description": (
+        "Read the contents of a file and return it as a string. The file path is relative to the "
+        "sandbox directory. Files outside the sandbox are not accessible. Contents of the sandbox "
+        f"cannot be listed. The maximum file size that can be read is {_MAX_FILE_READ} characters. "
+        "Files larger than this will be truncated with a cut marker at the end."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "file_path": {
+                "type": "string",
+                "description": "Path to the file to read.",
+            }
+        },
+        "required": ["file_path"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
+ALL_TOOLS: list[ToolParam] = [CALCULATOR_TOOL, TIME_TOOL, READ_FILE_TOOL]
 
 
 def execute_tool(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
@@ -111,8 +156,16 @@ def execute_tool(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
             if not isinstance(expression, str):
                 return "Error: 'expression' must be a string", True
             return str(calculate(expression)), False
+
         if name == "current_time":
             return current_time(), False
+
+        if name == "read_file":
+            file_path = tool_input.get("file_path")
+            if not isinstance(file_path, str):
+                return "Error: 'file_path' must be a string", True
+            return read_file(file_path), False
+
         return f"Error: unknown tool {name!r}", True
-    except ValueError as exc:
+    except Exception as exc:
         return f"Error: {exc}", True

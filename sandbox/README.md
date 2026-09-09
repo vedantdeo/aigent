@@ -1,0 +1,1 @@
+Sandbox for Entropic Agent. This is the only place where the agent can read and write files.
