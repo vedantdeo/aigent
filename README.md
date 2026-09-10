@@ -9,6 +9,7 @@ what it cost.
 ```bash
 cp .env.example .env        # then paste your ANTHROPIC_API_KEY
 uv sync
+git config core.hooksPath .githooks   # one-time, per clone: enables the pre-commit hook
 uv run entropic             # menu of the five modes (needs a real terminal)
 uv run entropic chat        # or: call, stream, extract, loop "task"
 ```
@@ -47,6 +48,17 @@ uv run pytest -q            # unit tests plus a free API smoke test; skips paid 
 uv run pytest -m live       # the paid integration tests (about two cents)
 ```
 
+Everything above except the last line runs in CI on every push and pull request
+(`.github/workflows/checks.yml`). No API key is configured there, so the smoke test skips itself and
+the paid tests stay deselected — CI spends nothing. `uv sync --locked` also fails the run if
+`uv.lock` has drifted from `pyproject.toml`.
+
+`docs/knowledge-graph.md` maps this repo, and it moves with the code. A commit that touches
+`src/` or `pyproject.toml` without staging the graph is refused by `.githooks/pre-commit` — enable
+it with the `core.hooksPath` line above, since git never installs hooks on clone. `--no-verify` is
+the deliberate exception. The same rule runs in CI, so a clone that skipped the hook is still
+caught before the graph goes stale.
+
 ## Layout
 
 - `src/entropic/cli.py`     the `entropic` command and its menu
@@ -55,3 +67,8 @@ uv run pytest -m live       # the paid integration tests (about two cents)
 - `src/entropic/week01/`    the five primitives
 - `tests/`                  unit tests plus a free API smoke test
 - `LOG.md`                  weekly log: what shipped, what broke, numbers
+- `CLAUDE.md`               the two project rules Claude sessions follow here
+- `docs/knowledge-graph.md` map of every module, edge, and invariant in the repo
+- `.githooks/pre-commit`    refuses a commit that leaves the graph behind
+- `scripts/`                the rule that hook and CI share
+- `.github/workflows/`      CI: the checks above, and the graph rule for anyone who skipped the hook

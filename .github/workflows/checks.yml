@@ -1,0 +1,47 @@
+# The commands from the README's Checks section, on every push and PR.
+# No API key is configured here on purpose: tests/test_api_smoke.py skips itself
+# without credentials, and the paid tests are deselected by `-m 'not live'` in
+# pyproject.toml. CI therefore spends nothing.
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: lint · types · tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked fails if uv.lock has drifted from pyproject.toml, which is a
+      # bug worth catching on its own.
+      - name: Install the locked environment
+        run: uv sync --locked
+
+      # Each check reports its own status rather than hiding behind the first
+      # failure, so one red run tells you everything that is wrong.
+      - name: ruff · lint
+        run: uv run ruff check --output-format=github .
+
+      - name: ruff · format
+        if: ${{ !cancelled() }}
+        run: uv run ruff format --check .
+
+      - name: pyright
+        if: ${{ !cancelled() }}
+        run: uv run pyright
+
+      - name: pytest · free tests only
+        if: ${{ !cancelled() }}
+        run: uv run pytest -q

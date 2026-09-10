@@ -1,0 +1,45 @@
+# The same rule the local pre-commit hook enforces, for anyone who never ran
+# `git config core.hooksPath .githooks` — or who reached for --no-verify.
+name: knowledge graph
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  in-sync:
+    name: graph moves with the code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare the change against docs/knowledge-graph.md
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          if [ "$EVENT" = "pull_request" ]; then
+            base="$PR_BASE"
+          else
+            base="$PUSH_BEFORE"
+            # A new branch, or a force push, reports an all-zero "before".
+            case "$base" in
+              0000000000000000000000000000000000000000|"")
+                base="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || true)" ;;
+            esac
+          fi
+
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "No comparable base commit — nothing to check."
+            exit 0
+          fi
+
+          echo "Comparing $base...$HEAD_SHA"
+          git diff --name-only --diff-filter=ACMRD "$base" "$HEAD_SHA" |
+            sh scripts/check-knowledge-graph.sh ci

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Keep docs/knowledge-graph.md honest: a commit that changes the code the graph
+# describes must carry the graph update with it.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Deliberate exception:   git commit --no-verify
+#
+# The rule itself lives in scripts/check-knowledge-graph.sh, which CI runs too.
+
+root=$(git rev-parse --show-toplevel) || exit 0
+git diff --cached --name-only --diff-filter=ACMRD |
+  sh "$root/scripts/check-knowledge-graph.sh" commit
