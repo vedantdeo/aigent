@@ -130,8 +130,12 @@ def test_write_report_names_the_file_after_the_dataset_and_the_run(tmp_path: Pat
     assert path.read_text(encoding="utf-8") == to_markdown(run)
 
 
-def test_header_names_the_grading_model_when_a_grader_spent() -> None:
-    """Two models, two roles. A report that names only one is not reproducible."""
+def test_the_header_names_a_grading_model_only_when_a_grader_spent() -> None:
+    """Two models, two roles. A report that names only one is not reproducible.
+
+    The line is derived from what the rows actually cost, not declared, so both halves of that
+    branch are worth pinning: it appears when a grader spent, and stays away when none did.
+    """
 
     def judge(case: Case, outcome: Outcome) -> Score:
         del case, outcome
@@ -151,7 +155,4 @@ def test_header_names_the_grading_model_when_a_grader_spent() -> None:
 
     assert f"- model: `{MODEL}`" in report
     assert "- graded by: `claude-sonnet-5`" in report
-
-
-def test_header_says_nothing_about_grading_models_when_nothing_spent() -> None:
-    assert "graded by" not in to_markdown(_run())
+    assert "graded by" not in to_markdown(_run()), "free graders name no model"

@@ -10,9 +10,14 @@ from __future__ import annotations
 import pytest
 from anthropic.types import Usage
 
+from entropic.config import JUDGE_MODEL
 from entropic.evals.dataset import Case
 from entropic.evals.grade import Grader, Outcome, Score, exact_match
+from entropic.evals.judge import Verdict
 from entropic.evals.runner import Task, run_eval
+from entropic.pricing import usage_cost
+
+from .conftest import MakeJudge
 
 MODEL = "claude-opus-5"
 # $0.005 of input plus $0.025 of output on Opus.
@@ -108,21 +113,24 @@ def test_a_task_that_reports_an_error_is_billed_but_not_graded() -> None:
     assert run.spent_usd == pytest.approx(0.03)
 
 
-def test_a_grader_that_spends_is_billed_to_the_same_ceiling() -> None:
+def test_a_grader_that_names_no_model_is_billed_at_the_runs_model() -> None:
+    """A `Score` may carry usage without naming a model; the run's model is the only price left."""
+
     def paid_grader(case: Case, outcome: Outcome) -> Score:
         del case, outcome
-        return Score(True, "judged", usage=COSTLY, model=MODEL)
+        return Score(True, "judged", usage=COSTLY)
 
     run = run_eval(
         _cases(2),
         {"baseline": _always("yes", COSTLY)},
         {"judge": paid_grader},
+        model=MODEL,
         progress=False,
     )
 
-    # Two rows, each paying twice: once for the answer and once for the verdict.
-    assert run.spent_usd == pytest.approx(0.12)
+    # Two rows, each paying twice: once for the answer and once for the verdict, both on Opus.
     assert run.rows[0].cost_usd == pytest.approx(0.06)
+    assert run.spent_usd == pytest.approx(0.12)
 
 
 def test_a_grader_that_raises_fails_that_row_only() -> None:
@@ -164,3 +172,46 @@ def test_a_run_needs_something_to_run_and_something_to_grade() -> None:
         run_eval(_cases(1), {}, {"exact": exact_match("answer")})
     with pytest.raises(ValueError, match="grader"):
         run_eval(_cases(1), {"baseline": _always("yes")}, {})
+
+
+# --- the judge inside the runner ----------------------------------------------------------------
+# The judge's own tests call it directly. These two are the junction, which is where a signature or
+# a billing mismatch would hide.
+
+
+def test_an_llm_judge_is_just_another_grader_to_the_runner(make_judge: MakeJudge) -> None:
+    judge, log = make_judge(Verdict(reasoning="names the direction", passed=True))
+    answering = Usage(input_tokens=300, output_tokens=80)
+
+    run = run_eval(
+        _cases(2),
+        {"baseline": _always("yes", answering)},
+        {"exact": exact_match("answer"), "judge": judge},
+        model=MODEL,
+        progress=False,
+    )
+
+    assert len(log.prompts) == 2, "one verdict per row"
+    assert all(row.scores["judge"].passed for row in run.rows)
+    assert all(row.scores["judge"].model == JUDGE_MODEL for row in run.rows)
+
+    # Each row pays twice, and the verdict is priced as the judge's model. Billing it at the task's
+    # would be a quiet overcharge that still looked like a plausible total.
+    per_row = usage_cost(MODEL, answering) + usage_cost(JUDGE_MODEL, log.usage)
+    assert run.rows[0].cost_usd == pytest.approx(per_row)
+    assert run.spent_usd == pytest.approx(2 * per_row)
+
+
+def test_a_judge_that_fails_on_the_network_costs_the_row_not_the_run(make_judge: MakeJudge) -> None:
+    judge, _ = make_judge(fails_with=RuntimeError("503 upstream connect error"))
+
+    run = run_eval(
+        _cases(3),
+        {"baseline": _always("yes")},
+        {"exact": exact_match("answer"), "judge": judge},
+        progress=False,
+    )
+
+    assert len(run.rows) == 3, "the run finished"
+    assert all(row.scores["exact"].passed for row in run.rows), "the free grader still graded"
+    assert all("503 upstream" in row.scores["judge"].detail for row in run.rows)

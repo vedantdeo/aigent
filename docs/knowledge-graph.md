@@ -3,7 +3,7 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `aacd6af` (2026-09-10). 82 tests pass, 1 live test deselected.**
+**Verified against commit `a6177d2` (2026-09-11). 100 tests pass, 1 live test deselected.**
 If the code has moved since, trust the code and update this file (see [Maintenance](#maintenance)).
 
 - Package root: `src/entropic/` (uv build backend, `src` layout, Python 3.12+)
@@ -203,17 +203,18 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 
 | ID | Path | Covers | Cost |
 |----|------|--------|------|
-| `tests.test_pricing` | `tests/test_pricing.py` | Pricing arithmetic, cache multipliers, unknown-model-is-free, worst case, both guards, `charge` vs `add`, and that both of `config`'s default models are priced. | free |
-| `tests.test_tools` | `tests/test_tools.py` | Calculator whitelist and rejections; sandbox escape via `..`, absolute path, and **symlink**; directory and missing-file errors; truncation at and over the cap; dispatcher error paths. | free |
+| `tests.test_pricing` | `tests/test_pricing.py` | `test_the_price_list` is a table: opus arithmetic, both cache multipliers, unknown-model-is-free, the worst case. Then both guards, `charge` vs `add`, and that both of `config`'s default models are priced. | free |
+| `tests.test_tools` | `tests/test_tools.py` | Tables throughout: calculator whitelist and rejections; the three sandbox escapes (`..`, absolute path, **symlink**); truncation at and over the cap; the dispatcher's six rows of (tool, input, `is_error`, expected text). Directory errors stay their own test — they assert two anchored messages. | free |
 | `tests.test_cli` | `tests/test_cli.py` | Mode order, lookup by key/number, unknown-mode exit. | free |
 | `tests.test_tool_loop` | `tests/test_tool_loop.py` | The loop's rules, via `_FakeClient`. | free |
 | `tests.test_tool_loop._FakeClient` | `tests/test_tool_loop.py:68` | Scripts `Message` responses and records every `messages` payload sent. **The pattern to copy for any future loop test.** | free |
 | `tests.test_tool_loop.test_demo_task_live` | `tests/test_tool_loop.py:132` | The real demo task end to end; asserts the compound-interest answer. | ~$0.02, `-m live` |
+| `tests.conftest.make_judge` | `tests/conftest.py:65` | The one scripted `LlmJudge` fixture: a verdict decided in the test, a fixed `JUDGE_USAGE`, and a log of prompts and pre-flight counts. Shared so the grader tests and the runner tests cannot drift apart about what a judge costs. | free |
 | `tests.test_api_smoke` | `tests/test_api_smoke.py` | `count_tokens` round-trip; skipped without credentials. | free |
-| `tests.test_evals_dataset` | `tests/test_evals_dataset.py` | The loader failing before the run: typo'd key, duplicate id, bad JSON, empty file; digest moves with the labels. | free |
-| `tests.test_evals_graders` | `tests/test_evals_graders.py` | All five graders, the judge included — its verdict is scripted through a fake client, so the paid grader is tested for nothing. | free |
-| `tests.test_evals_runner` | `tests/test_evals_runner.py` | The runner's three promises: error rows, a tripped ceiling that keeps its rows, every dollar billed. Tasks here are plain functions — no fake client needed at all. | free |
-| `tests.test_evals_report` | `tests/test_evals_report.py` | Table arithmetic: pass rates, per-field columns, error rows out of the denominator, the partial-run banner. | free |
+| `tests.test_evals_dataset` | `tests/test_evals_dataset.py` | `test_the_loader_refuses` tables the four ways a dataset is rejected before the run — typo'd key, duplicate id, bad JSON, empty file — each row naming the message it must produce. Plus the happy path, comment skipping, and that the digest moves with the labels. | free |
+| `tests.test_evals_graders` | `tests/test_evals_graders.py` | One table per free grader, since each is a pure function of (case, outcome): `regex` alone is eight rows of (pattern, value, passed). Then the judge, whose verdict is scripted through `conftest.make_judge`, so the paid grader is tested for nothing. | free |
+| `tests.test_evals_runner` | `tests/test_evals_runner.py` | The runner's three promises: error rows, a tripped ceiling that keeps its rows, every dollar billed — including a grader that names no model, which is billed at the run's. Most tasks here are plain functions, no fake client needed. The last two put a real `LlmJudge` **inside** `run_eval`: one asserts a verdict per row, priced at the judge's model rather than the task's; one that a judge failing on the network costs that row and not the run. The judge's own tests call it directly, so this is the only cover on the junction. | free |
+| `tests.test_evals_report` | `tests/test_evals_report.py` | Report arithmetic: pass rates, per-field columns, error rows out of the denominator, the partial-run banner, and the `graded by` line appearing only when a grader spent. Deliberately not tabled — each test reads a different section of the same run. | free |
 
 `addopts = "-m 'not live'"` in `pyproject.toml:44` — paid tests never run by accident.
 
@@ -335,6 +336,10 @@ Untested by design: the four demo `main()` functions in `week01/` (they are the 
 Note what the eval tests do *not* need: `tests.test_evals_runner` uses plain functions as tasks, not
 a fake client. That is the `Task` seam paying for itself — the harness is testable without
 pretending to be an API.
+
+The suite is 58 test functions and 100 collected cases, because same-shaped tests are parametrized
+tables rather than one function per input (`CLAUDE.md` § Tests). A row that needs its own assertions
+stays its own test — see the report and tool-loop modules, which are deliberately not tabled.
 
 ### Environment
 

@@ -36,29 +36,25 @@ def test_blank_and_commented_lines_are_skipped(tmp_path: Path) -> None:
     assert len(load_jsonl(path)) == 1
 
 
-def test_a_typo_in_a_field_name_is_refused(tmp_path: Path) -> None:
-    # The whole point of extra="forbid": "expcted" would otherwise silently label nothing.
-    path = _write(tmp_path, '{"id": "a1", "input": {}, "expcted": {"company": "Infosys"}}')
-    with pytest.raises(DatasetError, match="expcted"):
-        load_jsonl(path)
-
-
-def test_duplicate_ids_are_refused_with_both_line_numbers(tmp_path: Path) -> None:
-    path = _write(tmp_path, GOOD, GOOD)
-    with pytest.raises(DatasetError, match="duplicate id 'a1'.*line 1"):
-        load_jsonl(path)
-
-
-def test_bad_json_names_its_line(tmp_path: Path) -> None:
-    path = _write(tmp_path, GOOD, "{not json}")
-    with pytest.raises(DatasetError, match="cases.jsonl:2"):
-        load_jsonl(path)
-
-
-def test_an_empty_dataset_is_an_error(tmp_path: Path) -> None:
-    path = _write(tmp_path, "", "// nothing here yet")
-    with pytest.raises(DatasetError, match="no cases"):
-        load_jsonl(path)
+@pytest.mark.parametrize(
+    ("lines", "match"),
+    [
+        pytest.param(
+            ('{"id": "a1", "input": {}, "expcted": {"company": "Infosys"}}',),
+            "expcted",
+            # The whole point of extra="forbid": "expcted" would otherwise silently label nothing.
+            id="a typo in a field name",
+        ),
+        pytest.param(
+            (GOOD, GOOD), r"duplicate id 'a1'.*line 1", id="a duplicate id, with both lines"
+        ),
+        pytest.param((GOOD, "{not json}"), "cases.jsonl:2", id="bad JSON, naming its line"),
+        pytest.param(("", "// nothing here yet"), "no cases", id="a file with nothing in it"),
+    ],
+)
+def test_the_loader_refuses(tmp_path: Path, lines: tuple[str, ...], match: str) -> None:
+    with pytest.raises(DatasetError, match=match):
+        load_jsonl(_write(tmp_path, *lines))
 
 
 def test_digest_changes_when_a_label_changes(tmp_path: Path) -> None:

@@ -1,11 +1,11 @@
 # Entropic — notes for Claude
 
-Four project rules live here rather than in a session's private memory, so they travel with the
+Five project rules live here rather than in a session's private memory, so they travel with the
 repo and reach anyone who clones it.
 
-One of them — the constants rule — is a verbatim mirror of a global preference in
-`~/.claude/CLAUDE.md`, which is machine-local and backed up by nothing. The copy below is the durable
-one. Edit both, or neither.
+Two of them — the constants rule and the testing rule — are verbatim mirrors of global preferences
+in `~/.claude/CLAUDE.md`, which is machine-local and backed up by nothing. The copies below are the
+durable ones. Edit both, or neither.
 
 ## Read the knowledge graph before exploring
 
@@ -84,6 +84,49 @@ this machine. Edit both, or neither.
   in `tools_config.py`, travelling beside it. Not in `config.py`, which would cost `tools` its
   independence; not loose in `tools.py`, which would cost the one-place rule.
 - Staying put: `report.REPORTS_DIR`, a location computed from `__file__` rather than a knob.
+
+## Tests
+
+**The rule: when several tests differ only in their inputs and their expected outputs, make them
+one parametrized test over a table of rows** — not one function per case. A table is the shape the
+knowledge already has: a column for each thing that varies, a row per case.
+
+- Club together what differs only in data: the same call, the same assertions, different arguments.
+- Give every row an id that reads as a sentence about the case (`id="a symlink pointing out"`), so
+  the output names the broken case without anyone opening the file. Plain tuples are fine where the
+  values speak for themselves; reach for `pytest.param(..., id=...)` where they do not.
+- Keep apart what differs in *shape*: different setup, a sequence of calls, several objects
+  interacting. Needing a column of optional expectations that most rows leave empty is the signal
+  that those cases are not one test.
+- Share fakes and fixtures through `conftest.py` rather than copying a stub into each module that
+  needs it. Two copies of a fake client drift, and the drift stays invisible until one is wrong.
+- Assert against the row's own data, and pass the interesting value as the assertion message
+  (`assert score.passed is passed, score.detail`), so a failing row explains itself.
+
+**Why:** ten near-identical functions hide the one line that differs between them, and adding the
+eleventh case means copying a function instead of adding a row. A table makes the coverage readable
+as a set — you can see at a glance which case is missing — and it is the difference between a suite
+that grows by editing and one that grows by cloning.
+
+**Don't table for its own sake.** A row that needs its own assertions is a test, not a row, and a
+table that grows more columns than rows has stopped being one. Fewer test *functions* is the goal;
+fewer lines is a frequent side effect, not the point.
+
+This section is mirrored verbatim into each project's tracked `CLAUDE.md`, so it survives the loss
+of this machine. Edit both, or neither.
+
+**In this repo**, the worked examples are in `tests/`:
+
+- `tests/test_evals_graders.py` is a table per grader — `regex` is eight rows of
+  (pattern, value, passed) where it was five functions, and the row that proves case survives sits
+  one line under the row that proves it matters.
+- `tests/test_tools.py` tables the dispatcher (six rows of tool, input, `is_error`, expected text)
+  and the three ways a path can escape the sandbox.
+- `tests/conftest.py` holds the one scripted `LlmJudge`. The grader tests use it to check what the
+  judge says, the runner tests to check that the runner bills it — one fake, one set of token
+  counts, so the two cannot drift.
+- Staying apart: `tests/test_tool_loop.py`, where each test scripts a different conversation, and
+  `tests/test_evals_report.py`, where each test reads a different section of the same report.
 
 ## Turn on branch protection before anyone else can touch this repo
 
