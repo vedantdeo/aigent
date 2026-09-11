@@ -1,161 +1,73 @@
-"""Shared configuration: credentials, model choice, and cost accounting.
+"""Settings: credentials, model choice, and the ceilings we are willing to spend.
 
-Every script in this repo prints what it spent. Get in the habit now; you will be asked about
-cost in every interview.
+Values only, plus the one function that turns them into a client. What a call *costs*, and whether
+it is allowed, lives in `pricing` — this module knows nothing about money beyond the three numbers
+below.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
 import anthropic
-from anthropic import Omit, omit
-from anthropic.types import MessageParam, ToolParam, Usage
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
+# Two defaults, because the two jobs are not the same job.
+#
+# MODEL is what Entropic thinks with: the CLI, the tool loop, the primitives. Pick for capability.
+#
+# JUDGE_MODEL is what grades an eval. Deliberately a *different* model, for two reasons. A model
+# asked to grade its own output favours it — using another model removes that by construction
+# instead of by remembering to. And applying a written rubric to a short answer is a far easier task
+# than producing the answer, so paying Opus rates per row to do it is waste: a judge call happens
+# once per case, which doubles the cost of an eval if you let it.
+#
+# Point both at the same model and you are letting it mark its own homework. Sometimes that is fine
+# — a format check, a yes/no with no room to flatter itself — but make it a choice.
 DEFAULT_MODEL = "claude-opus-5"
+DEFAULT_JUDGE_MODEL = "claude-sonnet-5"
 MODEL: str = os.environ.get("ENTROPIC_MODEL", DEFAULT_MODEL)
+JUDGE_MODEL: str = os.environ.get("ENTROPIC_JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
 
 
-@dataclass(frozen=True)
-class Price:
-    """USD per million tokens."""
-
-    input: float
-    output: float
-
-    @property
-    def cache_write(self) -> float:
-        return self.input * 1.25
-
-    @property
-    def cache_read(self) -> float:
-        return self.input * 0.10
-
-
-PRICES: dict[str, Price] = {
-    "claude-opus-5": Price(input=5.0, output=25.0),
-    "claude-sonnet-5": Price(input=2.0, output=10.0),
-    "claude-haiku-4-5": Price(input=1.0, output=5.0),
-    "claude-fable-5-1": Price(input=10.0, output=50.0),
-}
-
-
-def cost_usd(
-    model: str,
-    input_tokens: int,
-    output_tokens: int,
-    cache_write_tokens: int = 0,
-    cache_read_tokens: int = 0,
-) -> float:
-    """Dollar cost of one request. Unknown models cost nothing rather than crashing the script."""
-    price = PRICES.get(model)
-    if price is None:
-        return 0.0
-    per_token = 1e-6
-    return per_token * (
-        input_tokens * price.input
-        + output_tokens * price.output
-        + cache_write_tokens * price.cache_write
-        + cache_read_tokens * price.cache_read
-    )
-
-
-def usage_cost(model: str, usage: Usage) -> float:
-    return cost_usd(
-        model,
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cache_write_tokens=usage.cache_creation_input_tokens or 0,
-        cache_read_tokens=usage.cache_read_input_tokens or 0,
-    )
-
-
-def describe_usage(model: str, usage: Usage) -> str:
-    """One line you can paste into LOG.md."""
-    return (
-        f"[{model}] in={usage.input_tokens} out={usage.output_tokens} "
-        f"cache_write={usage.cache_creation_input_tokens or 0} "
-        f"cache_read={usage.cache_read_input_tokens or 0} "
-        f"cost=${usage_cost(model, usage):.5f}"
-    )
-
-
-# --- Budget guards ---------------------------------------------------------------------------
-# Two ceilings in USD, each overridable from .env. A per-eval ceiling arrives with the eval
-# harness in Week 2; nothing consumes it before then. A tripped guard is information, not an
-# obstacle: the error says what you were about to spend and which knob to turn.
+# --- Budget ceilings -------------------------------------------------------------------------
+# Three ceilings in USD, each overridable from .env. They sit at different scales: one request, one
+# interactive run, one eval over a whole dataset. The numbers live here with the rest of the
+# settings; `pricing` is what enforces them. A tripped guard is information, not an obstacle: the
+# message says what you were about to spend and which knob to turn.
 
 MAX_USD_PER_REQUEST: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_REQUEST", "0.25"))
 MAX_USD_PER_RUN: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_RUN", "1.00"))
+MAX_USD_PER_EVAL: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_EVAL", "2.00"))
 
 
-class BudgetExceeded(RuntimeError):
-    """Raised before money is spent (per request) or right after a ceiling is crossed (per run)."""
+# --- Call shape ------------------------------------------------------------------------------
+# Output caps, one per call site. They are here rather than next to each call so the whole set is
+# visible at once — side by side you can see that the agent loop and chat are the expensive ones and
+# a first call is not, which is invisible when each number sits alone in its own module.
+#
+# max_tokens is a ceiling, not a target: you are billed for what comes back, but the pre-flight
+# guard prices the full cap, so a number set far above what a call needs will trip the per-request
+# ceiling for no reason. Thinking tokens count against it too.
 
+MAX_TOKENS_FIRST_CALL = 1024
+MAX_TOKENS_STREAMING = 4096
+MAX_TOKENS_EXTRACT = 2048
+MAX_TOKENS_TOOL_LOOP = 4096
+MAX_TOKENS_CHAT = 4096
+MAX_TOKENS_JUDGE = 1024
 
-def worst_case_usd(model: str, input_tokens: int, max_tokens: int) -> float:
-    """The most one request can cost: all input at the input price, the full output cap at the
-    output price. Thinking counts against max_tokens, so this really is the ceiling."""
-    return cost_usd(model, input_tokens=input_tokens, output_tokens=max_tokens)
+# How many times the agent may go round before giving up. An uncapped loop is a cost bug waiting to
+# happen; the two dollar ceilings back this up rather than replace it.
+MAX_AGENT_TURNS = 8
 
-
-def assert_request_within_budget(
-    model: str, input_tokens: int, max_tokens: int, limit_usd: float = MAX_USD_PER_REQUEST
-) -> float:
-    """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded."""
-    worst = worst_case_usd(model, input_tokens, max_tokens)
-    if worst > limit_usd:
-        raise BudgetExceeded(
-            f"request could cost up to ${worst:.4f} ({input_tokens} input tokens plus "
-            f"max_tokens={max_tokens} on {model}), above the per-request ceiling of "
-            f"${limit_usd:.4f}. Trim the input, lower max_tokens, or raise "
-            "ENTROPIC_MAX_USD_PER_REQUEST in .env."
-        )
-    return worst
-
-
-def check_request(
-    client: anthropic.Anthropic,
-    *,
-    model: str,
-    max_tokens: int,
-    messages: Sequence[MessageParam],
-    system: str | Omit = omit,
-    tools: Sequence[ToolParam] | Omit = omit,
-) -> int:
-    """Count the input tokens (a free call), then enforce the per-request ceiling.
-
-    Pass exactly what the real request will send, so the count is the real count. Returns the
-    input token count so callers can print it.
-    """
-    count = client.messages.count_tokens(model=model, messages=messages, system=system, tools=tools)
-    assert_request_within_budget(model, count.input_tokens, max_tokens)
-    return count.input_tokens
-
-
-@dataclass
-class Budget:
-    """Running spend for one run: a tool loop, a chat session, an eval. Trips after the call that
-    crosses the ceiling, so spent_usd always reflects what was actually billed."""
-
-    limit_usd: float = MAX_USD_PER_RUN
-    spent_usd: float = 0.0
-
-    def add(self, model: str, usage: Usage) -> float:
-        self.spent_usd += usage_cost(model, usage)
-        if self.spent_usd > self.limit_usd:
-            raise BudgetExceeded(
-                f"run has spent ${self.spent_usd:.4f}, above the per-run ceiling of "
-                f"${self.limit_usd:.4f}. Raise ENTROPIC_MAX_USD_PER_RUN in .env if this was "
-                "intended."
-            )
-        return self.spent_usd
+# How many failing rows an eval report prints before it truncates. Enough to see a pattern, not so
+# many that the table scrolls off.
+MAX_FAILURES_SHOWN = 10
 
 
 def has_credentials() -> bool:

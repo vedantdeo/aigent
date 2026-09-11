@@ -13,11 +13,12 @@ from __future__ import annotations
 
 from anthropic.types import MessageParam
 
-from entropic.config import MODEL, check_request, describe_usage, get_client
+from entropic.config import MAX_TOKENS_FIRST_CALL as MAX_TOKENS
+from entropic.config import MODEL, get_client
+from entropic.pricing import check_request, describe_usage
 
 SYSTEM = "You are Entropic, an engineer's personal assistant. Answer in at most three sentences."
 QUESTION = "What is a KV cache in a transformer decoder, and why does it speed up generation?"
-MAX_TOKENS = 1024
 
 
 def main() -> None:

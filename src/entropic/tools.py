@@ -15,6 +15,8 @@ from pathlib import Path
 
 from anthropic.types import ToolParam
 
+from entropic.tools_config import MAX_EXPONENT, MAX_FILE_READ_CHARS, SANDBOX
+
 _BINARY_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -23,11 +25,6 @@ _BINARY_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
     ast.Pow: operator.pow,
     ast.Mod: operator.mod,
 }
-
-_MAX_EXPONENT = 1000.0
-
-SANDBOX = Path(__file__).resolve().parents[2] / "sandbox"
-_MAX_FILE_READ = 20000  # 20k characters
 
 
 def calculate(expression: str) -> float:
@@ -54,7 +51,7 @@ def _eval_node(node: ast.expr) -> float:
             if fn is None:
                 raise ValueError(f"operator not allowed: {type(op).__name__}")
             lhs, rhs = _eval_node(left), _eval_node(right)
-            if isinstance(op, ast.Pow) and abs(rhs) > _MAX_EXPONENT:
+            if isinstance(op, ast.Pow) and abs(rhs) > MAX_EXPONENT:
                 raise ValueError(f"exponent too large: {rhs}")
             if isinstance(op, ast.Div | ast.Mod) and rhs == 0:
                 raise ValueError("division by zero")
@@ -77,9 +74,9 @@ def read_file(file_path: str, sandbox: Path = SANDBOX) -> str:
         if resolved.is_dir():
             raise ValueError(f"{file_path or '.'} is a directory, not a file")
         with open(resolved, encoding="utf-8", errors="replace") as f:
-            r = f.read(_MAX_FILE_READ + 1)  # one extra character tells us whether it was cut
-        if len(r) > _MAX_FILE_READ:
-            r = r[:_MAX_FILE_READ] + f"\n[truncated at {_MAX_FILE_READ} characters]"
+            r = f.read(MAX_FILE_READ_CHARS + 1)  # one extra character tells us whether it was cut
+        if len(r) > MAX_FILE_READ_CHARS:
+            r = r[:MAX_FILE_READ_CHARS] + f"\n[truncated at {MAX_FILE_READ_CHARS} characters]"
         return r
     except FileNotFoundError as exc:
         raise ValueError(f"File not found: {file_path}") from exc
@@ -124,8 +121,8 @@ READ_FILE_TOOL: ToolParam = {
     "description": (
         "Read the contents of a file and return it as a string. The file path is relative to the "
         "sandbox directory. Files outside the sandbox are not accessible. Contents of the sandbox "
-        f"cannot be listed. The maximum file size that can be read is {_MAX_FILE_READ} characters. "
-        "Files larger than this will be truncated with a cut marker at the end."
+        f"cannot be listed. The maximum file size that can be read is {MAX_FILE_READ_CHARS} "
+        "characters. Files larger than this will be truncated with a cut marker at the end."
     ),
     "input_schema": {
         "type": "object",

@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from entropic.tools import _MAX_FILE_READ, calculate, execute_tool, read_file
+from entropic.tools import calculate, execute_tool, read_file
+from entropic.tools_config import MAX_FILE_READ_CHARS
 
 
 @pytest.mark.parametrize(
@@ -80,15 +81,15 @@ def test_read_file_directory_is_a_short_error_without_the_absolute_path(box: Pat
 
 
 def test_read_file_truncates_long_files_with_a_marker(box: Path) -> None:
-    (box / "big.txt").write_text("x" * (_MAX_FILE_READ + 500), encoding="utf-8")
+    (box / "big.txt").write_text("x" * (MAX_FILE_READ_CHARS + 500), encoding="utf-8")
     body, marker = read_file("big.txt", sandbox=box).rsplit("\n", 1)
-    assert len(body) == _MAX_FILE_READ
-    assert marker == f"[truncated at {_MAX_FILE_READ} characters]"
+    assert len(body) == MAX_FILE_READ_CHARS
+    assert marker == f"[truncated at {MAX_FILE_READ_CHARS} characters]"
 
 
 def test_read_file_at_exactly_the_cap_is_not_truncated(box: Path) -> None:
-    (box / "exact.txt").write_text("y" * _MAX_FILE_READ, encoding="utf-8")
-    assert read_file("exact.txt", sandbox=box) == "y" * _MAX_FILE_READ
+    (box / "exact.txt").write_text("y" * MAX_FILE_READ_CHARS, encoding="utf-8")
+    assert read_file("exact.txt", sandbox=box) == "y" * MAX_FILE_READ_CHARS
 
 
 def test_execute_tool_rejects_a_non_string_path() -> None:

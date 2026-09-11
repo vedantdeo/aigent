@@ -24,8 +24,9 @@ from anthropic.types import (
     Usage,
 )
 
+from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
 from entropic.config import has_credentials
-from entropic.week01.tool_loop import MAX_TURNS, run
+from entropic.week01.tool_loop import run
 
 DEMO_TASK = (
     "If I invest 250,000 rupees today at 11.5% compounded annually, what is it worth after "

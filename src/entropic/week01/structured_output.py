@@ -13,7 +13,9 @@ from __future__ import annotations
 from anthropic.types import MessageParam
 from pydantic import BaseModel, Field
 
-from entropic.config import MODEL, check_request, describe_usage, get_client
+from entropic.config import MAX_TOKENS_EXTRACT as MAX_TOKENS
+from entropic.config import MODEL, get_client
+from entropic.pricing import check_request, describe_usage
 
 ABSTRACT = """
 Modern Machine Learning (ML) and Artificial Intelligence (AI) models, especially large language
@@ -27,7 +29,6 @@ collapse large equivalence classes of explanations into a single fluent narrativ
 proposes concrete standards for "mechanistic ML," and argues these norms are necessary if
 LLM-centered workflows are to support science rather than merely simulate it.
 """
-MAX_TOKENS = 2048
 
 
 class PaperSummary(BaseModel):

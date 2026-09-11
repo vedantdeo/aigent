@@ -30,14 +30,10 @@ import sys
 import anthropic
 from anthropic.types import MessageParam, ToolResultBlockParam
 
-from entropic.config import (
-    MAX_USD_PER_RUN,
-    MODEL,
-    Budget,
-    check_request,
-    describe_usage,
-    get_client,
-)
+from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
+from entropic.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
+from entropic.config import MAX_USD_PER_RUN, MODEL, get_client
+from entropic.pricing import Budget, check_request, describe_usage
 from entropic.tools import ALL_TOOLS, execute_tool
 
 SYSTEM = (
@@ -45,8 +41,6 @@ SYSTEM = (
     "arithmetic. Use current_time when the answer depends on today's date. Show your final answer "
     "plainly."
 )
-MAX_TURNS = 8
-MAX_TOKENS = 4096
 
 
 def run(task: str, client: anthropic.Anthropic | None = None) -> str:

@@ -19,15 +19,9 @@ from typing import Literal, cast, get_args
 
 from anthropic.types import MessageParam
 
-from entropic.config import (
-    MAX_USD_PER_RUN,
-    MODEL,
-    Budget,
-    BudgetExceeded,
-    check_request,
-    get_client,
-    usage_cost,
-)
+from entropic.config import MAX_TOKENS_CHAT as MAX_TOKENS
+from entropic.config import MAX_USD_PER_RUN, MODEL, get_client
+from entropic.pricing import Budget, BudgetExceeded, check_request, usage_cost
 
 Effort = Literal["low", "medium", "high", "xhigh"]
 EFFORTS: tuple[str, ...] = get_args(Effort)
@@ -36,7 +30,6 @@ SYSTEM = (
     "You are Entropic, a direct and technically precise personal assistant. "
     "Prefer short answers with concrete examples."
 )
-MAX_TOKENS = 4096
 
 
 def main() -> None:

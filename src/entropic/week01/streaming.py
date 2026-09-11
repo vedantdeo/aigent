@@ -13,13 +13,14 @@ from __future__ import annotations
 
 from anthropic.types import MessageParam
 
-from entropic.config import MODEL, check_request, describe_usage, get_client
+from entropic.config import MAX_TOKENS_STREAMING as MAX_TOKENS
+from entropic.config import MODEL, get_client
+from entropic.pricing import check_request, describe_usage
 
 PROMPT = (
     "Compare BM25 and dense-embedding retrieval for a question-answering system over 10,000 PDFs. "
     "Give me the two failure modes of each, then a one-paragraph recommendation."
 )
-MAX_TOKENS = 4096
 
 
 def main() -> None:
