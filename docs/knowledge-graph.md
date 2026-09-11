@@ -3,7 +3,7 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `a6177d2` (2026-09-11). 100 tests pass, 1 live test deselected.**
+**Verified against commit `c3ea458` (2026-09-11). 292 tests pass, 1 live test deselected.**
 If the code has moved since, trust the code and update this file (see [Maintenance](#maintenance)).
 
 - Package root: `src/entropic/` (uv build backend, `src` layout, Python 3.12+)
@@ -89,6 +89,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 | `week01.structured_output` | `src/entropic/week01/structured_output.py` | `messages.parse` into a Pydantic model. |
 | `week01.tool_loop` | `src/entropic/week01/tool_loop.py` | The agent loop, hand-written. The seed of the real agent. |
 | `week01.chat` | `src/entropic/week01/chat.py` | Multi-turn REPL with a running cost meter. |
+| `week01.extraction` | `src/entropic/week01/extraction.py` | **Project 1a**: the extraction schema, two system-prompt variants, the `Task` that wraps `messages.parse`, the `Resolver` that turns a company mention into a ticker, and the `main` that runs the eval. The harness's first paying customer. |
 | `evals.dataset` | `src/entropic/evals/dataset.py` | `Case`, the strict JSONL loader, the dataset digest. |
 | `evals.grade` | `src/entropic/evals/grade.py` | `Outcome`, `Score`, `Grader`, and the four graders that cost nothing. |
 | `evals.judge` | `src/entropic/evals/judge.py` | `LlmJudge`: the fifth grader, the only one that spends. |
@@ -106,11 +107,11 @@ Values, plus the one function that turns them into a client. No arithmetic lives
 | `config.MAX_USD_PER_REQUEST` | constant | `config.py:43` | Default `0.25`, env `ENTROPIC_MAX_USD_PER_REQUEST`. Enforced in `pricing`, not here. |
 | `config.MAX_USD_PER_RUN` | constant | `config.py:44` | Default `1.00`, env `ENTROPIC_MAX_USD_PER_RUN`. |
 | `config.MAX_USD_PER_EVAL` | constant | `config.py:45` | Default `2.00`, env `ENTROPIC_MAX_USD_PER_EVAL`. One eval over a whole dataset. |
-| `config.MAX_TOKENS_*` | constants | `config.py:57-62` | One output cap per call site: `FIRST_CALL` 1024, `STREAMING` 4096, `EXTRACT` 2048, `TOOL_LOOP` 4096, `CHAT` 4096, `JUDGE` 1024. Each module imports its own under the local alias `MAX_TOKENS`. Side by side they show which calls are the expensive ones — invisible when each number sits alone in its module. |
-| `config.MAX_AGENT_TURNS` | constant | `config.py:66` | `8`. The tool loop's iteration cap; imported by `tool_loop` as `MAX_TURNS`. |
-| `config.MAX_FAILURES_SHOWN` | constant | `config.py:70` | `10`. Default truncation for an eval report's failure list. |
-| `config.has_credentials` | function | `config.py:73` | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` env, or `~/.config/anthropic` (the `ant` CLI profile). Used to skip tests, not only to fail fast. |
-| `config.get_client` | function | `config.py:80` | Raises `SystemExit` with both setup paths when unauthenticated. Adds `anthropic-workspace-id` header only when `ANTHROPIC_WORKSPACE_ID` is set — needed for org-level keys, harmless to omit for workspace-scoped ones. |
+| `config.MAX_TOKENS_*` | constants | `config.py:57-63` | One output cap per call site: `FIRST_CALL` 1024, `STREAMING` 4096, `EXTRACT` 2048, **`HEADLINE` 384**, `TOOL_LOOP` 4096, `CHAT` 4096, `JUDGE` 1024. Each module imports its own under the local alias `MAX_TOKENS`. Side by side they show which calls are the expensive ones — invisible when each number sits alone in its module. `HEADLINE` is the worked example of why the cap is sized per call site rather than set generously: `estimate_eval_usd` prices the full cap, so Project 1a's worst case is $3.19 at `EXTRACT`'s 2048 and $0.64 at 384. Same run, same real spend; only the guard's verdict changes. It started at 256 and clipped one row in 60 on the first live run (2026-09-11) — the other edge of the same knife, and the reason this number is tuned against an actual run rather than guessed. |
+| `config.MAX_AGENT_TURNS` | constant | `config.py:67` | `8`. The tool loop's iteration cap; imported by `tool_loop` as `MAX_TURNS`. |
+| `config.MAX_FAILURES_SHOWN` | constant | `config.py:71` | `10`. Default truncation for an eval report's failure list. |
+| `config.has_credentials` | function | `config.py:74` | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` env, or `~/.config/anthropic` (the `ant` CLI profile). Used to skip tests, not only to fail fast. |
+| `config.get_client` | function | `config.py:81` | Raises `SystemExit` with both setup paths when unauthenticated. Adds `anthropic-workspace-id` header only when `ANTHROPIC_WORKSPACE_ID` is set — needed for org-level keys, harmless to omit for workspace-scoped ones. |
 
 ### 2.3 Cost and budget (`pricing`)
 
@@ -159,7 +160,7 @@ what a call cost is not knowable until it is done.
 | `cli.menu_text` | function | `cli.py:64` | Numbered listing; also the body of the "unknown mode" error. |
 | `cli.main` | function | `cli.py:71` | `argv` injectable for tests. Non-TTY with no args → `SystemExit` rather than a hang on `input()`. |
 
-### 2.6 The five primitives
+### 2.6 The five primitives, and the project that uses them
 
 | ID | Anchor | What it demonstrates | Notable call shape |
 |----|--------|----------------------|--------------------|
@@ -171,6 +172,14 @@ what a call cost is not knowable until it is done.
 | `week01.tool_loop.main` | `tool_loop.py:106` | Task from argv; empty task → usage `SystemExit`. | — |
 | `week01.chat.main` | `chat.py:35` | Growing history (you pay for all of it every turn), `/effort`, `/reset`, `/quit`, per-turn and session cost. | `messages.stream(output_config={"effort": …})`. |
 | `week01.chat.Effort` | `chat.py:26` | `Literal["low","medium","high","xhigh"]`; `EFFORTS` derived via `get_args`, so the command validates against the type. |
+| `week01.extraction.Extraction` | `extraction.py:76` | What the **model** returns: `company` — the mention **copied verbatim** from the headline, not canonicalised — plus `metric`, `quarter`, `direction`, `change_pct`. What gets **graded** is `FIELDS` (`extraction.py:61`): `ticker` and the last four, because the task resolves the ticker in code before handing back the outcome. The labelling conventions live in the **field descriptions**, which the model sees: copy the mention, the Indian fiscal calendar, and the rule that a level or a basis-point move leaves `change_pct` null. A convention stated only in the few-shot examples would punish `zero_shot` for failing to guess it. |
+| `week01.extraction.METRICS` | `extraction.py:73` | A **total order** over the metric vocabulary, most preferred first. A headline routinely names two ("narrows Q1 loss; revenue up 63%"); without a tie-break the label is a coin flip the model has no way to call, and the miss reads as a model failure when it is a spec failure. The rule, stated in the `metric` description: the earliest-ranked metric **among those whose percentage change the headline states**, else the earliest overall. One clarification is load-bearing — a forward-looking statement about a metric is `guidance`, not that metric, or the mechanical rule reads "cuts revenue guidance" as cueing `revenue` and flips `hl-003` and `hl-023` to a label no reader would write. **Placeholder**: the order is asserted, not researched. |
+| `week01.extraction.Resolver` | `extraction.py:147` | Company mention → NSE ticker, through the directory. Indexes the ticker, the registered name and every alias under `_key` (`extraction.py:119` — casefold, strip punctuation and a `Ltd`/`Limited` suffix), then looks up **exactly**: never fuzzily, because a lookup that matches approximately is wrong in the same quiet way a guess is. A miss returns `None` and is counted in `unresolved`. `dict.get` is free and cannot hallucinate `HEROMOTOCORP` for `HEROMOTOCO`, and 11 of the 29 tickers in the dataset are not derivable from any name a headline uses — so 38% of that field's difficulty leaves the model's job entirely. A parametrized test proves the composed property over all 30 rows: copy the alias the headline writes, resolve it, land on the label. `ticker` is therefore right **by construction** whenever `company` is, and the eval measures identification rather than symbol recall. |
+| `week01.extraction.report_unresolved` | `extraction.py:318` | The actionable half of a failed lookup: the mentions to add to the directory, with counts. **The failure mode of a lookup is a to-do list; the failure mode of a guess is a plausible wrong symbol.** |
+| `week01.extraction.load_directory` | `extraction.py:126` | Reads `evals/reference/nse-tickers.json` into `{ticker: {name, aliases}}`. Reference data, not settings. |
+| `week01.extraction.VARIANTS` | `extraction.py:199` | `zero_shot`, then `few_shot` = `ZERO_SHOT` + three worked examples. Each arm differs from the one before it by exactly one thing, which is what makes the per-field table read as an ablation rather than a scatter; a test pins the prefix relationship so the ladder cannot quietly break. |
+| `week01.extraction.extraction_task` | `extraction.py:202` | Returns a `Task`. Builds its client lazily so importing the module costs nothing, pre-flights through `check_request`, resolves the ticker, and turns `parsed_output is None` into `Outcome(error=…)` **with** its usage — the call still happened, so the row still bills. Resolution lives here rather than in the harness, so `run_eval` needs no concept of post-processing. | `messages.parse`, `max_tokens=384`. |
+| `week01.extraction.main` | `extraction.py:280` | Prints the worst case (priced per arm, not averaged), the labelled/skipped split and the directory size, then **stops unless `--yes`**. `--sample N` (`extraction.py:252`) runs N cases taken *evenly across* the dataset rather than the first N — the rows are roughly in the order they were written, so the front is the easy end and a smoke run off it cannot fail. Not in `cli.MODES`: a menu number that spends forty cents on a stray keystroke is a different kind of thing from a demo. | — |
 
 ### 2.7 The eval harness (`evals`)
 
@@ -214,6 +223,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `tests.test_evals_dataset` | `tests/test_evals_dataset.py` | `test_the_loader_refuses` tables the four ways a dataset is rejected before the run — typo'd key, duplicate id, bad JSON, empty file — each row naming the message it must produce. Plus the happy path, comment skipping, and that the digest moves with the labels. | free |
 | `tests.test_evals_graders` | `tests/test_evals_graders.py` | One table per free grader, since each is a pure function of (case, outcome): `regex` alone is eight rows of (pattern, value, passed). Then the judge, whose verdict is scripted through `conftest.make_judge`, so the paid grader is tested for nothing. | free |
 | `tests.test_evals_runner` | `tests/test_evals_runner.py` | The runner's three promises: error rows, a tripped ceiling that keeps its rows, every dollar billed — including a grader that names no model, which is billed at the run's. Most tasks here are plain functions, no fake client needed. The last two put a real `LlmJudge` **inside** `run_eval`: one asserts a verdict per row, priced at the judge's model rather than the task's; one that a judge failing on the network costs that row and not the run. The judge's own tests call it directly, so this is the only cover on the junction. | free |
+| `tests.test_extraction` | `tests/test_extraction.py` | Project 1a both ways. The task against a scripted client: a parsed record becomes a gradeable `Outcome`, a `None` parse becomes an error row that still bills, a case with no headline never calls. Then the **dataset as an asset** — 30 parametrized rows assert every label validates against `Extraction`, sits in the field's vocabulary, and (for `ticker`) matches the shape `[A-Z0-9&]+`; that `change_pct` labels are floats (`str(12) != str(12.0)` and `field_match` compares text); and that no field is so lopsided a constant answer would score well. Another 30 assert each headline names its company in a form the directory lists, 30 more prove the composed property — copy the alias the headline writes, resolve it, land on the label — and one asserts every labelled ticker is in the directory at all. A 12-row table pins the resolver's normalisation (case, punctuation, `Ltd`, and the misses), and a row per directory entry checks it resolves to itself. | free |
 | `tests.test_evals_report` | `tests/test_evals_report.py` | Report arithmetic: pass rates, per-field columns, error rows out of the denominator, the partial-run banner, and the `graded by` line appearing only when a grader spent. Deliberately not tabled — each test reads a different section of the same run. | free |
 
 `addopts = "-m 'not live'"` in `pyproject.toml:44` — paid tests never run by accident.
@@ -224,10 +234,12 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 |----|------|------|
 | `sandbox/` | repo root | The only directory `read_file` can reach. Git-ignored except `README.md`; `holdings.txt` is a local demo fixture. |
 | `evals/` | repo root | `datasets/*.jsonl` (hand-labelled, the actual asset) and `reports/*.md` (one per run, committed on purpose — a score means nothing alone). Outside `src/` so the wheel does not ship the data. `evals/README.md` documents the row format. |
+| `evals/reference/nse-tickers.json` | repo root | The ticker directory: 30 companies, registered name plus the 46 alias forms a headline actually uses. Two jobs at once — it is the ground truth the `ticker` labels are checked against (a label outside it is unfalsifiable), and it is what `Resolver` looks up at runtime. **11 of the 29 tickers in the dataset are not derivable from any name the headline uses** (`HUL`→`HINDUNILVR`, `Hero MotoCorp`→`HEROMOTOCO`, `Vedanta`→`VEDL`, `SBI`→`SBIN`, `Tech Mahindra`→`TECHM`, …) — 38% of that field, removed from the model's job rather than prompted around. Growing it is the maintenance task, and `report_unresolved` names the mentions to add. Hand-transcribed: verify before trusting it in production. |
+| `evals/datasets/headlines.jsonl` | repo root | Project 1a's dataset: 50 Indian market results headlines, **30 labelled** and 20 left as the backlog. **Saturated as of 2026-09-11**: Opus scores 30/30 on every field in both arms, so the labelled set is now a regression guard and not a measurement — it cannot rank two prompts. The discrimination is in the 20 unlabelled rows, which is what makes labelling them the highest-value work here. The company field is called `ticker` and holds the NSE symbol. An unlabelled row carries no `expected`, so `main` filters it out rather than scoring it — `field_match` counts a missing label as wrong, which would drag the per-field table down. The backlog is deliberate: each of those 20 needs a human decision the schema does not settle (a metric outside the vocabulary, two companies with equal claim, sequential vs YoY). |
 | `LOG.md` | repo root | Weekly log: what shipped, what broke, real token counts and dollar figures. Append here after live runs. |
 | `README.md` | repo root | The five modes, the budget table, the check commands. |
 | `.env` / `.env.example` | repo root | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_WORKSPACE_ID`, both budget overrides, `ENTROPIC_MODEL`. `.env` is git-ignored; `load_dotenv()` runs at `config` import. |
-| `CLAUDE.md` | repo root | The four project rules for Claude sessions: read this graph first, move it with every commit, keep constants in one config module, and turn on branch protection before the repo gains a collaborator or goes public. Tracked, so it reaches every clone — a session's private memory does not. The constants rule is a **verbatim mirror** of a global preference in `~/.claude/CLAUDE.md`, which is machine-local and backed up by nothing; this copy is the durable one, so edit both or neither. |
+| `CLAUDE.md` | repo root | The five project rules for Claude sessions: read this graph first, move it with every commit, keep constants in one config module, club same-shaped tests into parametrized tables, and turn on branch protection before the repo gains a collaborator or goes public. Tracked, so it reaches every clone — a session's private memory does not. The constants rule and the testing rule are **verbatim mirrors** of global preferences in `~/.claude/CLAUDE.md`, which is machine-local and backed up by nothing; these copies are the durable ones, so edit both or neither. |
 | `.githooks/pre-commit` | repo root | Refuses a commit that stages `src/` or `pyproject.toml` without this file. Enabled per clone with `git config core.hooksPath .githooks`; git never installs hooks on clone. |
 | `scripts/check-knowledge-graph.sh` | repo root | The rule itself, reading changed paths on stdin. The hook and CI both call it, so the two cannot drift. |
 | `.github/workflows/knowledge-graph.yml` | repo root | The same check over the push or PR diff, for clones that never enabled the hook. |
@@ -265,6 +277,11 @@ evals.judge              —imports→ evals.{dataset, grade}
 evals.runner             —imports→ config.{MODEL, MAX_USD_PER_EVAL} + pricing.Budget
 evals.runner             —imports→ evals.{dataset, grade}
 evals.report             —imports→ evals.runner, config.MAX_FAILURES_SHOWN
+
+week01.extraction        —imports→ config.{MODEL, MAX_TOKENS_HEADLINE as MAX_TOKENS, MAX_USD_PER_EVAL, get_client}
+week01.extraction        —imports→ pricing.{check_request, estimate_eval_usd}
+week01.extraction        —imports→ evals.{dataset, grade, report, runner}   (the one edge that points INTO evals)
+week01.extraction        —reads→ evals/datasets/headlines.jsonl, evals/reference/nse-tickers.json   (paths from __file__, not settings)
 ```
 
 `tools` does not import `config`, and `config` does not import `tools`. Keep it that way — it is why
@@ -275,7 +292,9 @@ config module that travels with the code it configures keeps both properties —
 concern, and no dependency on the rest of the package.
 
 The same rule holds one level up: no module under `evals/` imports `week01/`, or anything else that
-does work. The harness is handed a `Task` and knows nothing about what is inside it. `evals.grade`
+does work. `week01.extraction` is the arrow in the permitted direction — a capability importing the
+harness to be measured by it, never the harness reaching for a capability. The harness is handed a
+`Task` and knows nothing about what is inside it. `evals.grade`
 holds `Outcome` and `Score` rather than the runner, so a grader never imports the runner either —
 the dependency runs one way and stays acyclic.
 
@@ -328,6 +347,9 @@ evals.dataset.{load_jsonl, digest}                                     —tested
 evals.grade.* and evals.judge.LlmJudge                                 —tested-by→ tests.test_evals_graders
 evals.runner.run_eval                                                  —tested-by→ tests.test_evals_runner
 evals.report.{to_markdown, write_report}                               —tested-by→ tests.test_evals_report
+week01.extraction.{Extraction, extraction_task, VARIANTS}              —tested-by→ tests.test_extraction
+evals/datasets/headlines.jsonl                                         —validated-by→ tests.test_extraction
+evals/reference/nse-tickers.json                                       —grounds→ evals/datasets/headlines.jsonl (`ticker` labels)
 ```
 
 Untested by design: the four demo `main()` functions in `week01/` (they are the demos), and
@@ -395,7 +417,14 @@ The rules the code encodes. Breaking one of these is a regression even when test
     grader in `Score`, and `run_eval` bills both to one `Budget` via `charge`. Pricing stays in
     `pricing`: nothing under `evals/` calls `usage_cost` itself. A grader that spends silently would
     make the printed total a lie.
-13. **The harness imports no capability module.** `evals/` depends on `config` and on itself. It is
+13. **A model is asked to read, never to join.** `extraction` has the model copy the company as the
+    headline writes it, and resolves the NSE ticker in code from `evals/reference/nse-tickers.json`
+    (`extraction.py:130`). A dictionary lookup is exact, free and cannot invent a plausible-looking
+    wrong symbol; a miss is `None` plus a line in `report_unresolved`'s to-do list, which is a gap in
+    the reference data rather than a silently wrong row. Reach for this wherever a deterministic
+    mapping exists — ticker lookup now, chunk ids in Week 2.
+
+14. **The harness imports no capability module.** `evals/` depends on `config` and on itself. It is
     handed a `Task` and knows nothing about what is inside it — which is the only reason Week 2 can
     point it at a retrieval function that never calls the API.
 
@@ -407,8 +436,9 @@ Anchors the code already names, so a future session can find the intended seam r
 
 | Planned | Seam | Named at |
 |---------|------|----------|
-| Week 1 — Project 1a | A `Task` wrapping `structured_output`'s `messages.parse`, graded with `field_match` over a hand-labelled dataset. Nothing new in the harness. | `evals/README.md` |
-| Week 1 — prompt caching | System prompts are already byte-identical per call, which is the precondition. `Price.cache_write` / `cache_read` and the cache columns in `describe_usage` are already wired. Measure it as two variants of one eval — `baseline` and `cached` — rather than a toy script. | `chat.py:11`, `pricing.py:28-41` |
+| ~~Week 1 — Project 1a~~ | **Consumed.** `week01.extraction`: `messages.parse` behind a `Task`, `field_match` + `pydantic_valid` over 30 labelled headlines, two prompt variants. Nothing new in the harness, as predicted — the only code change outside the new module was one right-sized output cap. | `extraction.py` |
+| Week 1 — prompt caching | System prompts are already byte-identical per call, which is the precondition. `Price.cache_write` / `cache_read` and the cache columns in `describe_usage` are already wired. Measure it as two variants of one eval — `baseline` and `cached` — rather than a toy script. **`week01.extraction.VARIANTS` is the seam**: `FEW_SHOT` is ~950 characters of byte-identical system prompt resent on all 30 rows of its arm, which is the shape caching pays for. `extraction.main` already prices each arm by its own prompt length, so the saving will show up in the estimate as well as the bill. | `extraction.py:106`, `pricing.py:28-41` |
+| Week 1 — label the backlog | 20 rows in `headlines.jsonl` carry no `expected`. Labelling them is the cheapest way to make every number on the report more trustworthy, and the hard calls are already isolated. | `evals/datasets/headlines.jsonl` |
 | Week 2 — retrieval metrics | recall@k and MRR are graders over a `Task` that returns `Outcome(usage=None)`. The harness already treats a free task as a first-class one. | `runner.py:38`, `grade.py:57` |
 | Week 2 — RAG milestone `v0.1-rag` | New capability module; reuse `tools` for retrieval tools. | roadmap |
 | Week 3 — `chat` becomes the default mode | `cli.MODES` order and `cli.main`'s no-arg branch. | `cli.py:7-8` |

@@ -1,0 +1,62 @@
+// Indian market results headlines -> one structured record each. Project 1a.
+// ticker is the NSE symbol, never a name: one canonical key per company, so INFY is INFY
+// whether the headline said Infosys or Infy, and there is no Sun Pharma / Sun Pharmaceutical
+// Industries argument to have. change_pct is null unless the headline states an explicit
+// percentage CHANGE: a level ("margin to 3.6% from 3.4%"), a basis-point move and "doubles"
+// are all null. Labels are floats (12.0, not 12) because field_match compares text, and
+// str(12) != str(12.0). See evals/README.md.
+
+{"id": "hl-001", "input": {"headline": "Infosys Q3 net profit rises 11.5% to Rs 6,806 crore"}, "expected": {"ticker": "INFY", "metric": "profit", "quarter": "Q3", "direction": "up", "change_pct": 11.5}, "tags": ["plain"]}
+{"id": "hl-002", "input": {"headline": "TCS Q2 revenue up 7.9% YoY"}, "expected": {"ticker": "TCS", "metric": "revenue", "quarter": "Q2", "direction": "up", "change_pct": 7.9}, "tags": ["plain"]}
+{"id": "hl-003", "input": {"headline": "Infy cuts FY25 revenue guidance to 1-3% from 3-5%"}, "expected": {"ticker": "INFY", "metric": "guidance", "quarter": "FY", "direction": "down", "change_pct": null}, "tags": ["alias", "decoy-number"]}
+{"id": "hl-004", "input": {"headline": "RIL Q1 profit falls 5.2% on weak refining margins"}, "expected": {"ticker": "RELIANCE", "metric": "profit", "quarter": "Q1", "direction": "down", "change_pct": 5.2}, "tags": ["alias"]}
+{"id": "hl-005", "input": {"headline": "HUL December quarter revenue flat at Rs 15,259 crore"}, "expected": {"ticker": "HINDUNILVR", "metric": "revenue", "quarter": "Q3", "direction": "flat", "change_pct": null}, "tags": ["alias", "implied-quarter"]}
+{"id": "hl-006", "input": {"headline": "L&T bags orders worth Rs 5,000 crore in Q2"}, "expected": {"ticker": "LT", "metric": "orders", "quarter": "Q2", "direction": "unknown", "change_pct": null}, "tags": ["alias", "no-direction", "no-pct"]}
+{"id": "hl-007", "input": {"headline": "Wipro headcount drops by 6,180 in Q1"}, "expected": {"ticker": "WIPRO", "metric": "headcount", "quarter": "Q1", "direction": "down", "change_pct": null}, "tags": ["no-pct", "decoy-number"]}
+{"id": "hl-008", "input": {"headline": "HDFC Bank Q3 net interest margin expands to 3.6% from 3.4%"}, "expected": {"ticker": "HDFCBANK", "metric": "margin", "quarter": "Q3", "direction": "up", "change_pct": null}, "tags": ["level-not-change"]}
+{"id": "hl-009", "input": {"headline": "Maruti Suzuki Q2 profit doubles to Rs 3,716 crore"}, "expected": {"ticker": "MARUTI", "metric": "profit", "quarter": "Q2", "direction": "up", "change_pct": null}, "tags": ["no-pct"]}
+{"id": "hl-010", "input": {"headline": "Mahindra & Mahindra Q2 revenue down 12% on weak tractor demand"}, "expected": {"ticker": "M&M", "metric": "revenue", "quarter": "Q2", "direction": "down", "change_pct": 12.0}, "tags": ["plain"]}
+{"id": "hl-011", "input": {"headline": "Axis Bank posts 4% rise in Q4 net profit"}, "expected": {"ticker": "AXISBANK", "metric": "profit", "quarter": "Q4", "direction": "up", "change_pct": 4.0}, "tags": ["plain"]}
+{"id": "hl-012", "input": {"headline": "ICICI Bank Q3 margin contracts 30 basis points"}, "expected": {"ticker": "ICICIBANK", "metric": "margin", "quarter": "Q3", "direction": "down", "change_pct": null}, "tags": ["bps-trap"]}
+{"id": "hl-013", "input": {"headline": "Tech Mahindra revenue slips 1.3% in June quarter"}, "expected": {"ticker": "TECHM", "metric": "revenue", "quarter": "Q1", "direction": "down", "change_pct": 1.3}, "tags": ["implied-quarter"]}
+{"id": "hl-014", "input": {"headline": "Sun Pharma Q2 profit up 28% as US sales recover"}, "expected": {"ticker": "SUNPHARMA", "metric": "profit", "quarter": "Q2", "direction": "up", "change_pct": 28.0}, "tags": ["plain"]}
+{"id": "hl-015", "input": {"headline": "Bajaj Finance Q3 net profit climbs 22%"}, "expected": {"ticker": "BAJFINANCE", "metric": "profit", "quarter": "Q3", "direction": "up", "change_pct": 22.0}, "tags": ["plain"]}
+{"id": "hl-016", "input": {"headline": "Asian Paints March quarter revenue declines 1.7%"}, "expected": {"ticker": "ASIANPAINT", "metric": "revenue", "quarter": "Q4", "direction": "down", "change_pct": 1.7}, "tags": ["implied-quarter"]}
+{"id": "hl-017", "input": {"headline": "Nestle India raises FY26 capex guidance"}, "expected": {"ticker": "NESTLEIND", "metric": "guidance", "quarter": "FY", "direction": "up", "change_pct": null}, "tags": ["no-pct"]}
+{"id": "hl-018", "input": {"headline": "Delhivery narrows Q1 loss; revenue up 63%"}, "expected": {"ticker": "DELHIVERY", "metric": "revenue", "quarter": "Q1", "direction": "up", "change_pct": 63.0}, "tags": ["two-metrics"]}
+{"id": "hl-019", "input": {"headline": "Adani Ports Q2 revenue rises 9.4%, margin steady"}, "expected": {"ticker": "ADANIPORTS", "metric": "revenue", "quarter": "Q2", "direction": "up", "change_pct": 9.4}, "tags": ["two-metrics"]}
+{"id": "hl-020", "input": {"headline": "Titan Q3 headcount up 3,400 as store rollout accelerates"}, "expected": {"ticker": "TITAN", "metric": "headcount", "quarter": "Q3", "direction": "up", "change_pct": null}, "tags": ["no-pct", "decoy-number"]}
+{"id": "hl-021", "input": {"headline": "SBI profit unchanged in Q2 at Rs 14,330 crore"}, "expected": {"ticker": "SBIN", "metric": "profit", "quarter": "Q2", "direction": "flat", "change_pct": null}, "tags": ["flat", "alias"]}
+{"id": "hl-022", "input": {"headline": "Hero MotoCorp Q4 margin narrows to 13.8%"}, "expected": {"ticker": "HEROMOTOCO", "metric": "margin", "quarter": "Q4", "direction": "down", "change_pct": null}, "tags": ["level-not-change"]}
+{"id": "hl-023", "input": {"headline": "Britannia guides for high single-digit revenue growth in FY25"}, "expected": {"ticker": "BRITANNIA", "metric": "guidance", "quarter": "FY", "direction": "up", "change_pct": null}, "tags": ["no-pct"]}
+{"id": "hl-024", "input": {"headline": "Coal India September quarter profit down 22%"}, "expected": {"ticker": "COALINDIA", "metric": "profit", "quarter": "Q2", "direction": "down", "change_pct": 22.0}, "tags": ["implied-quarter"]}
+{"id": "hl-025", "input": {"headline": "Tata Motors Q3 order book swells past Rs 1 lakh crore"}, "expected": {"ticker": "TATAMOTORS", "metric": "orders", "quarter": "Q3", "direction": "up", "change_pct": null}, "tags": ["no-pct"]}
+{"id": "hl-026", "input": {"headline": "HCL Tech Q1 revenue up 6.7%; Infosys lags"}, "expected": {"ticker": "HCLTECH", "metric": "revenue", "quarter": "Q1", "direction": "up", "change_pct": 6.7}, "tags": ["two-companies"]}
+{"id": "hl-027", "input": {"headline": "Dr Reddy's profit falls 2.5% in Q3, misses estimates"}, "expected": {"ticker": "DRREDDY", "metric": "profit", "quarter": "Q3", "direction": "down", "change_pct": 2.5}, "tags": ["plain"]}
+{"id": "hl-028", "input": {"headline": "Vedanta trims headcount by 1,100 across aluminium units"}, "expected": {"ticker": "VEDL", "metric": "headcount", "quarter": "unknown", "direction": "down", "change_pct": null}, "tags": ["no-quarter"]}
+{"id": "hl-029", "input": {"headline": "Paytm revenue drops 36% as lending business shrinks"}, "expected": {"ticker": "PAYTM", "metric": "revenue", "quarter": "unknown", "direction": "down", "change_pct": 36.0}, "tags": ["no-quarter"]}
+{"id": "hl-030", "input": {"headline": "Bharti Airtel Q2 margin improves 80 bps to 54.4%"}, "expected": {"ticker": "BHARTIARTL", "metric": "margin", "quarter": "Q2", "direction": "up", "change_pct": null}, "tags": ["bps-trap", "level-not-change"]}
+
+// Below: inputs collected but not yet labelled. Every one of these needs a human
+// decision the schema does not settle - a metric outside the vocabulary, two companies
+// with equal claim, or a sequential-vs-YoY ambiguity. run_extraction skips them.
+{"id": "hl-031", "input": {"headline": "Reliance Jio adds 3.4 million subscribers in September"}, "tags": ["unlabelled"]}
+{"id": "hl-032", "input": {"headline": "Infosys, TCS shares fall as IT spending outlook dims"}, "tags": ["unlabelled"]}
+{"id": "hl-033", "input": {"headline": "Q3 results: Nifty IT companies post mixed numbers"}, "tags": ["unlabelled"]}
+{"id": "hl-034", "input": {"headline": "Zomato Q2: revenue up, losses widen, stock down 4%"}, "tags": ["unlabelled"]}
+{"id": "hl-035", "input": {"headline": "SBI Cards Q1 profit down 19%; gross NPA rises to 3.1%"}, "tags": ["unlabelled"]}
+{"id": "hl-036", "input": {"headline": "LIC's new business premium up 21% in H1"}, "tags": ["unlabelled"]}
+{"id": "hl-037", "input": {"headline": "Tata Steel swings to profit in Q4"}, "tags": ["unlabelled"]}
+{"id": "hl-038", "input": {"headline": "Nykaa Q3 GMV growth slows to 22% from 31%"}, "tags": ["unlabelled"]}
+{"id": "hl-039", "input": {"headline": "Bajaj Auto exports fall for the fifth straight quarter"}, "tags": ["unlabelled"]}
+{"id": "hl-040", "input": {"headline": "IndiGo posts record Q3 profit on strong yields"}, "tags": ["unlabelled"]}
+{"id": "hl-041", "input": {"headline": "Hindalco's Novelis Q2 EBITDA per tonne at $431"}, "tags": ["unlabelled"]}
+{"id": "hl-042", "input": {"headline": "Wipro appoints new CFO; Q2 results next week"}, "tags": ["unlabelled"]}
+{"id": "hl-043", "input": {"headline": "DMart same-store sales growth moderates in Q1"}, "tags": ["unlabelled"]}
+{"id": "hl-044", "input": {"headline": "Kotak Mahindra Bank Q4 provisions rise sharply"}, "tags": ["unlabelled"]}
+{"id": "hl-045", "input": {"headline": "Ola Electric revenue halves sequentially in Q3"}, "tags": ["unlabelled"]}
+{"id": "hl-046", "input": {"headline": "UltraTech Q2 volumes up 6%, realisations down 3%"}, "tags": ["unlabelled"]}
+{"id": "hl-047", "input": {"headline": "Biocon Q1 loss narrows on Syngene strength"}, "tags": ["unlabelled"]}
+{"id": "hl-048", "input": {"headline": "Apollo Hospitals Q2 margin flat at 12%"}, "tags": ["unlabelled"]}
+{"id": "hl-049", "input": {"headline": "PVR Inox Q1 occupancy at 25%; revenue down 9%"}, "tags": ["unlabelled"]}
+{"id": "hl-050", "input": {"headline": "Trent revenue up 45%, fastest among retail peers"}, "tags": ["unlabelled"]}

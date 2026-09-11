@@ -1,0 +1,202 @@
+{
+  "_about": "NSE ticker directory for Project 1a. The registered name plus the forms a headline actually uses. This is the ground truth the dataset's `ticker` labels are checked against, and the table the few_shot_directory variant puts in front of the model.",
+  "_source": "NSE equity symbol list, transcribed by hand. Verify before trusting in production.",
+  "companies": {
+    "ADANIPORTS": {
+      "name": "Adani Ports and Special Economic Zone Ltd",
+      "aliases": [
+        "Adani Ports"
+      ]
+    },
+    "ASIANPAINT": {
+      "name": "Asian Paints Ltd",
+      "aliases": [
+        "Asian Paints"
+      ]
+    },
+    "AXISBANK": {
+      "name": "Axis Bank Ltd",
+      "aliases": [
+        "Axis Bank"
+      ]
+    },
+    "BAJFINANCE": {
+      "name": "Bajaj Finance Ltd",
+      "aliases": [
+        "Bajaj Finance"
+      ]
+    },
+    "BHARTIARTL": {
+      "name": "Bharti Airtel Ltd",
+      "aliases": [
+        "Bharti Airtel",
+        "Airtel"
+      ]
+    },
+    "BRITANNIA": {
+      "name": "Britannia Industries Ltd",
+      "aliases": [
+        "Britannia Industries",
+        "Britannia"
+      ]
+    },
+    "COALINDIA": {
+      "name": "Coal India Ltd",
+      "aliases": [
+        "Coal India"
+      ]
+    },
+    "DELHIVERY": {
+      "name": "Delhivery Ltd",
+      "aliases": [
+        "Delhivery"
+      ]
+    },
+    "DRREDDY": {
+      "name": "Dr. Reddy's Laboratories Ltd",
+      "aliases": [
+        "Dr. Reddy's Laboratories",
+        "Dr Reddy's"
+      ]
+    },
+    "HCLTECH": {
+      "name": "HCL Technologies Ltd",
+      "aliases": [
+        "HCL Technologies",
+        "HCL Tech"
+      ]
+    },
+    "HDFCBANK": {
+      "name": "HDFC Bank Ltd",
+      "aliases": [
+        "HDFC Bank"
+      ]
+    },
+    "HEROMOTOCO": {
+      "name": "Hero MotoCorp Ltd",
+      "aliases": [
+        "Hero MotoCorp"
+      ]
+    },
+    "HINDUNILVR": {
+      "name": "Hindustan Unilever Ltd",
+      "aliases": [
+        "Hindustan Unilever",
+        "HUL"
+      ]
+    },
+    "ICICIBANK": {
+      "name": "ICICI Bank Ltd",
+      "aliases": [
+        "ICICI Bank"
+      ]
+    },
+    "INFY": {
+      "name": "Infosys Ltd",
+      "aliases": [
+        "Infosys",
+        "Infy"
+      ]
+    },
+    "LT": {
+      "name": "Larsen & Toubro Ltd",
+      "aliases": [
+        "Larsen & Toubro",
+        "L&T"
+      ]
+    },
+    "M&M": {
+      "name": "Mahindra & Mahindra Ltd",
+      "aliases": [
+        "Mahindra & Mahindra",
+        "M&M",
+        "Mahindra"
+      ]
+    },
+    "MARUTI": {
+      "name": "Maruti Suzuki India Ltd",
+      "aliases": [
+        "Maruti Suzuki",
+        "Maruti"
+      ]
+    },
+    "NESTLEIND": {
+      "name": "Nestle India Ltd",
+      "aliases": [
+        "Nestle India"
+      ]
+    },
+    "PAYTM": {
+      "name": "One 97 Communications Ltd",
+      "aliases": [
+        "One 97 Communications",
+        "Paytm"
+      ]
+    },
+    "RELIANCE": {
+      "name": "Reliance Industries Ltd",
+      "aliases": [
+        "Reliance Industries",
+        "RIL",
+        "Reliance"
+      ]
+    },
+    "SBIN": {
+      "name": "State Bank of India",
+      "aliases": [
+        "State Bank of India",
+        "SBI"
+      ]
+    },
+    "SUNPHARMA": {
+      "name": "Sun Pharmaceutical Industries Ltd",
+      "aliases": [
+        "Sun Pharmaceutical Industries",
+        "Sun Pharma"
+      ]
+    },
+    "TATAMOTORS": {
+      "name": "Tata Motors Ltd",
+      "aliases": [
+        "Tata Motors"
+      ]
+    },
+    "TATASTEEL": {
+      "name": "Tata Steel Ltd",
+      "aliases": [
+        "Tata Steel"
+      ]
+    },
+    "TCS": {
+      "name": "Tata Consultancy Services Ltd",
+      "aliases": [
+        "Tata Consultancy Services",
+        "TCS"
+      ]
+    },
+    "TECHM": {
+      "name": "Tech Mahindra Ltd",
+      "aliases": [
+        "Tech Mahindra"
+      ]
+    },
+    "TITAN": {
+      "name": "Titan Company Ltd",
+      "aliases": [
+        "Titan"
+      ]
+    },
+    "VEDL": {
+      "name": "Vedanta Ltd",
+      "aliases": [
+        "Vedanta"
+      ]
+    },
+    "WIPRO": {
+      "name": "Wipro Ltd",
+      "aliases": [
+        "Wipro"
+      ]
+    }
+  }
+}

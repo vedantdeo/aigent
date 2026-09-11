@@ -17,3 +17,6 @@ wheels/
 # Temporary files
 sandbox/**
 !sandbox/README.md
+
+# macOS
+.DS_Store
