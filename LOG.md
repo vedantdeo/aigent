@@ -78,3 +78,16 @@
   - Where the discrimination went: the 20 unlabelled rows are the hard ones (GMV and EBITDA outside
     the metric vocabulary, two companies with equal claim, sequential vs YoY). Labelling them is now
     the highest-value work on this project — an eval that everything passes has stopped measuring.
+- 09-11: labelled 8 of the 20 backlog headlines (the ones the current schema already settles) and
+  added 7 companies to the ticker directory. De-duped the directory: matching is case-, punctuation-
+  and Ltd-insensitive, so `PVR INOX`/`PVR Inox` was one spelling stored twice and an alias restating
+  the ticker or the registered name was a third copy — 61 aliases to 44, nothing resolves
+  differently. Two guards added for it, one of which has teeth beyond tidiness: `Resolver` indexes
+  with `setdefault`, so two companies claiming one spelling would silently route every mention to
+  whichever sorted first (`SBI` vs `SBI Cards` is the near miss).
+- 09-11: three rules recorded, each verbatim in `~/.claude/CLAUDE.md` and this repo's `CLAUDE.md` —
+  hand-edited reference data stays in one canonical order (with the exception for sequences whose
+  order *is* the data, which is why `METRICS` is not in the registry), and comments stay to one
+  line. `tests/test_reference_data.py` is the opt-in registry; generalising it exposed that its
+  duplicate-key check was vacuous, since `json.loads` collapses repeated keys before the assertion
+  ever sees them. It reads raw pairs now.

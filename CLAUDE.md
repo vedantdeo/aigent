@@ -1,11 +1,11 @@
 # Entropic — notes for Claude
 
-Five project rules live here rather than in a session's private memory, so they travel with the
+Seven project rules live here rather than in a session's private memory, so they travel with the
 repo and reach anyone who clones it.
 
-Two of them — the constants rule and the testing rule — are verbatim mirrors of global preferences
-in `~/.claude/CLAUDE.md`, which is machine-local and backed up by nothing. The copies below are the
-durable ones. Edit both, or neither.
+Four of them — constants, testing, reference data and comments — are verbatim mirrors of global
+preferences in `~/.claude/CLAUDE.md`, which is machine-local and backed up by nothing. The copies
+below are the durable ones. Edit both, or neither.
 
 ## Read the knowledge graph before exploring
 
@@ -127,6 +127,56 @@ of this machine. Edit both, or neither.
   counts, so the two cannot drift.
 - Staying apart: `tests/test_tool_loop.py`, where each test scripts a different conversation, and
   `tests/test_evals_report.py`, where each test reads a different section of the same report.
+
+## Reference data stays in one canonical order
+
+**The rule: a file that people hand-edit and code reads back — a lookup table, an allowlist, a
+mapping, a set of fixtures — is written in one canonical order, sorted by the key it is looked up
+by.** Sort on write, in the code that dumps it, not as a tidy-up pass afterwards.
+
+- Sort by the key the data is addressed by: the ticker in a ticker table, the package in a
+  dependency list, the id in a fixture file. Where there is no natural key, sort by whatever a
+  reader would scan for.
+- Keep the shape inside each entry stable too — the same fields in the same sequence — so a changed
+  value is a one-line diff and not a rewritten block.
+- Guard it with a test rather than a convention. A canonical order that nothing checks survives
+  exactly until the first tool writes the file back in its own order.
+
+**Why:** a canonical order gives a new entry exactly one place it can go, so its diff shows that
+entry and nothing else. Append-anywhere files drift into a private order that only the last editor
+knows, and then the first process to re-serialise one produces a diff touching every line — which
+buries the single line that actually changed and makes reviewing a data file worthless. Sorted data
+is also scannable: a human looks a key up instead of searching for it.
+
+**The exception is when the order is itself the data.** A migration list, a pipeline's stages, a
+priority ranking, a changelog, a fallback chain — these are sequences, and sorting them destroys
+meaning rather than revealing it. Say so in the file, so the next reader knows the disorder is
+deliberate and the next tool does not helpfully fix it.
+
+This section is mirrored verbatim into each project's tracked `CLAUDE.md`, so it survives the loss
+of this machine. Edit both, or neither.
+
+**In this repo:** `evals/reference/nse-tickers.json` is sorted by ticker and dumped with
+`dict(sorted(companies.items()))`. `tests/test_reference_data.py` holds the registry of files
+the rule covers and fails if any of them drifts. The counterexample
+sits in the same feature — `week01.extraction.METRICS` is a *total order* over the metric
+vocabulary, so alphabetising it would silently rewrite every tie-break the eval depends on.
+
+## Comments earn their line
+
+**The rule: keep a comment to one line.** Reasoning that needs a paragraph belongs in the function's
+or the module's docstring, which is read once on arrival — not stacked above a constant that gets
+glanced at daily.
+
+- Say only what the code does not. `# increment i` is noise; `# the API 1-indexes pages` is not.
+- Put it at the line that surprises, not at the top of the block.
+- When a comment grows past a line, that is the signal to move it, not to wrap it.
+
+**Why:** ten lines above a one-line constant do not get read, they get scrolled past — and then they
+rot unnoticed, because nobody was reading closely enough to catch the drift.
+
+This section is mirrored verbatim into each project's tracked `CLAUDE.md`, so it survives the loss
+of this machine. Edit both, or neither.
 
 ## Turn on branch protection before anyone else can touch this repo
 

@@ -1,11 +1,18 @@
 {
-  "_about": "NSE ticker directory for Project 1a. The registered name plus the forms a headline actually uses. This is the ground truth the dataset's `ticker` labels are checked against, and the table the few_shot_directory variant puts in front of the model.",
+  "_about": "NSE ticker directory for Project 1a. The registered name plus the forms a headline actually uses. This is the ground truth the dataset's `ticker` labels are checked against, and what Resolver looks a company mention up in. Matching is case- and punctuation-insensitive and ignores a trailing Ltd/Limited, so list each surface form ONCE in whatever case reads best — never 'PVR INOX' and 'PVR Inox', and never an alias that only restates the ticker or the name.",
   "_source": "NSE equity symbol list, transcribed by hand. Verify before trusting in production.",
   "companies": {
     "ADANIPORTS": {
       "name": "Adani Ports and Special Economic Zone Ltd",
       "aliases": [
         "Adani Ports"
+      ]
+    },
+    "APOLLOHOSP": {
+      "name": "Apollo Hospitals Enterprise Ltd",
+      "aliases": [
+        "Apollo Hospitals Enterprise",
+        "Apollo Hospitals"
       ]
     },
     "ASIANPAINT": {
@@ -33,11 +40,14 @@
         "Airtel"
       ]
     },
+    "BIOCON": {
+      "name": "Biocon Ltd",
+      "aliases": []
+    },
     "BRITANNIA": {
       "name": "Britannia Industries Ltd",
       "aliases": [
-        "Britannia Industries",
-        "Britannia"
+        "Britannia Industries"
       ]
     },
     "COALINDIA": {
@@ -48,9 +58,7 @@
     },
     "DELHIVERY": {
       "name": "Delhivery Ltd",
-      "aliases": [
-        "Delhivery"
-      ]
+      "aliases": []
     },
     "DRREDDY": {
       "name": "Dr. Reddy's Laboratories Ltd",
@@ -91,11 +99,16 @@
         "ICICI Bank"
       ]
     },
+    "INDIGO": {
+      "name": "InterGlobe Aviation Ltd",
+      "aliases": [
+        "InterGlobe Aviation"
+      ]
+    },
     "INFY": {
       "name": "Infosys Ltd",
       "aliases": [
-        "Infosys",
-        "Infy"
+        "Infosys"
       ]
     },
     "LT": {
@@ -109,15 +122,13 @@
       "name": "Mahindra & Mahindra Ltd",
       "aliases": [
         "Mahindra & Mahindra",
-        "M&M",
         "Mahindra"
       ]
     },
     "MARUTI": {
       "name": "Maruti Suzuki India Ltd",
       "aliases": [
-        "Maruti Suzuki",
-        "Maruti"
+        "Maruti Suzuki"
       ]
     },
     "NESTLEIND": {
@@ -126,25 +137,43 @@
         "Nestle India"
       ]
     },
+    "OLAELEC": {
+      "name": "Ola Electric Mobility Ltd",
+      "aliases": [
+        "Ola Electric Mobility",
+        "Ola Electric"
+      ]
+    },
     "PAYTM": {
       "name": "One 97 Communications Ltd",
       "aliases": [
-        "One 97 Communications",
-        "Paytm"
+        "One 97 Communications"
+      ]
+    },
+    "PVRINOX": {
+      "name": "PVR INOX Ltd",
+      "aliases": [
+        "PVR INOX"
       ]
     },
     "RELIANCE": {
       "name": "Reliance Industries Ltd",
       "aliases": [
         "Reliance Industries",
-        "RIL",
-        "Reliance"
+        "RIL"
+      ]
+    },
+    "SBICARD": {
+      "name": "SBI Cards and Payment Services Ltd",
+      "aliases": [
+        "SBI Cards and Payment Services",
+        "SBI Cards",
+        "SBI Card"
       ]
     },
     "SBIN": {
       "name": "State Bank of India",
       "aliases": [
-        "State Bank of India",
         "SBI"
       ]
     },
@@ -170,8 +199,7 @@
     "TCS": {
       "name": "Tata Consultancy Services Ltd",
       "aliases": [
-        "Tata Consultancy Services",
-        "TCS"
+        "Tata Consultancy Services"
       ]
     },
     "TECHM": {
@@ -182,9 +210,11 @@
     },
     "TITAN": {
       "name": "Titan Company Ltd",
-      "aliases": [
-        "Titan"
-      ]
+      "aliases": []
+    },
+    "TRENT": {
+      "name": "Trent Ltd",
+      "aliases": []
     },
     "VEDL": {
       "name": "Vedanta Ltd",
@@ -194,9 +224,7 @@
     },
     "WIPRO": {
       "name": "Wipro Ltd",
-      "aliases": [
-        "Wipro"
-      ]
+      "aliases": []
     }
   }
 }

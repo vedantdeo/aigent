@@ -44,19 +44,19 @@
 {"id": "hl-032", "input": {"headline": "Infosys, TCS shares fall as IT spending outlook dims"}, "tags": ["unlabelled"]}
 {"id": "hl-033", "input": {"headline": "Q3 results: Nifty IT companies post mixed numbers"}, "tags": ["unlabelled"]}
 {"id": "hl-034", "input": {"headline": "Zomato Q2: revenue up, losses widen, stock down 4%"}, "tags": ["unlabelled"]}
-{"id": "hl-035", "input": {"headline": "SBI Cards Q1 profit down 19%; gross NPA rises to 3.1%"}, "tags": ["unlabelled"]}
+{"id": "hl-035", "input": {"headline": "SBI Cards Q1 profit down 19%; gross NPA rises to 3.1%"}, "tags": ["near-miss-ticker", "decoy-number"], "expected": {"ticker": "SBICARD", "metric": "profit", "quarter": "Q1", "direction": "down", "change_pct": 19.0}}
 {"id": "hl-036", "input": {"headline": "LIC's new business premium up 21% in H1"}, "tags": ["unlabelled"]}
-{"id": "hl-037", "input": {"headline": "Tata Steel swings to profit in Q4"}, "tags": ["unlabelled"]}
+{"id": "hl-037", "input": {"headline": "Tata Steel swings to profit in Q4"}, "tags": ["no-pct"], "expected": {"ticker": "TATASTEEL", "metric": "profit", "quarter": "Q4", "direction": "up", "change_pct": null}}
 {"id": "hl-038", "input": {"headline": "Nykaa Q3 GMV growth slows to 22% from 31%"}, "tags": ["unlabelled"]}
 {"id": "hl-039", "input": {"headline": "Bajaj Auto exports fall for the fifth straight quarter"}, "tags": ["unlabelled"]}
-{"id": "hl-040", "input": {"headline": "IndiGo posts record Q3 profit on strong yields"}, "tags": ["unlabelled"]}
+{"id": "hl-040", "input": {"headline": "IndiGo posts record Q3 profit on strong yields"}, "tags": ["no-pct"], "expected": {"ticker": "INDIGO", "metric": "profit", "quarter": "Q3", "direction": "up", "change_pct": null}}
 {"id": "hl-041", "input": {"headline": "Hindalco's Novelis Q2 EBITDA per tonne at $431"}, "tags": ["unlabelled"]}
 {"id": "hl-042", "input": {"headline": "Wipro appoints new CFO; Q2 results next week"}, "tags": ["unlabelled"]}
 {"id": "hl-043", "input": {"headline": "DMart same-store sales growth moderates in Q1"}, "tags": ["unlabelled"]}
 {"id": "hl-044", "input": {"headline": "Kotak Mahindra Bank Q4 provisions rise sharply"}, "tags": ["unlabelled"]}
-{"id": "hl-045", "input": {"headline": "Ola Electric revenue halves sequentially in Q3"}, "tags": ["unlabelled"]}
+{"id": "hl-045", "input": {"headline": "Ola Electric revenue halves sequentially in Q3"}, "tags": ["no-pct"], "expected": {"ticker": "OLAELEC", "metric": "revenue", "quarter": "Q3", "direction": "down", "change_pct": null}}
 {"id": "hl-046", "input": {"headline": "UltraTech Q2 volumes up 6%, realisations down 3%"}, "tags": ["unlabelled"]}
-{"id": "hl-047", "input": {"headline": "Biocon Q1 loss narrows on Syngene strength"}, "tags": ["unlabelled"]}
-{"id": "hl-048", "input": {"headline": "Apollo Hospitals Q2 margin flat at 12%"}, "tags": ["unlabelled"]}
-{"id": "hl-049", "input": {"headline": "PVR Inox Q1 occupancy at 25%; revenue down 9%"}, "tags": ["unlabelled"]}
-{"id": "hl-050", "input": {"headline": "Trent revenue up 45%, fastest among retail peers"}, "tags": ["unlabelled"]}
+{"id": "hl-047", "input": {"headline": "Biocon Q1 loss narrows on Syngene strength"}, "tags": ["no-pct", "two-companies"], "expected": {"ticker": "BIOCON", "metric": "profit", "quarter": "Q1", "direction": "up", "change_pct": null}}
+{"id": "hl-048", "input": {"headline": "Apollo Hospitals Q2 margin flat at 12%"}, "tags": ["flat", "level-not-change"], "expected": {"ticker": "APOLLOHOSP", "metric": "margin", "quarter": "Q2", "direction": "flat", "change_pct": null}}
+{"id": "hl-049", "input": {"headline": "PVR Inox Q1 occupancy at 25%; revenue down 9%"}, "tags": ["two-metrics", "decoy-number"], "expected": {"ticker": "PVRINOX", "metric": "revenue", "quarter": "Q1", "direction": "down", "change_pct": 9.0}}
+{"id": "hl-050", "input": {"headline": "Trent revenue up 45%, fastest among retail peers"}, "tags": ["no-quarter"], "expected": {"ticker": "TRENT", "metric": "revenue", "quarter": "unknown", "direction": "up", "change_pct": 45.0}}

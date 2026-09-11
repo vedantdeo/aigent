@@ -8,6 +8,7 @@ nothing. The dataset is checked against the schema's own vocabulary — a label 
 from __future__ import annotations
 
 import re
+from itertools import pairwise
 from typing import cast
 
 import anthropic
@@ -27,6 +28,7 @@ from entropic.week01.extraction import (
     ZERO_SHOT,
     Extraction,
     Resolver,
+    _key,
     extraction_task,
     load_directory,
     spread,
@@ -34,11 +36,19 @@ from entropic.week01.extraction import (
 
 DIRECTORY = load_directory()
 
+
+def forms(ticker: str) -> list[str]:
+    """Every spelling the directory knows for one company: the symbol, the registered name, then
+    the aliases — which hold only what the first two do not already say."""
+    entry = DIRECTORY[ticker]
+    return [ticker, entry["name"], *entry["aliases"]]
+
+
 CASES = load_jsonl(DATASET)
 LABELLED = [case for case in CASES if case.expected]
 
-# NSE symbols are uppercase alphanumerics; M&M is the one that needs the ampersand.
-TICKER = re.compile(r"[A-Z0-9&]+")
+# Uppercase, plus the & in M&M and the hyphen in BAJAJ-AUTO.
+TICKER = re.compile(r"[A-Z0-9&-]+")
 
 VOCABULARY: dict[str, set[str]] = {
     "metric": {"revenue", "profit", "margin", "orders", "headcount", "guidance"},
@@ -163,13 +173,31 @@ def test_the_resolver_is_exact_after_normalising_and_never_approximate(
     assert Resolver()(mention) == ticker
 
 
-@pytest.mark.parametrize(
-    "alias",
-    sorted({a for entry in DIRECTORY.values() for a in (entry["name"], *entry["aliases"])}),
-)
-def test_every_name_the_directory_lists_resolves_to_its_own_ticker(alias: str) -> None:
+@pytest.mark.parametrize("ticker", sorted(DIRECTORY), ids=lambda t: t)
+def test_every_spelling_the_directory_lists_resolves_to_its_own_ticker(ticker: str) -> None:
     resolver = Resolver()
-    assert resolver(alias) is not None, f"{alias!r} is in the directory but does not resolve"
+    for spelling in forms(ticker):
+        assert resolver(spelling) == ticker, f"{spelling!r} should resolve to {ticker}"
+
+
+@pytest.mark.parametrize("ticker", sorted(DIRECTORY), ids=lambda t: t)
+def test_no_company_lists_the_same_spelling_twice(ticker: str) -> None:
+    """Matching is case-insensitive, so "PVR INOX" and "PVR Inox" are one spelling written twice,
+    and an alias restating the ticker or the registered name is a third copy of something already
+    indexed. Harmless to the lookup; noise in a file that reads as though every line did work."""
+    folded = [" ".join(spelling.split()).casefold() for spelling in forms(ticker)]
+    assert len(set(folded)) == len(folded), f"{ticker}: duplicates in {forms(ticker)}"
+
+
+def test_no_two_companies_claim_the_same_spelling() -> None:
+    """`Resolver` indexes with `setdefault`, so a collision would hand every such mention to
+    whichever company happened to be first. SBI and SBI Cards are the near miss this guards."""
+    owners: dict[str, list[str]] = {}
+    for ticker in DIRECTORY:
+        for spelling in forms(ticker):
+            owners.setdefault(_key(spelling), []).append(ticker)
+    clashes = {key: sorted(set(t)) for key, t in owners.items() if len(set(t)) > 1}
+    assert not clashes, f"one spelling, two companies: {clashes}"
 
 
 def test_a_mention_the_directory_does_not_know_is_a_to_do_not_a_wrong_answer() -> None:
@@ -196,12 +224,12 @@ def test_the_directory_covers_every_ticker_the_dataset_labels() -> None:
 
 @pytest.mark.parametrize("case", LABELLED, ids=lambda case: case.id)
 def test_every_headline_names_its_company_in_a_form_the_directory_lists(case: Case) -> None:
-    """The alias the headline uses has to be resolvable, or the label is a leap the model cannot
-    make and the directory cannot help with."""
-    headline = str(case.input["headline"])
-    entry = DIRECTORY[str(case.expected["ticker"])]
-    assert any(alias.casefold() in headline.casefold() for alias in entry["aliases"]), (
-        f"{case.id}: none of {entry['aliases']} appears in {headline!r}"
+    """The spelling the headline uses has to be resolvable, or the label is a leap the model
+    cannot make and the directory cannot help with."""
+    headline = str(case.input["headline"]).casefold()
+    ticker = str(case.expected["ticker"])
+    assert any(spelling.casefold() in headline for spelling in forms(ticker)), (
+        f"{case.id}: none of {forms(ticker)} appears in {headline!r}"
     )
 
 
@@ -209,14 +237,13 @@ def test_every_headline_names_its_company_in_a_form_the_directory_lists(case: Ca
 def test_copying_the_headline_correctly_is_enough_to_get_the_ticker_right(case: Case) -> None:
     """The property the whole design rests on: the model only has to copy, and the ticker follows.
 
-    For each case, take the alias the headline actually uses — what a careful model would return —
-    and check the resolver lands on the label. If this holds for all 30, `ticker` is right by
-    construction whenever `company` is, and the eval measures identification rather than recall.
+    For each case, take the spelling the headline actually uses — what a careful model would
+    return — and check the resolver lands on the label. While this holds for every row, `ticker` is
+    right by construction whenever `company` is, and the eval measures identification, not recall.
     """
     headline = str(case.input["headline"]).casefold()
     expected = str(case.expected["ticker"])
-    aliases = DIRECTORY[expected]["aliases"]
-    as_written = max((a for a in aliases if a.casefold() in headline), key=len)
+    as_written = max((f for f in forms(expected) if f.casefold() in headline), key=len)
 
     assert Resolver()(as_written) == expected
 
@@ -231,8 +258,7 @@ def test_the_metric_order_is_total_and_covers_the_vocabulary() -> None:
     assert ", ".join(METRICS) in description, (
         "the model is shown the order, not just told there is one"
     )
-    # Without this, the mechanical rule reads "cuts revenue guidance" as cueing revenue, which
-    # outranks guidance and would flip hl-003 and hl-023 to a label no reader would write.
+    # Without this, "cuts revenue guidance" cues revenue, which outranks guidance.
     assert "forward-looking" in description and "guidance, not that metric" in description
 
 
@@ -246,19 +272,24 @@ def test_both_variants_state_the_conventions_the_dataset_is_labelled_by() -> Non
 # --- the dataset is an asset, so it gets tested like one ----------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("n", "want"),
-    [
-        (4, ["hl-001", "hl-008", "hl-015", "hl-022"]),
-        (1, ["hl-001"]),
-        (30, [case.id for case in LABELLED]),
-        (99, [case.id for case in LABELLED]),
-    ],
-)
-def test_a_sample_spans_the_dataset_rather_than_taking_the_front(n: int, want: list[str]) -> None:
-    """The rows are roughly in the order they were written, so the first four are four easy ones.
-    A smoke run that cannot fail is not worth its money."""
-    assert [case.id for case in spread(LABELLED, n)] == want
+@pytest.mark.parametrize("n", [1, 2, 4, 7, len(LABELLED), len(LABELLED) + 50])
+def test_a_sample_spans_the_dataset_rather_than_taking_the_front(n: int) -> None:
+    """The rows are roughly in the order they were written, so the front is the easy end and a
+    smoke run taken off it cannot fail.
+
+    Asserted as properties, not as a list of ids: the ids change every time the dataset grows, and
+    a test that breaks for that reason is noise.
+    """
+    at = {case.id: i for i, case in enumerate(LABELLED)}
+    picked = [at[case.id] for case in spread(LABELLED, n)]
+
+    assert len(picked) == min(n, len(LABELLED))
+    assert picked == sorted(picked), "order is preserved"
+    assert picked[0] == 0, "the sample starts at the top"
+    if 1 < n < len(LABELLED):  # a sample of one can only be the first row
+        gaps = {b - a for a, b in pairwise(picked)}
+        assert len(gaps) <= 1, "evenly spaced"
+        assert picked[-1] >= n, "and it reaches past the first n, or there was no point"
 
 
 def test_the_dataset_is_the_size_the_project_asked_for() -> None:
@@ -268,8 +299,7 @@ def test_the_dataset_is_the_size_the_project_asked_for() -> None:
 
 @pytest.mark.parametrize("case", LABELLED, ids=lambda case: case.id)
 def test_every_label_validates_against_the_vocabulary(case: Case) -> None:
-    # The label carries `ticker`, which the model never produces — it is resolved in code — so the
-    # label is validated against `Extraction` with the mention filled in from the directory.
+    # The model never produces `ticker`, so fill `company` in from the directory to validate.
     ticker = str(case.expected["ticker"])
     record = Extraction.model_validate({**case.expected, "company": DIRECTORY[ticker]["name"]})
 

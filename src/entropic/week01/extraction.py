@@ -29,9 +29,9 @@ What to notice:
     It started at 256 and that clipped one row in 60 on the first live run, which is the other edge
     of the same knife: too tight loses rows, too loose refuses the run.
   - **A tie-break the model can apply beats a judgment call it has to guess.** `METRICS` is a total
-    order, and the `metric` description says exactly how to use it. A headline naming two metrics
-    with no stated rule produces a label that is a coin flip, and the miss reads as a model failure
-    when it is a spec failure.
+    order and the `metric` description says how to use it. A headline naming two metrics with no
+    stated rule produces a label that is a coin flip, and the miss reads as a model failure when it
+    is a spec failure.
   - **The conventions live in the field descriptions**, which the model sees. Few-shot then shows
     them being applied. If a rule only ever appears in the examples, the zero-shot arm is being
     punished for a rule nobody told it.
@@ -68,14 +68,7 @@ DIRECTORY = REPO / "evals" / "reference" / "nse-tickers.json"
 # What gets graded. `ticker` is resolved in code; the other four are the model's judgment.
 FIELDS = ("ticker", "metric", "quarter", "direction", "change_pct")
 
-# A total order over the metric vocabulary, most preferred first. A headline routinely mentions two
-# ("narrows Q1 loss; revenue up 63%") and without a tie-break the label is a coin flip that the
-# model has no way to call — which shows up as a metric failure that is really a spec failure.
-#
-# PLACEHOLDER. The order is asserted, not researched: top line, then bottom line, then the ratio
-# between them, then the forward-looking and operational signals. It removes the ambiguity, which is
-# its whole job right now; replace it with something grounded in how these headlines are actually
-# read before drawing conclusions about which metric a model is worst at.
+# Tie-break order for `metric`, most preferred first. Placeholder: asserted, not researched.
 METRICS = ("revenue", "profit", "margin", "orders", "headcount", "guidance")
 
 
@@ -200,8 +193,7 @@ FEW_SHOT = ZERO_SHOT + (
     "has a stated percentage change, so revenue wins even though margin leads the headline."
 )
 
-# Each arm differs from the one before it by exactly one thing, which is what makes the per-field
-# table read as an ablation rather than a scatter.
+# Each arm adds exactly one thing to the last, so the per-field table reads as an ablation.
 VARIANTS = {"zero_shot": ZERO_SHOT, "few_shot": FEW_SHOT}
 
 
@@ -240,8 +232,7 @@ def extraction_task(
                 model=model,
                 error=f"no parsed output; stop_reason={response.stop_reason}",
             )
-        # The model's record travels too, under its own key: `pydantic_valid` still sees the shape
-        # the model was asked for, and a failed row shows the mention that did not resolve.
+        # The mention travels too, so `pydantic_valid` sees the model's own shape.
         output = record.model_dump()
         output["ticker"] = resolver(record.company)
         return Outcome(output=output, usage=response.usage, model=model)
