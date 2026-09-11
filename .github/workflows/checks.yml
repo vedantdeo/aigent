@@ -18,9 +18,15 @@ jobs:
     name: lint · types · tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v5
+      # Pinned to a full version on purpose: setup-uv stopped publishing floating
+      # major and minor tags at v8, so `@v10` does not exist and would fail the
+      # run. Bump this deliberately; do not "tidy" it into a shorter tag.
+      #
+      # enable-cache is set explicitly rather than left at the v10 default of
+      # `auto`, which disables the cache for release and workflow_run events.
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
 

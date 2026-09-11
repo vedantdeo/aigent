@@ -34,3 +34,6 @@
 - 09-11: the constants rule is now recorded twice on purpose — generic text verbatim in both
   `~/.claude/CLAUDE.md` and this repo's tracked `CLAUDE.md`, with the repo-specific examples appended
   after it. The global file is machine-local and unbacked, so the tracked copy is what survives.
+- 09-11: CI actions bumped off the deprecated Node 20 runtime — `actions/checkout` v4 to v7,
+  `astral-sh/setup-uv` v5 to v10.1.0. The uv action is pinned to a full version because it stopped
+  publishing floating major tags at v8, so `@v10` would 404 the run.
