@@ -26,6 +26,13 @@ Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK f
 | `loop` | `week01/tool_loop.py` | the agent loop, by hand; takes a task |
 | `chat` | `week01/chat.py` | multi-turn conversation with a cost meter |
 
+`week01/failures.py` is not a mode — it provokes nine failure modes and prints the table in
+`docs/failure-modes.md`. It costs nothing to run: a request rejected with a 4xx is never billed.
+
+```
+uv run python -m entropic.week01.failures > docs/failure-modes.md
+```
+
 Each module also runs on its own: `uv run python -m entropic.week01.first_call`.
 
 ## Budget guards

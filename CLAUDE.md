@@ -1,11 +1,11 @@
 # Entropic — notes for Claude
 
-Seven project rules live here rather than in a session's private memory, so they travel with the
+Eight project rules live here rather than in a session's private memory, so they travel with the
 repo and reach anyone who clones it.
 
-Four of them — constants, testing, reference data and comments — are verbatim mirrors of global
-preferences in `~/.claude/CLAUDE.md`, which is machine-local and backed up by nothing. The copies
-below are the durable ones. Edit both, or neither.
+Five of them — constants, testing, reference data, comments and paid calls — are verbatim
+mirrors of global preferences in `~/.claude/CLAUDE.md`, which is machine-local and backed up by
+nothing. The copies below are the durable ones. Edit both, or neither.
 
 ## Read the knowledge graph before exploring
 
@@ -177,6 +177,45 @@ rot unnoticed, because nobody was reading closely enough to catch the drift.
 
 This section is mirrored verbatim into each project's tracked `CLAUDE.md`, so it survives the loss
 of this machine. Edit both, or neither.
+
+## Paid calls
+
+**The rule: never send a paid API call without explicit per-action confirmation.** Each run needs
+its own — previous approval is single-use, exactly as it is for `git commit` and `git push`. A
+one-off diagnostic call is not exempt: a two-cent probe is still someone else's money, spent on
+your initiative.
+
+- Say what the call is for and what it will cost, then wait. Never report a paid call as already
+  running.
+- Where a script has a dry-run flag, run *that* first and surface the number it prints, rather than
+  estimating the cost in prose.
+- Token counting is free. Use it freely, and say it is free when a plan rests on it, so the
+  unpriced half of the work is never mistaken for the priced half.
+- "It was only a few cents" is the reasoning that erodes this. The amount is not the point; the
+  decision belongs to whoever is paying.
+
+**Why:** cost ceilings, pre-flight counts and dry-run flags all exist to put the spend in front of
+a person before it happens. Spending unasked routes around machinery someone deliberately built,
+and the habit scales badly — the instinct that fires off an unapproved probe is the one that later
+fires off an unapproved hundred-row run.
+
+This section is mirrored verbatim into each project's tracked `CLAUDE.md`, so it survives the loss
+of this machine. Edit both, or neither.
+
+**In this repo**, the machinery is already there and the rule is about respecting it:
+
+- Every paid entry point stops by default. `python -m entropic.week01.extraction` (add `--cache`
+  for the caching arms) prints the per-arm token counts and a worst case, then exits; `--yes` is
+  what sends the calls. Run it without `--yes` and paste what it prints — that is the number to get
+  approved, not an estimate written from memory.
+- `pricing.check_request` pre-flights every call through the free counting endpoint, and
+  `config.MAX_USD_PER_REQUEST` / `_RUN` / `_EVAL` are the three ceilings. They are guards against
+  mistakes, not a substitute for permission: a run well under the ceiling still needs asking.
+- `--sample N` exists for cheap smoke runs, and is the right thing to propose when unsure. One
+  exception worth knowing: caching a single row costs *more* than not caching it, so `--sample 1`
+  cannot smoke-test the cache.
+- Every run's cost goes in `LOG.md` beside what it bought. Keep that ledger honest — it is the only
+  record of what this project has spent.
 
 ## Turn on branch protection before anyone else can touch this repo
 

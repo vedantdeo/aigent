@@ -187,3 +187,22 @@
   The label stands by decision, but "both arms agreed" has stopped being a reason for it. Agreeing
   with the model is only as good as the run doing the agreeing, and a second opinion from the same
   model on the same day is not two opinions.
+- 09-12: `week01.failures` — break things on purpose. Nine failure modes provoked for real and
+  tabulated into `docs/failure-modes.md`, rather than described from the docs. The design constraint
+  is that the whole thing is **free**: a request rejected with a 4xx never reaches the model, so
+  there is nothing to bill, and the last two rows never touch the network at all. Two rows started
+  out paid — a truncated record and a below-minimum cache breakpoint — and were cut, which made the
+  module better: a catalogue nobody has to think twice about running is one people will actually
+  run. A test asserts `messages.parse` does not appear in the source, since a *successful* call is
+  the only way this could start costing money.
+- 09-12: two findings from building it. `max_tokens=10_000_000` never reaches the API — the SDK
+  raises `ValueError` client-side about streaming being required past ten minutes. And
+  `context-too-long` never becomes a 400: `check_request` counts it on the free endpoint and trips
+  `BudgetExceeded` first, with the number and the knob in the message. The guard we wrote is
+  strictly more useful than the rejection it pre-empts, which is the argument for pre-flighting.
+- 09-12: the failure deliberately left out is the one I most wanted in: a `cache_control` breakpoint
+  on a prefix under the model's minimum is silently ignored — no error, correct answer, full price
+  on every call. Provoking it needs a successful call, so it is recorded in the module docstring and
+  the graph as a known hazard rather than bought. Worth restating because it bit us in reverse this
+  week: the value of the caching work was 1,148 tokens of `output_format` schema, and had the prompt
+  been the only thing behind the breakpoint it would have been under the minimum and cached nothing.
