@@ -57,10 +57,17 @@ MAX_USD_PER_EVAL: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_EVAL", "2.0
 MAX_TOKENS_FIRST_CALL = 1024
 MAX_TOKENS_STREAMING = 4096
 MAX_TOKENS_EXTRACT = 2048
-MAX_TOKENS_HEADLINE = 384  # a five-field record; 256 clipped one row in 60 on 2026-09-11
+MAX_TOKENS_HEADLINE = 128  # a five-field record is ~45 tokens with THINKING_EVAL off
 MAX_TOKENS_TOOL_LOOP = 4096
 MAX_TOKENS_CHAT = 4096
 MAX_TOKENS_JUDGE = 1024
+
+# Extended thinking, for runs that are a measurement rather than a conversation. On by default; it
+# is billed as output, counts against max_tokens, and wobbles — three identical calls returned 192,
+# 88 and 203 output tokens and two different records, and it clipped two rows of a 50-row eval by
+# eating the budget before the answer. Claude 5 deprecated temperature and top_p, so this is the
+# only determinism knob the API still offers.
+THINKING_EVAL = False
 
 # How many times the agent may go round before giving up. An uncapped loop is a cost bug waiting to
 # happen; the two dollar ceilings back this up rather than replace it.

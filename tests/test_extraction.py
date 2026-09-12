@@ -16,18 +16,21 @@ import pytest
 from anthropic.types import MessageTokensCount, Usage
 from pydantic import JsonValue
 
-from entropic.config import MAX_TOKENS_HEADLINE, MODEL
+from entropic.config import MAX_TOKENS_HEADLINE, MODEL, THINKING_EVAL
 from entropic.evals.dataset import Case, load_jsonl
 from entropic.evals.runner import Task
 from entropic.week01.extraction import (
+    CACHE_VARIANTS,
     DATASET,
     FEW_SHOT,
     FIELDS,
     METRICS,
+    THINKING,
     VARIANTS,
     ZERO_SHOT,
     Extraction,
     Resolver,
+    Variant,
     _key,
     extraction_task,
     load_directory,
@@ -84,6 +87,8 @@ VOCABULARY: dict[str, set[str]] = {
     "direction": {"up", "down", "flat", "unknown"},
 }
 
+PLAIN = Variant(ZERO_SHOT)
+
 RECORD = Extraction(
     company="Infosys", metric="profit", quarter="Q3", direction="up", change_pct=11.5
 )
@@ -99,7 +104,8 @@ class _Parsed:
 class _Messages:
     def __init__(self, record: Extraction | None) -> None:
         self._record = record
-        self.systems: list[str] = []
+        self.systems: list[object] = []
+        self.thinking: list[object] = []
         self.counted = 0
 
     def count_tokens(self, **_: object) -> MessageTokensCount:
@@ -107,7 +113,8 @@ class _Messages:
         return MessageTokensCount(input_tokens=320)
 
     def parse(self, **kwargs: object) -> _Parsed:
-        self.systems.append(cast(str, kwargs["system"]))
+        self.systems.append(kwargs["system"])
+        self.thinking.append(kwargs["thinking"])
         assert kwargs["max_tokens"] == MAX_TOKENS_HEADLINE
         return _Parsed(self._record)
 
@@ -119,11 +126,11 @@ class _Client:
 
 def _task_and_log(
     record: Extraction | None = RECORD,
-    system: str = ZERO_SHOT,
+    variant: Variant = PLAIN,
     resolver: Resolver | None = None,
 ) -> tuple[Task, _Messages]:
     fake = _Client(record)
-    task = extraction_task(system, resolver, client=cast(anthropic.Anthropic, fake))
+    task = extraction_task(variant, resolver, client=cast(anthropic.Anthropic, fake))
     return task, fake.messages
 
 
@@ -154,6 +161,30 @@ def test_a_refusal_to_parse_is_an_error_row_that_still_bills() -> None:
     assert outcome.output == {}
 
 
+def test_an_eval_run_turns_extended_thinking_off() -> None:
+    """The only determinism knob Claude 5 still offers. temperature and top_p are deprecated on
+    the whole family, and thinking on its own made three identical calls return 192, 88 and 203
+    output tokens and two different records — plus it counts against max_tokens, so it clipped
+    two rows of a 50-row eval by spending the budget before reaching the answer."""
+    assert THINKING_EVAL is False, "an eval is a measurement, not a conversation"
+    assert THINKING == {"type": "disabled"}
+
+    task, log = _task_and_log()
+    task(_case())
+    assert log.thinking == [{"type": "disabled"}], "and it has to reach the wire"
+
+
+def test_the_breakpoint_reaches_the_wire() -> None:
+    """The whole saving rides on this one field arriving. A `Variant` that built the block form
+    but never sent it would look identical in every test that checks the prompt text."""
+    task, log = _task_and_log(variant=Variant(FEW_SHOT, cache=True))
+    task(_case())
+
+    assert log.systems == [
+        [{"type": "text", "text": FEW_SHOT, "cache_control": {"type": "ephemeral"}}]
+    ]
+
+
 def test_a_case_with_no_headline_never_reaches_the_api() -> None:
     task, log = _task_and_log()
     outcome = task(Case.model_validate({"id": "hl-999", "input": {"abstract": "wrong field"}}))
@@ -163,7 +194,7 @@ def test_a_case_with_no_headline_never_reaches_the_api() -> None:
 
 
 def test_the_headline_is_what_travels_and_the_variant_is_the_system_prompt() -> None:
-    task, log = _task_and_log(system=FEW_SHOT)
+    task, log = _task_and_log(variant=Variant(FEW_SHOT))
     task(_case("TCS Q2 revenue up 7.9% YoY"))
 
     assert log.systems == [FEW_SHOT]
@@ -174,6 +205,27 @@ def test_the_arms_are_an_ablation_ladder() -> None:
     """Each arm differs from the one before it by exactly one thing, or the table reads as noise."""
     assert list(VARIANTS) == ["zero_shot", "few_shot"]
     assert FEW_SHOT.startswith(ZERO_SHOT), "few_shot adds examples and nothing else"
+    assert not any(v.cache for v in VARIANTS.values()), "the prompt ablation holds caching fixed"
+
+
+def test_the_caching_arms_move_only_the_breakpoint() -> None:
+    """The cache is a serving detail, not a different request. If the two arms differ by so much
+    as a character of prompt, a score gap between them is unattributable."""
+    systems = {v.system for v in CACHE_VARIANTS.values()}
+    assert len(systems) == 1, "one prompt across both arms"
+    assert [v.cache for v in CACHE_VARIANTS.values()] == [False, True], "off, then on"
+
+
+@pytest.mark.parametrize("cache", [False, True], ids=["plain", "breakpoint"])
+def test_a_variant_sends_the_block_form_only_when_it_caches(cache: bool) -> None:
+    sent = Variant(ZERO_SHOT, cache=cache).as_sent()
+
+    if not cache:
+        assert sent == ZERO_SHOT, "a plain prompt goes on the wire as a plain string"
+        return
+    assert sent == [{"type": "text", "text": ZERO_SHOT, "cache_control": {"type": "ephemeral"}}], (
+        "a breakpoint needs the block form, and it goes on the last system block"
+    )
 
 
 @pytest.mark.parametrize(

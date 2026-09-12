@@ -157,3 +157,33 @@
   `guidance`/`down`. A defensible reading of the text; the label's case is that the dimming outlook
   is the customers' spending rather than either company's guidance, a line the schema does not draw.
   Left as the one real disagreement on the set rather than tuned away.
+- 09-12: prompt caching, $0.00991/row down to $0.00238 — 76% off. The result that matters is not the
+  saving but that both arms failed the *same two rows with the same two answers*: the cache is a
+  serving detail, so exact agreement is what proves the wiring rather than the discount. Two things
+  the seam note had wrong. The cacheable bulk is not the system prompt at all — `FEW_SHOT` is 567
+  tokens and the `output_format` schema is 1,148, and since the minimum cacheable prefix is 1,024,
+  neither prompt could have been cached on its own. And the pre-flight estimate had been ~37% low
+  for all of Project 1a, because `_rough_input_tokens` divided the prompt by four and never saw the
+  schema. `measure()` counts the real request now; counting is free, so there was never a reason to
+  guess. Checked before spending that a request without `cache_control` does not read a warm cache,
+  or the baseline arm would have been silently subsidised and the comparison void.
+- 09-12: asked for `temperature=0` and it does not exist. **Claude 5 deprecated `temperature` and
+  `top_p`** — both 400 on Opus 5 and Sonnet 5; only Haiku 4.5 still takes them. Reverted rather than
+  ship code that would fail every call. Chasing why a five-field record ever needed 384 output
+  tokens found the real cause: every call emitted a thinking block of 200-280 tokens, billed as
+  output and charged against `max_tokens`. That one fact explained all three symptoms — the row
+  that flipped between runs, the two truncations, and a cost outlier at 3x the median. Not sampling
+  noise; thinking spending the budget before the answer began. `MAX_TOKENS_HEADLINE` 384 to 128,
+  and its old comment claiming to size "a five-field record" was never true.
+- 09-12: thinking off is **not** a free win, which is worth stating plainly because it looked like
+  one for an hour. 50/50 with it on, 48/50 with it off, for 56% less per cached row. Both losses are
+  legible: `hl-031` stops applying the subsidiary rule and returns `Reliance Jio` verbatim, so the
+  rule in `Extraction.company` is thinking-dependent — the one place we ask for a fact rather than a
+  copy is the one place that needed the reasoning step. Kept off regardless: the 50/50 it replaced
+  was unrepeatable, and an instrument that cannot be repeated cannot rank two prompts.
+- 09-12: a labelling lesson with a cost attached. `hl-043` was moved to `revenue` yesterday because
+  both arms said `revenue` — decided on an instrument we did not yet know was nondeterministic, and
+  with thinking off the model now says `other`, the label I had originally argued for on the merits.
+  The label stands by decision, but "both arms agreed" has stopped being a reason for it. Agreeing
+  with the model is only as good as the run doing the agreeing, and a second opinion from the same
+  model on the same day is not two opinions.

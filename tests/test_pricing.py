@@ -77,6 +77,39 @@ def test_eval_estimate_is_the_per_request_worst_case_times_the_dataset() -> None
     assert estimate_eval_usd(OPUS, 30, 400, 1024, calls_per_case=2) == pytest.approx(60 * one)
 
 
+def test_a_cached_prefix_is_written_once_and_read_thereafter() -> None:
+    """The estimate has to model the cache, or it refuses a cached run for costing what the
+    uncached one costs — blocking the experiment on the arithmetic it exists to check."""
+    plain = estimate_eval_usd(OPUS, 50, 1700, 384)
+    cached = estimate_eval_usd(OPUS, 50, 1700, 384, cached_tokens=1600)
+
+    assert cached < plain, "50 rows behind one breakpoint is cheaper than 50 fresh ones"
+    # One write at a 25% premium, 49 reads at a tenth, and the uncached tail every time.
+    first = cost_usd(OPUS, 100, 384, cache_write_tokens=1600)
+    rest = cost_usd(OPUS, 100, 384, cache_read_tokens=1600)
+    assert cached == pytest.approx(first + 49 * rest)
+
+
+def test_caching_one_row_costs_more_than_not_caching_it() -> None:
+    """A breakpoint is a bet that the prefix gets reused: you pay 25% extra to write it. A smoke
+    run of one row is the one place it cannot pay off, so it is the wrong place to test caching."""
+    assert estimate_eval_usd(OPUS, 1, 1700, 384, cached_tokens=1600) > estimate_eval_usd(
+        OPUS, 1, 1700, 384
+    )
+    # Two rows is already enough: one read saves more than the write premium cost.
+    assert estimate_eval_usd(OPUS, 2, 1700, 384, cached_tokens=1600) < estimate_eval_usd(
+        OPUS, 2, 1700, 384
+    )
+
+
+def test_an_estimate_with_no_cached_prefix_is_the_arithmetic_it_always_was() -> None:
+    """`cached_tokens=0` is the default and must not shift a single existing number."""
+    assert estimate_eval_usd(OPUS, 30, 400, 1024, cached_tokens=0) == pytest.approx(
+        30 * worst_case_usd(OPUS, 400, 1024)
+    )
+    assert estimate_eval_usd(OPUS, 0, 400, 1024, cached_tokens=400) == 0.0
+
+
 def test_both_default_models_are_priced() -> None:
     # cost_usd returns 0.0 for an unknown model rather than raising, which is right for a typo in
     # .env and very wrong for a typo in a default: every cost line in the repo would read $0.00000.

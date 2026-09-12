@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import anthropic
 from anthropic import Omit, omit
-from anthropic.types import MessageParam, ToolParam, Usage
+from anthropic.types import MessageParam, TextBlockParam, ToolParam, Usage
 
 from entropic.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN
 
@@ -104,14 +104,26 @@ def estimate_eval_usd(
     input_tokens_per_case: int,
     max_tokens: int,
     calls_per_case: int = 1,
+    cached_tokens: int = 0,
 ) -> float:
     """Worst case for a whole eval run, before the first row goes out.
 
     `check_request` cannot see this coming: no single row of an eval is expensive, and fifty cheap
     rows still add up to a number worth knowing in advance. Raise `calls_per_case` when a row costs
     more than one call — an LLM-as-judge grader makes it two.
+
+    `cached_tokens` is the prefix sent behind a cache breakpoint: written once at a 25% premium,
+    then read at a tenth of the input price. Leave it zero and this is the plain arithmetic it has
+    always been. An estimator that cannot model the cache would refuse a cached run for costing
+    what the uncached one costs, which is the opposite of useful.
     """
-    return n_cases * calls_per_case * worst_case_usd(model, input_tokens_per_case, max_tokens)
+    calls = n_cases * calls_per_case
+    if not calls:
+        return 0.0
+    fresh = max(input_tokens_per_case - cached_tokens, 0)
+    first = cost_usd(model, fresh, max_tokens, cache_write_tokens=cached_tokens)
+    rest = cost_usd(model, fresh, max_tokens, cache_read_tokens=cached_tokens)
+    return first + (calls - 1) * rest
 
 
 def assert_request_within_budget(
@@ -135,13 +147,14 @@ def check_request(
     model: str,
     max_tokens: int,
     messages: Sequence[MessageParam],
-    system: str | Omit = omit,
+    system: str | Sequence[TextBlockParam] | Omit = omit,
     tools: Sequence[ToolParam] | Omit = omit,
 ) -> int:
     """Count the input tokens (a free call), then enforce the per-request ceiling.
 
-    Pass exactly what the real request will send, so the count is the real count. Returns the
-    input token count so callers can print it.
+    Pass exactly what the real request will send, so the count is the real count — `system` takes
+    the block form too, which is how a cache breakpoint travels. Returns the input token count so
+    callers can print it.
     """
     count = client.messages.count_tokens(model=model, messages=messages, system=system, tools=tools)
     assert_request_within_budget(model, count.input_tokens, max_tokens)

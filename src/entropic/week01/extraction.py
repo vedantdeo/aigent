@@ -50,11 +50,11 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import anthropic
-from anthropic.types import MessageParam
+from anthropic.types import MessageParam, TextBlockParam, ThinkingConfigParam
 from pydantic import BaseModel, Field
 
 from entropic.config import MAX_TOKENS_HEADLINE as MAX_TOKENS
-from entropic.config import MAX_USD_PER_EVAL, MODEL, get_client
+from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL, get_client
 from entropic.evals.dataset import Case, digest, load_jsonl
 from entropic.evals.grade import Outcome, field_match, pydantic_valid
 from entropic.evals.report import write_report
@@ -205,12 +205,43 @@ FEW_SHOT = ZERO_SHOT + (
     "growth, so the direction is up."
 )
 
+
+# Turning THINKING_EVAL on means raising MAX_TOKENS_HEADLINE too: the budget below has to fit
+# under it with room left for the answer, and 128 is sized for the record alone.
+THINKING: ThinkingConfigParam = (
+    {"type": "enabled", "budget_tokens": 1024} if THINKING_EVAL else {"type": "disabled"}
+)
+
+
+@dataclass(frozen=True)
+class Variant:
+    """One arm of an eval: the system prompt, and whether it travels behind a cache breakpoint.
+
+    The two axes are independent on purpose. Prompt *content* changes what the model answers;
+    a breakpoint changes only what the answer costs, so holding one fixed while moving the other
+    is what makes either table readable.
+    """
+
+    system: str
+    cache: bool = False
+
+    def as_sent(self) -> str | list[TextBlockParam]:
+        """What goes on the wire. A breakpoint needs the block form; a plain prompt does not."""
+        if not self.cache:
+            return self.system
+        return [{"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}}]
+
+
 # Each arm adds exactly one thing to the last, so the per-field table reads as an ablation.
-VARIANTS = {"zero_shot": ZERO_SHOT, "few_shot": FEW_SHOT}
+VARIANTS = {"zero_shot": Variant(ZERO_SHOT), "few_shot": Variant(FEW_SHOT)}
+
+# The caching arms hold the prompt fixed and move only the breakpoint. Scores must come out
+# identical — the cache is a serving detail, not a different request — so a gap here is a bug.
+CACHE_VARIANTS = {"few_shot": Variant(FEW_SHOT), "few_shot_cached": Variant(FEW_SHOT, cache=True)}
 
 
 def extraction_task(
-    system: str,
+    variant: Variant,
     resolve: Resolver | None = None,
     client: anthropic.Anthropic | None = None,
     model: str = MODEL,
@@ -218,6 +249,7 @@ def extraction_task(
     """Build the `Task` the runner calls once per case. `client` is injectable so tests are free."""
     built = client
     resolver = resolve if resolve is not None else Resolver()
+    system = variant.as_sent()
 
     def task(case: Case) -> Outcome:
         nonlocal built
@@ -234,6 +266,7 @@ def extraction_task(
             max_tokens=MAX_TOKENS,
             system=system,
             messages=messages,
+            thinking=THINKING,
             output_format=Extraction,
         )
 
@@ -252,10 +285,33 @@ def extraction_task(
     return task
 
 
-def _rough_input_tokens(system: str) -> int:
-    """Four characters to the token, plus room for the headline. Deliberately crude: this is a
-    pre-flight estimate, and `check_request` counts the real thing before each call anyway."""
-    return len(system) // 4 + 40
+@dataclass(frozen=True)
+class Shape:
+    """How big one row's request is, and how much of a breakpoint would cover."""
+
+    total: int
+    cached: int
+
+
+def measure(
+    client: anthropic.Anthropic, variant: Variant, headline: str, model: str = MODEL
+) -> Shape:
+    """Count one row's request, for free, before deciding to pay for fifty of them.
+
+    This used to divide the system prompt by four, which never saw `output_format` — and the
+    schema is the largest fixed part of every request here, four times `ZERO_SHOT`. The estimate
+    ran 37% low for the whole of Project 1a. Counting is not billed, so there was never a reason
+    to guess.
+    """
+    probe: list[MessageParam] = [{"role": "user", "content": f"headline: {headline}"}]
+    total = client.messages.count_tokens(
+        model=model, system=variant.as_sent(), messages=probe, output_format=Extraction
+    ).input_tokens
+    if not variant.cache:
+        return Shape(total, cached=0)
+    # Everything ahead of the breakpoint is cached; only the headline is resent.
+    tail = client.messages.count_tokens(model=model, messages=probe).input_tokens
+    return Shape(total, cached=total - tail)
 
 
 def spread(cases: Sequence[Case], n: int) -> list[Case]:
@@ -283,6 +339,11 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         metavar="N",
         help="run N cases spread across the dataset, for a cheap smoke run before the whole thing",
     )
+    parser.add_argument(
+        "--cache",
+        action="store_true",
+        help="swap the prompt ablation for the caching one: one prompt, breakpoint off then on",
+    )
     return parser.parse_args(list(argv))
 
 
@@ -294,17 +355,25 @@ def main(argv: list[str] | None = None) -> None:
     if args.sample is not None:
         labelled = spread(labelled, args.sample)
 
-    # Price each arm by its own prompt rather than averaging the two.
-    worst = sum(
-        estimate_eval_usd(MODEL, len(labelled), _rough_input_tokens(system), MAX_TOKENS)
-        for system in VARIANTS.values()
-    )
+    variants = CACHE_VARIANTS if args.cache else VARIANTS
     sampled = f", sampled to {len(labelled)}" if args.sample is not None else ""
     print(
         f"{DATASET.name}: {len(labelled)} labelled cases{sampled}, {skipped} unlabelled and skipped"
     )
-    print(f"variants: {', '.join(VARIANTS)}  on {MODEL}")
+    print(f"variants: {', '.join(variants)}  on {MODEL}")
     print(f"directory: {len(load_directory())} companies")
+
+    # Counting is free, so price each arm off the real request rather than a guess at it.
+    client = get_client()
+    longest = max((str(case.input["headline"]) for case in labelled), key=len, default="")
+    worst = 0.0
+    for name, variant in variants.items():
+        shape = measure(client, variant, longest)
+        worst += estimate_eval_usd(
+            MODEL, len(labelled), shape.total, MAX_TOKENS, cached_tokens=shape.cached
+        )
+        cached = f", {shape.cached} of them cached" if shape.cached else ""
+        print(f"  {name}: {shape.total} input tokens per row{cached}")
     print(f"worst case ${worst:.2f} against a ${MAX_USD_PER_EVAL:.2f} ceiling")
 
     if not args.yes:
@@ -314,7 +383,7 @@ def main(argv: list[str] | None = None) -> None:
     resolver = Resolver()
     run = run_eval(
         labelled,
-        {name: extraction_task(system, resolver) for name, system in VARIANTS.items()},
+        {n: extraction_task(v, resolver, client=client) for n, v in variants.items()},
         {"valid": pydantic_valid(Extraction), "fields": field_match(FIELDS)},
         dataset=DATASET.name,
         digest=digest(DATASET),
