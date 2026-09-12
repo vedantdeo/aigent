@@ -91,3 +91,69 @@
   line. `tests/test_reference_data.py` is the opt-in registry; generalising it exposed that its
   duplicate-key check was vacuous, since `json.loads` collapses repeated keys before the assertion
   ever sees them. It reads raw pairs now.
+- 09-11: dropped the `near-miss-ticker` tag — it described a relationship between two tickers, which
+  the model never sees now that code resolves them. Replaced with `name-contains-name`, which names
+  a difficulty the model does have: `Tech Mahindra` contains `Mahindra` (M&M) and `SBI Cards`
+  contains `SBI` (SBIN), so a truncated mention resolves to a real but wrong company and the
+  resolver reports success. That is the only silent failure this design has. A test derives the
+  tagged set from the directory in both directions, so it cannot drift as the directory grows.
+- 09-11: labelled the last 12 backlog headlines, so all 50 rows now carry an `expected`. Each of the
+  12 was deferred because it needed a schema decision rather than a judgment call, and the decisions
+  are recorded where the model can act on them — in the field descriptions. `metric` gained `other`
+  (a company metric outside the six: GMV, provisions, subscribers, volumes) and `none` (a headline
+  reporting no metric at all), which closes the vocabulary; without them the tie-break rule forced
+  `revenue` onto every off-vocabulary row. `quarter` gained `H1`/`H2`, and a bare month is now
+  explicitly not a quarter. `company` became nullable, because a headline about a sector has no
+  company to extract and `null` is an answer rather than a miss. Two more rules settle what used to
+  be coin flips: two metrics that still tie go to the one mentioned first, and a share price move is
+  the market's number rather than the company's, so it is never the metric and its percentage is
+  never `change_pct` — that one alone decides `hl-034`, where the only stated percentage belongs to
+  the stock.
+- 09-11: unlisted subsidiaries resolve to the listed parent, stated in the `company` description.
+  This is the one place the model is asked for a fact rather than a copy, and it is a deliberate
+  exception to invariant 13: the set of subsidiaries is not enumerable, so a directory cannot hold
+  it, where the set of listed companies is exactly what the directory *is*. Code still does the
+  join. Eight companies added to the directory (45 now), including `ETERNAL` with `Zomato` as an
+  alias — a rename the model's training data may predate, which is its own tag now.
+- 09-11: found three places where the prompt quoted its own test set — the `change_pct` description
+  used `hl-008`'s exact numbers as its example of a level, and two illustrations I had just written
+  reused `hl-038`'s and `hl-043`'s wording. An example that is also a test case hands the model that
+  row and the row still counts as a pass, which is the quiet way an eval stops measuring. Recorded
+  as invariant 15 and guarded: no four-word run of any headline may appear in the prompt. Three
+  words fires on financial boilerplate like "Q1 revenue up"; four caught every real leak and nothing
+  else. Writing the spec is exactly when this happens, because the clearest example of a rule is
+  usually the case that forced you to write it.
+- 09-11: cut the extraction prompts by a third, 4,378 characters to 3,155. The field descriptions
+  are prompt rather than documentation, and they had drifted into explaining themselves — "A
+  headline often touches more than one", two worked illustrations where one carries the rule.
+  `metric` alone came down from 1,016 characters to 661 with no rule lost. The bigger cut was
+  `FEW_SHOT`'s trailing 680-character paragraph, which restated each field description in prose:
+  that made the few-shot arm a *third* thing — the same instructions said twice, plus examples — so
+  the ablation could not say which half was paying. Two lines survive, for the two examples that
+  read backwards. Cut one thing too far on the first pass: the quarter description was left
+  anchoring only Q1 and Q4, and four labelled rows ride on the middle two, so the fiscal calendar
+  went back in as "the quarters ending June, September, December and March are Q1 to Q4" — still
+  shorter than the longhand it replaced. Prompt caching will now save less, because there is less
+  to cache.
+- 09-12: first paid run over all 50 rows, $1.00809. 49/50 whole-record on both arms after two label
+  fixes, and — the result that matters — the two arms fail *identically*. `few_shot` costs 26% more
+  per row and bought nothing measurable. That is a cleaner answer than the previous run could give,
+  because the arms now differ only by the six worked examples: the prose that restated the field
+  descriptions is gone, so "the examples paid nothing" is a claim about examples rather than about
+  saying the same rules twice. The rules were already in the descriptions.
+- 09-12: one of the two failures was mine. `hl-032` was labelled `ticker: null` when the rule I had
+  just written says two companies with equal claim go to the one named first — the model answered
+  INFY in both arms and was right. Caught only because the model disagreed with it, which is worth
+  remembering: a label nobody argues with is not the same as a label that is correct.
+- 09-12: relabelled `hl-043` (DMart same-store sales) from `other` to `revenue`, agreeing with both
+  arms — SSS is revenue narrowed to comparable stores, not a quantity of its own. That leaves a
+  known inconsistency: `hl-036` (LIC new business premium) is still `other`, and NBP is a narrower
+  cut of premium income by the same argument. Both rows now carry `narrowed-metric` so the tension
+  is sliceable rather than invisible. I did **not** write the rule that would resolve it — "a
+  narrower cut of one of the six is that metric" would flip `hl-036`, which currently passes, and
+  the honest boundary (SSS is reported as a cut of revenue, NBP as its own line) is domain
+  convention, not something the schema can state. Debt, recorded as debt.
+- 09-12: kept `hl-032`'s `metric: none` against both arms, which read "IT spending outlook dims" as
+  `guidance`/`down`. A defensible reading of the text; the label's case is that the dimming outlook
+  is the customers' spending rather than either company's guidance, a line the schema does not draw.
+  Left as the one real disagreement on the set rather than tuned away.

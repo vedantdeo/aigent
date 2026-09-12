@@ -37,22 +37,27 @@ directory is unfalsifiable — and it is what the task looks up at runtime.
 
 **The model is never asked for a ticker.** It copies the company as the headline writes it, and
 `Resolver` maps that to a symbol. A lookup is exact and free; a model guessing symbols invents
-`HEROMOTOCORP` for `HEROMOTOCO` and looks right doing it. 11 of the 29 tickers in `headlines.jsonl`
-cannot be derived from any name the headline uses, so that is 38% of the field taken off the
-model's plate rather than prompted around.
+`HEROMOTOCORP` for `HEROMOTOCO` and looks right doing it. 22 of the 48 rows in `headlines.jsonl`
+that name a company spell it as something other than its symbol, so that is 46% of the field taken
+off the model's plate rather than prompted around.
+
+The one thing the model is asked to supply is a fact no directory can hold: when a headline names a
+subsidiary that is not listed on its own, it names the listed parent instead. The set of
+subsidiaries is not enumerable; the set of listed companies is.
 
 When a mention does not resolve, the run says so and names it — a missing line in this file, not a
 wrong answer. Add the alias and re-run; that row was never the model's fault.
 
 ## Datasets
 
-- `headlines.jsonl` — 50 Indian market results headlines for Project 1a, 30 labelled with
+- `headlines.jsonl` — 50 Indian market results headlines for Project 1a, all labelled with
   `ticker`, `metric`, `quarter`, `direction`, `change_pct`. The company field is called `ticker`
   because that is what it holds — the **NSE symbol**, not a name: one canonical key per company, so a headline saying Infosys and one saying Infy both label
-  as `INFY` and `field_match` has nothing to argue about. The 20 unlabelled rows are the
-  backlog, each needing a call the schema does not settle. `tests/test_extraction.py` validates
+  as `INFY` and `field_match` has nothing to argue about. It is `null` for a headline that names a
+  sector rather than a company. `tests/test_extraction.py` validates
   every label against the schema the model is given, so a typo in the asset fails the suite rather
-  than quietly costing a point.
+  than quietly costing a point — including a check that no four-word run of a headline appears in
+  the prompt, since an example that is also a test case stops that row measuring anything.
 
 ## Running one
 

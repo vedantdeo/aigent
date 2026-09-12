@@ -69,48 +69,55 @@ DIRECTORY = REPO / "evals" / "reference" / "nse-tickers.json"
 FIELDS = ("ticker", "metric", "quarter", "direction", "change_pct")
 
 # Tie-break order for `metric`, most preferred first. Placeholder: asserted, not researched.
-METRICS = ("revenue", "profit", "margin", "orders", "headcount", "guidance")
+METRICS = ("revenue", "profit", "margin", "orders", "headcount", "guidance", "other", "none")
 
 
 class Extraction(BaseModel):
     """One results headline as a record. Descriptions are visible to the model — write them as
-    prompts, because that is what they are."""
+    prompts, because that is what they are, and keep them short for the same reason."""
 
-    company: str = Field(
+    company: str | None = Field(
         description=(
-            "The company the numbers belong to, copied verbatim from the headline. Do not expand "
-            "it, canonicalise it, or convert it to a ticker: if the headline says Infy, write "
-            "Infy; if it says HUL, write HUL. If two companies appear, pick the one the numbers "
-            "describe."
+            "Copied verbatim from the headline: Infy stays Infy, HUL stays HUL, never a ticker. "
+            "An unlisted subsidiary is the one exception — take its listed parent (Jaguar Land "
+            "Rover is Tata Motors). Two companies: the one the numbers describe, else the one "
+            "named first. Null when no single company is named, as for a sector or an index."
         )
     )
     metric: str = Field(
         description=(
-            "Exactly one of, in this order of preference: " + ", ".join(METRICS) + ". A headline "
-            "often touches more than one. Choose the metric earliest in that list among the ones "
-            "whose percentage change the headline actually states; if it states no percentage "
-            "change for any of them, choose the one earliest in the list overall. A "
-            "forward-looking statement about a metric is guidance, not that metric: 'cuts revenue "
-            "guidance' and 'guides for revenue growth' are both guidance, and name only one "
-            "metric."
+            "Exactly one of, in this order of preference: " + ", ".join(METRICS) + ". Take the "
+            "earliest ranked among the metrics whose percentage change the headline states; "
+            "failing that, the earliest among those it mentions at all; failing that, the one "
+            "mentioned first. other is a company metric the six do not name — footfalls, "
+            "bookings, deposits, loan disbursements — not the nearest of the six. none is a "
+            "headline reporting no metric. A forward-looking statement is guidance, not that "
+            "metric: 'cuts revenue guidance' is guidance. A share price move is the market's "
+            "number, never the metric, and its percentage is never change_pct."
         )
     )
     quarter: str = Field(
         description=(
-            "Exactly one of: Q1, Q2, Q3, Q4, FY, unknown. Indian fiscal year, so the June quarter "
-            "is Q1, September is Q2, December is Q3 and March is Q4. Use unknown when the "
-            "headline names no period."
+            "Exactly one of: Q1, Q2, Q3, Q4, H1, H2, FY, unknown. Indian fiscal year, so the "
+            "quarters ending June, September, December and March are Q1 to Q4. A bare month is "
+            "not a quarter: 'in October' is unknown, as is a headline naming no period."
         )
     )
     direction: str = Field(
-        description="Exactly one of: up, down, flat, unknown. Which way the metric moved."
+        description=(
+            "Exactly one of: up, down, flat, unknown. Which way the metric itself moved. For a "
+            "rate of growth that is the sign of the growth, not whether the rate rose or fell: "
+            "'deposit growth eases to 4% from 7%' is up. unknown when no direction is stated, or "
+            "there is no metric to have one."
+        )
     )
     change_pct: float | None = Field(
         default=None,
         description=(
-            "The percentage change, as a positive number, only when the headline states one "
-            "explicitly. Null otherwise — a level ('margin to 3.6% from 3.4%'), a move in basis "
-            "points, a rupee figure, or a word like 'doubles' are all null."
+            "The percentage change, positive, only when the headline states one explicitly. Null "
+            "otherwise: a level ('margin to 19.4% from 18.1%'), basis points, a rupee figure, "
+            "'doubles'. A growth rate is already a change and not a level, so 'deposit growth "
+            "eases to 4% from 7%' is 4."
         ),
     )
 
@@ -187,10 +194,15 @@ FEW_SHOT = ZERO_SHOT + (
     "headline: Britannia Q2 margin widens to 17.2%; revenue up 4%\n"
     '{"company": "Britannia", "metric": "revenue", "quarter": "Q2", "direction": "up", '
     '"change_pct": 4.0}\n\n'
-    "The first answer is Infy, not Infosys: copy what the headline wrote. The second states two "
-    "percentages and change_pct is still null — they are levels, not a change. The third names no "
-    "quarter but does name the year, so it is FY. The fourth mentions two metrics and only revenue "
-    "has a stated percentage change, so revenue wins even though margin leads the headline."
+    "headline: Tata Motors' Jaguar Land Rover Q3 revenue up 11%\n"
+    '{"company": "Tata Motors", "metric": "revenue", "quarter": "Q3", "direction": "up", '
+    '"change_pct": 11.0}\n\n'
+    "headline: Titan Q2 footfall growth eases to 5% from 9%\n"
+    '{"company": "Titan", "metric": "other", "quarter": "Q2", "direction": "up", '
+    '"change_pct": 5.0}\n\n'
+    "Two of these are easy to read backwards. In the fourth, only revenue has a stated percentage "
+    "change, so it wins even though margin leads. In the sixth, growth that slowed is still "
+    "growth, so the direction is up."
 )
 
 # Each arm adds exactly one thing to the last, so the per-field table reads as an ablation.
@@ -234,7 +246,7 @@ def extraction_task(
             )
         # The mention travels too, so `pydantic_valid` sees the model's own shape.
         output = record.model_dump()
-        output["ticker"] = resolver(record.company)
+        output["ticker"] = resolver(record.company) if record.company else None
         return Outcome(output=output, usage=response.usage, model=model)
 
     return task

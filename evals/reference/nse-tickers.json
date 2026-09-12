@@ -27,6 +27,12 @@
         "Axis Bank"
       ]
     },
+    "BAJAJ-AUTO": {
+      "name": "Bajaj Auto Ltd",
+      "aliases": [
+        "Bajaj Auto"
+      ]
+    },
     "BAJFINANCE": {
       "name": "Bajaj Finance Ltd",
       "aliases": [
@@ -60,11 +66,23 @@
       "name": "Delhivery Ltd",
       "aliases": []
     },
+    "DMART": {
+      "name": "Avenue Supermarts Ltd",
+      "aliases": [
+        "Avenue Supermarts"
+      ]
+    },
     "DRREDDY": {
       "name": "Dr. Reddy's Laboratories Ltd",
       "aliases": [
         "Dr. Reddy's Laboratories",
         "Dr Reddy's"
+      ]
+    },
+    "ETERNAL": {
+      "name": "Eternal Ltd",
+      "aliases": [
+        "Zomato"
       ]
     },
     "HCLTECH": {
@@ -84,6 +102,12 @@
       "name": "Hero MotoCorp Ltd",
       "aliases": [
         "Hero MotoCorp"
+      ]
+    },
+    "HINDALCO": {
+      "name": "Hindalco Industries Ltd",
+      "aliases": [
+        "Hindalco Industries"
       ]
     },
     "HINDUNILVR": {
@@ -111,6 +135,19 @@
         "Infosys"
       ]
     },
+    "KOTAKBANK": {
+      "name": "Kotak Mahindra Bank Ltd",
+      "aliases": [
+        "Kotak Mahindra Bank",
+        "Kotak"
+      ]
+    },
+    "LICI": {
+      "name": "Life Insurance Corporation of India",
+      "aliases": [
+        "LIC"
+      ]
+    },
     "LT": {
       "name": "Larsen & Toubro Ltd",
       "aliases": [
@@ -135,6 +172,12 @@
       "name": "Nestle India Ltd",
       "aliases": [
         "Nestle India"
+      ]
+    },
+    "NYKAA": {
+      "name": "FSN E-Commerce Ventures Ltd",
+      "aliases": [
+        "FSN E-Commerce Ventures"
       ]
     },
     "OLAELEC": {
@@ -215,6 +258,13 @@
     "TRENT": {
       "name": "Trent Ltd",
       "aliases": []
+    },
+    "ULTRACEMCO": {
+      "name": "UltraTech Cement Ltd",
+      "aliases": [
+        "UltraTech Cement",
+        "UltraTech"
+      ]
     },
     "VEDL": {
       "name": "Vedanta Ltd",

@@ -37,6 +37,26 @@ from entropic.week01.extraction import (
 DIRECTORY = load_directory()
 
 
+def written_as(case: Case) -> str:
+    """The longest spelling of the case's company that its headline actually contains."""
+    headline = str(case.input["headline"]).casefold()
+    ticker = str(case.expected["ticker"])
+    return max((f for f in forms(ticker) if f.casefold() in headline), key=len)
+
+
+def shadowed_by(spelling: str, ticker: str) -> list[str]:
+    """Other companies whose own spelling sits whole inside this one."""
+    return sorted(
+        {
+            other
+            for other in DIRECTORY
+            if other != ticker
+            for form in forms(other)
+            if len(form) < len(spelling) and re.search(rf"\b{re.escape(form)}\b", spelling, re.I)
+        }
+    )
+
+
 def forms(ticker: str) -> list[str]:
     """Every spelling the directory knows for one company: the symbol, the registered name, then
     the aliases — which hold only what the first two do not already say."""
@@ -44,15 +64,23 @@ def forms(ticker: str) -> list[str]:
     return [ticker, entry["name"], *entry["aliases"]]
 
 
+def _grams(text: str, n: int = 4) -> set[tuple[str, ...]]:
+    """Every run of `n` alphanumeric words, lowercased. Punctuation and case are not the point."""
+    words = re.findall(r"[a-z0-9]+", text.casefold())
+    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
+
+
 CASES = load_jsonl(DATASET)
 LABELLED = [case for case in CASES if case.expected]
+# A headline naming no single company has no ticker, so the company checks skip it.
+NAMED = [case for case in LABELLED if case.expected["ticker"] is not None]
 
 # Uppercase, plus the & in M&M and the hyphen in BAJAJ-AUTO.
 TICKER = re.compile(r"[A-Z0-9&-]+")
 
 VOCABULARY: dict[str, set[str]] = {
-    "metric": {"revenue", "profit", "margin", "orders", "headcount", "guidance"},
-    "quarter": {"Q1", "Q2", "Q3", "Q4", "FY", "unknown"},
+    "metric": {"revenue", "profit", "margin", "orders", "headcount", "guidance", "other", "none"},
+    "quarter": {"Q1", "Q2", "Q3", "Q4", "H1", "H2", "FY", "unknown"},
     "direction": {"up", "down", "flat", "unknown"},
 }
 
@@ -216,13 +244,30 @@ def test_a_mention_the_directory_does_not_know_is_a_to_do_not_a_wrong_answer() -
     assert resolver.unresolved == {"Reliance Jio": 1}, "and it says what to add"
 
 
+def test_a_headline_with_no_single_company_never_reaches_the_directory() -> None:
+    """`null` is an answer, not a miss. A sector headline has no company to look up, so the
+    lookup must not run and must not file a to-do against a name nobody wrote."""
+    resolver = Resolver()
+    task, _ = _task_and_log(
+        record=Extraction(
+            company=None, metric="none", quarter="Q3", direction="unknown", change_pct=None
+        ),
+        resolver=resolver,
+    )
+    outcome = task(_case("Q3 results: Nifty IT companies post mixed numbers"))
+
+    assert outcome.error is None
+    assert outcome.output["ticker"] is None and outcome.output["company"] is None
+    assert not resolver.unresolved, "nothing to add to the directory; there was no company"
+
+
 def test_the_directory_covers_every_ticker_the_dataset_labels() -> None:
     """The directory is the ground truth for `ticker`. A label outside it is unfalsifiable."""
-    labelled = {str(case.expected["ticker"]) for case in LABELLED}
+    labelled = {str(case.expected["ticker"]) for case in NAMED}
     assert labelled <= set(DIRECTORY), f"not in the directory: {sorted(labelled - set(DIRECTORY))}"
 
 
-@pytest.mark.parametrize("case", LABELLED, ids=lambda case: case.id)
+@pytest.mark.parametrize("case", NAMED, ids=lambda case: case.id)
 def test_every_headline_names_its_company_in_a_form_the_directory_lists(case: Case) -> None:
     """The spelling the headline uses has to be resolvable, or the label is a leap the model
     cannot make and the directory cannot help with."""
@@ -233,7 +278,7 @@ def test_every_headline_names_its_company_in_a_form_the_directory_lists(case: Ca
     )
 
 
-@pytest.mark.parametrize("case", LABELLED, ids=lambda case: case.id)
+@pytest.mark.parametrize("case", NAMED, ids=lambda case: case.id)
 def test_copying_the_headline_correctly_is_enough_to_get_the_ticker_right(case: Case) -> None:
     """The property the whole design rests on: the model only has to copy, and the ticker follows.
 
@@ -241,11 +286,24 @@ def test_copying_the_headline_correctly_is_enough_to_get_the_ticker_right(case: 
     return — and check the resolver lands on the label. While this holds for every row, `ticker` is
     right by construction whenever `company` is, and the eval measures identification, not recall.
     """
-    headline = str(case.input["headline"]).casefold()
     expected = str(case.expected["ticker"])
-    as_written = max((f for f in forms(expected) if f.casefold() in headline), key=len)
+    assert Resolver()(written_as(case)) == expected
 
-    assert Resolver()(as_written) == expected
+
+@pytest.mark.parametrize("case", NAMED, ids=lambda case: case.id)
+def test_a_company_whose_name_hides_another_is_tagged(case: Case) -> None:
+    """`Tech Mahindra` contains `Mahindra`, which is M&M. A model that truncates the name resolves
+    to a real but wrong company, and the resolver reports success — the one silent failure this
+    design has. The tag marks those rows so the report can be sliced by them."""
+    ticker = str(case.expected["ticker"])
+    shadowed = shadowed_by(written_as(case), ticker)
+    tagged = "name-contains-name" in case.tags
+
+    assert tagged == bool(shadowed), (
+        f"{case.id}: {written_as(case)!r} hides {shadowed}, tag it name-contains-name"
+        if shadowed
+        else f"{case.id}: nothing hides inside {written_as(case)!r}, drop the tag"
+    )
 
 
 def test_the_metric_order_is_total_and_covers_the_vocabulary() -> None:
@@ -265,8 +323,33 @@ def test_the_metric_order_is_total_and_covers_the_vocabulary() -> None:
 def test_both_variants_state_the_conventions_the_dataset_is_labelled_by() -> None:
     """A rule that only appears in the few-shot examples would punish zero_shot for not guessing."""
     descriptions = " ".join(field.description or "" for field in Extraction.model_fields.values())
-    for convention in ("verbatim", "June quarter is Q1", "basis", "unknown"):
+    for convention in (
+        "verbatim",
+        "quarters ending June",
+        "basis",
+        "unknown",
+        "listed parent",
+        "no single company",
+        "share price move",
+        "rate of growth",
+        "bare month",
+    ):
         assert convention in descriptions, convention
+
+
+def test_no_illustration_in_the_prompt_is_a_row_of_the_dataset() -> None:
+    """A worked example that is also a test case stops that row measuring anything.
+
+    Four words is the window: it catches an example built from a row — three words fires on
+    financial boilerplate like "Q1 revenue up", which two headlines can share innocently.
+    """
+    prompt = FEW_SHOT + " ".join(f.description or "" for f in Extraction.model_fields.values())
+    shared = {
+        case.id: sorted(" ".join(g) for g in _grams(str(case.input["headline"])) & _grams(prompt))
+        for case in LABELLED
+    }
+    leaked = {case_id: overlap for case_id, overlap in shared.items() if overlap}
+    assert not leaked, f"the prompt quotes the dataset: {leaked}"
 
 
 # --- the dataset is an asset, so it gets tested like one ----------------------------------------
@@ -300,11 +383,12 @@ def test_the_dataset_is_the_size_the_project_asked_for() -> None:
 @pytest.mark.parametrize("case", LABELLED, ids=lambda case: case.id)
 def test_every_label_validates_against_the_vocabulary(case: Case) -> None:
     # The model never produces `ticker`, so fill `company` in from the directory to validate.
-    ticker = str(case.expected["ticker"])
-    record = Extraction.model_validate({**case.expected, "company": DIRECTORY[ticker]["name"]})
+    ticker = case.expected["ticker"]
+    name = DIRECTORY[str(ticker)]["name"] if ticker is not None else None
+    record = Extraction.model_validate({**case.expected, "company": name})
 
     assert set(case.expected) == set(FIELDS), "a label with a missing field grades as wrong forever"
-    assert TICKER.fullmatch(ticker), f"{case.id}: {ticker!r} is not a ticker"
+    assert ticker is None or TICKER.fullmatch(str(ticker)), f"{case.id}: {ticker!r} is not a ticker"
     for name, allowed in VOCABULARY.items():
         assert getattr(record, name) in allowed, f"{case.id}: {name}={getattr(record, name)!r}"
     if record.change_pct is not None:
