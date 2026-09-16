@@ -48,6 +48,30 @@ subsidiaries is not enumerable; the set of listed companies is.
 When a mention does not resolve, the run says so and names it — a missing line in this file, not a
 wrong answer. Add the alias and re-run; that row was never the model's fault.
 
+## Retrieval cases
+
+A retrieval row labels the **sentence that answers the question**, not the chunk that holds it:
+
+```json
+{"id": "q-001", "input": {"question": "What dividend was recommended?"},
+ "expected": {"quote": "a final dividend of Rs. 10 per equity share"}, "tags": ["dividend"]}
+```
+
+Chunk ids are positional (`RELIANCE-FY25#0042`), so they do not survive a re-chunk — the 43rd chunk
+of a differently-split document is different text. A quote does survive, and
+`Inventory.containing` resolves it to whichever ids hold it in the inventory being scored, which is
+what turns one labelled file into four comparable columns for four chunking strategies. It is the
+same rule as the ticker directory: code does the join, the model is never asked where the answer
+lives.
+
+A quote that resolves to **no** chunk is a finding, not a broken label. It means the chunker split
+the answer across a boundary, so no single retrieved chunk can contain it, and that strategy has
+capped its own recall before the embedder ever runs. Print those rather than dropping them.
+
+`recall_at_k` and `reciprocal_rank` then read `expected["relevant"]` against
+`output["retrieved"]`, both ranked lists of ids. Neither spends anything, so a retrieval number can
+be re-measured as often as it is worth asking about.
+
 ## Datasets
 
 - `headlines.jsonl` — 50 Indian market results headlines for Project 1a, all labelled with

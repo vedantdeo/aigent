@@ -1,11 +1,6 @@
-"""The `entropic` command: a menu of the agent's modes.
+"""The `entropic` command: a mode table, a lookup, an interactive menu.
 
-    uv run entropic              # interactive menu (needs a real terminal)
-    uv run entropic chat         # or: call, stream, extract, loop
-    uv run entropic loop "task"  # the loop takes its task from the arguments, or asks for one
-
-Each mode is one of the Week 1 scripts. The menu is the front door while the agent is a set of
-demonstrations; when the loop becomes the agent proper (Week 3), `chat` becomes the default.
+`entropic <mode>` runs one of the five Week 1 primitives; bare `entropic` opens the menu.
 """
 
 from __future__ import annotations

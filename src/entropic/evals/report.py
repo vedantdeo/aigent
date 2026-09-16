@@ -1,12 +1,7 @@
-"""The results table: what you paste into a README and what you compare against next week.
+"""The results table: what you paste into a README and compare against next week.
 
-Three tables, in the order you read them. The summary answers "did it work"; the per-field table
-answers "which part didn't"; the failure list is the only one that tells you what to *do*, which is
-why it is here and not hidden behind a flag. A score tells you whether something moved. Reading the
-rows that failed is what tells you why.
-
-Error rows are counted apart from failures and excluded from the denominator, so a network blip
-during a run reads as a network blip rather than a drop in accuracy.
+Four tables — summary, metrics, per field, failures. The middle two are omitted when no grader fed
+them. Error rows are excluded from every denominator.
 """
 
 from __future__ import annotations
@@ -35,6 +30,9 @@ def to_markdown(run: EvalRun, max_failures: int = MAX_FAILURES_SHOWN) -> str:
     lines += _header_block(run)
     lines += ["", "## Results", ""]
     lines += _summary_table(run)
+
+    # TODO(week2): the metrics section goes here, once `_metrics_table` is written. Guard it the
+    # way `per_field` is guarded below, so a run whose graders report no numbers prints no table.
 
     per_field = _per_field_table(run)
     if per_field:
@@ -68,11 +66,7 @@ def _header_block(run: EvalRun) -> list[str]:
 
 
 def _grading_models(run: EvalRun) -> list[str]:
-    """Models a grader actually spent on, read back from the scores rather than from config.
-
-    Derived, not declared: it records what the run did, which is the only version worth comparing
-    against next week. A judge pointed at the model under test shows up here as the same name twice.
-    """
+    """Models a grader actually spent on, read back from the scores rather than from config."""
     seen: list[str] = []
     for row in run.rows:
         for score in row.scores.values():
@@ -98,6 +92,15 @@ def _summary_table(run: EvalRun) -> list[str]:
         cells.append(f"${sum(row.cost_usd for row in all_rows):.5f}")
         rows.append("| " + " | ".join(cells) + " |")
     return rows
+
+
+def _metrics_table(run: EvalRun) -> list[str]:
+    """One row per grader that reported a number, meaned over the cases it graded.
+
+    Apart from the summary because it answers a different question: a retriever finding two of three
+    relevant chunks every time reads 0% there and 0.667 here.
+    """
+    raise NotImplementedError
 
 
 def _per_field_table(run: EvalRun) -> list[str]:

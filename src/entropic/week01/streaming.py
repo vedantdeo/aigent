@@ -1,12 +1,6 @@
-"""Week 1, step 2: streaming.
+"""A streamed call, showing thinking and text blocks arriving separately.
 
-    uv run python -m entropic.week01.streaming
-
-What to notice:
-  - Tokens arrive as `content_block_delta` events; thinking and text are separate block types.
-  - `get_final_message()` gives you the same Message object a non-streaming call returns, so usage
-    and stop_reason are still there.
-  - Streaming is also the fix for HTTP timeouts on long outputs. Default to it in real code.
+Usage totals only arrive at the end of the stream, so the cost line comes after the text.
 """
 
 from __future__ import annotations

@@ -1,13 +1,4 @@
-"""Week 1, step 1: one raw API call, no framework.
-
-    uv run python -m entropic.week01.first_call
-
-What to notice:
-  - The API is stateless. Everything the model knows about this conversation is in `messages`.
-  - count_tokens is free. The budget guard uses it to refuse a request whose worst case exceeds
-    the per-request ceiling, before any money is spent.
-  - Always check stop_reason before reading content. `refusal` and `max_tokens` are not `end_turn`.
-"""
+"""One non-streaming call, with its token count and cost."""
 
 from __future__ import annotations
 

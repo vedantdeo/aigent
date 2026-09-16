@@ -1,24 +1,8 @@
-"""Week 1, step 6: break things on purpose, and write down what broke.
+"""Nine failure modes provoked for real, tabulated into `docs/failure-modes.md`.
 
-    uv run python -m entropic.week01.failures > docs/failure-modes.md
-
-Every row is a failure this codebase can actually meet, provoked for real rather than copied out of
-the documentation. The whole table is free: a request rejected with a 4xx never reaches the model,
-so there are no tokens to bill, and two of the rows never leave the machine at all. An error
-catalogue is one of the cheapest artifacts you can build and one of the least often built.
-
-What to notice:
-  - Our own guards fire before the API's. `context-too-long` never becomes a 400: `check_request`
-    counts it on the free endpoint, prices it, and says which knob to turn.
-  - The last two never reach the network at all. The guard that costs nothing to check is the one
-    you want sitting between you and the API.
-  - The SDK has opinions of its own: `max-tokens-too-high` is a client-side `ValueError`, not a
-    rejection from the API.
-
-The failure NOT in this table is the one worth remembering: a `cache_control` breakpoint on a
-prefix below the model's minimum is silently ignored — no error, a correct answer, and full price
-on every call. Provoking it means making a successful call, so it costs money, and the catalogue
-stays free instead. See `CACHE_VARIANTS` in the knowledge graph for the shape that does cache.
+Free to run by construction: a request rejected with a 4xx never reaches the model, and the last two
+rows never touch the network. A successful structured call is the only thing that could make this
+spend, and a test greps this file to be sure there is none.
 """
 
 from __future__ import annotations

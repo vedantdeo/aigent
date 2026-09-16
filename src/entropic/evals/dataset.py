@@ -1,13 +1,9 @@
 """Eval datasets: one JSONL file, one `Case` per line.
 
-The loader is strict on purpose. A dataset is hand-written, and a typo in a label is silent
-poison — you spend a run, read a number, and trust it. Unknown keys, duplicate ids, and malformed
-lines all fail here, before the first paid call, with the line number attached.
+{"id": "hl-001", "input": {"headline": "..."}, "expected": {"company": "..."}, "tags": ["q3"]}
 
-    {"id": "hl-001", "input": {"headline": "..."}, "expected": {"company": "..."}, "tags": ["q3"]}
-
-`input` and `expected` are objects rather than bare strings so the same shape carries a per-field
-extraction label in Week 1 and a list of relevant chunk ids in Week 2.
+The loader is strict: unknown keys, duplicate ids and malformed lines all fail here, with the line
+number, before the first paid call.
 """
 
 from __future__ import annotations
@@ -38,10 +34,9 @@ class Case(BaseModel):
 
 
 def load_jsonl(path: Path) -> list[Case]:
-    """Read and validate a whole dataset. Raises DatasetError with a line number on any bad row.
+    """Read and validate a whole dataset, raising DatasetError with a line number on a bad row.
 
-    Blank lines are skipped, so is a `//` comment line — handy for parking a case you are still
-    arguing with yourself about.
+    Blank lines and `//` comment lines are skipped.
     """
     cases: list[Case] = []
     first_seen: dict[str, int] = {}
@@ -79,9 +74,8 @@ def _first_problem(exc: ValidationError) -> str:
 
 
 def digest(path: Path) -> str:
-    """Short SHA-256 of the dataset file.
+    """Short SHA-256 of the dataset file, recorded in every report.
 
-    Recorded in every report. Without it you cannot tell whether a score moved because the prompt
-    changed or because the data did, which is the whole point of keeping scores.
+    Without it you cannot tell whether a score moved because the prompt changed or the data did.
     """
     return hashlib.sha256(path.read_bytes()).hexdigest()[:12]

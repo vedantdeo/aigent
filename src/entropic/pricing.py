@@ -1,15 +1,8 @@
-"""What a call costs, and whether you are allowed to make it.
+"""Token prices, cost arithmetic, and the two budget guards. The only module that knows a price.
 
-Every script in this repo prints what it spent. Get in the habit now; you will be asked about cost
-in every interview.
-
-Two guards, at two scales. `check_request` runs *before* a call and refuses to send one whose worst
-case is over the per-request ceiling — the count itself is free, so the guard costs nothing.
-`Budget` accumulates across a run and reacts *after* the call that crosses the line, which is the
-only honest moment: you cannot know what a call cost until it is done.
-
-This module is the only place that knows a price. `config` holds the ceilings as settings; nothing
-else prices anything.
+`check_request` refuses a call before it is sent, using the free token-count endpoint. `Budget`
+reacts after the call that crosses a ceiling, which is the only honest moment — what a call cost is
+not knowable until it is done.
 """
 
 from __future__ import annotations
@@ -106,16 +99,10 @@ def estimate_eval_usd(
     calls_per_case: int = 1,
     cached_tokens: int = 0,
 ) -> float:
-    """Worst case for a whole eval run, before the first row goes out.
+    """Worst case for a whole run: cases x calls-per-case x `worst_case_usd`.
 
-    `check_request` cannot see this coming: no single row of an eval is expensive, and fifty cheap
-    rows still add up to a number worth knowing in advance. Raise `calls_per_case` when a row costs
-    more than one call — an LLM-as-judge grader makes it two.
-
-    `cached_tokens` is the prefix sent behind a cache breakpoint: written once at a 25% premium,
-    then read at a tenth of the input price. Leave it zero and this is the plain arithmetic it has
-    always been. An estimator that cannot model the cache would refuse a cached run for costing
-    what the uncached one costs, which is the opposite of useful.
+    `cached_tokens` prices a cached prefix as one write plus n-1 reads. Note the sign flips at n=1:
+    caching a single row costs more than not caching it.
     """
     calls = n_cases * calls_per_case
     if not calls:
@@ -150,11 +137,9 @@ def check_request(
     system: str | Sequence[TextBlockParam] | Omit = omit,
     tools: Sequence[ToolParam] | Omit = omit,
 ) -> int:
-    """Count the input tokens (a free call), then enforce the per-request ceiling.
+    """Pre-flight one request through the free counting endpoint, returning its input-token count.
 
-    Pass exactly what the real request will send, so the count is the real count — `system` takes
-    the block form too, which is how a cache breakpoint travels. Returns the input token count so
-    callers can print it.
+    Pass exactly what the real call will send, or the count lies.
     """
     count = client.messages.count_tokens(model=model, messages=messages, system=system, tools=tools)
     assert_request_within_budget(model, count.input_tokens, max_tokens)
@@ -163,17 +148,10 @@ def check_request(
 
 @dataclass
 class Budget:
-    """Running spend for one run: a tool loop, a chat session, an eval. Trips after the call that
-    crosses the ceiling, so spent_usd always reflects what was actually billed.
+    """Per-run accumulator. `charge` records an overrun in `tripped`; `add` also raises.
 
-    Two ways to bill, because two kinds of run want different things when the money runs out.
-    `add` raises, which is right for a tool loop or a chat session: there is a person waiting and
-    nothing useful left to do. `charge` records the trip on the budget and returns, which is right
-    for a batch that should stop cleanly and still report the rows it paid for.
-
-    `scope` only shapes the message, but it earns its place there: the guard's promise is that it
-    names the knob to turn, and an eval that reports the per-run env var sends you to the wrong line
-    of .env.
+    Both bill before they trip, so `spent_usd` always includes the crossing call. `scope` picks
+    which env var the message names.
     """
 
     limit_usd: float = MAX_USD_PER_RUN

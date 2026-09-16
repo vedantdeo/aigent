@@ -1,20 +1,8 @@
 """The runner: iterate cases, run each variant, grade, and keep the money in bounds.
 
-Three behaviours matter more than the loop itself.
-
-  - **A task that raises is an error row, not a crashed run.** Same reasoning as tool errors in the
-    agent loop: a failure is data about the system under test, and losing the other forty rows to
-    it helps nobody.
-  - **The per-eval ceiling stops the run and keeps what is finished.** `Budget.add` raises, which is
-    right for a chat session and wrong here, so the runner catches it, marks the run partial, and
-    reports the rows it already paid for.
-  - **Every dollar is attributed.** The task reports its usage in the `Outcome`; a grader that
-    spends (the judge) reports its usage in the `Score`. Both are billed to the same budget, so the
-    printed total is the real total.
-
-Cases are the outer loop and variants the inner one, so a run that stops early has every variant
-for the first k cases rather than all of variant A and none of variant B. A truncated comparison is
-still a comparison.
+A task that raises becomes an error row rather than ending the run; a tripped ceiling stops the run
+and keeps the rows already paid for; every dollar is billed to one budget. Cases are the outer loop
+so a truncated run is still a comparison.
 """
 
 from __future__ import annotations
@@ -55,8 +43,7 @@ class RowResult:
 class EvalRun:
     """Everything needed to reproduce and compare one run.
 
-    The model, the dataset digest and the date are not decoration: a score is only meaningful next
-    to another score, and these are what tell you whether the two are comparable.
+    Model, dataset digest and date are what tell you whether two scores are comparable.
     """
 
     dataset: str
@@ -91,8 +78,7 @@ def run_eval(
 ) -> EvalRun:
     """Run every case through every variant, grade each outcome, return the whole run.
 
-    `model` is recorded, not applied — the task owns its own call and therefore its own model. Pass
-    the one the task actually uses, or the report will describe a run that never happened.
+    `model` is recorded, not applied — the task owns its own call. Pass the one it really uses.
     """
     if not variants:
         raise ValueError("run_eval needs at least one variant")
@@ -134,11 +120,7 @@ def run_eval(
 
 
 def _bill(budget: Budget, usage: Usage | None, model: str) -> float:
-    """Charge a call that may not have happened.
-
-    A task that never touched the API costs nothing, and that is a first-class case here: Week 2
-    grades a retrieval function that returns `Outcome(usage=None)`.
-    """
+    """Charge a call that may not have happened; a task that never touched the API costs nothing."""
     return budget.charge(model, usage) if usage is not None else 0.0
 
 

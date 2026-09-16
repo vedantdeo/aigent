@@ -1,13 +1,8 @@
-"""LLM-as-judge: the one grader that spends money.
+"""LLM-as-judge: the one grader that spends.
 
-Kept apart from the free graders for three reasons. It costs money, so it is billed to the eval
-budget like any other call. It is not deterministic, so two runs of the same dataset can disagree
-and the rubric is the thing you tune. And it obeys the repo's rules for paid calls: the input is
-counted before it is sent (`check_request`), and the model comes from `config`, never from here.
-
-Use it for what the free graders cannot reach — faithfulness, tone, "does this answer the question"
-— and prefer a free grader wherever one will do. A judge that agrees with you 90% of the time turns
-a 90% score into a number you cannot decompose.
+Runs on `config.JUDGE_MODEL`, deliberately not the model under test, and is pre-flighted through
+`pricing.check_request` like any other paid path. Its usage goes back in the `Score` so the runner
+bills it to the eval's budget.
 """
 
 from __future__ import annotations
@@ -43,14 +38,9 @@ class Verdict(BaseModel):
 
 @dataclass
 class LlmJudge:
-    """A grader backed by a model call. Construct it once, hand it to `run_eval` like any grader.
+    """The paid grader: applies a written rubric to one outcome.
 
-    `model` defaults to `config.JUDGE_MODEL`, which is deliberately not `config.MODEL`: a model
-    grading its own output favours it, and rubric-application is an easier task than the one being
-    graded. Override it upwards when the rubric is genuinely hard — a judge weaker than the task
-    cannot see the failures that matter.
-
-    `client` is injectable so tests can script the verdict without a network call.
+    Returns `passed=False` without calling anything when the task already failed.
     """
 
     rubric: str

@@ -162,21 +162,31 @@ the rule covers and fails if any of them drifts. The counterexample
 sits in the same feature — `week01.extraction.METRICS` is a *total order* over the metric
 vocabulary, so alphabetising it would silently rewrite every tie-break the eval depends on.
 
-## Comments earn their line
+## Comments and docstrings both stay short
 
-**The rule: keep a comment to one line.** Reasoning that needs a paragraph belongs in the function's
-or the module's docstring, which is read once on arrival — not stacked above a constant that gets
-glanced at daily.
+**The rule: a comment is one line, and a docstring is a brief description of the module, class or
+function — not an argument for it.** A sentence or two saying what the thing is, plus anything a
+caller cannot read off the signature. That is the whole budget.
 
 - Say only what the code does not. `# increment i` is noise; `# the API 1-indexes pages` is not.
 - Put it at the line that surprises, not at the top of the block.
-- When a comment grows past a line, that is the signal to move it, not to wrap it.
+- **Rationale is not documentation.** Why a default was chosen, what a run measured, which bug a
+  guard was written for, what was tried and rejected — none of that belongs beside the code. It
+  goes wherever the project keeps its decision record, which is read once on arrival.
+- When a comment grows past its line, or a docstring past its couple of sentences, that is the
+  signal to move it, not to wrap it.
 
 **Why:** ten lines above a one-line constant do not get read, they get scrolled past — and then they
-rot unnoticed, because nobody was reading closely enough to catch the drift.
+rot unnoticed, because nobody was reading closely enough to catch the drift. A docstring that argues
+its own case is the same failure at larger scale: it buries the one sentence the reader needed, and
+it goes stale the first time the reasoning changes without the code.
 
 This section is mirrored verbatim into each project's tracked `CLAUDE.md`, so it survives the loss
 of this machine. Edit both, or neither.
+
+**In this repo**, the decision record is two files. `docs/knowledge-graph.md` holds contracts,
+invariants and why a node exists; `LOG.md` holds what a run cost and what it measured. Anything
+phrased "because we found that…" belongs in one of those, never in a docstring.
 
 ## Paid calls
 

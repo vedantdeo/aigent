@@ -1,8 +1,7 @@
-"""Tools the model can call. Kept framework-free so the same functions work in Week 1's hand-written
-loop, Week 5's SDK tool runner, and Week 6's LangGraph agent.
+"""Tool implementations, their JSON schemas, and a name->function dispatcher.
 
-A tool is three things: a schema the model sees, a function you run, and an error path the model can
-recover from. Get all three right and most "agent bugs" disappear.
+Imports nothing from this package except `tools_config`, which is what lets the pair be lifted into
+an SDK tool runner or a LangGraph node unchanged.
 """
 
 from __future__ import annotations
@@ -142,10 +141,9 @@ ALL_TOOLS: list[ToolParam] = [CALCULATOR_TOOL, TIME_TOOL, READ_FILE_TOOL]
 
 
 def execute_tool(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
-    """Run a tool by name. Returns (content, is_error).
+    """Dispatch by name, returning `(content, is_error)`. Never raises.
 
-    Errors go back to the model as text with is_error=True, never as a raised exception. The model
-    can read the message and try again; a crashed loop cannot.
+    The model can recover from an error message; it cannot recover from a traceback.
     """
     try:
         if name == "calculate":

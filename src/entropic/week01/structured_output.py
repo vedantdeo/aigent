@@ -1,11 +1,6 @@
-"""Week 1, step 3: structured output.
+"""`messages.parse` with a Pydantic schema: schema in, validated object out.
 
-    uv run python -m entropic.week01.structured_output
-
-What to notice:
-  - `messages.parse` takes a Pydantic model and returns a validated instance. No regex, no
-    json.loads on a string that might have prose around it.
-  - This is the primitive under every "extract to JSON" product. Week 2 wraps it in an eval.
+A refusal or a `max_tokens` stop leaves `parsed_output` as None, which is the case worth handling.
 """
 
 from __future__ import annotations

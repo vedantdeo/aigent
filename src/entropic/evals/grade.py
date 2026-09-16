@@ -1,14 +1,8 @@
-"""The grading vocabulary, and the four graders that cost nothing.
+"""The grading vocabulary, and the graders that cost nothing.
 
-`Outcome` and `Score` both live here rather than next to the runner so that a grader never has to
-import the runner — the dependency runs one way, graders → vocabulary, and stays acyclic.
-
-Four graders are pure functions of (case, outcome): exact match, contains, regex, and Pydantic
-validity, plus `field_match` for the per-field accuracy an extraction task is actually judged on.
-The fifth grader, LLM-as-judge, spends money and lives in `judge.py`.
-
-Graders are factories: `exact_match("company")` returns the grader. That keeps the callable
-signature uniform, which is what lets the runner treat every grader the same way.
+`Outcome` and `Score` live here rather than with the runner so a grader never imports it. Graders
+are factories: `exact_match("company")` returns the grader, so the runner treats them all alike. The
+paid one, LLM-as-judge, is in `judge.py`.
 """
 
 from __future__ import annotations
@@ -27,8 +21,7 @@ from entropic.evals.dataset import Case
 class Outcome:
     """What a task produced for one case.
 
-    `usage` is None for a task that never called the API — a retrieval eval, or a fake used in
-    tests. The runner bills whatever is here and nothing more.
+    `usage` is None for a task that never called the API.
     """
 
     output: dict[str, JsonValue] = field(default_factory=dict)
@@ -42,14 +35,14 @@ class Outcome:
 class Score:
     """One grader's verdict on one outcome.
 
-    `parts` carries field-level detail when a grader has it; the report pivots it into a per-field
-    table. `usage` is set only by graders that spend (the judge), and the runner bills it to the
-    same eval budget as the task.
+    `parts` carries field-level detail; `value` carries a number, for a grader whose verdict is one.
+    `usage` is set only by graders that spend.
     """
 
     passed: bool
     detail: str = ""
     parts: Mapping[str, bool] = field(default_factory=dict)
+    value: float | None = None
     usage: Usage | None = None
     model: str | None = None
 
@@ -65,11 +58,9 @@ def _comparable(value: JsonValue) -> str:
 
 
 def _as_text(value: JsonValue) -> str:
-    """Text form with nothing normalised away. What a pattern gets matched against.
+    """Text form with nothing normalised away — what a pattern gets matched against.
 
-    A regex is a specification, not a value: it already has `(?i)` for case and `\\s+` for loose
-    whitespace. Normalising the subject first would take those decisions away from whoever wrote the
-    pattern — and quietly make `^[A-Z]+$` unsatisfiable.
+    A regex already has `(?i)` and `\\s+` for these; normalising first would take that choice away.
     """
     return value if isinstance(value, str) else json_ish(value)
 
@@ -127,12 +118,8 @@ def contains(name: str = "answer") -> Grader:
 def regex(name: str = "answer", pattern: str | None = None) -> Grader:
     """Output field matches a pattern.
 
-    Pass `pattern` for one rule across the whole dataset; leave it out to take the pattern from each
-    case's `expected[name]`, which is how you check a format that varies per row.
-
-    Both sides are used as written: the value is not normalised the way `exact_match` normalises it,
-    and the pattern is certainly not — casefolding a pattern turns `\\D` into `\\d` and inverts the
-    check. Write `(?i)` into the pattern when you want case-insensitivity.
+    Pass `pattern` for one rule across the dataset, or leave it out to take one per case from
+    `expected[name]`. Neither side is normalised; write `(?i)` for case-insensitivity.
     """
     fixed = re.compile(pattern) if pattern is not None else None
 
@@ -157,11 +144,7 @@ def regex(name: str = "answer", pattern: str | None = None) -> Grader:
 
 
 def pydantic_valid(model: type[BaseModel]) -> Grader:
-    """The output validates against a schema. Structure only — it says nothing about correctness.
-
-    This is the grader that answers "did the model return the shape I asked for", which is a
-    different question from "is the content right", and worth keeping separate.
-    """
+    """The output validates against a schema. Structure only, not correctness."""
 
     def grade(case: Case, outcome: Outcome) -> Score:
         del case
@@ -181,9 +164,7 @@ def pydantic_valid(model: type[BaseModel]) -> Grader:
 def field_match(names: Sequence[str]) -> Grader:
     """Exact match per field, reported per field.
 
-    `passed` means every field was right, which is the strict per-record number. The useful number
-    is usually in `parts`: whole-record accuracy on a five-field schema reads near zero and tells
-    you nothing about which field is the problem.
+    `passed` is the strict whole-record number; the useful one is usually in `parts`.
     """
     fields = tuple(names)
 
@@ -204,3 +185,28 @@ def field_match(names: Sequence[str]) -> Grader:
         return Score(all(parts.values()), "; ".join(wrong), parts=parts)
 
     return grade
+
+
+# --- Retrieval -------------------------------------------------------------------------------
+# Both read `outcome.output["retrieved"]` against `case.expected["relevant"]`, and both must
+# de-duplicate the ranked list first — a chunk returned twice has been found once.
+
+
+def recall_at_k(k: int, *, retrieved: str = "retrieved", relevant: str = "relevant") -> Grader:
+    """What fraction of this case's relevant chunks came back in the top k.
+
+    `passed` means every one of them; `value` is the fraction the report means. Refuses k below 1 at
+    build time.
+    """
+    raise NotImplementedError
+
+
+def reciprocal_rank(
+    *, k: int | None = None, retrieved: str = "retrieved", relevant: str = "relevant"
+) -> Grader:
+    """One over the rank of the first relevant chunk, zero if none came back.
+
+    Averaged over a dataset this is MRR. `k` truncates the list first, for an MRR@k matching what
+    the generator will see.
+    """
+    raise NotImplementedError

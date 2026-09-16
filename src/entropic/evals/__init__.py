@@ -22,6 +22,8 @@ from entropic.evals.grade import (
     exact_match,
     field_match,
     pydantic_valid,
+    recall_at_k,
+    reciprocal_rank,
     regex,
 )
 from entropic.evals.judge import LlmJudge, Verdict
@@ -45,6 +47,8 @@ __all__ = [
     "field_match",
     "load_jsonl",
     "pydantic_valid",
+    "recall_at_k",
+    "reciprocal_rank",
     "regex",
     "run_eval",
     "to_markdown",

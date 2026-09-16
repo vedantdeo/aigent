@@ -206,3 +206,72 @@
   the graph as a known hazard rather than bought. Worth restating because it bit us in reverse this
   week: the value of the caching work was 1,148 tokens of `output_format` schema, and had the prompt
   been the only thing behind the breakpoint it would have been under the minimum and cached nothing.
+
+## Week 2 (2026-09-14 to 2026-09-20)
+- 09-14: Week 2 laid out as a **skeleton to write by hand**, the same arrangement as `underhood` on
+  Track B: signatures and docstrings in `src/`, the tests written in full as the specification, and
+  `uv run pytest -q` as the to-do list. 436 green, 58 red on purpose. What I have to write:
+  `week02/chunk.py` (four splitters), `week02/embed.py` (`LocalEmbedder`), `week02/store.py`
+  (brute-force cosine), `grade.recall_at_k` and `grade.reciprocal_rank`, and
+  `report._metrics_table`. `config.py` holds every constant they read; `Score.value` is in place,
+  because a dataclass field is shape rather than logic.
+- 09-14: three design decisions settled before any of it is written, each recorded where the code
+  will have to honour it.
+  - **Labels are quotes, not chunk ids.** Chunk ids are positional, so they deliberately do not
+    survive a re-chunk — the 43rd chunk of a differently-split document is different text.
+    Labelling ids would mean re-labelling for every chunking strategy, and then the four strategies
+    could not appear as four columns of one table. `Inventory.containing` resolves a labelled
+    sentence against whichever inventory is being scored, which is the ticker directory's rule one
+    week on: code does the join, the model is never asked where the answer lives. A quote that
+    resolves to nothing is a finding rather than a bad label — the chunker split the answer across
+    a boundary, so that strategy has capped its own recall before the embedder runs. Invariant 17.
+  - **`Score` needed a number.** The seam note predicted the retrieval metrics would need no
+    harness change; half right. The free-task path (`Outcome(usage=None)`) needs nothing, but a
+    reciprocal rank of 0.5 is not a failure, and a boolean column averages rank 2 and rank 40 into
+    the same nothing. Hence `Score.value` and a means table beside the pass-rate table. The test
+    that pins why both belong: a retriever finding the right chunk *every* time and never at rank 1
+    reads 0/4 in the summary and 0.500 in the metrics.
+  - **`fixed` must not snap to word boundaries.** It is the baseline the other three are measured
+    against, and a baseline quietly improved flatters everything compared against it. The test
+    asserts the mid-word cut rather than apologising for it.
+- 09-14: two traps written into the specs because they are silent when missed. BGE v1.5 wants its
+  instruction prefix on the **query side only** — embed both sides alike and retrieval still works,
+  just measurably worse, with nothing in the output to say so. And the model reads 512 tokens and
+  drops the rest without a word, so `count_truncated` has to count what a character-budgeted chunker
+  actually fed it; a strategy whose recall looks bad gets checked there before it gets blamed.
+- 09-14: `Inventory.build` has to refuse two documents sharing a `doc_id`. Their chunk ids would
+  collide, `by_id` would keep whichever came last, and every label naming one would resolve to the
+  wrong text with nothing raised — the same silent shape as the `setdefault` near-miss in the ticker
+  directory three days ago (`SBI` vs `SBI Cards`).
+- 09-14: deps added for the week — `sentence-transformers` (torch, transformers, numpy) and `pypdf`.
+  The first dependencies that are not about talking to Anthropic, because Anthropic ships no
+  embedding model. MPS confirmed available; `bge-small-en-v1.5` is 384 dimensions, 512 tokens.
+- Next: fill the skeleton top-down (`sentences` → `headings` → splitters → `Inventory` → store →
+  graders → metrics table), then the corpus: annual report PDFs into `Document` with `page_starts`
+  so citations survive, then the question set labelled with quotes.
+- 09-16: `week02/` written by hand against the tests — the four splitters, `LocalEmbedder`, and the
+  brute-force store. 38 tests green. Findings worth keeping, in the order they bit: the overlap
+  step was off by one (`curr_index - overlap + 1` gives no overlap at all at `overlap=1`, and at
+  `overlap=0` it skips a sentence and then runs off the end of the span list); chunk text has to be
+  stripped or no chunk ends on a full stop, since a sentence span carries its trailing whitespace by
+  design; and `by_sentence` had to **lose** the `CHUNK_MIN_CHARS` floor entirely. That last one is
+  the real lesson — a tiny sentence in front of an over-long one was flushed alone, dropped for
+  being short, and never revisited, so `containing` reported the quote inside it as split across a
+  boundary when the text had simply been deleted. The floor guards artefacts of the *splitting
+  mechanism*; packing whole sentences produces none, so bounding both ends only cost text. `fixed`
+  and `by_heading` keep it, and the test that proves a drop moved to `fixed` where it is real.
+- 09-16: `EMBED_DIMENSIONS`, `EMBED_MAX_TOKENS` and the query prefix now come off the loaded model
+  rather than from constants. The prefix is the interesting one: bge-small-en-v1.5 **cannot**
+  declare it — its `config_sentence_transformers.json` was written by sentence-transformers 2.2.2
+  and the `prompts` mechanism postdates it, so `model.prompts` is `{'query': '', 'document': ''}`.
+  The string exists only as prose in the model card's comparison table. So `LocalEmbedder` prefers
+  what the model declares and falls back to `EMBED_QUERY_PREFIX`, and the constant is documented as
+  transcribed-by-hand rather than authoritative. A two-document probe had the prefix *narrowing*
+  the margin slightly, which is far too small a sample to mean anything — it is a variant to
+  measure once the question set exists, not a setting to argue about.
+- 09-16: comment and docstring rule rewritten in both `CLAUDE.md` files. The old one sent paragraphs
+  *into* docstrings, which is exactly how they got long; the new one says a comment is one line, a
+  docstring is a sentence or two, and rationale belongs in this file or the knowledge graph. Applied
+  across the repo: 5,588 lines to 5,015, prose from 22% to 13%, no behaviour changed and the test
+  count identical either side. All 98 graph anchors recomputed, since every line number moved.
+- Next: `recall_at_k`, `reciprocal_rank`, `_metrics_table`, then the corpus.

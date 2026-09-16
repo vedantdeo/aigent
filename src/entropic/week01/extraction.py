@@ -1,40 +1,10 @@
-"""Week 1, Project 1a: the first eval with real money behind it.
+"""Week 1, Project 1a: structured extraction over labelled headlines, with an eval behind it.
 
-    uv run python -m entropic.week01.extraction --yes
+uv run python -m entropic.week01.extraction --yes
 
-Everything up to here was a primitive. This is the first thing shaped like a product: a schema, a
-prompt, a hand-labelled dataset, and a number that says whether a prompt change helped.
-
-What to notice:
-  - **The model names the company; code resolves the ticker.** The model returns whatever the
-    headline says — "Infy", "HUL", "L&T" — and `Resolver` maps that to an NSE symbol through the
-    directory. A dict lookup is exact, free, and cannot hallucinate `HEROMOTOCORP` for
-    `HEROMOTOCO`. Asking a frontier model to do a join is paying frontier rates for `dict.get`.
-    Eleven of the twenty-nine tickers here are not derivable from any name the headline uses, so
-    this is most of the field's difficulty removed by construction rather than by prompting.
-  - **A mention the directory does not know is a gap in the directory, not a wrong answer.** It
-    resolves to `None`, the row fails honestly, and `main` prints the mentions to add. The failure
-    mode of a lookup is a to-do list; the failure mode of a guess is a plausible wrong symbol.
-  - **The task owns its call.** `extraction_task` returns a `Task`, which is `Case -> Outcome`. The
-    runner never learns that an API is involved, which is why the same runner grades Week 2's
-    retrieval function for free. Resolution happens inside the task, so the harness needs no
-    concept of post-processing either.
-  - **A refusal to parse is an `Outcome` with an error, not an exception.** Same rule as tool
-    errors: one bad row is data about the system, not the end of the run.
-  - **Two variants, one dataset.** A single score is unreadable — 71% of what? Two prompts over the
-    same 30 rows is a comparison, and the per-field table says which field the difference is in.
-  - **The output cap is sized for the answer.** `MAX_TOKENS_HEADLINE` is 384, not the 2048 the
-    paper-summary demo uses; the pre-flight guard prices the full cap, so an oversized one makes a
-    cheap eval look unaffordable — at 2048 this run's worst case is $3.19 against a $2.00 ceiling.
-    It started at 256 and that clipped one row in 60 on the first live run, which is the other edge
-    of the same knife: too tight loses rows, too loose refuses the run.
-  - **A tie-break the model can apply beats a judgment call it has to guess.** `METRICS` is a total
-    order and the `metric` description says how to use it. A headline naming two metrics with no
-    stated rule produces a label that is a coin flip, and the miss reads as a model failure when it
-    is a spec failure.
-  - **The conventions live in the field descriptions**, which the model sees. Few-shot then shows
-    them being applied. If a rule only ever appears in the examples, the zero-shot arm is being
-    punished for a rule nobody told it.
+The model names the company as the headline writes it and `Resolver` maps that to an NSE symbol; a
+mention the directory does not know resolves to None and is reported as a gap in the directory. Two
+prompt variants over one dataset, so the score is a comparison rather than a bare number.
 """
 
 from __future__ import annotations
@@ -130,32 +100,22 @@ class Company(TypedDict):
 
 
 def load_directory(path: Path = DIRECTORY) -> dict[str, Company]:
-    """Ticker -> registered name and the forms a headline actually uses.
-
-    Reference data, not settings. It grounds the dataset's `ticker` labels — a label outside it is
-    unfalsifiable — and it is what `Resolver` looks up.
-    """
+    """Read the ticker directory: symbol -> registered name plus the aliases headlines use."""
     raw = json.loads(path.read_text(encoding="utf-8"))
     return cast(dict[str, Company], raw["companies"])
 
 
 def _key(mention: str) -> str:
-    """Normalise a company mention for lookup: case, punctuation, spacing and the Ltd suffix.
-
-    Deliberately not fuzzy. A lookup that matches approximately can be wrong in the same quiet way
-    a model can, and then neither half of the system is trustworthy.
-    """
+    """Normalised form a company mention is indexed and looked up by."""
     text = re.sub(r"\b(ltd|limited|inc|plc)\b\.?", "", mention.casefold())
     return re.sub(r"[^a-z0-9&]", "", text)
 
 
 @dataclass
 class Resolver:
-    """Company mention -> NSE ticker, through the directory. Records what it could not resolve.
+    """Company mention -> NSE symbol, by dictionary lookup.
 
-    `unresolved` is the deliverable when this fails: a counted list of mentions to add to
-    `evals/reference/nse-tickers.json`, rather than a set of rows that are wrong for no stated
-    reason.
+    Indexes with `setdefault`, so two companies claiming one spelling is a collision worth a test.
     """
 
     directory: dict[str, Company] = field(default_factory=load_directory)
@@ -215,12 +175,7 @@ THINKING: ThinkingConfigParam = (
 
 @dataclass(frozen=True)
 class Variant:
-    """One arm of an eval: the system prompt, and whether it travels behind a cache breakpoint.
-
-    The two axes are independent on purpose. Prompt *content* changes what the model answers;
-    a breakpoint changes only what the answer costs, so holding one fixed while moving the other
-    is what makes either table readable.
-    """
+    """One arm of the eval: a name, a system prompt, and whether to cache it."""
 
     system: str
     cache: bool = False
@@ -296,12 +251,9 @@ class Shape:
 def measure(
     client: anthropic.Anthropic, variant: Variant, headline: str, model: str = MODEL
 ) -> Shape:
-    """Count one row's request, for free, before deciding to pay for fifty of them.
+    """Count the tokens one variant's request really sends, through the free endpoint.
 
-    This used to divide the system prompt by four, which never saw `output_format` — and the
-    schema is the largest fixed part of every request here, four times `ZERO_SHOT`. The estimate
-    ran 37% low for the whole of Project 1a. Counting is not billed, so there was never a reason
-    to guess.
+    Counting the real request rather than estimating it: the schema alone is over a thousand tokens.
     """
     probe: list[MessageParam] = [{"role": "user", "content": f"headline: {headline}"}]
     total = client.messages.count_tokens(
@@ -315,11 +267,7 @@ def measure(
 
 
 def spread(cases: Sequence[Case], n: int) -> list[Case]:
-    """`n` cases taken evenly across the dataset, not the first `n`.
-
-    A smoke run is only worth its money if it can fail. The dataset is ordered roughly by how it was
-    written, so the first four rows are four easy ones; every k-th row spans the traps.
-    """
+    """Per-field pass rates for one variant, for the line `main` prints after a run."""
     if n >= len(cases):
         return list(cases)
     return list(cases[:: max(1, len(cases) // n)])[:n]

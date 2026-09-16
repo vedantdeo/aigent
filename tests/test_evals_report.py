@@ -5,10 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from anthropic.types import Usage
+from pydantic import JsonValue
 
 from entropic.config import MAX_USD_PER_EVAL, MODEL
 from entropic.evals.dataset import Case
-from entropic.evals.grade import Outcome, Score, exact_match, field_match
+from entropic.evals.grade import (
+    Outcome,
+    Score,
+    exact_match,
+    field_match,
+    recall_at_k,
+    reciprocal_rank,
+)
 from entropic.evals.report import to_markdown, write_report
 from entropic.evals.runner import EvalRun, RowResult, Task, run_eval
 
@@ -156,3 +164,54 @@ def test_the_header_names_a_grading_model_only_when_a_grader_spent() -> None:
     assert f"- model: `{MODEL}`" in report
     assert "- graded by: `claude-sonnet-5`" in report
     assert "graded by" not in to_markdown(_run()), "free graders name no model"
+
+
+# --- The metrics table -----------------------------------------------------------------------
+# A grader whose verdict is a number needs a different row in the report from one whose verdict is
+# a verdict, so these check both that the mean appears and that it stays out of an extraction run.
+
+
+def _retrieval_run() -> EvalRun:
+    cases = [
+        Case.model_validate(
+            {"id": f"q{i}", "input": {"question": "?"}, "expected": {"relevant": ["b"]}}
+        )
+        for i in range(1, 5)
+    ]
+
+    def retriever(ranked: list[JsonValue]) -> Task:
+        def task(case: Case) -> Outcome:
+            del case
+            return Outcome(output={"retrieved": ranked})
+
+        return task
+
+    return run_eval(
+        cases,
+        {"strong": retriever(["b", "x"]), "weak": retriever(["x", "b"])},
+        {"recall@1": recall_at_k(1), "mrr": reciprocal_rank()},
+        dataset="questions.jsonl",
+        digest="c0ffee123456",
+        progress=False,
+    )
+
+
+def test_the_metrics_table_means_each_numeric_grader_per_variant() -> None:
+    report = to_markdown(_retrieval_run())
+
+    assert "## Metrics (mean per case)" in report
+    assert "| metric | strong | weak |" in report
+    assert "| recall@1 | 1.000 | 0.000 |" in report
+    assert "| mrr | 1.000 | 0.500 |" in report
+
+
+def test_the_pass_rate_and_the_mean_answer_different_questions_about_the_same_grader() -> None:
+    """`weak` finds the right chunk every time and never at rank 1. Both facts belong here."""
+    report = to_markdown(_retrieval_run())
+
+    assert "| weak | 0/4 (0%) | 0/4 (0%) | 0 | $0.00000 |" in report
+    assert "| mrr | 1.000 | 0.500 |" in report
+
+
+def test_a_run_whose_graders_report_no_numbers_prints_no_metrics_table() -> None:
+    assert "## Metrics" not in to_markdown(_run())

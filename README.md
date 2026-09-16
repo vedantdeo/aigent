@@ -35,6 +35,47 @@ uv run python -m entropic.week01.failures > docs/failure-modes.md
 
 Each module also runs on its own: `uv run python -m entropic.week01.first_call`.
 
+## Week 2: retrieval — a skeleton to fill in
+
+`week02/` is signatures, docstrings and `NotImplementedError`. The tests are written and they are
+the specification, the same arrangement as the `underhood` repo on Track B:
+
+```bash
+uv run pytest -q             # red until you implement; the failures are the to-do list
+```
+
+| Module | You write | Verified against |
+|--------|-----------|------------------|
+| `week02/chunk.py` | `sentences`, `headings`, `fixed`, `by_sentence`, `by_heading`, `Inventory` | `tests/test_chunk.py` (28 rows) |
+| `week02/embed.py` | `LocalEmbedder` against the `Embedder` protocol | by hand: three paragraphs, three questions, right one first |
+| `week02/store.py` | `VectorStore.build`, `.search`, `rank_ids` | `tests/test_store.py` (9 tests, against a fake embedder) |
+| `evals/grade.py` | `recall_at_k`, `reciprocal_rank` | `tests/test_evals_graders.py` (19 rows) |
+| `evals/report.py` | `_metrics_table`, and its call in `to_markdown` | `tests/test_evals_report.py` (2 tests) |
+
+Order: `sentences` → `headings` → the three splitters → `Inventory` → the store → the graders →
+the metrics table. `config.py` already holds every constant they read.
+
+Anthropic ships no embedding model, so this is the one part of Entropic that runs on someone else's
+weights — `bge-small-en-v1.5` through `sentence-transformers`, on the laptop's GPU. It costs nothing
+to run, which is the point: a retrieval number can be re-measured as often as the question is worth
+asking, and the eval harness already treats a task that spends nothing as a first-class one.
+
+Brute force on purpose. A dot product against 100k rows of 384 floats is a few milliseconds, and it
+is the *exact* answer — so when retrieval misses, the miss belongs to the chunking or the embedding
+rather than to a recall knob buried in an index. Chroma and LanceDB come when the corpus makes that
+false.
+
+Two retrieval graders join the harness: `recall_at_k` (what fraction of the relevant chunks came
+back in the top k) and `reciprocal_rank` (one over the rank of the first one, averaged into MRR by
+the report). Both report a **number** as well as a verdict, which is why the report needs a means
+table — a retriever that reliably finds two of three relevant chunks scores 0% on strict pass rate
+and 0.667 on recall, and only one of those two numbers is useful on its own.
+
+Retrieval labels are **quotes, not chunk ids**. Chunk ids are positional, so they do not survive a
+re-chunk; a labelled sentence does, and `Inventory.containing` resolves it to whichever ids hold it
+in the inventory being scored. That is what lets four chunking strategies be four columns of one
+table instead of four runs nobody can compare.
+
 ## Budget guards
 
 Three ceilings in USD, each overridable in `.env`. A tripped guard raises `BudgetExceeded` with the
@@ -65,9 +106,10 @@ run = run_eval(
 print(write_report(run))
 ```
 
-Five graders ship: exact match, contains, regex, Pydantic validity, and `LlmJudge` — the only one
-that spends, and it is billed to the same ceiling as the task. A task that raises becomes one error
-row rather than a lost run, and a run that hits the ceiling keeps what it already paid for.
+Seven graders: exact match, contains, regex, Pydantic validity, `recall_at_k` and
+`reciprocal_rank` for a retriever (Week 2, unwritten), and `LlmJudge` — the only one that spends, and it is billed to
+the same ceiling as the task. A task that raises becomes one error row rather than a lost run, and a
+run that hits the ceiling keeps what it already paid for.
 
 The judge runs on `ENTROPIC_JUDGE_MODEL` (`claude-sonnet-5`), not `ENTROPIC_MODEL` — a model asked
 to grade its own output favours it, and applying a rubric is an easier job than the one being
@@ -106,11 +148,12 @@ caught before the graph goes stale.
 - `src/entropic/tools.py`   framework-free tools reused from Week 1 through the capstone
 - `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
 - `src/entropic/week01/`    the five primitives
+- `src/entropic/week02/`    retrieval: chunking, local embeddings, the vector store (skeleton)
 - `src/entropic/evals/`     the eval harness: dataset, graders, runner, report
 - `evals/`                  eval datasets and the reports they produce
 - `tests/`                  unit tests plus a free API smoke test
 - `LOG.md`                  weekly log: what shipped, what broke, numbers
-- `CLAUDE.md`               the three project rules Claude sessions follow here
+- `CLAUDE.md`               the eight project rules Claude sessions follow here
 - `docs/knowledge-graph.md` map of every module, edge, and invariant in the repo
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind
 - `scripts/`                the rule that hook and CI share

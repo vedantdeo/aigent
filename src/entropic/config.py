@@ -1,8 +1,6 @@
 """Settings: credentials, model choice, and the ceilings we are willing to spend.
 
-Values only, plus the one function that turns them into a client. What a call *costs*, and whether
-it is allowed, lives in `pricing` — this module knows nothing about money beyond the three numbers
-below.
+Values only, plus the one function that builds a client. Pricing and enforcement live in `pricing`.
 """
 
 from __future__ import annotations
@@ -16,18 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-# Two defaults, because the two jobs are not the same job.
-#
-# MODEL is what Entropic thinks with: the CLI, the tool loop, the primitives. Pick for capability.
-#
-# JUDGE_MODEL is what grades an eval. Deliberately a *different* model, for two reasons. A model
-# asked to grade its own output favours it — using another model removes that by construction
-# instead of by remembering to. And applying a written rubric to a short answer is a far easier task
-# than producing the answer, so paying Opus rates per row to do it is waste: a judge call happens
-# once per case, which doubles the cost of an eval if you let it.
-#
-# Point both at the same model and you are letting it mark its own homework. Sometimes that is fine
-# — a format check, a yes/no with no room to flatter itself — but make it a choice.
+# MODEL is what Entropic thinks with; JUDGE_MODEL grades an eval, and is deliberately not MODEL.
 DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_JUDGE_MODEL = "claude-sonnet-5"
 MODEL: str = os.environ.get("ENTROPIC_MODEL", DEFAULT_MODEL)
@@ -35,10 +22,7 @@ JUDGE_MODEL: str = os.environ.get("ENTROPIC_JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
 
 
 # --- Budget ceilings -------------------------------------------------------------------------
-# Three ceilings in USD, each overridable from .env. They sit at different scales: one request, one
-# interactive run, one eval over a whole dataset. The numbers live here with the rest of the
-# settings; `pricing` is what enforces them. A tripped guard is information, not an obstacle: the
-# message says what you were about to spend and which knob to turn.
+# Three scales: one request, one interactive run, one eval over a dataset. `pricing` enforces them.
 
 MAX_USD_PER_REQUEST: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_REQUEST", "0.25"))
 MAX_USD_PER_RUN: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_RUN", "1.00"))
@@ -46,13 +30,8 @@ MAX_USD_PER_EVAL: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_EVAL", "2.0
 
 
 # --- Call shape ------------------------------------------------------------------------------
-# Output caps, one per call site. They are here rather than next to each call so the whole set is
-# visible at once — side by side you can see that the agent loop and chat are the expensive ones and
-# a first call is not, which is invisible when each number sits alone in its own module.
-#
-# max_tokens is a ceiling, not a target: you are billed for what comes back, but the pre-flight
-# guard prices the full cap, so a number set far above what a call needs will trip the per-request
-# ceiling for no reason. Thinking tokens count against it too.
+# One output cap per call site. The pre-flight guard prices the full cap, so an oversized number
+# trips the per-request ceiling for nothing; thinking tokens count against it too.
 
 MAX_TOKENS_FIRST_CALL = 1024
 MAX_TOKENS_STREAMING = 4096
@@ -62,20 +41,42 @@ MAX_TOKENS_TOOL_LOOP = 4096
 MAX_TOKENS_CHAT = 4096
 MAX_TOKENS_JUDGE = 1024
 
-# Extended thinking, for runs that are a measurement rather than a conversation. On by default; it
-# is billed as output, counts against max_tokens, and wobbles — three identical calls returned 192,
-# 88 and 203 output tokens and two different records, and it clipped two rows of a 50-row eval by
-# eating the budget before the answer. Claude 5 deprecated temperature and top_p, so this is the
-# only determinism knob the API still offers.
+# Off for eval runs: thinking wobbles, and Claude 5 deprecated temperature and top_p.
 THINKING_EVAL = False
 
-# How many times the agent may go round before giving up. An uncapped loop is a cost bug waiting to
-# happen; the two dollar ceilings back this up rather than replace it.
+# How many times the agent may go round before giving up.
 MAX_AGENT_TURNS = 8
 
-# How many failing rows an eval report prints before it truncates. Enough to see a pattern, not so
-# many that the table scrolls off.
+# How many failing rows an eval report prints before it truncates.
 MAX_FAILURES_SHOWN = 10
+
+
+# --- Retrieval -------------------------------------------------------------------------------
+# Week 2's knobs. The embedding model runs locally, so none of these spends anything.
+
+# Its 384 dimensions and 512-token limit are read off the model, not set here.
+EMBED_MODEL = "BAAI/bge-small-en-v1.5"
+EMBED_BATCH = 64
+
+# Query side only. A fallback: `LocalEmbedder` prefers what the model declares in `prompts`.
+# Transcribed from the model card, so re-check it against the card when changing `EMBED_MODEL`.
+EMBED_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+# In characters, not tokens: the tokenizer belongs to the embedding model. ~1200 chars is ~300
+# tokens, leaving room under the model's 512 before it starts truncating.
+CHUNK_CHARS = 1200
+CHUNK_OVERLAP_CHARS = 200
+CHUNK_OVERLAP_SENTENCES = 1
+CHUNK_MAX_CHARS = 2000
+CHUNK_MIN_CHARS = 80
+
+# What `by_heading` accepts as a heading in PDF text, where no markup survives to say so.
+HEADING_MAX_CHARS = 80
+HEADING_MAX_WORDS = 12
+HEADING_MIN_CAPITAL_RATIO = 0.6
+
+# How many chunks a retriever returns, and therefore how many an answer can cite.
+TOP_K = 5
 
 
 def has_credentials() -> bool:
@@ -88,9 +89,7 @@ def has_credentials() -> bool:
 def get_client() -> anthropic.Anthropic:
     """Build the SDK client.
 
-    An organization-level API key is not tied to a workspace, and the API refuses such a key unless
-    every request names one via the `anthropic-workspace-id` header. A workspace-scoped key needs no
-    header. Set ANTHROPIC_WORKSPACE_ID in .env only if you use an org-level key.
+    Set ANTHROPIC_WORKSPACE_ID only for an org-level key; the API refuses one without the header.
     """
     if not has_credentials():
         raise SystemExit(

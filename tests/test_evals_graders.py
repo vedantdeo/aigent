@@ -1,21 +1,29 @@
-"""The four free graders as input/output tables, plus the judge with its verdict scripted.
+"""Every free grader as an input/output table, plus the judge with its verdict scripted.
 
-Everything here runs without a network call, which is the point: graders are where an eval's
-opinions live, and opinions you cannot test cheaply do not get tested.
-
-A table is the shape these want. Every free grader is a pure function of (case, outcome), so a row
-says the whole thing — what went in, whether it should pass, what the message has to mention — and
-a failing row names itself in the pytest output, which a five-assert function cannot.
+A row says the whole thing — what went in, whether it should pass, what the message must mention —
+and names itself in the pytest output.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 import pytest
 from pydantic import BaseModel, JsonValue
 
 from entropic.config import JUDGE_MODEL, MODEL
 from entropic.evals.dataset import Case
-from entropic.evals.grade import Outcome, contains, exact_match, field_match, pydantic_valid, regex
+from entropic.evals.grade import (
+    Grader,
+    Outcome,
+    contains,
+    exact_match,
+    field_match,
+    pydantic_valid,
+    recall_at_k,
+    reciprocal_rank,
+    regex,
+)
 from entropic.evals.judge import LlmJudge, Verdict
 
 from .conftest import MakeJudge
@@ -79,11 +87,7 @@ def test_contains_looks_for_the_label_inside_the_answer(answer: str, passed: boo
     ],
 )
 def test_regex_matches_the_value_as_written(pattern: str, value: JsonValue, passed: bool) -> None:
-    """Neither side is normalised, unlike exact_match. A format check has to be able to fail.
-
-    Casefolding the subject would make `^[A-Z]+$` unsatisfiable; casefolding the pattern would be
-    worse still, since `\\D` casefolds to `\\d` and silently inverts the check.
-    """
+    """Neither side is normalised: casefolding a pattern would turn `\\D` into `\\d`."""
     assert regex("v", pattern=pattern)(_case(), _out(v=value)).passed is passed
 
 
@@ -175,3 +179,96 @@ def test_judge_does_not_spend_on_a_row_the_task_already_failed(make_judge: MakeJ
 
     assert not score.passed
     assert log.counted == 0, "no call at all for a row with no answer to grade"
+
+
+# --- Retrieval ------------------------------------------------------------------------------
+# Both graders read a ranked list of ids against a labelled set, so one pair of helpers serves both
+# tables. `relevant` is the label; `retrieved` is what the retriever ranked.
+
+
+def _retrieval(relevant: Fields, retrieved: Fields) -> tuple[Case, Outcome]:
+    return (
+        Case.model_validate({"id": "q1", "input": {"question": "?"}, "expected": relevant}),
+        Outcome(output=retrieved),
+    )
+
+
+@pytest.mark.parametrize(
+    ("relevant", "retrieved", "k", "value", "passed"),
+    [
+        pytest.param(["b"], ["b", "c", "d"], 3, 1.0, True, id="the one relevant chunk, at rank 1"),
+        pytest.param(["b"], ["c", "d", "b"], 3, 1.0, True, id="at rank k, still inside"),
+        pytest.param(["b"], ["c", "d", "e", "b"], 3, 0.0, False, id="at rank k+1, just outside"),
+        pytest.param(["a", "b", "c"], ["a", "b", "z"], 3, 2 / 3, False, id="two of three found"),
+        pytest.param(["a", "b"], ["a", "b"], 5, 1.0, True, id="fewer retrieved than k"),
+        # A retriever that returns the same chunk five times has found one thing, not five. Without
+        # the de-duplication in `_id_list`, `b` here would sit at rank 6 and score zero.
+        pytest.param(["b"], ["a", "a", "a", "a", "a", "b"], 5, 1.0, True, id="repeats collapse"),
+    ],
+)
+def test_recall_at_k_counts_the_relevant_chunks_inside_the_top_k(
+    relevant: list[JsonValue], retrieved: list[JsonValue], k: int, value: float, passed: bool
+) -> None:
+    expected: Fields = {"relevant": relevant}
+    output: Fields = {"retrieved": retrieved}
+
+    score = recall_at_k(k)(*_retrieval(expected, output))
+
+    assert score.passed is passed, score.detail
+    assert score.value == pytest.approx(value), score.detail
+
+
+@pytest.mark.parametrize(
+    ("relevant", "retrieved", "k", "value", "passed"),
+    [
+        pytest.param(["b"], ["b", "c"], None, 1.0, True, id="first hit at rank 1"),
+        pytest.param(["b"], ["a", "b"], None, 0.5, False, id="first hit at rank 2"),
+        pytest.param(["b"], ["a", "c", "d", "b"], None, 0.25, False, id="first hit at rank 4"),
+        pytest.param(["b"], ["a", "c"], None, 0.0, False, id="not retrieved at all"),
+        # Rank is what decides whether a chunk survives the context window, so an MRR@k has to cut
+        # the list where the generator will: found at rank 3 is not found when two are passed on.
+        pytest.param(["b"], ["a", "c", "b"], 2, 0.0, False, id="found, but below the k handed on"),
+        pytest.param(["y", "b"], ["a", "b", "y"], None, 0.5, False, id="the earliest of several"),
+    ],
+)
+def test_reciprocal_rank_is_one_over_the_rank_of_the_first_relevant_chunk(
+    relevant: list[JsonValue], retrieved: list[JsonValue], k: int | None, value: float, passed: bool
+) -> None:
+    expected: Fields = {"relevant": relevant}
+    output: Fields = {"retrieved": retrieved}
+
+    score = reciprocal_rank(k=k)(*_retrieval(expected, output))
+
+    assert score.passed is passed, score.detail
+    assert score.value == pytest.approx(value), score.detail
+
+
+@pytest.mark.parametrize(
+    ("relevant", "retrieved", "says"),
+    [
+        pytest.param({}, {"retrieved": ["a"]}, "dataset", id="no label on the case"),
+        pytest.param({"relevant": "a"}, {"retrieved": ["a"]}, "list", id="label is a bare string"),
+        pytest.param({"relevant": []}, {"retrieved": ["a"]}, "nothing", id="label is empty"),
+        pytest.param({"relevant": ["a"]}, {}, "output", id="task returned no ranked list"),
+        pytest.param({"relevant": ["a"]}, {"retrieved": [1, 2]}, "list", id="ids are not strings"),
+    ],
+)
+def test_both_retrieval_graders_say_which_side_is_unusable(
+    relevant: Fields, retrieved: Fields, says: str
+) -> None:
+    case, outcome = _retrieval(relevant, retrieved)
+
+    for grader in (recall_at_k(3), reciprocal_rank()):
+        score = grader(case, outcome)
+        assert score.passed is False
+        assert says in score.detail
+
+
+@pytest.mark.parametrize(
+    "build", [lambda: recall_at_k(0), lambda: reciprocal_rank(k=0)], ids=["recall", "rr"]
+)
+def test_a_k_below_one_is_refused_when_the_grader_is_built_not_when_it_runs(
+    build: Callable[[], Grader],
+) -> None:
+    with pytest.raises(ValueError, match="at least 1"):
+        build()

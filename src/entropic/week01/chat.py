@@ -1,16 +1,7 @@
-"""Week 1, step 5: a multi-turn CLI chat with a running cost meter.
+"""Multi-turn conversation with a running cost meter.
 
-    uv run python -m entropic.week01.chat
-
-Commands:  /effort low|medium|high|xhigh   /reset   /quit
-
-What to notice:
-  - History grows every turn, and you pay for all of it every turn. Watch input tokens climb.
-  - Effort changes cost and latency far more than most prompt tweaks. Try the same question at low
-    and high and compare.
-  - The system prompt is identical every call. That is what makes it cacheable (Week 2).
-  - Two guards. A turn that could exceed the per-request ceiling is not sent (use /reset). The
-    session ends when the per-run ceiling is crossed.
+Keeps the whole history in memory and re-sends it each turn, so cost grows quadratically — the meter
+is there to make that visible.
 """
 
 from __future__ import annotations

@@ -1,26 +1,8 @@
-"""Week 1, step 4: the agent loop, written by hand.
+"""The agent loop, written by hand. What every framework wraps.
 
-    uv run python -m entropic.week01.tool_loop "your task for the agent"
-
-This is the whole secret. Every agent framework is a wrapper around this loop:
-
-    while True:
-        response = model(messages, tools)
-        if no tool calls: break
-        run the tools, append the results, continue
-
-What to notice:
-  - The assistant turn (with its tool_use blocks) goes back into history verbatim.
-  - All tool results for one turn go back in ONE user message. Splitting them teaches the model to
-    stop making parallel calls.
-  - Errors go back as tool_result with is_error=True, not as exceptions. The model reads them.
-  - A loop with no iteration cap is a cost bug waiting to happen.
-  - Two dollar ceilings back up the turn cap. The per-request check runs before each call and
-    refuses to send if the worst case is over budget. The per-run budget trips right after the
-    call that crosses it.
-  - The loop's logic is unit-tested with a scripted fake client in tests/test_tool_loop.py, so the
-    rules above are checked without spending anything. The live demo task lives there too, behind
-    the `live` marker.
+Four rules matter: the assistant turn is echoed back verbatim, every tool result for one turn goes
+back in one user message, a tool error is a `tool_result` with `is_error` rather than an exception,
+and the loop is capped.
 """
 
 from __future__ import annotations
