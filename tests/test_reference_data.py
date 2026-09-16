@@ -15,7 +15,7 @@ from typing import cast
 
 import pytest
 
-from entropic.week01.extraction import DIRECTORY
+from entropic.extraction.headlines import DIRECTORY
 
 Pairs = list[tuple[str, object]]
 

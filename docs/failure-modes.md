@@ -1,7 +1,7 @@
 # Failure modes
 
 What this codebase does when things go wrong, provoked rather than described.
-Regenerate with `uv run python -m entropic.week01.failures > docs/failure-modes.md`.
+Regenerate with `uv run python -m entropic.primitives.failures > docs/failure-modes.md`.
 Every row is free: a rejected request is never billed, and the last two never leave the machine.
 
 | failure | provoked by | what you get |

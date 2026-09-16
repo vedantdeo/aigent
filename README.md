@@ -16,44 +16,44 @@ uv run entropic chat        # or: call, stream, extract, loop "task"
 
 Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK finds the profile itself.
 
-## Week 1: the primitives Entropic is made of
+## The primitives Entropic is made of
 
 | Mode | Module | What it shows |
 |------|--------|---------------|
-| `call` | `week01/first_call.py` | one call, token count, cost |
-| `stream` | `week01/streaming.py` | thinking and text arriving separately |
-| `extract` | `week01/structured_output.py` | schema in, validated object out |
-| `loop` | `week01/tool_loop.py` | the agent loop, by hand; takes a task |
-| `chat` | `week01/chat.py` | multi-turn conversation with a cost meter |
+| `call` | `primitives/first_call.py` | one call, token count, cost |
+| `stream` | `primitives/streaming.py` | thinking and text arriving separately |
+| `extract` | `primitives/structured_output.py` | schema in, validated object out |
+| `loop` | `primitives/tool_loop.py` | the agent loop, by hand; takes a task |
+| `chat` | `primitives/chat.py` | multi-turn conversation with a cost meter |
 
-`week01/failures.py` is not a mode — it provokes nine failure modes and prints the table in
+`primitives/failures.py` is not a mode — it provokes nine failure modes and prints the table in
 `docs/failure-modes.md`. It costs nothing to run: a request rejected with a 4xx is never billed.
 
 ```
-uv run python -m entropic.week01.failures > docs/failure-modes.md
+uv run python -m entropic.primitives.failures > docs/failure-modes.md
 ```
 
-Each module also runs on its own: `uv run python -m entropic.week01.first_call`.
+Each module also runs on its own: `uv run python -m entropic.primitives.first_call`.
 
-## Week 2: retrieval — a skeleton to fill in
+## Retrieval
 
-`week02/` is signatures, docstrings and `NotImplementedError`. The tests are written and they are
-the specification, the same arrangement as the `underhood` repo on Track B:
+| Module | What it does |
+|--------|--------------|
+| `retrieval/chunk.py` | `Document` → `Chunk`, four ways: fixed, fixed with overlap, by sentence, by heading |
+| `retrieval/embed.py` | chunks → L2-normalised vectors, locally and free |
+| `retrieval/store.py` | vectors → a ranked list of chunk ids, brute-force cosine over NumPy |
+
+Written against the tests rather than the other way round, the same arrangement as the `underhood`
+repo. What is still a stub is what is still red:
 
 ```bash
 uv run pytest -q             # red until you implement; the failures are the to-do list
 ```
 
-| Module | You write | Verified against |
-|--------|-----------|------------------|
-| `week02/chunk.py` | `sentences`, `headings`, `fixed`, `by_sentence`, `by_heading`, `Inventory` | `tests/test_chunk.py` (28 rows) |
-| `week02/embed.py` | `LocalEmbedder` against the `Embedder` protocol | by hand: three paragraphs, three questions, right one first |
-| `week02/store.py` | `VectorStore.build`, `.search`, `rank_ids` | `tests/test_store.py` (9 tests, against a fake embedder) |
-| `evals/grade.py` | `recall_at_k`, `reciprocal_rank` | `tests/test_evals_graders.py` (19 rows) |
-| `evals/report.py` | `_metrics_table`, and its call in `to_markdown` | `tests/test_evals_report.py` (2 tests) |
-
-Order: `sentences` → `headings` → the three splitters → `Inventory` → the store → the graders →
-the metrics table. `config.py` already holds every constant they read.
+| Still to write | Verified against |
+|----------------|------------------|
+| `evals/grade.py` — `recall_at_k`, `reciprocal_rank` | `tests/evals/test_graders.py` (19 rows) |
+| `evals/report.py` — `_metrics_table` and its call in `to_markdown` | `tests/evals/test_report.py` (2 tests) |
 
 Anthropic ships no embedding model, so this is the one part of Entropic that runs on someone else's
 weights — `bge-small-en-v1.5` through `sentence-transformers`, on the laptop's GPU. It costs nothing
@@ -107,7 +107,7 @@ print(write_report(run))
 ```
 
 Seven graders: exact match, contains, regex, Pydantic validity, `recall_at_k` and
-`reciprocal_rank` for a retriever (Week 2, unwritten), and `LlmJudge` — the only one that spends, and it is billed to
+`reciprocal_rank` for a retriever (unwritten), and `LlmJudge` — the only one that spends, billed to
 the same ceiling as the task. A task that raises becomes one error row rather than a lost run, and a
 run that hits the ceiling keeps what it already paid for.
 
@@ -145,14 +145,15 @@ caught before the graph goes stale.
 - `src/entropic/cli.py`     the `entropic` command and its menu
 - `src/entropic/config.py`  every tunable constant bar the tool pair's: models, ceilings, caps
 - `src/entropic/pricing.py` token prices, cost arithmetic, the two budget guards
-- `src/entropic/tools.py`   framework-free tools reused from Week 1 through the capstone
+- `src/entropic/tools.py`   framework-free tools, reused by everything that calls a tool
 - `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
-- `src/entropic/week01/`    the five primitives
-- `src/entropic/week02/`    retrieval: chunking, local embeddings, the vector store (skeleton)
+- `src/entropic/primitives/` the five modes, plus the failure catalogue
+- `src/entropic/retrieval/` chunking, local embeddings, the vector store
+- `src/entropic/extraction/` Project 1a: headline extraction, graded by the harness
 - `src/entropic/evals/`     the eval harness: dataset, graders, runner, report
 - `evals/`                  eval datasets and the reports they produce
 - `tests/`                  unit tests plus a free API smoke test
-- `LOG.md`                  weekly log: what shipped, what broke, numbers
+- `LOG.md`                  the log: what shipped, what broke, numbers
 - `CLAUDE.md`               the eight project rules Claude sessions follow here
 - `docs/knowledge-graph.md` map of every module, edge, and invariant in the repo
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind

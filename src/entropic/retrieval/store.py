@@ -13,8 +13,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from entropic.config import TOP_K
-from entropic.week02.chunk import Inventory
-from entropic.week02.embed import Embedder, Vectors
+from entropic.retrieval.chunk import Inventory
+from entropic.retrieval.embed import Embedder, Vectors
 
 
 @dataclass(frozen=True)

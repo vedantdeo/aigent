@@ -22,7 +22,7 @@ Blank lines and `//` lines are skipped, which is where a case you have not decid
 
 A case with no `expected` is an **unlabelled** input, not a free pass: `field_match` counts a
 missing label as wrong, so a run that includes one drags its per-field table down. Filter to
-`[c for c in cases if c.expected]` before scoring accuracy — `week01.extraction.main` does, and
+`[c for c in cases if c.expected]` before scoring accuracy — `extraction.headlines.main` does, and
 says how many it skipped.
 
 **Label numbers as floats.** `field_match` compares text, and `str(12) != str(12.0)`, so a label

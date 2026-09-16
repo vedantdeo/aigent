@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> None:
     if not task:
         raise SystemExit(
             'usage: uv run entropic loop "<task>"  '
-            'or  uv run python -m entropic.week01.tool_loop "<task>"'
+            'or  uv run python -m entropic.primitives.tool_loop "<task>"'
         )
     print(f"task: {task}\n")
     answer = run(task)

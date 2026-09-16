@@ -11,7 +11,7 @@ from collections.abc import Callable
 import pytest
 
 from entropic.config import CHUNK_MIN_CHARS
-from entropic.week02.chunk import (
+from entropic.retrieval.chunk import (
     Document,
     Inventory,
     Splitter,

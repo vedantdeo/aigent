@@ -9,7 +9,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from entropic.week01 import chat, first_call, streaming, structured_output, tool_loop
+from entropic.primitives import chat, first_call, streaming, structured_output, tool_loop
 
 
 @dataclass(frozen=True)

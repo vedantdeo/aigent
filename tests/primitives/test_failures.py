@@ -16,8 +16,8 @@ from anthropic.types import Usage
 
 from entropic.config import MODEL
 from entropic.pricing import Budget, BudgetExceeded
-from entropic.week01 import failures as module
-from entropic.week01.failures import (
+from entropic.primitives import failures as module
+from entropic.primitives.failures import (
     FAILURES,
     Failure,
     _per_request_ceiling,

@@ -1,6 +1,6 @@
 """Week 1, Project 1a: structured extraction over labelled headlines, with an eval behind it.
 
-uv run python -m entropic.week01.extraction --yes
+uv run python -m entropic.extraction.headlines --yes
 
 The model names the company as the headline writes it and `Resolver` maps that to an NSE symbol; a
 mention the directory does not know resolves to None and is reported as a gap in the directory. Two
@@ -275,7 +275,7 @@ def spread(cases: Sequence[Case], n: int) -> list[Case]:
 
 def _parse(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="entropic.week01.extraction",
+        prog="entropic.extraction.headlines",
         description="Project 1a: structured extraction over hand-labelled headlines.",
     )
     parser.add_argument(

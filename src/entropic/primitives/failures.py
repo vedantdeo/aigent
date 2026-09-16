@@ -122,7 +122,9 @@ def main() -> None:
     client = get_client()
     print("# Failure modes\n")
     print("What this codebase does when things go wrong, provoked rather than described.")
-    print("Regenerate with `uv run python -m entropic.week01.failures > docs/failure-modes.md`.")
+    print(
+        "Regenerate with `uv run python -m entropic.primitives.failures > docs/failure-modes.md`."
+    )
     print(
         "Every row is free: a rejected request is never billed, and the last two "
         "never leave the machine.\n"

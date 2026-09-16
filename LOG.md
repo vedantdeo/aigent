@@ -275,3 +275,12 @@
   across the repo: 5,588 lines to 5,015, prose from 22% to 13%, no behaviour changed and the test
   count identical either side. All 98 graph anchors recomputed, since every line number moved.
 - Next: `recall_at_k`, `reciprocal_rank`, `_metrics_table`, then the corpus.
+- 09-16: package reorganised by capability rather than by week. `week01/` was two different things
+  wedged together — five CLI demo modes and Project 1a, which has a dataset and an eval behind it —
+  so it split into `primitives/` and `extraction/headlines.py`; `week02/` became `retrieval/`. The
+  test tree mirrors the package (`tests/retrieval/`, `tests/evals/`, and so on), with `conftest.py`
+  staying at the root so its fixtures still reach everything. Moved with `git mv`, so history
+  follows the files. Nothing behavioural changed: 474 passing and 21 red either side. Every
+  `parents[N]` path computation survived because each module kept its depth. The graph's module ids,
+  diagram, edge list, test paths and all 98 anchors were rewritten with it — `extraction.py`
+  anchors became `headlines.py`, which is the rename a line-number check alone would have missed.

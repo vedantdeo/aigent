@@ -16,7 +16,7 @@ import pytest
 from anthropic.types import MessageTokensCount, Usage
 
 from entropic.evals.judge import LlmJudge, Verdict
-from entropic.week02.embed import Vectors
+from entropic.retrieval.embed import Vectors
 
 JUDGE_USAGE = Usage(input_tokens=200, output_tokens=30)
 RUBRIC = "The answer must name the company and the direction of the move."

@@ -10,11 +10,11 @@ from collections.abc import Sequence
 
 import pytest
 
-from entropic.week02.chunk import Document, Inventory, by_sentence
-from entropic.week02.embed import Vectors
-from entropic.week02.store import VectorStore, rank_ids
+from entropic.retrieval.chunk import Document, Inventory, by_sentence
+from entropic.retrieval.embed import Vectors
+from entropic.retrieval.store import VectorStore, rank_ids
 
-from .conftest import FAKE_DIMENSIONS, BagOfWordsEmbedder
+from ..conftest import FAKE_DIMENSIONS, BagOfWordsEmbedder
 
 REVENUE = "Revenue for the year rose seven per cent on stronger retail volumes across the country. "
 RISK = "Commodity price risk is hedged quarterly under a policy the board reviews every year now. "

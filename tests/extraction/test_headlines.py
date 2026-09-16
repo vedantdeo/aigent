@@ -19,7 +19,7 @@ from pydantic import JsonValue
 from entropic.config import MAX_TOKENS_HEADLINE, MODEL, THINKING_EVAL
 from entropic.evals.dataset import Case, load_jsonl
 from entropic.evals.runner import Task
-from entropic.week01.extraction import (
+from entropic.extraction.headlines import (
     CACHE_VARIANTS,
     DATASET,
     FEW_SHOT,

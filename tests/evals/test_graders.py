@@ -26,7 +26,7 @@ from entropic.evals.grade import (
 )
 from entropic.evals.judge import LlmJudge, Verdict
 
-from .conftest import MakeJudge
+from ..conftest import MakeJudge
 
 Fields = dict[str, JsonValue]
 

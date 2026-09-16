@@ -159,7 +159,7 @@ of this machine. Edit both, or neither.
 **In this repo:** `evals/reference/nse-tickers.json` is sorted by ticker and dumped with
 `dict(sorted(companies.items()))`. `tests/test_reference_data.py` holds the registry of files
 the rule covers and fails if any of them drifts. The counterexample
-sits in the same feature — `week01.extraction.METRICS` is a *total order* over the metric
+sits in the same feature — `extraction.headlines.METRICS` is a *total order* over the metric
 vocabulary, so alphabetising it would silently rewrite every tie-break the eval depends on.
 
 ## Comments and docstrings both stay short
@@ -214,7 +214,7 @@ of this machine. Edit both, or neither.
 
 **In this repo**, the machinery is already there and the rule is about respecting it:
 
-- Every paid entry point stops by default. `python -m entropic.week01.extraction` (add `--cache`
+- Every paid entry point stops by default. `python -m entropic.extraction.headlines` (add `--cache`
   for the caching arms) prints the per-arm token counts and a worst case, then exits; `--yes` is
   what sends the calls. Run it without `--yes` and paste what it prints — that is the number to get
   approved, not an estimate written from memory.

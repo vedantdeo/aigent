@@ -17,7 +17,7 @@ from entropic.evals.judge import Verdict
 from entropic.evals.runner import Task, run_eval
 from entropic.pricing import usage_cost
 
-from .conftest import MakeJudge
+from ..conftest import MakeJudge
 
 MODEL = "claude-opus-5"
 # $0.005 of input plus $0.025 of output on Opus.
