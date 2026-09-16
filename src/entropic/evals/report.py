@@ -31,8 +31,10 @@ def to_markdown(run: EvalRun, max_failures: int = MAX_FAILURES_SHOWN) -> str:
     lines += ["", "## Results", ""]
     lines += _summary_table(run)
 
-    # TODO(week2): the metrics section goes here, once `_metrics_table` is written. Guard it the
-    # way `per_field` is guarded below, so a run whose graders report no numbers prints no table.
+    metrics = _metrics_table(run)
+    if metrics:
+        lines += ["", "## Metrics (mean per case)", ""]
+        lines += metrics
 
     per_field = _per_field_table(run)
     if per_field:
@@ -100,7 +102,31 @@ def _metrics_table(run: EvalRun) -> list[str]:
     Apart from the summary because it answers a different question: a retriever finding two of three
     relevant chunks every time reads 0% there and 0.667 here.
     """
-    raise NotImplementedError
+    scored = [
+        grader
+        for grader in run.graders
+        if any(
+            (score := row.scores.get(grader)) is not None and score.value is not None
+            for row in run.rows
+        )
+    ]
+    if not scored:
+        return []
+
+    header = "| metric | " + " | ".join(run.variants) + " |"
+    rule = "|---" * (len(run.variants) + 1) + "|"
+    table = [header, rule]
+    for grader in scored:
+        cells = [grader]
+        for variant in run.variants:
+            values = [
+                score.value
+                for row in _graded(run.rows_for(variant))
+                if (score := row.scores.get(grader)) is not None and score.value is not None
+            ]
+            cells.append(f"{sum(values) / len(values):.3f}" if values else "—")
+        table.append("| " + " | ".join(cells) + " |")
+    return table
 
 
 def _per_field_table(run: EvalRun) -> list[str]:

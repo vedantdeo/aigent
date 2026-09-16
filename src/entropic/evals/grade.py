@@ -188,8 +188,41 @@ def field_match(names: Sequence[str]) -> Grader:
 
 
 # --- Retrieval -------------------------------------------------------------------------------
-# Both read `outcome.output["retrieved"]` against `case.expected["relevant"]`, and both must
-# de-duplicate the ranked list first — a chunk returned twice has been found once.
+# Both read `outcome.output["retrieved"]` against `case.expected["relevant"]` — different keys on
+# each side, which is why `_both_present` above does not fit.
+
+
+def _id_list(value: JsonValue) -> list[str] | None:
+    """A list of chunk ids, order kept and repeats dropped. None if it is not that shape.
+
+    A chunk returned twice has been found once, and would otherwise occupy two of the k slots.
+    """
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        return None
+    return list(dict.fromkeys(item for item in value if isinstance(item, str)))
+
+
+def _ranked_and_relevant(
+    case: Case, outcome: Outcome, retrieved: str, relevant: str
+) -> tuple[list[str], list[str]] | Score:
+    """Both id lists, or the Score saying which side is unusable.
+
+    A label that is missing, malformed or empty is a dataset problem; a missing or malformed ranked
+    list is a task failure. Shared, so both graders answer the same way.
+    """
+    if relevant not in case.expected:
+        return Score(False, f"dataset has no expected {relevant!r} for this case")
+    want = _id_list(case.expected[relevant])
+    if want is None:
+        return Score(False, f"expected {relevant!r} is not a list of chunk ids")
+    if not want:
+        return Score(False, "dataset marks no chunk relevant, so there is nothing to find")
+    if retrieved not in outcome.output:
+        return Score(False, f"output has no {retrieved!r} field")
+    got = _id_list(outcome.output[retrieved])
+    if got is None:
+        return Score(False, f"output {retrieved!r} is not a list of chunk ids")
+    return got, want
 
 
 def recall_at_k(k: int, *, retrieved: str = "retrieved", relevant: str = "relevant") -> Grader:
@@ -198,7 +231,21 @@ def recall_at_k(k: int, *, retrieved: str = "retrieved", relevant: str = "releva
     `passed` means every one of them; `value` is the fraction the report means. Refuses k below 1 at
     build time.
     """
-    raise NotImplementedError
+    if k < 1:
+        raise ValueError(f"recall_at_k: k must be at least 1, got {k}")
+
+    def grade(case: Case, outcome: Outcome) -> Score:
+        both = _ranked_and_relevant(case, outcome, retrieved, relevant)
+        if isinstance(both, Score):
+            return both
+        got, want = both
+        top = set(got[:k])
+        missed = [chunk_id for chunk_id in want if chunk_id not in top]
+        found = len(want) - len(missed)
+        detail = "" if not missed else f"{found}/{len(want)} in top {k}; missed {', '.join(missed)}"
+        return Score(not missed, detail, value=found / len(want))
+
+    return grade
 
 
 def reciprocal_rank(
@@ -209,4 +256,23 @@ def reciprocal_rank(
     Averaged over a dataset this is MRR. `k` truncates the list first, for an MRR@k matching what
     the generator will see.
     """
-    raise NotImplementedError
+    if k is not None and k < 1:
+        raise ValueError(f"reciprocal_rank: k must be at least 1, got {k}")
+
+    def grade(case: Case, outcome: Outcome) -> Score:
+        both = _ranked_and_relevant(case, outcome, retrieved, relevant)
+        if isinstance(both, Score):
+            return both
+        got, want = both
+        if k is not None:
+            got = got[:k]
+        for rank, chunk_id in enumerate(got, start=1):
+            if chunk_id in want:
+                return Score(
+                    rank == 1,
+                    "" if rank == 1 else f"first relevant chunk at rank {rank} ({chunk_id})",
+                    value=1 / rank,
+                )
+        return Score(False, "no relevant chunk found", value=0.0)
+
+    return grade

@@ -44,16 +44,8 @@ Each module also runs on its own: `uv run python -m entropic.primitives.first_ca
 | `retrieval/store.py` | vectors → a ranked list of chunk ids, brute-force cosine over NumPy |
 
 Written against the tests rather than the other way round, the same arrangement as the `underhood`
-repo. What is still a stub is what is still red:
-
-```bash
-uv run pytest -q             # red until you implement; the failures are the to-do list
-```
-
-| Still to write | Verified against |
-|----------------|------------------|
-| `evals/grade.py` — `recall_at_k`, `reciprocal_rank` | `tests/evals/test_graders.py` (19 rows) |
-| `evals/report.py` — `_metrics_table` and its call in `to_markdown` | `tests/evals/test_report.py` (2 tests) |
+repo. The pipeline runs end to end — chunk, embed, rank, grade, report — but nothing has been
+*measured* yet: the corpus and the question set are still to come.
 
 Anthropic ships no embedding model, so this is the one part of Entropic that runs on someone else's
 weights — `bge-small-en-v1.5` through `sentence-transformers`, on the laptop's GPU. It costs nothing
@@ -119,6 +111,26 @@ config.
 
 The task owns its own API call, so the harness never assumes there is one: a retrieval eval that
 returns `Outcome(usage=None)` costs nothing and reports through the same table.
+
+## Editor
+
+`.vscode/` is committed, so the settings arrive with the clone; VS Code offers the extensions on
+first open (Ruff, Python, Pylance) and everything below is already wired up.
+
+| On save | Does what |
+|---------|-----------|
+| `ruff format` | whitespace and layout, to the 100-char limit in `pyproject.toml` |
+| `source.fixAll.ruff` | every safe autofix, including removing unused imports |
+| `source.organizeImports.ruff` | sorts imports — the formatter does not do this |
+
+`ruff.importStrategy` is `fromEnvironment`, so the editor runs `.venv/bin/ruff` rather than the copy
+inside the extension. That is what keeps it reading `pyproject.toml`, and keeps the editor from
+disagreeing with `uv run ruff check`. Run `uv sync` before opening the folder or there is no ruff to
+find.
+
+The test runner is wired to pytest over `tests/`, and inherits `addopts = "-m 'not live'"` from
+`pyproject.toml` — so running the whole suite from the editor cannot spend anything. Pylance
+type-checks; its warnings are signal, not noise.
 
 ## Checks
 
