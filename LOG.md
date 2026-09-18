@@ -325,5 +325,25 @@
   Known cost of the furniture rule, accepted: Reliance's `CONSOLIDATED FINANCIAL STATEMENTS` is a
   running header on 52 pages and is removed as one, so `by_heading` loses that section label. Check
   there before blaming the splitter if its column disappoints.
-- Next: the question set — 50 questions labelled with quotes, hand-checking 20 — then the first
-  measured run. The corpus is real text now, so the quotes can be copied out of it.
+- 09-18: the eval design changed before any of it was paid for, because the question "what are we
+  really testing" did not have a good answer. A single recall@k column bundles three different
+  things — did ingestion keep the sentence, did the chunker keep it whole, did the embedder rank it
+  — and only the third is retrieval. The second is now measured **separately and for free**, over
+  300 real sentences with no embedder involved at all:
+  `by_sentence` 100%, `fixed+overlap` 98.3%, `fixed` 87.7%, `by_heading` 85.3%.
+  That is the ceiling on recall@k for each strategy before retrieval happens. Three things fall out.
+  `by_sentence` is 100% by construction, so any shortfall in its recall is genuinely the retriever's.
+  Overlap is now justified by a number rather than a hand-wave: it buys 87.7% → 98.3%, because a
+  sentence severed by one window boundary survives whole in the neighbouring one. And `by_heading`
+  is the *worst* of the four while producing the *most* chunks (7,506, averaging 538 characters
+  against `by_sentence`'s 880) — heading detection firing on kerning damage, exactly as the 09-16
+  entry predicted. Decision: keep the implementation, drop it as an eval variant, revisit later.
+- 09-18: `grade.resolvable` added, and it turned out the harness was already half right by
+  accident. `_metrics_table` skips `value is None`, and the retrieval graders already returned no
+  value for an unresolvable row — so recall@k was *already* meaned over resolvable rows only. What
+  was missing was the denominator, which made the column quietly describe a subset while looking
+  like a dataset average. The demonstration, on a three-case fixture: `fixed` reads recall@5 1.000
+  and resolvable 0.667. Without the second row it looks perfect; with it, "finds everything that
+  survives chunking, and only two thirds survives". Same numbers, opposite conclusion.
+- Next: the question set — 50 questions labelled with quotes, hand-checking 20 — then the
+  first measured run, with `resolvable` beside `recall@5` and `mrr`.

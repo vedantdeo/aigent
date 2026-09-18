@@ -34,6 +34,10 @@ def to_markdown(run: EvalRun, max_failures: int = MAX_FAILURES_SHOWN) -> str:
     metrics = _metrics_table(run)
     if metrics:
         lines += ["", "## Metrics (mean per case)", ""]
+        lines += [
+            "Each metric is meaned over the cases it could score, not over the whole dataset.",
+            "",
+        ]
         lines += metrics
 
     per_field = _per_field_table(run)

@@ -23,6 +23,7 @@ from entropic.evals.grade import (
     recall_at_k,
     reciprocal_rank,
     regex,
+    resolvable,
 )
 from entropic.evals.judge import LlmJudge, Verdict
 
@@ -248,7 +249,9 @@ def test_reciprocal_rank_is_one_over_the_rank_of_the_first_relevant_chunk(
     [
         pytest.param({}, {"retrieved": ["a"]}, "dataset", id="no label on the case"),
         pytest.param({"relevant": "a"}, {"retrieved": ["a"]}, "list", id="label is a bare string"),
-        pytest.param({"relevant": []}, {"retrieved": ["a"]}, "nothing", id="label is empty"),
+        pytest.param(
+            {"relevant": []}, {"retrieved": ["a"]}, "no single chunk", id="label is empty"
+        ),
         pytest.param({"relevant": ["a"]}, {}, "output", id="task returned no ranked list"),
         pytest.param({"relevant": ["a"]}, {"retrieved": [1, 2]}, "list", id="ids are not strings"),
     ],
@@ -272,3 +275,41 @@ def test_a_k_below_one_is_refused_when_the_grader_is_built_not_when_it_runs(
 ) -> None:
     with pytest.raises(ValueError, match="at least 1"):
         build()
+
+
+@pytest.mark.parametrize(
+    ("relevant", "survived", "value"),
+    [
+        pytest.param({"relevant": ["c#0001"]}, True, 1.0, id="the quote is inside one chunk"),
+        pytest.param(
+            {"relevant": ["c#0001", "c#0002"]}, True, 1.0, id="or inside two, which is still found"
+        ),
+        pytest.param({"relevant": []}, False, 0.0, id="the quote straddles a chunk boundary"),
+        pytest.param({}, False, 0.0, id="the case carries no label at all"),
+        pytest.param({"relevant": "c#0001"}, False, 0.0, id="the label is not a list"),
+    ],
+)
+def test_resolvable_reports_whether_the_label_survived_chunking(
+    relevant: Fields, survived: bool, value: float
+) -> None:
+    """A chunking property, graded separately so it stops being charged to the retriever."""
+    case, outcome = _retrieval(relevant, {"retrieved": ["c#0001"]})
+
+    score = resolvable()(case, outcome)
+
+    assert score.passed is survived, score.detail
+    assert score.value == value, score.detail
+
+
+def test_resolvable_carries_a_number_where_the_other_two_carry_none() -> None:
+    """The reason all three belong in one table: this one means over every case, they do not.
+
+    `recall_at_k` and `reciprocal_rank` decline to score an unresolvable row, so `_metrics_table`
+    leaves it out of their mean. Without `resolvable` beside them their columns look like whole
+    dataset averages and are not.
+    """
+    case, outcome = _retrieval({"relevant": []}, {"retrieved": ["c#0001"]})
+
+    assert resolvable()(case, outcome).value == 0.0
+    assert recall_at_k(5)(case, outcome).value is None
+    assert reciprocal_rank()(case, outcome).value is None

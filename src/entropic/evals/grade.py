@@ -202,6 +202,41 @@ def _id_list(value: JsonValue) -> list[str] | None:
     return list(dict.fromkeys(item for item in value if isinstance(item, str)))
 
 
+def _relevant_ids(case: Case, relevant: str) -> list[str] | Score:
+    """This case's labelled chunk ids, or the Score saying why the label cannot be used.
+
+    An empty list is the interesting one: the labelled quote is in no single chunk under the
+    strategy being scored, so nothing can retrieve it. Shared with `resolvable`, which reports how
+    often that happens.
+    """
+    if relevant not in case.expected:
+        return Score(False, f"dataset has no expected {relevant!r} for this case")
+    want = _id_list(case.expected[relevant])
+    if want is None:
+        return Score(False, f"expected {relevant!r} is not a list of chunk ids")
+    if not want:
+        return Score(False, "the labelled quote is in no single chunk under this strategy")
+    return want
+
+
+def resolvable(*, relevant: str = "relevant") -> Grader:
+    """Whether this case's label survived chunking — a property of the splitter, not the retriever.
+
+    A quote no single chunk contains cannot be found by any retriever, so the row is a chunking
+    failure wearing a retrieval failure's clothes. This is the denominator the other two metrics
+    are meaned over: `recall_at_k` and `reciprocal_rank` score nothing on such a row, so their
+    columns mean less than they appear to without this one beside them.
+    """
+
+    def grade(case: Case, outcome: Outcome) -> Score:
+        want = _relevant_ids(case, relevant)
+        if isinstance(want, Score):
+            return Score(False, want.detail, value=0.0)
+        return Score(True, "", value=1.0)
+
+    return grade
+
+
 def _ranked_and_relevant(
     case: Case, outcome: Outcome, retrieved: str, relevant: str
 ) -> tuple[list[str], list[str]] | Score:
@@ -210,13 +245,9 @@ def _ranked_and_relevant(
     A label that is missing, malformed or empty is a dataset problem; a missing or malformed ranked
     list is a task failure. Shared, so both graders answer the same way.
     """
-    if relevant not in case.expected:
-        return Score(False, f"dataset has no expected {relevant!r} for this case")
-    want = _id_list(case.expected[relevant])
-    if want is None:
-        return Score(False, f"expected {relevant!r} is not a list of chunk ids")
-    if not want:
-        return Score(False, "dataset marks no chunk relevant, so there is nothing to find")
+    want = _relevant_ids(case, relevant)
+    if isinstance(want, Score):
+        return want
     if retrieved not in outcome.output:
         return Score(False, f"output has no {retrieved!r} field")
     got = _id_list(outcome.output[retrieved])
