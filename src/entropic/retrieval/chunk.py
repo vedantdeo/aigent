@@ -23,10 +23,17 @@ from entropic.config import (
     HEADING_MIN_CAPITAL_RATIO,
 )
 
+# Typographic characters a PDF uses and a hand-typed label does not, folded to their ASCII forms.
+_TYPOGRAPHY = str.maketrans(
+    {c: "'" for c in "\u2018\u2019\u201a\u201b\u2032"}
+    | {c: '"' for c in "\u201c\u201d\u201e\u201f\u2033"}
+    | {c: "-" for c in "\u2010\u2011\u2012\u2013\u2014\u2015"}
+)
+
 
 def _squeeze(text: str) -> str:
-    """Whitespace collapsed and case folded — the form two pieces of text compare in."""
-    return " ".join(text.split()).casefold()
+    """Whitespace collapsed, typography folded and case folded — how two texts compare."""
+    return " ".join(text.translate(_TYPOGRAPHY).split()).casefold()
 
 
 @dataclass(frozen=True)

@@ -14,6 +14,11 @@ wheels/
 .pytest_cache/
 .ruff_cache/
 
+# The corpus: annual report PDFs, too big to commit and not ours to redistribute.
+# `evals/reference/corpus-manifest.json` records where each one came from instead.
+corpus/**
+!corpus/README.md
+
 # Temporary files
 sandbox/**
 !sandbox/README.md

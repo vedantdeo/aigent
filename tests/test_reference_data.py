@@ -16,6 +16,7 @@ from typing import cast
 import pytest
 
 from entropic.extraction.headlines import DIRECTORY
+from entropic.retrieval.corpus import MANIFEST
 
 Pairs = list[tuple[str, object]]
 
@@ -51,6 +52,7 @@ class Ordered:
 
 ORDERED_FILES = [
     Ordered(DIRECTORY, key="ticker", load=json_keys("companies")),
+    Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
 ]
 
 

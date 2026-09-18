@@ -284,3 +284,46 @@
   `parents[N]` path computation survived because each module kept its depth. The graph's module ids,
   diagram, edge list, test paths and all 98 anchors were rewritten with it — `extraction.py`
   anchors became `headlines.py`, which is the rename a line-number check alone would have missed.
+- 09-16: the corpus exists as documents. Three Indian annual reports — ITC (412pp), Reliance
+  (146pp), Tata Motors (590pp) — 1,148 pages and 4.2M characters, about 3,500 chunks at
+  `CHUNK_CHARS`. Not committed (85MB, and not ours to redistribute); `corpus-manifest.json` holds
+  the URL, SHA-256, size and page count, and `scripts/fetch-corpus.sh` rebuilds the directory from
+  it. Acquisition is its own small finding: Infosys, TCS, HUL and Tata Motors all serve a bare
+  `curl` a 403, so the script sends a browser `User-Agent` and a `Referer`; guessed URLs missed six
+  times out of six and the working Tata Motors link came from reading the IR page.
+- 09-16: `retrieval.corpus` written as a skeleton with 18 red tests, and the specification changed
+  twice before a line of it was implemented, both times because the real PDFs were consulted first.
+  **Furniture cannot be found verbatim.** The plan was "a line repeating on half the pages"; ITC's
+  running header sits on 163 of 412 pages and on *none* of them twice, because the page number is
+  glued to it (`REPORT AND ACCOUNTS 2025 47ITC Limited`). Masking digits finds it; so the rule
+  counts a digits-masked skeleton. And it counts only lines at the top or bottom of a page, because
+  `(Rs. in crore)` repeats on 86 ITC pages mid-table and is content, not furniture. Tuned on the
+  corpus rather than guessed: edge lines, digits masked, 20% of pages removes 1.1% of ITC's lines
+  and 1.7% of Reliance's, and nothing that reads as content.
+- 09-16: **the typography fold belongs in `_squeeze`, not in `normalise`.** The corpus holds
+  `ITC’s` and an em dash; a label is typed by hand and holds `ITC's` and a hyphen, so `containing`
+  would have resolved a correct label to nothing — the same silent shape as a quote straddling a
+  chunk boundary, but with no chunking problem behind it. The fix is one `str.maketrans`, and the
+  question worth recording is *where*: folding in `normalise` would have put ASCII quotes in the
+  chunk text and therefore in every citation. A curly apostrophe is not an extraction artefact, it
+  is what the document says. So `normalise` repairs what extraction broke (ligatures, `CO₂`,
+  hyphenated line breaks, tabs) and `_squeeze` handles what two spellings of the same text means.
+- 09-16: what PDF text actually looks like, for whoever is surprised later. Reliance renders `₹` as
+  `C` (`(C in crore)`) because the font's encoding does not survive; kerning becomes spaces inside
+  words, so `STANDALONE FINANCIAL STATEMENTS` extracts as `ST ANDALONE FINANCIAL ST A TEMENTS`;
+  ITC uses tabs between words mid-sentence. None of that is fixable in general, and a heading is
+  where it shows up most — which is a reason to expect `by_heading` to underperform its promise and
+  a reason to measure it rather than assume.
+- 09-18: `corpus.py` written, all 18 tests green, and the corpus loads: 4,201,217 raw characters
+  become 4,040,587 across three `Document`s, about 3,400 chunks. The 3.8% removed is furniture —
+  326 lines from ITC, 434 from Reliance, 1,778 from Tata Motors. Page offsets verified monotone and
+  round-tripping on all three. Two ordering constraints in the implementation are worth knowing
+  because both fail silently: `rstrip` per line has to run *before* the hyphen rejoin, since a PDF
+  line ends `manage- ` with a trailing space and the regex cannot match across it; and pages have to
+  be normalised *before* furniture is counted, since the count compares lines and un-normalised ones
+  differ by trailing spaces and ligatures, so a header would not match its own other printings.
+  Known cost of the furniture rule, accepted: Reliance's `CONSOLIDATED FINANCIAL STATEMENTS` is a
+  running header on 52 pages and is removed as one, so `by_heading` loses that section label. Check
+  there before blaming the splitter if its column disappoints.
+- Next: the question set — 50 questions labelled with quotes, hand-checking 20 — then the first
+  measured run. The corpus is real text now, so the quotes can be copied out of it.

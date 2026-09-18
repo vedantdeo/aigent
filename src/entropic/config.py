@@ -78,6 +78,16 @@ HEADING_MIN_CAPITAL_RATIO = 0.6
 # How many chunks a retriever returns, and therefore how many an answer can cite.
 TOP_K = 5
 
+# What counts as page furniture in a PDF, where no markup survives to say what is a running header.
+# Only lines this close to the top or bottom of a page are candidates; one whose digits-masked form
+# reaches this fraction of the pages is furniture. Below the page floor, nothing is.
+FURNITURE_MIN_PAGES = 4
+FURNITURE_EDGE_LINES = 2
+FURNITURE_RATIO = 0.2
+
+# What joins two pages into one document text. Read as a paragraph break by every splitter.
+PAGE_SEPARATOR = "\n\n"
+
 
 def has_credentials() -> bool:
     """True if the SDK will find something to authenticate with."""
