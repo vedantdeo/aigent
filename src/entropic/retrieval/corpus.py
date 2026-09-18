@@ -7,6 +7,9 @@ page numbers go by how often they repeat, since no markup survives a PDF to say 
 
 from __future__ import annotations
 
+import hashlib
+import inspect
+import json
 import re
 import unicodedata
 from collections import Counter
@@ -25,6 +28,7 @@ from entropic.retrieval.chunk import Document
 
 REPO = Path(__file__).resolve().parents[3]
 CORPUS_DIR = REPO / "corpus"
+CACHE_DIR = CORPUS_DIR / ".cache"
 MANIFEST = REPO / "evals" / "reference" / "corpus-manifest.json"
 
 _HYPHENATED_BREAK = re.compile(r"(\w)-\n(\w)")
@@ -132,13 +136,81 @@ def load_pdf(path: Path, doc_id: str | None = None) -> Document:
     return to_document(doc_id or path.stem, pages, source=str(path))
 
 
-def load_corpus(directory: Path = CORPUS_DIR) -> list[Document]:
+# Everything that decides what a PDF turns into: the ingestion code, and the constants it reads.
+# Hashed so that editing any of it invalidates the cache on its own, with no version to remember.
+_INGEST_FINGERPRINT = hashlib.sha256(
+    (
+        "".join(
+            inspect.getsource(function)
+            for function in (read_pages, normalise, _skeleton, strip_furniture, to_document)
+        )
+        + f"{FURNITURE_MIN_PAGES}|{FURNITURE_EDGE_LINES}|{FURNITURE_RATIO}|{PAGE_SEPARATOR!r}"
+    ).encode()
+).hexdigest()[:12]
+
+
+def cache_file(path: Path, doc_id: str, cache_dir: Path = CACHE_DIR) -> Path:
+    """Where this PDF's extracted text is kept, keyed by its bytes and by the ingestion code.
+
+    Both halves matter. A company republishing a report changes the bytes; editing `normalise`
+    changes the fingerprint. Either one makes this a different filename, so stale text is never
+    read back — the cost of being wrong here is silent, and the cost of a spare re-parse is 30s.
+    """
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    return cache_dir / f"{doc_id}-{digest}-{_INGEST_FINGERPRINT}.json"
+
+
+def load_pdf_cached(path: Path, doc_id: str | None = None, cache_dir: Path = CACHE_DIR) -> Document:
+    """`load_pdf`, memoised on disk.
+
+    Extraction is around 30 seconds for this corpus, and its result never moves on its own.
+    """
+    name = doc_id or path.stem
+    cached = cache_file(path, name, cache_dir)
+    if cached.exists():
+        try:
+            stored = json.loads(cached.read_text(encoding="utf-8"))
+            return Document(
+                doc_id=stored["doc_id"],
+                text=stored["text"],
+                source=stored["source"],
+                page_starts=tuple(stored["page_starts"]),
+            )
+        except (json.JSONDecodeError, KeyError, TypeError):
+            cached.unlink(missing_ok=True)
+
+    document = load_pdf(path, doc_id)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for stale in cache_dir.glob(f"{name}-*.json"):
+        stale.unlink(missing_ok=True)
+    # Written aside and moved, so an interrupted run leaves no half-file to be read back as text.
+    partial = cached.with_suffix(".partial")
+    partial.write_text(
+        json.dumps(
+            {
+                "doc_id": document.doc_id,
+                "text": document.text,
+                "source": document.source,
+                "page_starts": list(document.page_starts),
+            }
+        ),
+        encoding="utf-8",
+    )
+    partial.replace(cached)
+    return document
+
+
+def load_corpus(directory: Path = CORPUS_DIR, *, cache: bool = False) -> list[Document]:
     """Every PDF directly in a directory, in filename order, so two runs build the same chunk ids.
 
     A directory with no PDFs raises rather than returning nothing: an empty corpus scores zero
     recall on every question and looks like a bad retriever.
+
+    `cache` is opt-in. Reading the PDFs is always right; a cache is right until it is not, and a
+    stale hit is wrong quietly. Ask for it where the 28 seconds is worth that, not everywhere.
     """
     paths = sorted(directory.glob("*.pdf"))
     if not paths:
         raise ValueError(f"no PDFs in {directory} — run ./scripts/fetch-corpus.sh to download them")
-    return [load_pdf(path) for path in paths]
+    read = load_pdf_cached if cache else load_pdf
+    return [read(path) for path in paths]

@@ -370,6 +370,31 @@
   Management" — which is near-identical across all three reports, so a question drawn from one is
   legitimately answerable from the other two while only one is labelled relevant. Excluding that
   language and requiring two specific facts per passage left 1,234 candidates to choose from.
-- Next: the first measured run — three variants over one dataset. `load_corpus` re-parses
-  1,148 PDF pages every invocation and takes ~50s, which will bite once the eval loop runs
-  repeatedly.
+- 09-18: the plan was to cache the corpus so `load_corpus` would stop costing ~50s a run. Profiling
+  first moved the answer. The 75s from PDFs to chunks split as **28s PDF extraction, 0.4s
+  normalise and furniture, and 46.9s chunking** — chunking was slower than parsing 1,148 pages of
+  PDF, which is not a caching problem. `sentences` read the word before each candidate break with
+  `text[: match.start()].split()`, slicing and splitting the entire prefix on every match: O(n²),
+  billions of character copies on a 1.3M-character document. Only the last word is ever used, so a
+  64-character lookback is enough. **46.9s → 0.05s**, same 4,593 chunks, no test changed. The
+  lesson is the ordinary one and worth the entry anyway: the fix for a slow pipeline was in a
+  function nobody suspected, and the cache would have hidden it by making the total look fine.
+- 09-18: with that gone, the remaining cost is genuinely PDF extraction, so `load_pdf_cached` keeps
+  each document's text in `corpus/.cache/` — **cold 27.8s, warm 0.04s**; corpus to chunks is now
+  0.09s against ~75s. Cached at the `Document` layer rather than the chunk layer: chunking is free
+  now, and a chunk cache would tie itself to one strategy and one set of `CHUNK_*` constants. The
+  cache key is the interesting part — `{doc_id}-{pdf digest}-{ingest fingerprint}`, where the
+  fingerprint hashes the source of the five ingestion functions plus the constants they read. Bytes
+  alone would survive an edit to `normalise` and serve back text the current code never produced,
+  silently. Hashing the code means there is no version number to remember to bump, and being wrong
+  costs one spare re-parse rather than a wrong answer. Written to a `.partial` and moved into
+  place, so a Ctrl-C leaves nothing readable behind.
+- 09-18: the cache is **opt-in**, `cache=False` by default, on the argument that it is the wrong
+  default however good the keying is. Reading the PDFs is always correct; a cache is correct until
+  it is not, and its failure is silent — it hands back plausible text and every number downstream
+  moves without anything being raised. The keying makes that unlikely, not impossible, and 28
+  seconds is cheap next to a run whose numbers are quietly from a previous version of `normalise`.
+  So callers ask for it at the call site, where it is visible in review, and a test pins the
+  default so an opt-in convenience cannot drift into being the norm.
+- Next: the first measured run — three variants over one dataset, `resolvable` beside `recall@5`
+  and `mrr`. Then hybrid and rerank.

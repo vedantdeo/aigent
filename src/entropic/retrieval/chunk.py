@@ -206,6 +206,11 @@ _ABBREVIATIONS = frozenset(
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])[\"'’”)\]]*\s+")
 
 
+# How far back to look for the word before a break. Only the last word matters, so this need only
+# exceed the longest one; slicing the whole prefix instead made this function quadratic.
+_ABBREVIATION_LOOKBACK = 64
+
+
 def sentences(text: str) -> list[tuple[int, int]]:
     """(start, end) of each sentence, by regex with an abbreviation guard.
 
@@ -215,7 +220,8 @@ def sentences(text: str) -> list[tuple[int, int]]:
     start_ends: list[tuple[int, int]] = []
     curr_start = 0
     for match in _SENTENCE_BREAK.finditer(text):
-        words = text[: match.start()].rstrip(".!?").split()
+        head = text[max(0, match.start() - _ABBREVIATION_LOOKBACK) : match.start()]
+        words = head.rstrip(".!?").split()
         word = words[-1].rstrip(".").casefold() if words else ""
         if word in _ABBREVIATIONS or len(word) == 1:
             continue

@@ -11,9 +11,12 @@ from pathlib import Path
 import pytest
 
 from entropic.config import PAGE_SEPARATOR
+from entropic.retrieval import corpus
 from entropic.retrieval.corpus import (
+    cache_file,
     load_corpus,
     load_pdf,
+    load_pdf_cached,
     normalise,
     read_pages,
     strip_furniture,
@@ -213,3 +216,105 @@ def test_read_pages_returns_one_string_per_page(tmp_path: Path) -> None:
     assert len(pages) == 6
     assert "Revenue from operations" in pages[0]
     assert "3,89,000 people" in pages[5]
+
+
+# --- The document cache -----------------------------------------------------------------------
+
+
+def _revised_report() -> bytes:
+    """The same report reissued, with distinct lines per page so none of it reads as furniture."""
+    body = [
+        "Revenue from operations was restated to Rs. 9,00,000 crore.",
+        "The dividend recommendation was withdrawn pending review.",
+        "Retail EBITDA was corrected in the reissued statement.",
+        "Subscriber numbers were re-presented on a comparable basis.",
+        "Capital expenditure has been reclassified between segments.",
+        "Headcount as at the year end was restated downwards.",
+    ]
+    return build_pdf([[HEADER, line, str(11 + n)] for n, line in enumerate(body, start=1)])
+
+
+def _counting_reader(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Replace `read_pages` with one that records how often the PDF was really parsed."""
+    calls = [0]
+    original = corpus.read_pages
+
+    def counted(path: Path) -> list[str]:
+        calls[0] += 1
+        return original(path)
+
+    monkeypatch.setattr(corpus, "read_pages", counted)
+    return calls
+
+
+def test_a_second_load_is_served_from_cache_without_parsing_the_pdf_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = annual_report(tmp_path)
+    calls = _counting_reader(monkeypatch)
+
+    first = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
+    second = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
+
+    assert calls[0] == 1, "the second load re-parsed the PDF"
+    assert second == first, "a cached document must be indistinguishable from a parsed one"
+    assert second.page_starts == first.page_starts, "page offsets have to survive the round trip"
+
+
+def test_republishing_the_report_invalidates_its_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A company quietly reissuing a report is the case that would poison a filename-keyed cache."""
+    path = annual_report(tmp_path)
+    calls = _counting_reader(monkeypatch)
+    load_pdf_cached(path, cache_dir=tmp_path / ".cache")
+
+    path.write_bytes(_revised_report())
+    reloaded = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
+
+    assert calls[0] == 2, "changed bytes must not be served from the old cache"
+    assert "restated" in reloaded.text
+
+
+def test_changing_the_ingestion_code_invalidates_the_cache(tmp_path: Path) -> None:
+    """The half a content hash cannot see: same PDF, different `normalise`, different text."""
+    path = annual_report(tmp_path)
+
+    before = cache_file(path, "RELIANCE-FY25", tmp_path / ".cache")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(corpus, "_INGEST_FINGERPRINT", "0123456789ab")
+        after = cache_file(path, "RELIANCE-FY25", tmp_path / ".cache")
+
+    assert before != after, "editing the ingestion code must not reuse text it did not produce"
+
+
+def test_a_truncated_cache_file_is_reparsed_rather_than_raising(tmp_path: Path) -> None:
+    path = annual_report(tmp_path)
+    cache = tmp_path / ".cache"
+    load_pdf_cached(path, cache_dir=cache)
+    written = next(cache.glob("*.json"))
+    written.write_text('{"doc_id": "RELIANCE-FY25", "text": "tru', encoding="utf-8")
+
+    recovered = load_pdf_cached(path, cache_dir=cache)
+
+    assert "final dividend of Rs. 10 per equity share" in recovered.text
+
+
+def test_the_corpus_does_not_cache_unless_asked(tmp_path: Path) -> None:
+    """Opt-in on purpose: reading the PDFs is always right, and a stale hit is wrong quietly."""
+    annual_report(tmp_path)
+
+    load_corpus(tmp_path)
+
+    assert not (tmp_path / ".cache").exists(), "caching must be asked for, not assumed"
+
+
+def test_the_cache_keeps_one_file_per_document(tmp_path: Path) -> None:
+    path = annual_report(tmp_path)
+    cache = tmp_path / ".cache"
+
+    load_pdf_cached(path, cache_dir=cache)
+    path.write_bytes(_revised_report())
+    load_pdf_cached(path, cache_dir=cache)
+
+    assert len(list(cache.glob("RELIANCE-FY25-*.json"))) == 1, "superseded entries should be swept"
