@@ -20,11 +20,11 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import anthropic
-from anthropic.types import MessageParam, TextBlockParam, ThinkingConfigParam
+from anthropic.types import MessageParam, TextBlockParam
 from pydantic import BaseModel, Field
 
 from entropic.config import MAX_TOKENS_HEADLINE as MAX_TOKENS
-from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL, get_client
+from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM, get_client
 from entropic.evals.dataset import Case, digest, load_jsonl
 from entropic.evals.grade import Outcome, field_match, pydantic_valid
 from entropic.evals.report import write_report
@@ -168,9 +168,7 @@ FEW_SHOT = ZERO_SHOT + (
 
 # Turning THINKING_EVAL on means raising MAX_TOKENS_HEADLINE too: the budget below has to fit
 # under it with room left for the answer, and 128 is sized for the record alone.
-THINKING: ThinkingConfigParam = (
-    {"type": "enabled", "budget_tokens": 1024} if THINKING_EVAL else {"type": "disabled"}
-)
+THINKING = THINKING_EVAL_PARAM
 
 
 @dataclass(frozen=True)

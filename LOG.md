@@ -345,5 +345,31 @@
   like a dataset average. The demonstration, on a three-case fixture: `fixed` reads recall@5 1.000
   and resolvable 0.667. Without the second row it looks perfect; with it, "finds everything that
   survives chunking, and only two thirds survives". Same numbers, opposite conclusion.
-- Next: the question set — 50 questions labelled with quotes, hand-checking 20 — then the
-  first measured run, with `resolvable` beside `recall@5` and `mrr`.
+- 09-18: `retrieval.questions` written — a generator that samples passages, asks for one question
+  plus the sentence that answers it, and **verifies every quote back against its own document**
+  before writing a row. The verification is the point: a paraphrased quote resolves to no chunk
+  under any strategy, so it reads as four retrieval failures when retrieval was never asked a fair
+  question. Dry run (free): 60 passages, 1,350 input tokens for the largest, worst case $1.17 on
+  Opus and $0.47 on Sonnet. Nothing sent yet.
+- 09-18: the question set exists, and it cost nothing. The dry run had priced 60 generation calls
+  at $1.17 worst case on Opus; the obvious question — why call the API at all when the session
+  model can read the passages and write the questions directly — had no good answer. So the 54
+  rows in `evals/datasets/retrieval.jsonl` were authored by hand against passages pulled from the
+  corpus, and put through the **same** `verify` gate the scripted path uses. 53 of 54 passed on the
+  first attempt; the single rejection was a real quote sitting under the 25-character floor, which
+  is the floor doing its job rather than a bad label. `questions.generate` stays as the
+  reproducible regeneration route.
+- 09-18: two biases in that dataset, stated here so a number quoted from it carries them. The
+  questions are written *from* the passages, so they inherit that passage's vocabulary and absolute
+  recall will read high — what survives is the **ordering** of strategies, since all three face the
+  identical set. And the quotes are clause-length rather than whole sentences: `fixed` resolves
+  96.3% of these labels but only 87.7% of 300 random sentences. Both are real and answer different
+  questions ("do these labels survive" vs "does a sentence survive"), so quote them together.
+- 09-18: passage selection needed its own filter. Even spacing over the inventory put 6 of 60
+  candidates in auditor boilerplate — "audit evidence obtained by us", "Responsibilities of
+  Management" — which is near-identical across all three reports, so a question drawn from one is
+  legitimately answerable from the other two while only one is labelled relevant. Excluding that
+  language and requiring two specific facts per passage left 1,234 candidates to choose from.
+- Next: the first measured run — three variants over one dataset. `load_corpus` re-parses
+  1,148 PDF pages every invocation and takes ~50s, which will bite once the eval loop runs
+  repeatedly.

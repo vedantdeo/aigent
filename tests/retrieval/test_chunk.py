@@ -158,6 +158,9 @@ def test_a_chunk_knows_the_page_it_started_on_so_an_answer_can_cite_it() -> None
         pytest.param("DIVIDEND   of rs. 10", True, id="case and whitespace do not matter"),
         pytest.param("Company's board", True, id="a typed apostrophe matches the curly one"),
         pytest.param("per share - the highest", True, id="a typed hyphen matches an em dash"),
+        pytest.param(
+            "share - the highest yet.", True, id="kerning leaves a space before punctuation"
+        ),
         pytest.param("a figure nobody wrote", False, id="a quote in no chunk at all"),
     ],
 )
@@ -165,7 +168,7 @@ def test_a_labelled_quote_resolves_to_the_chunks_that_hold_it(quote: str, found:
     text = (
         FILLER
         + "The Company\u2019s board recommended a dividend of Rs. 10 per share "
-        + "\u2014 the highest yet. "
+        + "\u2014 the highest yet . "
         + FILLER
     )
     inventory = Inventory.build("sentence", [_doc(text)], by_sentence(400, overlap_sentences=0))

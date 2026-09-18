@@ -31,9 +31,15 @@ _TYPOGRAPHY = str.maketrans(
 )
 
 
-def _squeeze(text: str) -> str:
+# Extraction leaves a space before punctuation where a PDF's kerning did (`lawyers .`, `52 %`).
+# No correct English writes one, so closing it can only make two spellings of one text agree.
+_SPACE_BEFORE_PUNCTUATION = re.compile(r"\s+([,.;:!?%)\]])")
+
+
+def squeeze(text: str) -> str:
     """Whitespace collapsed, typography folded and case folded — how two texts compare."""
-    return " ".join(text.translate(_TYPOGRAPHY).split()).casefold()
+    closed = _SPACE_BEFORE_PUNCTUATION.sub(r"\1", text.translate(_TYPOGRAPHY))
+    return " ".join(closed.split()).casefold()
 
 
 @dataclass(frozen=True)
@@ -115,10 +121,10 @@ class Inventory:
 
         Empty means no single chunk contains it, which is a finding about the strategy, not a bug.
         """
-        needle = _squeeze(quote)
+        needle = squeeze(quote)
         if not needle:
             return []
-        return [chunk.id for chunk in self.chunks if needle in _squeeze(chunk.text)]
+        return [chunk.id for chunk in self.chunks if needle in squeeze(chunk.text)]
 
 
 Splitter = Callable[[Document], list[Chunk]]

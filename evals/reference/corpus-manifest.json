@@ -2,7 +2,8 @@
   "_about": "The Project 1 corpus: Indian annual reports, chosen so Project 1a's ticker directory and this week's documents describe the same companies. The PDFs are not committed - they are large and not ours to redistribute - so this file is what makes a retrieval number reproducible. `scripts/fetch-corpus.sh` reads it, downloads each report into `corpus/` and checks the digest. Sorted by doc_id, which is what a chunk id is built from.",
   "documents": {
     "ITC-FY25": {
-      "company": "ITC",
+      "ticker": "ITC",
+      "company": "ITC Limited",
       "title": "Integrated Annual Report 2024-25",
       "url": "https://www.itcportal.com/about-itc/shareholder-value/annual-reports/itc-annual-report-2025/pdf/ITC-Report-and-Accounts-2025.pdf",
       "sha256": "2a51bc137e460a2549785e784465e6fe1aa7bcd2ca1077d6e2d2465efdd27acc",
@@ -11,7 +12,8 @@
       "retrieved": "2026-09-16"
     },
     "RELIANCE-FY25": {
-      "company": "RELIANCE",
+      "ticker": "RELIANCE",
+      "company": "Reliance Industries Limited",
       "title": "Integrated Annual Report 2024-25",
       "url": "https://www.ril.com/ar2024-25/pdf/RIL-Integrated-Annual-Report-2024-25.pdf",
       "sha256": "bb541a68a0440fd4e27527afbb79f9a0e7584ae430fe9af244700709cacc0769",
@@ -20,7 +22,8 @@
       "retrieved": "2026-09-16"
     },
     "TATAMOTORS-FY25": {
-      "company": "TATAMOTORS",
+      "ticker": "TATAMOTORS",
+      "company": "Tata Motors Limited",
       "title": "Integrated Annual Report 2024-25",
       "url": "https://www.tatamotors.com/wp-content/uploads/2024/05/tata-motor-IAR-2024-25.pdf",
       "sha256": "5e90978857f304a9f08b5eade121e14256756d4c8db0f87cf964f54d512ce360",

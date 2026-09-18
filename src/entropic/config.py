@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 import anthropic
+from anthropic.types import ThinkingConfigParam
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -40,9 +41,16 @@ MAX_TOKENS_HEADLINE = 128  # a five-field record is ~45 tokens with THINKING_EVA
 MAX_TOKENS_TOOL_LOOP = 4096
 MAX_TOKENS_CHAT = 4096
 MAX_TOKENS_JUDGE = 1024
+MAX_TOKENS_QUESTION = 512
 
 # Off for eval runs: thinking wobbles, and Claude 5 deprecated temperature and top_p.
 THINKING_EVAL = False
+
+# The same setting as the wire wants it. Built once so two call sites cannot disagree about
+# whether thinking is on; turning it on means raising the output cap at every site that sends it.
+THINKING_EVAL_PARAM: ThinkingConfigParam = (
+    {"type": "enabled", "budget_tokens": 1024} if THINKING_EVAL else {"type": "disabled"}
+)
 
 # How many times the agent may go round before giving up.
 MAX_AGENT_TURNS = 8
