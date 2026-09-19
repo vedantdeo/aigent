@@ -442,6 +442,42 @@
 - 09-18: the question set joined `tests.test_reference_data`'s registry, the third file to opt into
   the canonical-order rule. It is hand-edited and code reads it back, which is the whole trigger; a
   repeated `rq-` id would otherwise be a row that quietly scores twice.
-- Next: hybrid (BM25 + RRF) and rerank as further columns of the same table, then the answer-level
-  eval — the first part of Week 2 that spends. Then the `v0.1-rag` tag, and branch protection in
-  the same move.
+- 09-19: `retrieval.answer` written — the generation half, and the first part of Week 2 that
+  spends. Two arms over the identical questions, `closed_book` and `rag`, because the measurement
+  is the **gap**: an absolute RAG score conflates what the retriever found with what a large model
+  already knows about ITC, Reliance and Tata Motors. Graded by `cites_relevant` (free — `hit_at_k`
+  pointed at the *cited* ids, so a citation is checked against the label rather than trusted) and
+  `correct` (`LlmJudge` against the labelled quote). Nothing sent yet.
+- 09-19: the dry run priced it at **$3.83 worst case against a $2.00 ceiling**, and the first thing
+  that bought was a re-reading of the output caps. `MAX_TOKENS_ANSWER` was 512 for a record that is
+  two sentences plus five chunk ids (~140 tokens) and `MAX_TOKENS_JUDGE` 1024 for one sentence and
+  a bool. Both came down to 256, which is the `MAX_TOKENS_HEADLINE` lesson a second time:
+  `estimate_eval_usd` prices the full cap, so an oversized cap is a guard that refuses runs it has
+  no reason to refuse. **$3.83 → $2.31**, same real spend.
+- 09-19: two things the dry run also bought, both free. `LlmJudge` gained `reference`, naming the
+  one `expected` field the judge may see — a retrieval label carries the chunk ids it resolved to
+  beside the quote, and those are noise in a correctness judgement, a hint at worst, and resent on
+  every one of 108 verdicts. And `_prompt` became `prompt_for`, public, so the dry run counts the
+  judge's real prompt instead of the 1,200-token guess it started with: the judge is half this
+  eval's calls, and pricing half a run from a number typed from memory is the thing the dry run
+  exists to replace.
+- 09-19: **smoke run, 12 of 54 cases, $0.295 against a $0.49 worst case.** Closed-book 0/12 correct,
+  RAG 10/12. The gap is the whole point and it is not subtle: same questions, same model, and the
+  only difference is five retrieved passages. `evals/reports/retrieval-20260919-0754.md`.
+- 09-19: the smoke run earned its $0.295 by finding two things the full set would have charged
+  $2.22 to find. **Closed-book abstained 11 times and confabulated once** — `rq-001` answered "over
+  Rs 32,000 crore" where ITC reports Rs 34,000 crores, a wrong figure of exactly the shape nobody
+  catches by eye. And the table could not see the difference: the rubric fails a decline, correctly,
+  which put the honest 11 and the invented 1 in the same bucket. `grade.flag` closes that — a
+  boolean the task reports about itself, counted as a rate, for the thing a dataset cannot label
+  because it is a property of the answerer rather than the answer.
+- 09-19: `cites_relevant` came out at 0.667 against the retriever's own hit@5 of 0.685, which says
+  the model cites what it was handed and does not invent ids. All four citation failures were
+  checked by hand and **all four were retrieval misses, not citation failures**. The interesting
+  half is that correctness (0.83) runs ahead of both: on `rq-054` retrieval missed chunk `#0532` and
+  returned `#0531` and `#0530` — its neighbours — and the answer was right anyway, because a label
+  names one passage and an annual report states the fact across a section. **hit@5 is a floor on
+  what RAG can answer, not a ceiling**, which corrects how the 09-18 table was written up.
+- Next: the full 54, which needs `ENTROPIC_MAX_USD_PER_EVAL=2.50` since it prices at $2.22 worst
+  case. Then hybrid (BM25 + RRF) and rerank as further columns of the retrieval table, the
+  `v0.1-rag` tag, and branch protection in the same move.

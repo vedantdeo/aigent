@@ -40,8 +40,9 @@ MAX_TOKENS_EXTRACT = 2048
 MAX_TOKENS_HEADLINE = 128  # a five-field record is ~45 tokens with THINKING_EVAL off
 MAX_TOKENS_TOOL_LOOP = 4096
 MAX_TOKENS_CHAT = 4096
-MAX_TOKENS_JUDGE = 1024
+MAX_TOKENS_JUDGE = 256  # a verdict is one or two sentences plus a bool
 MAX_TOKENS_QUESTION = 512
+MAX_TOKENS_ANSWER = 256  # two sentences plus five chunk ids is ~140, with thinking off
 
 # Off for eval runs: thinking wobbles, and Claude 5 deprecated temperature and top_p.
 THINKING_EVAL = False

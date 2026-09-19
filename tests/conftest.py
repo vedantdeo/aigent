@@ -67,10 +67,11 @@ def make_judge() -> MakeJudge:
         verdict: Verdict | None = None,
         *,
         rubric: str = RUBRIC,
+        reference: str | None = None,
         fails_with: Exception | None = None,
     ) -> tuple[LlmJudge, ScriptedMessages]:
         fake = _ScriptedClient(verdict, fails_with)
-        judge = LlmJudge(rubric=rubric, client=cast(anthropic.Anthropic, fake))
+        judge = LlmJudge(rubric=rubric, reference=reference, client=cast(anthropic.Anthropic, fake))
         return judge, fake.messages
 
     return build

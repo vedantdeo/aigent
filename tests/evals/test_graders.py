@@ -19,6 +19,7 @@ from entropic.evals.grade import (
     contains,
     exact_match,
     field_match,
+    flag,
     hit_at_k,
     pydantic_valid,
     recall_at_k,
@@ -167,6 +168,20 @@ def test_judge_prompt_keeps_the_parts_apart(make_judge: MakeJudge) -> None:
         assert tag in prompt
 
 
+def test_a_named_reference_shows_the_judge_that_field_and_hides_the_rest(
+    make_judge: MakeJudge,
+) -> None:
+    """A retrieval label carries the chunk ids it resolved to as well as the quote. Those are
+    noise in a correctness judgement and a hint at worst, and they are resent on every verdict."""
+    judge, log = make_judge(Verdict(reasoning="fine", passed=True), reference="quote")
+    case = _case({"quote": "A final dividend of Rs. 10.", "relevant": ["ITC-FY25#0042"]})
+
+    judge(case, _out(answer="Rs. 10 per share."))
+
+    assert "A final dividend of Rs. 10." in log.prompts[0]
+    assert "ITC-FY25#0042" not in log.prompts[0], "the ids never reach the judge"
+
+
 def test_judge_fails_closed_when_the_model_returns_nothing_parseable(make_judge: MakeJudge) -> None:
     judge, _ = make_judge(None)
     score = judge(_case(), _out(answer="whatever"))
@@ -181,6 +196,39 @@ def test_judge_does_not_spend_on_a_row_the_task_already_failed(make_judge: MakeJ
 
     assert not score.passed
     assert log.counted == 0, "no call at all for a row with no answer to grade"
+
+
+@pytest.mark.parametrize(
+    ("output", "passed", "value", "says"),
+    [
+        pytest.param({"answered": True}, True, 1.0, "", id="the task says it answered"),
+        pytest.param({"answered": False}, False, 0.0, "is false", id="the task declined"),
+        pytest.param({}, False, None, "no 'answered'", id="the field is missing entirely"),
+        # A truthy string would otherwise count as an answer, and an empty one as an abstention.
+        pytest.param({"answered": "yes"}, False, None, "not a boolean", id="a string, not a flag"),
+    ],
+)
+def test_flag_counts_a_boolean_the_task_reported_about_itself(
+    output: Fields, passed: bool, value: float | None, says: str
+) -> None:
+    case = Case.model_validate({"id": "q1", "input": {"question": "?"}, "expected": {}})
+
+    score = flag("answered")(case, Outcome(output=output))
+
+    assert score.passed is passed, score.detail
+    assert score.value == value, score.detail
+    assert says in score.detail
+
+
+def test_flag_and_a_correctness_grader_together_separate_the_two_ways_of_being_wrong() -> None:
+    """The reason this grader exists. A model that declines and a model that invents a figure both
+    fail on correctness; only one of them is a safe failure, and only `answered` can see it."""
+    case = Case.model_validate({"id": "q1", "input": {"question": "?"}, "expected": {}})
+
+    declined = flag("answered")(case, Outcome(output={"answered": False}))
+    confabulated = flag("answered")(case, Outcome(output={"answered": True}))
+
+    assert declined.value == 0.0 and confabulated.value == 1.0
 
 
 # --- Retrieval ------------------------------------------------------------------------------

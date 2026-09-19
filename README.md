@@ -45,6 +45,7 @@ Each module also runs on its own: `uv run python -m entropic.primitives.first_ca
 | `retrieval/corpus.py` | annual report PDFs → `Document`s: extract, normalise, strip running headers |
 | `retrieval/questions.py` | the question set, and the gate every label has to pass |
 | `retrieval/evaluate.py` | the run: three chunking strategies over one question set, free |
+| `retrieval/answer.py` | the generation half: answer from retrieved passages, closed-book against RAG |
 
 Written against the tests rather than the other way round, the same arrangement as the `underhood`
 repo. The pipeline runs end to end — chunk, embed, rank, grade, report — and it has been measured.
@@ -67,6 +68,33 @@ The largest gap is four cases out of 54, and a four-case gap on 54 paired rows c
 p<0.05 by a sign test even if every discordant row falls the same way. What the table does say
 is that `fixed` caps itself before the embedder runs: 2 of 54 labels straddle one of its
 boundaries, so no retriever could have found them, which is what the `resolvable` row is for.
+
+Retrieval is half the system. `uv run python -m entropic.retrieval.answer --yes --sample 12`
+answers the same questions from those passages, on `claude-opus-5`, judged by `claude-sonnet-5` —
+**12 of 54 cases, $0.295**
+([full report](evals/reports/retrieval-20260919-0754.md)):
+
+| | `closed_book` | `rag` |
+|---|---|---|
+| answered | 1/12 | 12/12 |
+| cites a passage holding the answer | 0/12 | 8/12 |
+| correct | 0/12 | **10/12** |
+
+**0% to 83%** is what retrieval bought. Both arms get the identical questions; only one gets the
+passages. An absolute RAG score would not say this — it would conflate what the retriever found
+with what a large model already knows about three of India's best-covered companies.
+
+The `answered` row is the one to read second. Closed-book **abstained 11 times and invented a figure
+once** (`rq-001`: "over Rs 32,000 crore" where the report says Rs 34,000 crores). A correctness
+grader scores an honest refusal and a plausible fabrication identically, and only the one of them
+can be caught by a reader. That is why the grader exists.
+
+One more thing the smoke run corrected. `cites_relevant` came out at 0.667 against the retriever's
+own hit@5 of 0.685 — the model cites what it was handed and nothing else. But **correctness (0.83)
+runs ahead of both**, because a label names one passage and a report often states the fact in
+several: on `rq-054` retrieval missed chunk `#0532` and returned `#0531` and `#0530`, its
+neighbours, and the answer was right anyway. Read hit@5 as a floor on what RAG can answer, not a
+ceiling.
 
 Two caveats travel with these numbers. The questions were written *from* the passages, so they
 inherit that vocabulary and absolute recall reads high — the ordering is what survives, since all
@@ -128,9 +156,9 @@ run = run_eval(
 print(write_report(run))
 ```
 
-Ten graders: exact match, contains, regex, Pydantic validity, per-field match, the four that read a
-ranked list of chunk ids (`resolvable`, `hit_at_k`, `recall_at_k`, `reciprocal_rank`), and
-`LlmJudge` — the only one that spends, billed to the same ceiling as the task. A task that raises becomes one error row rather than a lost run, and a
+Eleven graders: exact match, contains, regex, Pydantic validity, per-field match, `flag` (a boolean
+the task reported about itself), the four that read a ranked list of chunk ids (`resolvable`,
+`hit_at_k`, `recall_at_k`, `reciprocal_rank`), and `LlmJudge` — the only one that spends, billed to the same ceiling as the task. A task that raises becomes one error row rather than a lost run, and a
 run that hits the ceiling keeps what it already paid for.
 
 The judge runs on `ENTROPIC_JUDGE_MODEL` (`claude-sonnet-5`), not `ENTROPIC_MODEL` — a model asked

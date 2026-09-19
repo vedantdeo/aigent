@@ -192,6 +192,26 @@ def field_match(names: Sequence[str]) -> Grader:
 # each side, which is why `_both_present` above does not fit.
 
 
+def flag(name: str) -> Grader:
+    """A boolean the task reported about itself, counted as a rate rather than checked against a
+    label. For what a dataset cannot label because it is about the answerer, not the answer.
+
+    The case it was written for: a model that declines to answer and a model that invents a figure
+    both fail a correctness grader, and only one of those is a safe failure.
+    """
+
+    def grade(case: Case, outcome: Outcome) -> Score:
+        del case
+        if name not in outcome.output:
+            return Score(False, f"output has no {name!r} field")
+        raised = outcome.output[name]
+        if not isinstance(raised, bool):
+            return Score(False, f"output {name!r} is not a boolean: {json_ish(raised)!r}")
+        return Score(raised, "" if raised else f"{name} is false", value=float(raised))
+
+    return grade
+
+
 def _id_list(value: JsonValue) -> list[str] | None:
     """A list of chunk ids, order kept and repeats dropped. None if it is not that shape.
 

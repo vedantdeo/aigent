@@ -45,6 +45,7 @@ class LlmJudge:
 
     rubric: str
     name: str = "answer"
+    reference: str | None = None
     model: str = JUDGE_MODEL
     client: anthropic.Anthropic | None = None
 
@@ -55,7 +56,7 @@ class LlmJudge:
             self.client = get_client()
 
         messages: list[anthropic.types.MessageParam] = [
-            {"role": "user", "content": self._prompt(case, outcome)}
+            {"role": "user", "content": self.prompt_for(case, outcome)}
         ]
         check_request(
             self.client,
@@ -81,15 +82,26 @@ class LlmJudge:
             )
         return Score(verdict.passed, verdict.reasoning, usage=response.usage, model=self.model)
 
-    def _prompt(self, case: Case, outcome: Outcome) -> str:
-        """XML-delimited, because the parts must not bleed into each other."""
+    def prompt_for(self, case: Case, outcome: Outcome) -> str:
+        """The judged text, XML-delimited so the parts cannot bleed into each other.
+
+        Public so a caller can count its tokens before the run, which is free, rather than
+        guessing at the size of the half of a paid eval that is not the task.
+        """
         answer = outcome.raw if outcome.raw is not None else _compact(outcome.output)
         blocks = [
             f"<rubric>\n{self.rubric.strip()}\n</rubric>",
             f"<input>\n{_compact(case.input)}\n</input>",
         ]
+        # One named field where the label carries more than the judge should see: a retrieval case
+        # also holds the chunk ids it resolved to, which are noise in a correctness judgement.
+        expected = (
+            case.expected
+            if self.reference is None
+            else {self.reference: case.expected.get(self.reference)}
+        )
         if case.expected:
-            blocks.append(f"<reference>\n{_compact(case.expected)}\n</reference>")
+            blocks.append(f"<reference>\n{_compact(expected)}\n</reference>")
         blocks.append(f"<answer>\n{answer}\n</answer>")
         return "\n\n".join(blocks)
 
