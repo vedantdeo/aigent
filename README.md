@@ -42,10 +42,38 @@ Each module also runs on its own: `uv run python -m entropic.primitives.first_ca
 | `retrieval/chunk.py` | `Document` → `Chunk`, four ways: fixed, fixed with overlap, by sentence, by heading |
 | `retrieval/embed.py` | chunks → L2-normalised vectors, locally and free |
 | `retrieval/store.py` | vectors → a ranked list of chunk ids, brute-force cosine over NumPy |
+| `retrieval/corpus.py` | annual report PDFs → `Document`s: extract, normalise, strip running headers |
+| `retrieval/questions.py` | the question set, and the gate every label has to pass |
+| `retrieval/evaluate.py` | the run: three chunking strategies over one question set, free |
 
 Written against the tests rather than the other way round, the same arrangement as the `underhood`
-repo. The pipeline runs end to end — chunk, embed, rank, grade, report — but nothing has been
-*measured* yet: the corpus and the question set are still to come.
+repo. The pipeline runs end to end — chunk, embed, rank, grade, report — and it has been measured.
+
+### Measured
+
+`uv run python -m entropic.retrieval.evaluate` — 54 quote-labelled questions over three Indian
+annual reports (1,148 pages), `bge-small-en-v1.5`, k=5, **$0.00**
+([full report](evals/reports/retrieval-20260918-1345.md)):
+
+| metric | `fixed` | `fixed+overlap` | `by_sentence` |
+|---|---|---|---|
+| resolvable | 0.963 | **1.000** | **1.000** |
+| hit@5 | 0.635 | 0.630 | **0.685** |
+| recall@5 | **0.619** | 0.583 | 0.608 |
+| MRR | 0.471 | **0.511** | 0.452 |
+
+**Three metrics, three different winners — read that as "not separable", not as a ranking.**
+The largest gap is four cases out of 54, and a four-case gap on 54 paired rows cannot reach
+p<0.05 by a sign test even if every discordant row falls the same way. What the table does say
+is that `fixed` caps itself before the embedder runs: 2 of 54 labels straddle one of its
+boundaries, so no retriever could have found them, which is what the `resolvable` row is for.
+
+Two caveats travel with these numbers. The questions were written *from* the passages, so they
+inherit that vocabulary and absolute recall reads high — the ordering is what survives, since all
+three face the identical set. And `recall@5` is not the headline it looks like: where a quote
+resolves to several chunks, those are usually one sentence seen through several overlapping
+windows, and demanding all of them charges a strategy for the overlap that made the quote
+resolve at all. That is why `hit@5` is there, and why it ranks the three the other way round.
 
 Anthropic ships no embedding model, so this is the one part of Entropic that runs on someone else's
 weights — `bge-small-en-v1.5` through `sentence-transformers`, on the laptop's GPU. It costs nothing
@@ -57,11 +85,13 @@ is the *exact* answer — so when retrieval misses, the miss belongs to the chun
 rather than to a recall knob buried in an index. Chroma and LanceDB come when the corpus makes that
 false.
 
-Two retrieval graders join the harness: `recall_at_k` (what fraction of the relevant chunks came
-back in the top k) and `reciprocal_rank` (one over the rank of the first one, averaged into MRR by
-the report). Both report a **number** as well as a verdict, which is why the report needs a means
-table — a retriever that reliably finds two of three relevant chunks scores 0% on strict pass rate
-and 0.667 on recall, and only one of those two numbers is useful on its own.
+Four retrieval graders join the harness, and the order is the argument: `resolvable` (did the
+label survive chunking at all — a property of the splitter, not the retriever), `hit_at_k` (did
+*anything* relevant come back, which is what decides whether an answer is possible), `recall_at_k`
+(what fraction of them did) and `reciprocal_rank` (how far down the first one sat, averaged into
+MRR by the report). All four report a **number** as well as a verdict, which is why the report
+needs a means table — a retriever that reliably finds two of three relevant chunks scores 0% on
+strict pass rate and 0.667 on recall, and only one of those two numbers is useful on its own.
 
 Retrieval labels are **quotes, not chunk ids**. Chunk ids are positional, so they do not survive a
 re-chunk; a labelled sentence does, and `Inventory.containing` resolves it to whichever ids hold it
@@ -98,9 +128,9 @@ run = run_eval(
 print(write_report(run))
 ```
 
-Seven graders: exact match, contains, regex, Pydantic validity, `recall_at_k` and
-`reciprocal_rank` for a retriever (unwritten), and `LlmJudge` — the only one that spends, billed to
-the same ceiling as the task. A task that raises becomes one error row rather than a lost run, and a
+Ten graders: exact match, contains, regex, Pydantic validity, per-field match, the four that read a
+ranked list of chunk ids (`resolvable`, `hit_at_k`, `recall_at_k`, `reciprocal_rank`), and
+`LlmJudge` — the only one that spends, billed to the same ceiling as the task. A task that raises becomes one error row rather than a lost run, and a
 run that hits the ceiling keeps what it already paid for.
 
 The judge runs on `ENTROPIC_JUDGE_MODEL` (`claude-sonnet-5`), not `ENTROPIC_MODEL` — a model asked

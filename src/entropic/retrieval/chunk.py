@@ -236,7 +236,8 @@ def by_sentence(
 ) -> Splitter:
     """Pack whole sentences up to `max_chars`, starting the next chunk `overlap_sentences` back.
 
-    A sentence longer than `max_chars` becomes its own chunk rather than being cut.
+    A span with no sentence break inside it is cut on the character budget, since text the
+    embedder never reads cannot be retrieved.
     """
     if max_chars < 1:
         raise ValueError(f"Chunk size {max_chars} is below 1")
@@ -280,6 +281,17 @@ def by_sentence(
                 )
             )
 
+        def emit_capped(span_start: int, span_end: int) -> None:
+            """Emit a span, cutting it on the character budget when it holds no sentence break.
+
+            A financial table has no `.!?` in it at all, so packing whole "sentences" hands the
+            embedder one chunk of many thousands of characters, of which it reads the first 512
+            tokens and silently ignores the rest. A mid-word cut is worse than a sentence boundary
+            and better than text no retriever can see.
+            """
+            for piece_start in range(span_start, span_end, max_chars):
+                emit(piece_start, min(piece_start + max_chars, span_end))
+
         sentence_spans = sentences(doc.text)
         start_index = 0
         curr_start = 0
@@ -287,20 +299,21 @@ def by_sentence(
         while curr_index < len(sentence_spans):
             start, end = sentence_spans[curr_index]
             if end - curr_start > max_chars:
-                curr_end = end if curr_start == start else start
-                emit(curr_start, curr_end)
-                if curr_end == end:
-                    curr_start = curr_end
+                if curr_start == start:
+                    # This one sentence is over budget on its own, so there is nothing to pack.
+                    emit_capped(curr_start, end)
+                    curr_start = end
                     start_index = curr_index + 1
                     curr_index += 1
                 else:
+                    emit(curr_start, start)
                     start_index = max(start_index + 1, curr_index - overlap_sentences)
                     curr_index = max(curr_index, start_index)
                     curr_start = sentence_spans[start_index][0]
             else:
                 curr_index += 1
         if curr_start < len(doc.text):
-            emit(curr_start, len(doc.text))
+            emit_capped(curr_start, len(doc.text))
         return chunks
 
     return splitter

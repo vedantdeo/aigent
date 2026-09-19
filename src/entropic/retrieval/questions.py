@@ -4,8 +4,9 @@ uv run python -m entropic.retrieval.questions          # counts tokens, spends n
 uv run python -m entropic.retrieval.questions --yes    # writes evals/datasets/retrieval.jsonl
 
 One question per sampled passage, each labelled with the sentence that answers it. Every quote is
-checked back against its own document before the row is written: a quote the model paraphrased
-resolves to no chunk under any strategy, which reads as a retrieval failure and is not one.
+checked back against the corpus before the row is written: a quote the model paraphrased resolves to
+no chunk under any strategy, and a quote two reports share resolves to chunks in both. Neither is a
+retrieval failure, and both read as one.
 """
 
 from __future__ import annotations
@@ -111,23 +112,27 @@ def prompt_for(chunk: Chunk, company: str) -> list[MessageParam]:
     return [{"role": "user", "content": f"company: {company}\n\npassage:\n{chunk.text}"}]
 
 
-def verify(question: Question, document: Document) -> str | None:
+def verify(question: Question, document: Document, others: Sequence[Document] = ()) -> str | None:
     """Why this question cannot be used, or None if it can.
 
-    The quote has to be findable in the document it came from. `squeeze` forgives whitespace, case,
-    curly quotes and the spacing PDF extraction leaves behind; it forgives nothing else, so a
-    paraphrase is caught here rather than scoring zero on every variant later.
+    The quote has to be findable in the document it came from and nowhere else in `others`.
+    `squeeze` forgives whitespace, case, curly quotes and the spacing PDF extraction leaves behind;
+    it forgives nothing else, so a paraphrase is caught here rather than scoring zero later.
     """
     if not question.usable:
         return "model judged the passage unusable"
     if not question.question.strip() or not question.quote.strip():
         return "question or quote is empty"
-    if len(squeeze(question.quote)) < 25:
+    quote = squeeze(question.quote)
+    if len(quote) < 25:
         return f"quote is too short to identify a passage: {question.quote!r}"
-    if squeeze(question.quote) not in squeeze(document.text):
+    if quote not in squeeze(document.text):
         return f"quote is not in the document verbatim: {question.quote!r}"
-    if squeeze(question.quote) in squeeze(question.question):
+    if quote in squeeze(question.question):
         return "the question contains its own answer"
+    elsewhere = [other.doc_id for other in others if quote in squeeze(other.text)]
+    if elsewhere:
+        return f"quote also appears in {', '.join(sorted(elsewhere))}: {question.quote!r}"
     return None
 
 
@@ -221,7 +226,13 @@ def main(argv: list[str] | None = None) -> None:
     for number, chunk in enumerate(passages, start=1):
         question, cost = generate(client, chunk, names[chunk.doc_id], args.model)
         problem = (
-            "no structured output" if question is None else verify(question, by_doc[chunk.doc_id])
+            "no structured output"
+            if question is None
+            else verify(
+                question,
+                by_doc[chunk.doc_id],
+                [doc for doc in documents if doc.doc_id != chunk.doc_id],
+            )
         )
         results.append(Generated(chunk, question, cost, problem))
         print(f"[{number}/{len(passages)}] {chunk.id} {problem or 'ok'}  ${cost:.5f}")

@@ -144,6 +144,24 @@ def test_a_question_is_only_kept_when_its_quote_is_really_in_the_document(
         assert verdict is not None and problem in verdict, verdict
 
 
+def test_a_quote_two_reports_share_is_not_a_label_for_either_of_them() -> None:
+    """A boilerplate sentence identifies no document, so it resolves to chunks in both and the
+    retriever is marked wrong for returning the one the question was not about."""
+    shared = "Audited by the independent auditors appointed at the annual general meeting."
+    candidate = Question(
+        usable=True, question="Who audits Reliance?", quote=shared, topic="assurance"
+    )
+
+    verdict = verify(
+        candidate,
+        Document(doc_id="RIL-FY25", text=PROSE + shared),
+        [Document(doc_id="ITC-FY25", text=shared + PROSE)],
+    )
+
+    assert verdict is not None and "ITC-FY25" in verdict, verdict
+    assert verify(candidate, Document(doc_id="RIL-FY25", text=PROSE + shared)) is None
+
+
 def test_a_row_carries_the_document_and_the_topic_as_tags() -> None:
     candidate = Question(
         usable=True, question="What dividend?", quote="a quote", topic="  Dividend  "

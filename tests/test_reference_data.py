@@ -17,6 +17,7 @@ import pytest
 
 from entropic.extraction.headlines import DIRECTORY
 from entropic.retrieval.corpus import MANIFEST
+from entropic.retrieval.questions import DATASET
 
 Pairs = list[tuple[str, object]]
 
@@ -38,6 +39,16 @@ def json_keys(*into: str) -> Callable[[Path], list[str]]:
     return read
 
 
+def jsonl_ids(field: str) -> Callable[[Path], list[str]]:
+    """Read one field from every line of a JSONL file, in file order."""
+
+    def read(path: Path) -> list[str]:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        return [str(json.loads(line)[field]) for line in lines if line.strip()]
+
+    return read
+
+
 @dataclass(frozen=True)
 class Ordered:
     """A hand-edited file whose entries stay sorted by the key they are looked up by."""
@@ -53,6 +64,7 @@ class Ordered:
 ORDERED_FILES = [
     Ordered(DIRECTORY, key="ticker", load=json_keys("companies")),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
+    Ordered(DATASET, key="id", load=jsonl_ids("id")),
 ]
 
 

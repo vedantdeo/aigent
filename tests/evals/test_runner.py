@@ -7,6 +7,8 @@ reason the harness takes one instead of a prompt.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from anthropic.types import Usage
 
@@ -14,7 +16,7 @@ from entropic.config import JUDGE_MODEL
 from entropic.evals.dataset import Case
 from entropic.evals.grade import Grader, Outcome, Score, exact_match
 from entropic.evals.judge import Verdict
-from entropic.evals.runner import Task, run_eval
+from entropic.evals.runner import EvalRun, Task, combine, run_eval
 from entropic.pricing import usage_cost
 
 from ..conftest import MakeJudge
@@ -215,3 +217,58 @@ def test_a_judge_that_fails_on_the_network_costs_the_row_not_the_run(make_judge:
     assert len(run.rows) == 3, "the run finished"
     assert all(row.scores["exact"].passed for row in run.rows), "the free grader still graded"
     assert all("503 upstream" in row.scores["judge"].detail for row in run.rows)
+
+
+# --- combine ---------------------------------------------------------------------------------
+# One run per variant, merged afterwards, because a retrieval label resolves to different chunk
+# ids under each chunking strategy and so cannot be scored in one pass.
+
+
+def _run(variant: str, *, digest: str = "abc123", grader: str = "exact") -> EvalRun:
+    return run_eval(
+        _cases(2),
+        {variant: _always("yes")},
+        {grader: exact_match("answer")},
+        dataset="toy.jsonl",
+        digest=digest,
+        progress=False,
+    )
+
+
+def test_combine_reads_several_single_variant_runs_as_one_table() -> None:
+    runs = [_run("fixed"), _run("by_sentence")]
+
+    merged = combine(runs)
+
+    assert merged.variants == ("fixed", "by_sentence"), "column order follows the runs given"
+    assert len(merged.rows) == 4
+    assert merged.graders == ("exact",)
+    assert merged.started_at == min(run.started_at for run in runs), "the run began at the earliest"
+
+
+@pytest.mark.parametrize(
+    ("second", "says"),
+    [
+        pytest.param(
+            lambda: _run("overlap", digest="different"),
+            "different datasets",
+            id="labels moved between the two runs",
+        ),
+        pytest.param(
+            lambda: _run("overlap", grader="loose"),
+            "different graders",
+            id="columns would not be answering the same question",
+        ),
+        pytest.param(lambda: _run("fixed"), "share a variant name", id="one column hides another"),
+    ],
+)
+def test_combine_refuses_runs_whose_columns_would_not_be_comparable(
+    second: Callable[[], EvalRun], says: str
+) -> None:
+    with pytest.raises(ValueError, match=says):
+        combine([_run("fixed"), second()])
+
+
+def test_combine_needs_something_to_combine() -> None:
+    with pytest.raises(ValueError, match="at least one"):
+        combine([])

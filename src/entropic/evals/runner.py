@@ -119,6 +119,43 @@ def run_eval(
     return run
 
 
+def combine(runs: Sequence[EvalRun]) -> EvalRun:
+    """Several single-variant runs read as one comparison table.
+
+    Needed where variants disagree about the *label* and not only the task: a retrieval label is a
+    quote, and it resolves to different chunk ids under each chunking strategy, so one `run_eval`
+    call cannot serve them all. Refuses runs over different datasets or graders, and repeated
+    variant names — a table of those columns would be comparing nothing.
+    """
+    if not runs:
+        raise ValueError("combine needs at least one run")
+    first = runs[0]
+    for run in runs[1:]:
+        if (run.dataset, run.digest) != (first.dataset, first.digest):
+            raise ValueError(
+                f"runs graded different datasets: {first.dataset}@{first.digest} "
+                f"and {run.dataset}@{run.digest}"
+            )
+        if run.graders != first.graders:
+            raise ValueError(f"runs used different graders: {first.graders} and {run.graders}")
+    variants = tuple(variant for run in runs for variant in run.variants)
+    if len(set(variants)) != len(variants):
+        raise ValueError(f"two runs share a variant name, so one would hide the other: {variants}")
+
+    return EvalRun(
+        dataset=first.dataset,
+        digest=first.digest,
+        model=first.model,
+        variants=variants,
+        graders=first.graders,
+        rows=[row for run in runs for row in run.rows],
+        spent_usd=sum(run.spent_usd for run in runs),
+        limit_usd=first.limit_usd,
+        started_at=min(run.started_at for run in runs),
+        stopped_early=next((run.stopped_early for run in runs if run.stopped_early), None),
+    )
+
+
 def _bill(budget: Budget, usage: Usage | None, model: str) -> float:
     """Charge a call that may not have happened; a task that never touched the API costs nothing."""
     return budget.charge(model, usage) if usage is not None else 0.0

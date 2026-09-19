@@ -21,14 +21,16 @@ from entropic.evals.grade import (
     contains,
     exact_match,
     field_match,
+    hit_at_k,
     pydantic_valid,
     recall_at_k,
     reciprocal_rank,
     regex,
+    resolvable,
 )
 from entropic.evals.judge import LlmJudge, Verdict
 from entropic.evals.report import to_markdown, write_report
-from entropic.evals.runner import EvalRun, RowResult, Task, run_eval
+from entropic.evals.runner import EvalRun, RowResult, Task, combine, run_eval
 
 __all__ = [
     "Case",
@@ -41,15 +43,18 @@ __all__ = [
     "Score",
     "Task",
     "Verdict",
+    "combine",
     "contains",
     "digest",
     "exact_match",
     "field_match",
+    "hit_at_k",
     "load_jsonl",
     "pydantic_valid",
     "recall_at_k",
     "reciprocal_rank",
     "regex",
+    "resolvable",
     "run_eval",
     "to_markdown",
     "write_report",

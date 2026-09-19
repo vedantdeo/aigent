@@ -396,5 +396,52 @@
   seconds is cheap next to a run whose numbers are quietly from a previous version of `normalise`.
   So callers ask for it at the call site, where it is visible in review, and a test pins the
   default so an opt-in convenience cannot drift into being the norm.
-- Next: the first measured run — three variants over one dataset, `resolvable` beside `recall@5`
-  and `mrr`. Then hybrid and rerank.
+- 09-18: `by_sentence` was emitting mega-chunks and the eval could not see it. 172 chunks came out
+  over 2,000 characters, holding **11.5% of the corpus**, the largest 14,947 characters with seven
+  sentence breaks inside it — financial tables, which carry almost no sentence-ending punctuation.
+  The old rule was "a sentence longer than the budget becomes its own chunk rather than being cut",
+  argued from keeping the comparison with `fixed` honest. That argument was wrong about this
+  corpus: the embedder reads 512 tokens, so most of a 15k-character chunk was never indexed while
+  the chunk went on claiming to contain it. An uncut mega-chunk is not a fairer comparison, it is a
+  chunk that lies. `emit_capped` cuts a span with no break in it on the character budget:
+  **truncated chunks 185 → 47, recall@5 0.581 → 0.609**, chunk count 4,593 → 5,193.
+- 09-18: **the first measured run.** `retrieval.evaluate`, three strategies over the 54 questions,
+  206s and **$0.00**. `resolvable` 0.963 / 1.000 / 1.000, hit@5 0.635 / 0.630 / 0.685, recall@5
+  0.619 / 0.583 / 0.608, MRR 0.471 / 0.511 / 0.452 for `fixed` / `fixed+overlap` / `by_sentence`.
+  **Three metrics, three different winners.** The largest gap is four cases out of 54, and a
+  four-case gap on 54 paired rows cannot reach p<0.05 by a sign test even when every discordant row
+  falls the same way — the minimum attainable two-sided p is 0.125. So the honest reading is that
+  these three are not separable here, which is a finding about the dataset's size before it is one
+  about the chunkers. The one thing the table does say cleanly: `fixed` caps itself before the
+  embedder runs, losing 2 of 54 labels to its own boundaries.
+- 09-18: the run needed `runner.combine`, which the seam note had not predicted. These variants
+  disagree about the **label**, not only the task — a chunk id names different text in each
+  inventory — so each strategy is scored against its own resolved cases and the three runs merged
+  into one table afterwards. It refuses runs differing in dataset, digest or graders, and a
+  repeated variant name: the three ways the merged columns would stop being comparable while the
+  table still rendered.
+- 09-18: `hit@k` added after the fact, and it changes the answer. `recall@k` gives partial credit
+  across a label that resolved to several chunks, but those chunks are usually one sentence seen
+  through several overlapping windows rather than several facts — any one of them answers the
+  question. So recall charges a strategy for the overlap that made its quote resolve at all, and it
+  falls hardest on the strategy with the most of it (a label resolves to a mean of 1.10 chunks under
+  `fixed`, 1.41 under `by_sentence`). Recall@5 ranks `fixed` first; hit@5 ranks `by_sentence` first,
+  **over the identical rankings**. Neither is wrong; they answer different questions, and the one
+  that decides whether a generator can answer at all is hit@k.
+- 09-18: working a `hit@k` example on a real row found a **bad label**, which is the usual way round
+  — the eval's first real output was a bug in its own dataset. `rq-054` asked which firm assured
+  Tata Motors' BRSR Core attributes and was labelled `KPMG Assurance and Consulting Services LLP`.
+  True. Also true of ITC, whom KPMG also signs. The quote resolved to **21 chunks across two
+  documents**, so the retriever was scored wrong for returning a chunk that genuinely held it.
+  `verify` had three checks and all three asked whether the quote was *in* the document; none asked
+  whether it was *of* it. Fixed to a quote naming one passage (one chunk under each strategy), the
+  gate tightened to reject a quote found anywhere else in the corpus, and the whole set swept: no
+  second instance. `rq-009` resolves to five chunks but all in ITC — a repeated ESOP sentence, a
+  correct label, and the row to remember when reading recall@5, since it cannot score above 1/5 at
+  k=5 unless all five come back.
+- 09-18: the question set joined `tests.test_reference_data`'s registry, the third file to opt into
+  the canonical-order rule. It is hand-edited and code reads it back, which is the whole trigger; a
+  repeated `rq-` id would otherwise be a row that quietly scores twice.
+- Next: hybrid (BM25 + RRF) and rerank as further columns of the same table, then the answer-level
+  eval — the first part of Week 2 that spends. Then the `v0.1-rag` tag, and branch protection in
+  the same move.

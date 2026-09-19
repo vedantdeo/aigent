@@ -205,3 +205,32 @@ def test_two_documents_with_one_doc_id_are_refused_rather_than_silently_merged()
     """`by_id` would keep the last of each colliding pair, and every label naming one would move."""
     with pytest.raises(ValueError, match="share a doc_id"):
         Inventory.build("fixed", [_doc(FILLER * 3), _doc(FILLER * 3)], fixed(200, 0))
+
+
+def test_a_span_with_no_sentence_break_is_cut_on_the_budget_not_emitted_whole() -> None:
+    """The financial-table shape: 15,000 characters of figures with no `.!?` anywhere in them.
+
+    Emitted whole, the embedder reads its first 512 tokens and silently ignores the rest, so an
+    eighth of this corpus became unsearchable past its opening. Measured 2026-09-18.
+    """
+    table = " ".join(f"{row} 1,234 5,678 9,012" for row in range(400))
+    assert "." not in table, "the fixture has to have no sentence break for this to test anything"
+
+    inventory = Inventory.build("sentence", [_doc(table)], by_sentence(400, overlap_sentences=0))
+
+    assert len(inventory) > 1, "a table with no sentence break must still be cut"
+    assert max(len(chunk.text) for chunk in inventory.chunks) <= 400
+    assert "".join(chunk.text for chunk in inventory.chunks).replace(" ", "") == table.replace(
+        " ", ""
+    ), "cutting on the budget must not lose or duplicate text"
+
+
+def test_a_long_sentence_is_still_packed_whole_when_it_fits_the_budget() -> None:
+    """The cap is for spans that cannot be split on sentences, not for merely long sentences."""
+    sentence = "The board resolved that the scheme of arrangement shall proceed as proposed. "
+
+    inventory = Inventory.build("sentence", [_doc(sentence * 3)], by_sentence(200, 0))
+
+    assert all(chunk.text.endswith(".") for chunk in inventory.chunks), [
+        chunk.text for chunk in inventory.chunks
+    ]

@@ -279,6 +279,29 @@ def recall_at_k(k: int, *, retrieved: str = "retrieved", relevant: str = "releva
     return grade
 
 
+def hit_at_k(k: int, *, retrieved: str = "retrieved", relevant: str = "relevant") -> Grader:
+    """Whether any relevant chunk came back in the top k — can the generator answer at all.
+
+    `recall_at_k` asks for all of them, which charges a strategy for the overlap that made the
+    quote resolve to several chunks in the first place. Those extra chunks are the same sentence
+    seen through a second window, not a second fact, so one of them is a complete answer.
+    """
+    if k < 1:
+        raise ValueError(f"hit_at_k: k must be at least 1, got {k}")
+
+    def grade(case: Case, outcome: Outcome) -> Score:
+        both = _ranked_and_relevant(case, outcome, retrieved, relevant)
+        if isinstance(both, Score):
+            return both
+        got, want = both
+        hit = next((chunk_id for chunk_id in got[:k] if chunk_id in want), None)
+        if hit is None:
+            return Score(False, f"none of {len(want)} relevant chunks in top {k}", value=0.0)
+        return Score(True, "", value=1.0)
+
+    return grade
+
+
 def reciprocal_rank(
     *, k: int | None = None, retrieved: str = "retrieved", relevant: str = "relevant"
 ) -> Grader:

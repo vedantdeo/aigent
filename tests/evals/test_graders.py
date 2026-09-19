@@ -19,6 +19,7 @@ from entropic.evals.grade import (
     contains,
     exact_match,
     field_match,
+    hit_at_k,
     pydantic_valid,
     recall_at_k,
     reciprocal_rank,
@@ -183,8 +184,8 @@ def test_judge_does_not_spend_on_a_row_the_task_already_failed(make_judge: MakeJ
 
 
 # --- Retrieval ------------------------------------------------------------------------------
-# Both graders read a ranked list of ids against a labelled set, so one pair of helpers serves both
-# tables. `relevant` is the label; `retrieved` is what the retriever ranked.
+# Three graders read a ranked list of ids against a labelled set, so one pair of helpers serves
+# all three tables. `relevant` is the label; `retrieved` is what the retriever ranked.
 
 
 def _retrieval(relevant: Fields, retrieved: Fields) -> tuple[Case, Outcome]:
@@ -214,6 +215,30 @@ def test_recall_at_k_counts_the_relevant_chunks_inside_the_top_k(
     output: Fields = {"retrieved": retrieved}
 
     score = recall_at_k(k)(*_retrieval(expected, output))
+
+    assert score.passed is passed, score.detail
+    assert score.value == pytest.approx(value), score.detail
+
+
+@pytest.mark.parametrize(
+    ("relevant", "retrieved", "k", "value", "passed"),
+    [
+        pytest.param(["b"], ["b", "c", "d"], 3, 1.0, True, id="the one relevant chunk, at rank 1"),
+        pytest.param(["b"], ["c", "d", "e", "b"], 3, 0.0, False, id="at rank k+1, just outside"),
+        # The whole reason this grader exists beside `recall_at_k`, which scores this row 1/3. The
+        # three ids are one sentence seen through three overlapping windows, and any of them
+        # answers the question — so a strategy is not worse for having produced the other two.
+        pytest.param(["a", "b", "c"], ["z", "b", "y"], 3, 1.0, True, id="one of three is enough"),
+        pytest.param(["a", "b"], ["y", "z"], 5, 0.0, False, id="none of them came back"),
+    ],
+)
+def test_hit_at_k_asks_only_whether_any_relevant_chunk_came_back(
+    relevant: list[JsonValue], retrieved: list[JsonValue], k: int, value: float, passed: bool
+) -> None:
+    expected: Fields = {"relevant": relevant}
+    output: Fields = {"retrieved": retrieved}
+
+    score = hit_at_k(k)(*_retrieval(expected, output))
 
     assert score.passed is passed, score.detail
     assert score.value == pytest.approx(value), score.detail
@@ -256,19 +281,21 @@ def test_reciprocal_rank_is_one_over_the_rank_of_the_first_relevant_chunk(
         pytest.param({"relevant": ["a"]}, {"retrieved": [1, 2]}, "list", id="ids are not strings"),
     ],
 )
-def test_both_retrieval_graders_say_which_side_is_unusable(
+def test_every_retrieval_grader_says_which_side_is_unusable(
     relevant: Fields, retrieved: Fields, says: str
 ) -> None:
     case, outcome = _retrieval(relevant, retrieved)
 
-    for grader in (recall_at_k(3), reciprocal_rank()):
+    for grader in (recall_at_k(3), hit_at_k(3), reciprocal_rank()):
         score = grader(case, outcome)
         assert score.passed is False
         assert says in score.detail
 
 
 @pytest.mark.parametrize(
-    "build", [lambda: recall_at_k(0), lambda: reciprocal_rank(k=0)], ids=["recall", "rr"]
+    "build",
+    [lambda: recall_at_k(0), lambda: hit_at_k(0), lambda: reciprocal_rank(k=0)],
+    ids=["recall", "hit", "rr"],
 )
 def test_a_k_below_one_is_refused_when_the_grader_is_built_not_when_it_runs(
     build: Callable[[], Grader],
