@@ -229,8 +229,14 @@ of this machine. Edit both, or neither.
 
 ## Turn on branch protection before anyone else can touch this repo
 
-**Trigger: the moment a collaborator is added, or the repo goes public — planned for the `v0.1-rag`
-tag at the end of Week 2 (Fri 2026-09-18). Raise it then; do not wait to be asked.**
+**Trigger: the moment a collaborator is added, or the repo goes public — planned for Wed
+2026-09-23. Raise it then; do not wait to be asked.**
+
+The repo was private and unprotected through the `v0.1-rag` work, which is a **decision taken on
+Sat 2026-09-19, not an oversight**: nobody else can pull a red commit from a private one-person
+repo, so protection buys nothing until the day it goes public and buys everything that day. Do not
+raise it early to be safe, and do not let the date slip quietly — going public without it is the
+failure this section exists to prevent, and the two happen in one move or not at all.
 
 CI is a detector, not a gate. GitHub accepts a push first and runs the workflows after, so a bad
 commit reaches `main` and goes red a minute later. That is fine while this is a one-person repo and
