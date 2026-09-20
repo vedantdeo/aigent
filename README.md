@@ -48,6 +48,7 @@ Each module also runs on its own: `uv run python -m entropic.primitives.first_ca
 | `retrieval/fuse.py` | reciprocal rank fusion, because two rankers' scores are not comparable |
 | `retrieval/rerank.py` | a cross-encoder that reads query and passage together, then reorders |
 | `retrieval/evaluate.py` | the runs: chunking strategies, or six retrieval arms, both free |
+| `retrieval/langchain_rag.py` | the same pipeline in LangChain, scored by the same harness |
 | `retrieval/answer.py` | the generation half: answer from retrieved passages, closed-book against RAG |
 
 Written against the tests rather than the other way round, the same arrangement as the `underhood`
@@ -161,6 +162,12 @@ three face the identical set. And `recall@5` is not the headline it looks like: 
 resolves to several chunks, those are usually one sentence seen through several overlapping
 windows, and demanding all of them charges a strategy for the overlap that made the quote
 resolve at all. That is why `hit@5` is there, and why it ranks the three the other way round.
+
+**The framework comparison.** The whole pipeline rebuilt in LangChain and run through this repo's own eval: **within one row of 54 on every metric**, for 14 statements against 336. The
+framework cost no accuracy — what it cost was 31 transitive packages, a loader that warns it is
+being sunset, chunks that cannot cross a page boundary, and a `Document` with no identity whose
+absence scored 0.000 on everything without raising. Ten lines on what it abstracted and what it
+hid: [docs/framework-comparison.md](docs/framework-comparison.md).
 
 Anthropic ships no embedding model, so this is the one part of Entropic that runs on someone else's
 weights — `bge-small-en-v1.5` through `sentence-transformers`, on the laptop's GPU. It costs nothing

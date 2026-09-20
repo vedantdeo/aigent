@@ -544,6 +544,33 @@
   wide and let the expensive model sort it out" holds only while the expensive model is good enough
   to sort. The three plain arms were byte-identical across both runs, which is the control that
   says the flag leaked nowhere.
-- Next: the LangChain rebuild and ten lines on what it abstracted, then public plus branch
-  protection on Wed 2026-09-23. Worth doing when there is time: a question set written by someone
-  who never sees the passages, which is the only clean measurement of what dense is really worth.
+- 09-20: the LangChain rebuild, $0.00, and the useful move was running it through **our** harness
+  rather than reading its code — same three PDFs, same 54 questions, same graders, same report, so
+  the comparison is a number. Result: **within one row of 54 on every metric** (hit@5 0.611 against
+  our 0.630 at the same 1200/200 and the same model). The framework cost no accuracy. It cost 14
+  statements where ours takes 336.
+- 09-20: which means the uncomfortable half is ours. Furniture stripping, NFKC normalisation,
+  hyphen rejoining and page-offset tracking — measured against LangChain's raw extraction — bought
+  **~0.019 hit@5, one row**. Worth knowing before writing the next careful ingestion step, and only
+  sayable because both pipelines went through one harness.
+- 09-20: a surprise in the other direction. `resolvable` came out 1.000 for LangChain **despite no
+  normalisation at all**, because `squeeze` folds typography at *match* time rather than at ingest.
+  A design choice from a week ago turned out to make our labels portable to a pipeline that never
+  normalised anything, which was not why it was made.
+- 09-20: what the framework hid, all found by needing it rather than by reading docs.
+  `PyPDFLoader` returns one Document per page, so chunks **cannot cross a page boundary** (510
+  extra chunks at the same nominal size); `add_start_index` is off by default, and without it a
+  chunk has no offset and no citation is computable; `metadata["page"]` is 0-indexed where every
+  citation here is 1-indexed; three direct dependencies pull **31 transitive packages** (61 → 92),
+  SQLAlchemy and a telemetry client among them; and `langchain-community` warns on import that it
+  is being sunset, at current versions, installed today.
+- 09-20: **the first run scored 0.000 on every metric and raised nothing**, and that is the entry
+  worth keeping. A LangChain `Document` has no id, so retrieved chunks were matched back by
+  `id(chunk)` — and `InMemoryVectorStore` hands back reconstructed objects, so every lookup missed,
+  every id list came back empty, and empty id lists grade as clean misses. A broken adapter is
+  indistinguishable from a bad retriever unless something refuses to be quiet. Fixed by stamping
+  ids into metadata; the task now **errors** on an unmappable chunk instead of skipping it, and a
+  test pins that. The rule earned: a metric of exactly 0.000 is plumbing until proven otherwise.
+- Next: public plus branch protection on Wed 2026-09-23, and Week 3 (agent patterns) starts
+  tomorrow. Worth doing when there is time: a question set written by someone who never sees the
+  passages, which is the only clean measurement of what dense is really worth.
