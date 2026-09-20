@@ -44,7 +44,10 @@ Each module also runs on its own: `uv run python -m entropic.primitives.first_ca
 | `retrieval/store.py` | vectors → a ranked list of chunk ids, brute-force cosine over NumPy |
 | `retrieval/corpus.py` | annual report PDFs → `Document`s: extract, normalise, strip running headers |
 | `retrieval/questions.py` | the question set, and the gate every label has to pass |
-| `retrieval/evaluate.py` | the run: three chunking strategies over one question set, free |
+| `retrieval/sparse.py` | BM25 over the same chunks: the lexical half, as an inverted index |
+| `retrieval/fuse.py` | reciprocal rank fusion, because two rankers' scores are not comparable |
+| `retrieval/rerank.py` | a cross-encoder that reads query and passage together, then reorders |
+| `retrieval/evaluate.py` | the runs: chunking strategies, or six retrieval arms, both free |
 | `retrieval/answer.py` | the generation half: answer from retrieved passages, closed-book against RAG |
 
 Written against the tests rather than the other way round, the same arrangement as the `underhood`
@@ -68,6 +71,41 @@ The largest gap is four cases out of 54, and a four-case gap on 54 paired rows c
 p<0.05 by a sign test even if every discordant row falls the same way. What the table does say
 is that `fixed` caps itself before the embedder runs: 2 of 54 labels straddle one of its
 boundaries, so no retriever could have found them, which is what the `resolvable` row is for.
+
+### The result worth reading first
+
+Six retrieval arms, run over **two question sets that differ only in wording** — same corpus, same
+chunks, same 54 quotes, same labels. `uv run python -m entropic.retrieval.evaluate --compare
+retrieval`, hit@5, **$0.00**:
+
+| question style | `dense` | `dense+rr` | `bm25` | `bm25+rr` | `hybrid` | `hybrid+rr` |
+|---|---|---|---|---|---|---|
+| written *from* the passages | 0.685 | 0.778 | 0.889 | **0.907** | 0.833 | 0.870 |
+| paraphrased ([why](evals/datasets/retrieval-paraphrased.jsonl)) | 0.389 | **0.500** | 0.315 | 0.426 | 0.426 | 0.481 |
+
+**The two tables recommend opposite systems.** On questions authored from the passages, BM25 wins
+outright and fusing it with embeddings makes it *worse*. On paraphrased questions, BM25 falls from
+best to worst — below dense — and fusion becomes the best base.
+
+Nothing changed but how the questions were worded. So: **an eval whose questions were written while
+looking at the passages will recommend the wrong retriever.** Every retrieval number below is
+conditional on its question style, and that is the finding, not a caveat on one.
+
+Three smaller things fell out of it:
+
+- **Naive RRF lost to BM25 alone** on the original set. Dense contributed exactly one unique row in
+  54, and fusion gave back four that BM25 had at **rank 1** — because `RRF_K=60` makes agreement
+  between rankers beat a single confident first place, and agreement is worthless when one ranker is
+  noise. The property that makes fusion good is the one that made it bad here.
+- **Reranking cannot retrieve.** It moves MRR hardest (dense 0.452 → 0.650 on the original set) and
+  moves recall only as far as the candidate pool reaches.
+- **The candidate pool is a real optimum, not a free knob.** Widening 30 → 100 helped `bm25+rerank`
+  (+0.037 hit@5) and *hurt* `dense+rerank` (−0.019): seventy more candidates are seventy more
+  chances for a small cross-encoder to promote a plausible wrong chunk.
+
+The paraphrased set carries two caveats of its own, stated where it lives: its author knew the
+hypothesis, and the absolute scores are confounded with the questions simply being vaguer. The
+*relative* inversion is the robust part, since both rankers faced identical questions.
 
 Retrieval is half the system. `uv run python -m entropic.retrieval.answer --yes` answers the same
 questions from those passages, on `claude-opus-5`, judged by `claude-sonnet-5` — **all 54 cases,

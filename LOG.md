@@ -504,7 +504,46 @@
   time scores identically to one citing the single right passage — and this run did not persist the
   `cited` lists, so whether it cited one passage or five is not answerable from what is on disk.
   Deliberately not fixed before the tag.
-- Next: hybrid (BM25 + RRF) and cross-encoder rerank as further columns of the same table, both
-  free. The roadmap's milestone text asks for baseline/hybrid/rerank rows and this tag ships three
-  *chunking* variants instead, which the tag annotation says out loud. Then the LangChain rebuild,
-  then public plus branch protection on Wed 2026-09-23.
+- 09-20: hybrid and rerank land — `sparse.py` (BM25 as an inverted index), `fuse.py` (RRF),
+  `rerank.py` (a local cross-encoder). Six arms over one `by_sentence` inventory: three bases with
+  and without reranking. One run rather than merged runs, because unlike chunking strategies these
+  all rank the same chunks and so share their labels.
+- 09-20: first table, original questions. `bm25` 0.889 hit@5 against `dense`'s 0.685 — lexical
+  retrieval does not merely help here, it dominates. And **hybrid came out worse than bm25 alone**
+  (0.833), which is not what the textbook says. The diagnostic: of dense's 37 hits, 36 were also
+  bm25 hits, so **dense contributed exactly one unique row in 54** and there was no complementarity
+  to fuse. Worse, hybrid lost four rows bm25 had at **rank 1** and dense had nowhere in its top 100
+  — because `RRF_K=60` makes a chunk both rankers liked beat a chunk one ranker put first. That is
+  the property fusion is bought for, and it is worthless when one ranker is noise. `bm25+rerank`,
+  an arm not in the original plan, then swept everything at 0.907 hit@5: deleting the fusion stage
+  beat the textbook pipeline.
+- 09-20: the question that changed the conclusion came from the user — long documents eventually
+  use pronouns and paraphrase, where dense should earn its keep. Measured on the existing set
+  first, free: split the 54 rows at the median by idf-weighted overlap between question and answer
+  chunk. **bm25 is 27/27 on the high-overlap half and 21/27 on the low half; dense is flat at 19/27
+  and 18/27** (Fisher exact p=0.023). bm25's score is a function of how much the question reuses
+  the passage's words. dense does not care.
+- 09-20: so the decisive experiment — `retrieval-paraphrased.jsonl`, the same 54 quotes and labels
+  with the questions reworded, isolating question style as the only variable. Mean overlap 0.569 →
+  0.285. **The ranking inverts.** bm25 falls from best to worst (0.889 → 0.315, below dense's
+  0.389); `hybrid` becomes the best base; `dense+rerank` is the best arm at 0.500. The two tables
+  recommend opposite systems and nothing changed but the wording. **An eval whose questions were
+  written while looking at the passages will recommend the wrong retriever** — which is a finding
+  about eval construction, not about BM25.
+- 09-20: two things kept honest about that set. Ten first-draft questions were rewritten for being
+  contrived rather than natural (`bank-club lending` for a syndicated loan); that cost 0.025 of
+  overlap and was right, since a question nobody would ask is not a harder question but a different
+  bug. And the absolute collapse is **confounded** — every arm fell, so lower overlap is mixed with
+  vaguer phrasing, and only the relative inversion is robust. The author also knew the hypothesis
+  while writing the questions; the unbiased version needs someone who never sees the passages.
+- 09-20: last free experiment, and the prediction failed. Answers on the paraphrased set sit at
+  dense ranks 7, 9, 14, 18, 27, 36, 76 — found but below the cut — so widening `RERANK_CANDIDATES`
+  30 → 100 should have recovered them. It helped `bm25+rerank` (+0.037 hit@5) and **hurt**
+  `dense+rerank` (−0.019). Seventy more candidates are seventy more chances for a small
+  cross-encoder to promote a plausible wrong chunk: the pool size is a real optimum, and "retrieve
+  wide and let the expensive model sort it out" holds only while the expensive model is good enough
+  to sort. The three plain arms were byte-identical across both runs, which is the control that
+  says the flag leaked nowhere.
+- Next: the LangChain rebuild and ten lines on what it abstracted, then public plus branch
+  protection on Wed 2026-09-23. Worth doing when there is time: a question set written by someone
+  who never sees the passages, which is the only clean measurement of what dense is really worth.

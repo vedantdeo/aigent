@@ -19,6 +19,8 @@ from entropic.extraction.headlines import DIRECTORY
 from entropic.retrieval.corpus import MANIFEST
 from entropic.retrieval.questions import DATASET
 
+PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
+
 Pairs = list[tuple[str, object]]
 
 
@@ -65,6 +67,7 @@ ORDERED_FILES = [
     Ordered(DIRECTORY, key="ticker", load=json_keys("companies")),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(DATASET, key="id", load=jsonl_ids("id")),
+    Ordered(PARAPHRASED, key="id", load=jsonl_ids("id")),
 ]
 
 

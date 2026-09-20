@@ -87,6 +87,26 @@ HEADING_MIN_CAPITAL_RATIO = 0.6
 # How many chunks a retriever returns, and therefore how many an answer can cite.
 TOP_K = 5
 
+# BM25's two shape parameters, at the values the literature settled on. `K1` is where term
+# frequency saturates; `B` is how hard a long chunk is penalised (0 not at all, 1 fully).
+BM25_K1 = 1.5
+BM25_B = 0.75
+
+# How deep each ranker's list goes into fusion. Past this the reciprocal contributions are all
+# but identical, so the tail adds runtime and noise rather than signal.
+FUSE_DEPTH = 100
+
+# Reciprocal rank fusion's damping constant. At 60 the gap between rank 1 and rank 2 is small, so
+# a chunk both rankers like beats one that only the loudest ranker put first. Lower it to trust
+# first places more.
+RRF_K = 60
+
+# The reranker reads every candidate with the query, so this is a forward pass per row, not a
+# lookup. Retrieve this many cheaply, score them all, keep the best TOP_K.
+RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+RERANK_CANDIDATES = 30
+RERANK_BATCH = 32
+
 # What counts as page furniture in a PDF, where no markup survives to say what is a running header.
 # Only lines this close to the top or bottom of a page are candidates; one whose digits-masked form
 # reaches this fraction of the pages is furniture. Below the page floor, nothing is.

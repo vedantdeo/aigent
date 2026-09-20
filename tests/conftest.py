@@ -77,6 +77,23 @@ def make_judge() -> MakeJudge:
     return build
 
 
+class KeywordReranker:
+    """A deterministic stand-in for a cross-encoder: score by query words the passage contains.
+
+    Crude, and crucially **a different ordering from `BagOfWordsEmbedder`'s** — a fake reranker
+    that agreed with the fake retriever could not show that reranking changed anything.
+    """
+
+    def __init__(self, *, name: str = "keyword-rerank-fake") -> None:
+        self.name = name
+        self.seen: list[tuple[str, int]] = []
+
+    def scores(self, query: str, passages: Sequence[str]) -> list[float]:
+        self.seen.append((query, len(passages)))
+        terms = set(query.casefold().split())
+        return [float(sum(word in terms for word in p.casefold().split())) for p in passages]
+
+
 FAKE_DIMENSIONS = 32
 
 
