@@ -69,32 +69,53 @@ p<0.05 by a sign test even if every discordant row falls the same way. What the 
 is that `fixed` caps itself before the embedder runs: 2 of 54 labels straddle one of its
 boundaries, so no retriever could have found them, which is what the `resolvable` row is for.
 
-Retrieval is half the system. `uv run python -m entropic.retrieval.answer --yes --sample 12`
-answers the same questions from those passages, on `claude-opus-5`, judged by `claude-sonnet-5` —
-**12 of 54 cases, $0.295**
-([full report](evals/reports/retrieval-20260919-0754.md)):
+Retrieval is half the system. `uv run python -m entropic.retrieval.answer --yes` answers the same
+questions from those passages, on `claude-opus-5`, judged by `claude-sonnet-5` — **all 54 cases,
+$1.342** ([full report](evals/reports/retrieval-20260919-0821.md)):
 
 | | `closed_book` | `rag` |
 |---|---|---|
-| answered | 1/12 | 12/12 |
-| cites a passage holding the answer | 0/12 | 8/12 |
-| correct | 0/12 | **10/12** |
+| answered | 10/54 (19%) | 43/54 (80%) |
+| cites a passage holding the answer | 0/54 | 37/54 (69%) |
+| correct | 5/54 (9%) | **42/54 (78%)** |
 
-**0% to 83%** is what retrieval bought. Both arms get the identical questions; only one gets the
+**9% to 78%** is what retrieval bought. Both arms get the identical questions; only one gets the
 passages. An absolute RAG score would not say this — it would conflate what the retriever found
 with what a large model already knows about three of India's best-covered companies.
 
-The `answered` row is the one to read second. Closed-book **abstained 11 times and invented a figure
-once** (`rq-001`: "over Rs 32,000 crore" where the report says Rs 34,000 crores). A correctness
-grader scores an honest refusal and a plausible fabrication identically, and only the one of them
-can be caught by a reader. That is why the grader exists.
+### The number that matters is not in the `correct` row
 
-One more thing the smoke run corrected. `cites_relevant` came out at 0.667 against the retriever's
-own hit@5 of 0.685 — the model cites what it was handed and nothing else. But **correctness (0.83)
-runs ahead of both**, because a label names one passage and a report often states the fact in
-several: on `rq-054` retrieval missed chunk `#0532` and returned `#0531` and `#0530`, its
-neighbours, and the answer was right anyway. Read hit@5 as a floor on what RAG can answer, not a
-ceiling.
+| | abstained | answered | right when it answered |
+|---|---:|---:|---:|
+| `closed_book` | 44 | 10 | 5/10 — **50%** |
+| `rag` | 11 | 43 | 42/43 — **98%** |
+
+Without documents the model is a **coin flip whenever it chooses to speak**. Its judgement about
+what it doesn't know is good — it refuses 44 of 54 — and then it gets half the rest wrong, with the
+figures that make an annual report worth reading: `rq-001` answered "over Rs 32,000 crore" where ITC
+reports Rs 34,000 crores.
+
+With passages, **one wrong answer in 43**, and it declines the other eleven rather than guessing.
+The failure mode is silence, not fabrication. A `correct` column alone cannot tell you that — 5/54
+and 42/54 do not say that one of these is reckless and the other is not, which is why `answered` is
+graded beside it.
+
+### Two evals, written separately, agreeing row for row
+
+`cites_relevant` is 37/54. The free retrieval eval measured `by_sentence` hit@5 at 37/54 — and not
+merely the same count: **the same 37 rows, agreeing on all 54.** No row where retrieval surfaced a
+relevant chunk and the model failed to cite it; no row where it claimed one it was never given. The
+model cites what it was handed and invents no ids, so a divergence here would mean something is
+broken — a stale inventory, a mismatched strategy, a chunk-id collision.
+
+It also means the 5 rows where `correct` beats `cites_relevant` are purely the
+neighbouring-chunk effect: on `rq-054` retrieval missed chunk `#0532` and returned `#0531` and
+`#0530`, and the answer was right anyway, because a label names one passage and a report states the
+fact across a section. Read hit@5 as a floor on what RAG can answer, not a ceiling.
+
+`cites_relevant` is an any-hit metric with no precision term, so a model citing all five passages
+every time would score the same as one citing the single right passage. It is a floor on citation
+quality rather than a measure of it.
 
 Two caveats travel with these numbers. The questions were written *from* the passages, so they
 inherit that vocabulary and absolute recall reads high — the ordering is what survives, since all

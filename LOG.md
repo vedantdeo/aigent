@@ -478,6 +478,33 @@
   returned `#0531` and `#0530` — its neighbours — and the answer was right anyway, because a label
   names one passage and an annual report states the fact across a section. **hit@5 is a floor on
   what RAG can answer, not a ceiling**, which corrects how the 09-18 table was written up.
-- Next: the full 54, which needs `ENTROPIC_MAX_USD_PER_EVAL=2.50` since it prices at $2.22 worst
-  case. Then hybrid (BM25 + RRF) and rerank as further columns of the retrieval table, the
-  `v0.1-rag` tag, and branch protection in the same move.
+- 09-19: **the full 54, $1.342** against a $2.22 worst case and a ceiling raised to $2.50 for the
+  run. Closed-book `answered` 10/54, `correct` 5/54; RAG `answered` 43/54, `cites_relevant` 37/54,
+  `correct` 42/54. `evals/reports/retrieval-20260919-0821.md`. **9% to 78%** is the headline, and
+  the smoke run had been wrong about the floor — it read closed-book as 0/12 because the 12-case
+  sample happened to miss all five rows the model knows from memory. A sample can be wrong about a
+  rate in either direction; it was right about the shape.
+- 09-19: the real finding is in the `answered` column, and it is a safety number rather than a
+  quality one. **Closed-book is a coin flip when it chooses to speak: 10 answers, 5 right.** Its
+  judgement about what it does not know is good — 44 abstentions out of 54 — and its confidence
+  when it does answer is worth nothing. With passages it is 42 right out of 43 answered, declining
+  the other 11. The failure mode moves from fabrication to silence, which is the whole argument for
+  RAG stated as a measurement rather than a belief. `grade.flag` is what makes it visible; the
+  `correct` column alone reads 5/54 and 42/54 and cannot distinguish a careful model from a
+  reckless one.
+- 09-19: `cites_relevant` came out at 37/54 and so did the free retrieval eval's hit@5 — and a
+  row-level check said **the same 37 rows, agreeing on all 54**, with no row retrieved-but-uncited
+  and none cited-but-unretrieved. Worth recording because the equal *counts* were checked before
+  the equal *rows* were, and I had claimed the stronger thing off the weaker evidence. Two evals
+  written separately, one free over NumPy and one paid over a model, agreeing row for row: that is
+  a tripwire on the harness, and a divergence later means a stale inventory or a chunk-id collision
+  rather than a worse model.
+- 09-19: known limits of that metric, stated so a number quoted from it carries them.
+  `cites_relevant` is **any-hit with no precision term** — a model citing all five passages every
+  time scores identically to one citing the single right passage — and this run did not persist the
+  `cited` lists, so whether it cited one passage or five is not answerable from what is on disk.
+  Deliberately not fixed before the tag.
+- Next: hybrid (BM25 + RRF) and cross-encoder rerank as further columns of the same table, both
+  free. The roadmap's milestone text asks for baseline/hybrid/rerank rows and this tag ships three
+  *chunking* variants instead, which the tag annotation says out loud. Then the LangChain rebuild,
+  then public plus branch protection on Wed 2026-09-23.
