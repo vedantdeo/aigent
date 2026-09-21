@@ -213,7 +213,14 @@ def extraction_task(
             return Outcome(error=f"case {case.id} has no headline")
 
         messages: list[MessageParam] = [{"role": "user", "content": f"headline: {headline}"}]
-        check_request(built, model=model, max_tokens=MAX_TOKENS, messages=messages, system=system)
+        check_request(
+            built,
+            model=model,
+            max_tokens=MAX_TOKENS,
+            messages=messages,
+            system=system,
+            output_format=Extraction,
+        )
         response = built.messages.parse(
             model=model,
             max_tokens=MAX_TOKENS,

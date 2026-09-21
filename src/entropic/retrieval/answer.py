@@ -139,7 +139,12 @@ def answer_task(
 
         messages = prompt_for(question, chunks)
         check_request(
-            built, model=model, max_tokens=MAX_TOKENS, messages=messages, system=arm.system
+            built,
+            model=model,
+            max_tokens=MAX_TOKENS,
+            messages=messages,
+            system=arm.system,
+            output_format=Answer,
         )
         response = built.messages.parse(
             model=model,

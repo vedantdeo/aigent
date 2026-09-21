@@ -136,12 +136,15 @@ def check_request(
     messages: Sequence[MessageParam],
     system: str | Sequence[TextBlockParam] | Omit = omit,
     tools: Sequence[ToolParam] | Omit = omit,
+    output_format: type | Omit = omit,
 ) -> int:
     """Pre-flight one request through the free counting endpoint, returning its input-token count.
 
-    Pass exactly what the real call will send, or the count lies.
+    Pass exactly what the real call will send, or the count lies — a parse call's schema included.
     """
-    count = client.messages.count_tokens(model=model, messages=messages, system=system, tools=tools)
+    count = client.messages.count_tokens(
+        model=model, messages=messages, system=system, tools=tools, output_format=output_format
+    )
     assert_request_within_budget(model, count.input_tokens, max_tokens)
     return count.input_tokens
 

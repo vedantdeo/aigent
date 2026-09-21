@@ -587,4 +587,23 @@
   reports rather than filtering the global top k, which comes back empty for a report that ranks
   low overall and reads as "the report does not say". Default method `hybrid+rerank`, the winner
   on questions not written from the passages.
+- 09-21: **every structured call in the repo was pre-flighted short.** `check_request` never took
+  the `output_format` schema, and a schema is billed as input, so the per-request guard priced a
+  cheaper request than the one sent. Measured with free counts:
+
+  | call | schema | model | tokens missed | per call |
+  |---|---|---|---|---|
+  | `extraction.headlines` | `Extraction` | claude-opus-5 | 1,148 | $0.00574 |
+  | `primitives.structured_output` | `PaperSummary` | claude-opus-5 | 571 | $0.00285 |
+  | `retrieval.questions` | `Question` | claude-opus-5 | 419 | $0.00210 |
+  | `retrieval.answer` | `Answer` | claude-opus-5 | 378 | $0.00189 |
+  | `evals.judge` | `Verdict` | claude-sonnet-5 | 337 | $0.00067 |
+
+  Small against a $0.25 ceiling, and it never tripped anything; the point is that the guard was
+  checking a different request from the one sent. The bills were always right (they read real
+  usage) and so were the dry-run estimates (`headlines` and `answer` count the schema separately).
+  `check_request` now forwards `output_format` and all five pass it. The guard against it coming
+  back is a test that finds every `messages.parse` in the package by parsing the source, so a new
+  structured call is covered without anyone remembering to list it; breaking one site, or the
+  forwarding, each failed it.
 

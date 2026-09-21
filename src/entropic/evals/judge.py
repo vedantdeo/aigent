@@ -64,6 +64,7 @@ class LlmJudge:
             max_tokens=MAX_TOKENS,
             messages=messages,
             system=JUDGE_SYSTEM,
+            output_format=Verdict,
         )
         response = self.client.messages.parse(
             model=self.model,

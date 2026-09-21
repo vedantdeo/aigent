@@ -141,7 +141,14 @@ def generate(
 ) -> tuple[Question | None, float]:
     """Ask for one question about one passage. Returns what came back and what it cost."""
     messages = prompt_for(chunk, company)
-    check_request(client, model=model, max_tokens=MAX_TOKENS, messages=messages, system=SYSTEM)
+    check_request(
+        client,
+        model=model,
+        max_tokens=MAX_TOKENS,
+        messages=messages,
+        system=SYSTEM,
+        output_format=Question,
+    )
     response = client.messages.parse(
         model=model,
         max_tokens=MAX_TOKENS,

@@ -47,7 +47,9 @@ def main() -> None:
     messages: list[MessageParam] = [
         {"role": "user", "content": f"Summarize this abstract.\n\n<abstract>{ABSTRACT}</abstract>"}
     ]
-    check_request(client, model=MODEL, max_tokens=MAX_TOKENS, messages=messages)
+    check_request(
+        client, model=MODEL, max_tokens=MAX_TOKENS, messages=messages, output_format=PaperSummary
+    )
 
     response = client.messages.parse(
         model=MODEL,
