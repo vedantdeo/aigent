@@ -1,37 +1,28 @@
 """Prices as a table, then the two guards that read them.
 
 The price list is pure arithmetic — one call in, one number out — so it belongs in a table rather
-than in five functions that differ only by their inputs. The last two tests hold every structured
-call in the package to invariant 1: its pre-flight counts the schema it sends.
+than in five functions that differ only by their inputs.
 """
 
 from __future__ import annotations
 
-import ast
 from contextlib import AbstractContextManager, nullcontext
-from pathlib import Path
-from typing import cast
 
-import anthropic
 import pytest
-from anthropic.types import MessageTokensCount, Usage
-from pydantic import BaseModel
+from anthropic.types import Usage
 
-import entropic
 from entropic.config import DEFAULT_JUDGE_MODEL, DEFAULT_MODEL
 from entropic.pricing import (
     PRICES,
     Budget,
     BudgetExceeded,
     assert_request_within_budget,
-    check_request,
     cost_usd,
     estimate_eval_usd,
     worst_case_usd,
 )
 
 OPUS = "claude-opus-5"
-PACKAGE = Path(entropic.__file__).parent
 
 
 @pytest.mark.parametrize(
@@ -69,6 +60,13 @@ def test_request_guard_passes_a_normal_week1_call() -> None:
 def test_request_guard_trips_on_runaway_input() -> None:
     with pytest.raises(BudgetExceeded, match="per-request ceiling"):
         assert_request_within_budget(OPUS, 40_000, 4096, limit_usd=0.25)
+
+
+def test_request_guard_refuses_a_model_it_has_no_price_for() -> None:
+    """A real model missing from `PRICES` counts without error and costs $0.00 by the arithmetic,
+    so without this every ceiling would wave its calls through and bill them as free."""
+    with pytest.raises(BudgetExceeded, match="has no price"):
+        assert_request_within_budget("claude-opus-4-8", input_tokens=10, max_tokens=10)
 
 
 def test_run_budget_accumulates_then_trips_after_the_crossing_call() -> None:
@@ -185,139 +183,3 @@ def test_admit_refuses_what_could_cross_the_ceiling_before_it_is_spent(
     with expectation:
         budget.admit(worst)
     assert budget.spent_usd == spent, "admitting checks; nothing is billed until a call returns"
-
-
-class _Counts:
-    """Stands in for `client.messages`, keeping what the free count was asked to count."""
-
-    def __init__(self) -> None:
-        self.asked: dict[str, object] = {}
-
-    def count_tokens(self, **kwargs: object) -> MessageTokensCount:
-        self.asked = kwargs
-        return MessageTokensCount(input_tokens=100)
-
-
-class _Client:
-    def __init__(self) -> None:
-        self.messages = _Counts()
-
-
-class _Schema(BaseModel):
-    answer: str
-
-
-def test_check_request_counts_the_schema_with_the_request() -> None:
-    client = _Client()
-
-    check_request(
-        cast(anthropic.Anthropic, client),
-        model=OPUS,
-        max_tokens=64,
-        messages=[{"role": "user", "content": "hi"}],
-        output_format=_Schema,
-    )
-
-    assert client.messages.asked["output_format"] is _Schema
-
-
-@pytest.mark.parametrize(
-    ("spent", "expectation"),
-    [
-        pytest.param(0.0, nullcontext(), id="a fresh budget admits the call"),
-        pytest.param(
-            0.95,
-            pytest.raises(BudgetExceeded, match="ENTROPIC_MAX_USD_PER_RUN"),
-            id="a nearly spent budget refuses it",
-        ),
-    ],
-)
-def test_check_request_admits_the_call_against_a_budget(
-    spent: float, expectation: AbstractContextManager[object]
-) -> None:
-    """100 input tokens plus a 4096-token cap is $0.1029 at worst on Opus: under a fresh $1.00
-    budget, over what is left of one that has spent $0.95."""
-    budget = Budget(limit_usd=1.00, spent_usd=spent)
-
-    with expectation:
-        check_request(
-            cast(anthropic.Anthropic, _Client()),
-            model=OPUS,
-            max_tokens=4096,
-            messages=[{"role": "user", "content": "hi"}],
-            budget=budget,
-        )
-    assert budget.spent_usd == spent
-
-
-def _own_calls(function: ast.AST) -> list[ast.Call]:
-    """The calls a function makes itself, not those of functions defined inside it."""
-    calls: list[ast.Call] = []
-    pending = list(ast.iter_child_nodes(function))
-    while pending:
-        node = pending.pop()
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-            continue
-        if isinstance(node, ast.Call):
-            calls.append(node)
-        pending.extend(ast.iter_child_nodes(node))
-    return calls
-
-
-def _schema_of(call: ast.Call) -> str | None:
-    return next((ast.unparse(kw.value) for kw in call.keywords if kw.arg == "output_format"), None)
-
-
-def _is_parse(call: ast.Call) -> bool:
-    func = call.func
-    return (
-        isinstance(func, ast.Attribute)
-        and func.attr == "parse"
-        and isinstance(func.value, ast.Attribute)
-        and func.value.attr == "messages"
-    )
-
-
-def _parse_sites() -> list[tuple[str, str | None, list[str | None]]]:
-    """Each function in the package calling `messages.parse`, its schema and its pre-flights'."""
-    sites: list[tuple[str, str | None, list[str | None]]] = []
-    for path in sorted(PACKAGE.rglob("*.py")):
-        if path.name == "llm.py":
-            continue  # counts in `_admit`, sends in `_parse`; tests/test_llm.py pins the schema
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                continue
-            calls = _own_calls(node)
-            preflights = [
-                _schema_of(call)
-                for call in calls
-                if isinstance(call.func, ast.Name) and call.func.id == "check_request"
-            ]
-            for call in calls:
-                if _is_parse(call):
-                    where = f"{path.relative_to(PACKAGE)}:{node.name}"
-                    sites.append((where, _schema_of(call), preflights))
-    return sites
-
-
-PARSE_SITES = _parse_sites()
-
-
-def test_the_scan_finds_every_structured_call() -> None:
-    """Four since the primitives moved onto `llm`. Fewer means the scan broke, or another call
-    moved there — and the table below would go vacuous without anyone noticing."""
-    assert len(PARSE_SITES) >= 4, [where for where, _, _ in PARSE_SITES]
-
-
-@pytest.mark.parametrize(
-    ("schema", "preflighted"),
-    [pytest.param(schema, preflighted, id=where) for where, schema, preflighted in PARSE_SITES],
-)
-def test_a_structured_call_is_preflighted_with_the_schema_it_sends(
-    schema: str | None, preflighted: list[str | None]
-) -> None:
-    """A schema is billed as input — `Extraction` alone is 1,148 tokens — so a pre-flight without
-    it prices a cheaper request than the one sent."""
-    assert schema is not None, "a parse call with no output_format"
-    assert preflighted == [schema], f"sends {schema}, pre-flights with {preflighted}"

@@ -26,12 +26,9 @@ Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK f
 | `loop` | `primitives/tool_loop.py` | the agent loop, by hand; takes a task |
 | `chat` | `primitives/chat.py` | multi-turn conversation with a cost meter |
 
-`primitives/failures.py` is not a mode — it provokes ten failure modes and prints the table in
-`docs/failure-modes.md`. It costs nothing to run: a request rejected with a 4xx is never billed.
-
-```
-uv run python -m entropic.primitives.failures > docs/failure-modes.md
-```
+Every model call here, and everywhere else in the repo, goes through `src/entropic/llm.py`: counted
+for free, checked against the per-request ceiling, admitted against the run's budget, then sent,
+billed and traced. A test fails on any other module that calls the SDK itself.
 
 Each module also runs on its own: `uv run python -m entropic.primitives.first_call`.
 
@@ -286,7 +283,7 @@ caught before the graph goes stale.
 - `src/entropic/llm.py`    the one door to a model: count, admit, send, bill, trace
 - `src/entropic/tools.py`   framework-free tools, reused by everything that calls a tool
 - `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
-- `src/entropic/primitives/` the five modes, plus the failure catalogue
+- `src/entropic/primitives/` the five modes
 - `src/entropic/retrieval/` chunking, local embeddings, the dense and sparse indexes, the rankers
 - `src/entropic/extraction/` Project 1a: headline extraction, graded by the harness
 - `src/entropic/evals/`     the eval harness: dataset, graders, runner, report

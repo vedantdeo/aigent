@@ -24,12 +24,13 @@ from anthropic.types import MessageParam, TextBlockParam
 from pydantic import BaseModel, Field
 
 from entropic.config import MAX_TOKENS_HEADLINE as MAX_TOKENS
-from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM, get_client
+from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM
 from entropic.evals.dataset import Case, digest, load_jsonl
 from entropic.evals.grade import Outcome, field_match, pydantic_valid
 from entropic.evals.report import write_report
 from entropic.evals.runner import Task, run_eval
-from entropic.pricing import check_request, estimate_eval_usd
+from entropic.llm import Llm, Request
+from entropic.pricing import estimate_eval_usd
 
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "evals" / "datasets" / "headlines.jsonl"
@@ -200,35 +201,20 @@ def extraction_task(
     model: str = MODEL,
 ) -> Task:
     """Build the `Task` the runner calls once per case. `client` is injectable so tests are free."""
-    built = client
+    llm = Llm.for_eval(client)
     resolver = resolve if resolve is not None else Resolver()
     system = variant.as_sent()
 
     def task(case: Case) -> Outcome:
-        nonlocal built
-        if built is None:
-            built = get_client()
         headline = case.input.get("headline")
         if not isinstance(headline, str):
             return Outcome(error=f"case {case.id} has no headline")
 
         messages: list[MessageParam] = [{"role": "user", "content": f"headline: {headline}"}]
-        check_request(
-            built,
-            model=model,
-            max_tokens=MAX_TOKENS,
-            messages=messages,
-            system=system,
-            output_format=Extraction,
+        request = Request(
+            case.id, messages, MAX_TOKENS, system=system, model=model, thinking=THINKING
         )
-        response = built.messages.parse(
-            model=model,
-            max_tokens=MAX_TOKENS,
-            system=system,
-            messages=messages,
-            thinking=THINKING,
-            output_format=Extraction,
-        )
+        response = llm.parse(request, Extraction)
 
         record = response.parsed_output
         if record is None:
@@ -253,21 +239,18 @@ class Shape:
     cached: int
 
 
-def measure(
-    client: anthropic.Anthropic, variant: Variant, headline: str, model: str = MODEL
-) -> Shape:
+def measure(llm: Llm, variant: Variant, headline: str, model: str = MODEL) -> Shape:
     """Count the tokens one variant's request really sends, through the free endpoint.
 
     Counting the real request rather than estimating it: the schema alone is over a thousand tokens.
     """
     probe: list[MessageParam] = [{"role": "user", "content": f"headline: {headline}"}]
-    total = client.messages.count_tokens(
-        model=model, system=variant.as_sent(), messages=probe, output_format=Extraction
-    ).input_tokens
+    whole = Request("measure", probe, MAX_TOKENS, system=variant.as_sent(), model=model)
+    total = llm.count(whole, Extraction)
     if not variant.cache:
         return Shape(total, cached=0)
     # Everything ahead of the breakpoint is cached; only the headline is resent.
-    tail = client.messages.count_tokens(model=model, messages=probe).input_tokens
+    tail = llm.count(Request("measure", probe, MAX_TOKENS, model=model))
     return Shape(total, cached=total - tail)
 
 
@@ -317,11 +300,11 @@ def main(argv: list[str] | None = None) -> None:
     print(f"directory: {len(load_directory())} companies")
 
     # Counting is free, so price each arm off the real request rather than a guess at it.
-    client = get_client()
+    llm = Llm.for_eval()
     longest = max((str(case.input["headline"]) for case in labelled), key=len, default="")
     worst = 0.0
     for name, variant in variants.items():
-        shape = measure(client, variant, longest)
+        shape = measure(llm, variant, longest)
         worst += estimate_eval_usd(
             MODEL, len(labelled), shape.total, MAX_TOKENS, cached_tokens=shape.cached
         )
@@ -336,7 +319,7 @@ def main(argv: list[str] | None = None) -> None:
     resolver = Resolver()
     run = run_eval(
         labelled,
-        {n: extraction_task(v, resolver, client=client) for n, v in variants.items()},
+        {n: extraction_task(v, resolver, client=llm.client) for n, v in variants.items()},
         {"valid": pydantic_valid(Extraction), "fields": field_match(FIELDS)},
         dataset=DATASET.name,
         digest=digest(DATASET),

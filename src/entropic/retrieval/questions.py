@@ -19,13 +19,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-import anthropic
 from anthropic.types import MessageParam
 from pydantic import BaseModel, Field
 
 from entropic.config import MAX_TOKENS_QUESTION as MAX_TOKENS
-from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM, get_client
-from entropic.pricing import Budget, check_request, estimate_eval_usd, usage_cost
+from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM
+from entropic.llm import Llm, Request
+from entropic.pricing import Budget, estimate_eval_usd, usage_cost
 from entropic.retrieval.chunk import Chunk, Document, Inventory, by_sentence, squeeze
 from entropic.retrieval.corpus import MANIFEST, load_corpus
 
@@ -137,26 +137,18 @@ def verify(question: Question, document: Document, others: Sequence[Document] = 
 
 
 def generate(
-    client: anthropic.Anthropic, chunk: Chunk, company: str, model: str = MODEL
+    llm: Llm, chunk: Chunk, company: str, model: str = MODEL
 ) -> tuple[Question | None, float]:
     """Ask for one question about one passage. Returns what came back and what it cost."""
-    messages = prompt_for(chunk, company)
-    check_request(
-        client,
-        model=model,
-        max_tokens=MAX_TOKENS,
-        messages=messages,
+    request = Request(
+        chunk.id,
+        prompt_for(chunk, company),
+        MAX_TOKENS,
         system=SYSTEM,
-        output_format=Question,
-    )
-    response = client.messages.parse(
         model=model,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM,
-        messages=messages,
         thinking=THINKING_EVAL_PARAM,
-        output_format=Question,
     )
+    response = llm.parse(request, Question)
     return response.parsed_output, usage_cost(model, response.usage)
 
 
@@ -213,14 +205,17 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  {doc_id}: {share} passages")
 
     # Counting is free, so price the real request rather than guessing at its size.
-    client = get_client()
+    llm = Llm(budget=Budget(limit_usd=MAX_USD_PER_EVAL, scope="eval"))
     longest = max(passages, key=lambda chunk: len(chunk.text))
-    tokens = client.messages.count_tokens(
-        model=args.model,
+    probe = Request(
+        longest.id,
+        prompt_for(longest, names[longest.doc_id]),
+        MAX_TOKENS,
         system=SYSTEM,
-        messages=prompt_for(longest, names[longest.doc_id]),
-        output_format=Question,
-    ).input_tokens
+        model=args.model,
+        thinking=THINKING_EVAL_PARAM,
+    )
+    tokens = llm.count(probe, Question)
     worst = estimate_eval_usd(args.model, len(passages), tokens, MAX_TOKENS)
     print(f"\n{tokens} input tokens for the largest passage, {MAX_TOKENS} output cap")
     print(f"worst case ${worst:.2f} against a ${MAX_USD_PER_EVAL:.2f} ceiling")
@@ -228,11 +223,11 @@ def main(argv: list[str] | None = None) -> None:
     if not args.yes:
         print("\nnothing spent. re-run with --yes to send these calls.")
         return
-    Budget(limit_usd=MAX_USD_PER_EVAL, scope="eval").admit(worst)
+    llm.budget.admit(worst)
 
     results: list[Generated] = []
     for number, chunk in enumerate(passages, start=1):
-        question, cost = generate(client, chunk, names[chunk.doc_id], args.model)
+        question, cost = generate(llm, chunk, names[chunk.doc_id], args.model)
         problem = (
             "no structured output"
             if question is None

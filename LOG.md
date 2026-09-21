@@ -647,4 +647,18 @@
   They are demos without tests, so each was run end to end against the fake client instead — all
   four ran, chat kept its session total across turns and honoured `/effort`. Only `failures`
   still calls the SDK directly in `primitives/`, and it retires with the eval paths' move.
+- 09-21: every model call in the repo now goes through `llm`. The last four callers moved — the
+  eval judge, the headline extractor (its task and its `measure` dry run), the answer eval and
+  the question generator (tasks and dry-run counts). Eval tasks use `Llm.for_eval`: counted and
+  checked per call, with no run ceiling of their own, so the runner stays the one budget an eval
+  is billed to. The question generator, which had no running budget at all, gets a real one.
+  `pricing.check_request` went with its last caller, and a test now scans the package and fails
+  on any file but `llm.py` that calls `client.messages`.
+- 09-21: `primitives/failures.py` retired, and its catalogue became tests: each failure mode is a
+  row in `test_llm` asserting `llm` stops it before anything is spent. Probing the counting
+  endpoint first (free) confirmed where the API-side ones land — a missing model is a 404, a wrong
+  key a 401 and an empty request a 400, all on the free count, so none gets as far as a billable
+  call. The probe also found a real hole: **`claude-opus-4-8`, a real model missing from
+  `PRICES`, counted without error and would have been admitted and billed at $0.00**, so no
+  ceiling could ever trip on it. The per-request check now refuses a model with no price.
 

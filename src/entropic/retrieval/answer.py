@@ -30,7 +30,6 @@ from entropic.config import (
     MODEL,
     THINKING_EVAL_PARAM,
     TOP_K,
-    get_client,
 )
 from entropic.config import MAX_TOKENS_ANSWER as MAX_TOKENS
 from entropic.evals.dataset import Case, digest, load_jsonl
@@ -38,7 +37,8 @@ from entropic.evals.grade import Grader, Outcome, flag, hit_at_k
 from entropic.evals.judge import JUDGE_SYSTEM, LlmJudge, Verdict
 from entropic.evals.report import write_report
 from entropic.evals.runner import Task, run_eval
-from entropic.pricing import check_request, estimate_eval_usd
+from entropic.llm import Llm, Request
+from entropic.pricing import estimate_eval_usd
 from entropic.retrieval.chunk import Chunk, Inventory, context_block
 from entropic.retrieval.corpus import load_corpus
 from entropic.retrieval.dense import DenseIndex
@@ -119,12 +119,9 @@ def answer_task(
     model: str = MODEL,
 ) -> Task:
     """Build the `Task` the runner calls once per case. `client` is injectable so tests are free."""
-    built = client
+    llm = Llm.for_eval(client)
 
     def task(case: Case) -> Outcome:
-        nonlocal built
-        if built is None:
-            built = get_client()
         question = case.input.get("question")
         if not isinstance(question, str):
             return Outcome(error=f"case {case.id} has no question")
@@ -136,23 +133,15 @@ def answer_task(
                 return Outcome(error=f"case {case.id} has no query vector")
             chunks = [inventory.by_id[hit.chunk_id] for hit in index.search(vector, k=k)]
 
-        messages = prompt_for(question, chunks)
-        check_request(
-            built,
-            model=model,
-            max_tokens=MAX_TOKENS,
-            messages=messages,
+        request = Request(
+            case.id,
+            prompt_for(question, chunks),
+            MAX_TOKENS,
             system=arm.system,
-            output_format=Answer,
-        )
-        response = built.messages.parse(
             model=model,
-            max_tokens=MAX_TOKENS,
-            system=arm.system,
-            messages=messages,
             thinking=THINKING_EVAL_PARAM,
-            output_format=Answer,
         )
+        response = llm.parse(request, Answer)
         record = response.parsed_output
         if record is None:
             return Outcome(
@@ -264,18 +253,22 @@ def main(argv: list[str] | None = None) -> None:
         return [inventory.by_id[hit.chunk_id] for hit in index.search(queries[case.id], args.k)]
 
     # Counting is free, so price the real request rather than guessing at its size.
-    client = get_client()
+    llm = Llm.for_eval()
     worst = 0.0
     for name, arm in ARMS.items():
         tokens = max(
-            client.messages.count_tokens(
-                model=MODEL,
-                system=arm.system,
-                messages=prompt_for(
-                    str(case.input["question"]), passages(case) if arm.retrieves else []
+            llm.count(
+                Request(
+                    case.id,
+                    prompt_for(
+                        str(case.input["question"]), passages(case) if arm.retrieves else []
+                    ),
+                    MAX_TOKENS,
+                    system=arm.system,
+                    thinking=THINKING_EVAL_PARAM,
                 ),
-                output_format=Answer,
-            ).input_tokens
+                Answer,
+            )
             for case in cases
         )
         arm_usd = estimate_eval_usd(MODEL, len(cases), tokens, MAX_TOKENS)
@@ -283,15 +276,12 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  {name}: {tokens} input tokens for the largest row, ${arm_usd:.2f} worst case")
 
     # The judge is half this eval's calls, so count its real prompt too rather than guessing.
-    judge = graders(args.k, client=client)["correct"]
+    judge = graders(args.k, client=llm.client)["correct"]
     assert isinstance(judge, LlmJudge)
     longest = max(resolved, key=lambda case: len(str(case.expected.get("quote", ""))))
-    judge_tokens = client.messages.count_tokens(
-        model=JUDGE_MODEL,
-        system=JUDGE_SYSTEM,
-        messages=[{"role": "user", "content": judge.prompt_for(longest, _judged_shape())}],
-        output_format=Verdict,
-    ).input_tokens
+    prompt = judge.prompt_for(longest, _judged_shape())
+    judged_row = Request.ask("judge", JUDGE_SYSTEM, prompt, MAX_TOKENS_JUDGE, model=JUDGE_MODEL)
+    judge_tokens = llm.count(judged_row, Verdict)
     judged = estimate_eval_usd(JUDGE_MODEL, len(cases), judge_tokens, MAX_TOKENS_JUDGE, len(ARMS))
     worst += judged
     verdicts = len(cases) * len(ARMS)
@@ -305,10 +295,10 @@ def main(argv: list[str] | None = None) -> None:
     run = run_eval(
         resolved,
         {
-            name: answer_task(arm, inventory, index, queries, args.k, client=client)
+            name: answer_task(arm, inventory, index, queries, args.k, client=llm.client)
             for name, arm in ARMS.items()
         },
-        graders(args.k, client=client),
+        graders(args.k, client=llm.client),
         dataset=DATASET.name,
         digest=digest(DATASET),
         model=MODEL,

@@ -137,7 +137,8 @@ class FakeMessages:
 
     Replies are decided by what was sent rather than by arrival order, so concurrent calls can land
     in any order and still get the answer meant for them. A reply may be text, a whole `Message`
-    (to script tool use), or for a parse call a record or None.
+    (to script tool use), or for a parse call a record or None. `input_tokens` and `count_error`
+    decide what the free count says.
     """
 
     def __init__(self, reply: Reply, stop_reason: str) -> None:
@@ -146,11 +147,15 @@ class FakeMessages:
         self._lock = threading.Lock()
         self.sent: list[Sent] = []
         self.counted: list[type | None] = []
+        self.input_tokens = FAKE_USAGE.input_tokens
+        self.count_error: Exception | None = None
 
     def count_tokens(self, **kwargs: object) -> MessageTokensCount:
         with self._lock:
             self.counted.append(_schema(kwargs))
-        return MessageTokensCount(input_tokens=FAKE_USAGE.input_tokens)
+        if self.count_error is not None:
+            raise self.count_error
+        return MessageTokensCount(input_tokens=self.input_tokens)
 
     def create(self, **kwargs: object) -> Message:
         return self._message(self._reply(self._log("create", kwargs)), kwargs)

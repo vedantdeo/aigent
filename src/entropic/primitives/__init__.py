@@ -6,5 +6,5 @@
     tool_loop           the agent loop, by hand
     chat                multi-turn, with a cost meter
 
-`failures` is not a mode: it provokes nine failure modes and writes `docs/failure-modes.md`.
+Each sends through `entropic.llm`, which counts, admits and bills every call.
 """

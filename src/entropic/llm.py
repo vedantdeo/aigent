@@ -7,6 +7,7 @@ ceiling is refused before it is sent — and a concurrent batch is admitted as a
 
 from __future__ import annotations
 
+import math
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -104,6 +105,12 @@ class Llm:
         self.trace: list[Call] = []
         self.rehearse = rehearse
         self._lock = threading.Lock()
+
+    @classmethod
+    def for_eval(cls, client: anthropic.Anthropic | None = None) -> Llm:
+        """An `Llm` for an eval's task or grader: every call counted and checked against the
+        per-request ceiling, but no run ceiling of its own — the runner admits and bills the run."""
+        return cls(client, budget=Budget(limit_usd=math.inf, scope="eval"))
 
     @property
     def client(self) -> anthropic.Anthropic:

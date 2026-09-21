@@ -1,18 +1,15 @@
 """Token prices, cost arithmetic, and the two budget guards. The only module that knows a price.
 
-`check_request` refuses a call before it is sent, using the free token-count endpoint. `Budget`
-bills what each call actually cost once it is done, and `Budget.admit` refuses beforehand any call
-whose worst case would carry spending past the ceiling.
+`assert_request_within_budget` refuses one call whose worst case is over the per-request ceiling.
+`Budget` bills what each call actually cost once it is done, and `Budget.admit` refuses beforehand
+any call whose worst case would carry spending past the ceiling. `llm` applies both to every call.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 
-import anthropic
-from anthropic import Omit, omit
-from anthropic.types import MessageParam, TextBlockParam, ToolParam, Usage
+from anthropic.types import Usage
 
 from entropic.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN
 
@@ -116,7 +113,15 @@ def estimate_eval_usd(
 def assert_request_within_budget(
     model: str, input_tokens: int, max_tokens: int, limit_usd: float = MAX_USD_PER_REQUEST
 ) -> float:
-    """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded."""
+    """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded.
+
+    A model with no price is refused too: its worst case would read as free, and pass every guard.
+    """
+    if model not in PRICES:
+        raise BudgetExceeded(
+            f"{model} has no price, so no ceiling can hold it: its calls would be admitted and "
+            "billed as free. Add it to pricing.PRICES."
+        )
     worst = worst_case_usd(model, input_tokens, max_tokens)
     if worst > limit_usd:
         raise BudgetExceeded(
@@ -126,31 +131,6 @@ def assert_request_within_budget(
             "ENTROPIC_MAX_USD_PER_REQUEST in .env."
         )
     return worst
-
-
-def check_request(
-    client: anthropic.Anthropic,
-    *,
-    model: str,
-    max_tokens: int,
-    messages: Sequence[MessageParam],
-    system: str | Sequence[TextBlockParam] | Omit = omit,
-    tools: Sequence[ToolParam] | Omit = omit,
-    output_format: type | Omit = omit,
-    budget: Budget | None = None,
-) -> int:
-    """Pre-flight one request through the free counting endpoint, returning its input-token count.
-
-    Pass exactly what the real call will send, or the count lies — a parse call's schema included.
-    With `budget`, the call must also fit in what that budget has left.
-    """
-    count = client.messages.count_tokens(
-        model=model, messages=messages, system=system, tools=tools, output_format=output_format
-    )
-    worst = assert_request_within_budget(model, count.input_tokens, max_tokens)
-    if budget is not None:
-        budget.admit(worst)
-    return count.input_tokens
 
 
 @dataclass

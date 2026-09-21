@@ -1,23 +1,22 @@
 """LLM-as-judge: the one grader that spends.
 
-Runs on `config.JUDGE_MODEL`, deliberately not the model under test, and is pre-flighted through
-`pricing.check_request` like any other paid path. Its usage goes back in the `Score` so the runner
-bills it to the eval's budget.
+Runs on `config.JUDGE_MODEL`, deliberately not the model under test, and sends through `llm` like
+any other paid path. Its usage goes back in the `Score` so the runner bills it to the eval's budget.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import anthropic
 from pydantic import BaseModel, Field
 
-from entropic.config import JUDGE_MODEL, get_client
+from entropic.config import JUDGE_MODEL
 from entropic.config import MAX_TOKENS_JUDGE as MAX_TOKENS
 from entropic.evals.dataset import Case
 from entropic.evals.grade import Outcome, Score
-from entropic.pricing import check_request
+from entropic.llm import Llm, Request
 
 JUDGE_SYSTEM = (
     "You grade one answer against one rubric. Judge only what the rubric asks about. Be strict: if "
@@ -48,31 +47,17 @@ class LlmJudge:
     reference: str | None = None
     model: str = JUDGE_MODEL
     client: anthropic.Anthropic | None = None
+    _llm: Llm | None = field(default=None, init=False, repr=False)
 
     def __call__(self, case: Case, outcome: Outcome) -> Score:
         if outcome.error is not None:
             return Score(False, f"task failed: {outcome.error}")
-        if self.client is None:
-            self.client = get_client()
+        if self._llm is None:
+            self._llm = Llm.for_eval(self.client)
 
-        messages: list[anthropic.types.MessageParam] = [
-            {"role": "user", "content": self.prompt_for(case, outcome)}
-        ]
-        check_request(
-            self.client,
-            model=self.model,
-            max_tokens=MAX_TOKENS,
-            messages=messages,
-            system=JUDGE_SYSTEM,
-            output_format=Verdict,
-        )
-        response = self.client.messages.parse(
-            model=self.model,
-            max_tokens=MAX_TOKENS,
-            system=JUDGE_SYSTEM,
-            messages=messages,
-            output_format=Verdict,
-        )
+        prompt = self.prompt_for(case, outcome)
+        request = Request.ask("judge", JUDGE_SYSTEM, prompt, MAX_TOKENS, model=self.model)
+        response = self._llm.parse(request, Verdict)
         verdict = response.parsed_output
         if verdict is None:
             return Score(

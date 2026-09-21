@@ -15,8 +15,9 @@ faster than re-reading the tree, and it records conventions that are invisible f
 
 The load-bearing ones, as a taste of what is in there: every tool result for a turn goes back in
 *one* user message; tool errors return as `tool_result` with `is_error: true` and never as
-exceptions; every paid call is pre-flighted through `pricing.check_request`; `config` is the only
-module that builds a client, and `pricing` the only one that knows a price.
+exceptions; every model call goes through `llm`, which counts, checks and admits it before sending;
+`config` is the only module that builds a client, `pricing` the only one that knows a price, and
+`llm` the only one that talks to a model.
 
 Section 4 of that file (invariants) matters more than the `file:line` anchors in section 2 — anchors
 drift, invariants do not.
@@ -218,8 +219,8 @@ of this machine. Edit both, or neither.
   for the caching arms) prints the per-arm token counts and a worst case, then exits; `--yes` is
   what sends the calls. Run it without `--yes` and paste what it prints — that is the number to get
   approved, not an estimate written from memory.
-- `pricing.check_request` pre-flights every call through the free counting endpoint, and
-  `config.MAX_USD_PER_REQUEST` / `_RUN` / `_EVAL` are the three ceilings. They are guards against
+- `llm.Llm` pre-flights every call through the free counting endpoint and admits it against its
+  budget before sending, and `config.MAX_USD_PER_REQUEST` / `_RUN` / `_EVAL` are the three ceilings. They are guards against
   mistakes, not a substitute for permission: a run well under the ceiling still needs asking.
 - `--sample N` exists for cheap smoke runs, and is the right thing to propose when unsure. One
   exception worth knowing: caching a single row costs *more* than not caching it, so `--sample 1`
