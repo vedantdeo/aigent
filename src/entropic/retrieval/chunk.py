@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
 from entropic.config import (
@@ -125,6 +125,18 @@ class Inventory:
         if not needle:
             return []
         return [chunk.id for chunk in self.chunks if needle in squeeze(chunk.text)]
+
+
+def context_block(chunks: Sequence[Chunk]) -> str:
+    """The passages as a prompt shows them, each tagged with the id the model must cite it by.
+
+    XML-delimited and one passage per element, so the model can point at one of them rather than
+    at the blob — a citation that names no passage cannot be checked against the label.
+    """
+    return "\n\n".join(
+        f'<passage id="{chunk.id}" source="{chunk.citation}">\n{chunk.text}\n</passage>'
+        for chunk in chunks
+    )
 
 
 Splitter = Callable[[Document], list[Chunk]]

@@ -1,7 +1,7 @@
 """The retrieval eval: one question set, two comparisons, four numbers each.
 
 uv run python -m entropic.retrieval.evaluate                      # three chunking strategies
-uv run python -m entropic.retrieval.evaluate --compare retrieval  # four retrieval methods
+uv run python -m entropic.retrieval.evaluate --compare retrieval  # six retrieval methods
 
 Nothing here calls the Anthropic API, so both runs are free and can be repeated as often as the
 question is worth asking.
@@ -9,7 +9,7 @@ question is worth asking.
 The two comparisons differ in a way worth knowing before reading either table. Chunking strategies
 each build their own inventory, where the same chunk id names different text, so their *labels*
 differ and they are separate runs merged by `combine`. Retrieval methods all rank one inventory, so
-they share their labels and are four tasks of a single run. A label is a quote either way, resolved
+they share their labels and are six tasks of a single run. A label is a quote either way, resolved
 against the inventory being scored, which is what makes any of these columns comparable at all.
 """
 
@@ -25,13 +25,7 @@ from typing import cast
 
 from pydantic import JsonValue
 
-from entropic.config import (
-    CHUNK_CHARS,
-    CHUNK_OVERLAP_CHARS,
-    FUSE_DEPTH,
-    RERANK_CANDIDATES,
-    TOP_K,
-)
+from entropic.config import CHUNK_CHARS, CHUNK_OVERLAP_CHARS, RERANK_CANDIDATES, TOP_K
 from entropic.evals.dataset import Case, digest, load_jsonl
 from entropic.evals.grade import (
     Grader,
@@ -45,11 +39,11 @@ from entropic.evals.report import write_report
 from entropic.evals.runner import EvalRun, Task, combine, run_eval
 from entropic.retrieval.chunk import Document, Inventory, Splitter, by_sentence, fixed
 from entropic.retrieval.corpus import load_corpus
+from entropic.retrieval.dense import DenseIndex
 from entropic.retrieval.embed import Embedder, LocalEmbedder, Vectors
+from entropic.retrieval.hits import rank_ids
+from entropic.retrieval.rank import METHODS, Indexes, Ranker, build_ranker
 from entropic.retrieval.rerank import LocalReranker
-from entropic.retrieval.search import METHOD_STRATEGY, METHODS, Retrievers
-from entropic.retrieval.sparse import Bm25Index
-from entropic.retrieval.store import VectorStore, rank_ids
 
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "evals" / "datasets" / "retrieval.jsonl"
@@ -62,6 +56,9 @@ STRATEGIES: dict[str, Splitter] = {
     "fixed+overlap": fixed(CHUNK_CHARS, CHUNK_OVERLAP_CHARS),
     "by_sentence": by_sentence(),
 }
+
+# The inventory the six retrieval methods all rank, so they share one set of labels.
+METHOD_STRATEGY = "by_sentence"
 
 
 def graders(k: int = TOP_K) -> dict[str, Grader]:
@@ -99,14 +96,14 @@ def resolve(cases: Sequence[Case], inventory: Inventory) -> list[Case]:
     return resolved
 
 
-def retrieval_task(store: VectorStore, queries: Mapping[str, Vectors], k: int = TOP_K) -> Task:
-    """Rank this store against a pre-embedded question. Spends nothing, so `usage` stays None."""
+def retrieval_task(index: DenseIndex, queries: Mapping[str, Vectors], k: int = TOP_K) -> Task:
+    """Rank this index against a pre-embedded question. Spends nothing, so `usage` stays None."""
 
     def task(case: Case) -> Outcome:
         vector = queries.get(case.id)
         if vector is None:
             return Outcome(error=f"case {case.id} has no query vector")
-        hits = store.search(vector, k=k)
+        hits = index.search(vector, k=k)
         return Outcome(
             output={
                 "retrieved": cast(JsonValue, rank_ids(hits)),
@@ -117,28 +114,11 @@ def retrieval_task(store: VectorStore, queries: Mapping[str, Vectors], k: int = 
     return task
 
 
-def method_task(
-    method: str,
-    retrievers: Retrievers,
-    queries: Mapping[str, Vectors],
-    k: int = TOP_K,
-    *,
-    depth: int = FUSE_DEPTH,
-    candidates: int = RERANK_CANDIDATES,
-) -> Task:
-    """Rank one inventory by one retrieval method. Spends nothing, so `usage` stays None."""
-    if method not in METHODS:
-        raise ValueError(f"unknown retrieval method {method!r}; expected one of {METHODS}")
+def ranker_task(ranker: Ranker, k: int = TOP_K) -> Task:
+    """Rank the question with this ranker. Spends nothing, so `usage` stays None."""
 
     def task(case: Case) -> Outcome:
-        question = str(case.input["question"])
-        vector = queries.get(case.id)
-        if vector is None:
-            return Outcome(error=f"case {case.id} has no query vector")
-        if method.endswith("+rerank") and retrievers.reranker is None:
-            return Outcome(error="this arm needs a reranker and was given none")
-
-        hits = retrievers.rank(method, question, vector, k, depth=depth, candidates=candidates)
+        hits = ranker.rank(str(case.input["question"]), k)
         return Outcome(
             output={
                 "retrieved": cast(JsonValue, rank_ids(hits)),
@@ -208,7 +188,7 @@ def compare_chunking(
     runs = []
     for name, splitter in STRATEGIES.items():
         inventory = Inventory.build(name, documents, splitter)
-        store = VectorStore.build(inventory, embedder)
+        index = DenseIndex.build(inventory, embedder)
         resolved = resolve(cases, inventory)
         truncated = (
             embedder.count_truncated(inventory.texts())
@@ -220,7 +200,7 @@ def compare_chunking(
         runs.append(
             run_eval(
                 resolved,
-                {name: retrieval_task(store, queries, k)},
+                {name: retrieval_task(index, queries, k)},
                 graders(k),
                 dataset=dataset.name,
                 digest=digest(dataset),
@@ -239,32 +219,26 @@ def compare_retrieval(
     dataset: Path = DATASET,
     candidates: int = RERANK_CANDIDATES,
 ) -> EvalRun:
-    """Four methods over one inventory, so one run with four tasks and no merge.
+    """Six methods over one inventory, so one run with six tasks and no merge.
 
     Every arm ranks the same chunks with the same ids, which means the same resolved labels and
     the same `resolvable` column — so the differences between these columns are the retrieval
     methods and nothing else.
     """
-    queries = {case.id: embedder.embed_query(str(case.input["question"])) for case in cases}
     inventory = Inventory.build(METHOD_STRATEGY, documents, STRATEGIES[METHOD_STRATEGY])
+    indexes = Indexes.build(inventory, embedder)
     reranker = LocalReranker()
-    retrievers = Retrievers(
-        inventory=inventory,
-        store=VectorStore.build(inventory, embedder),
-        index=Bm25Index.build(inventory),
-        reranker=reranker,
-    )
+    rankers = {
+        method: build_ranker(method, indexes, reranker, candidates=candidates) for method in METHODS
+    }
     resolved = resolve(cases, inventory)
     print(f"  chunks: {len(inventory):,} under {METHOD_STRATEGY}")
-    print(f"  lexical: {len(retrievers.index.idf):,} distinct terms")
+    print(f"  lexical: {len(indexes.sparse.idf):,} distinct terms")
     print(f"  reranker: {reranker.name}, top {candidates} rescored to {k}")
     report_unresolved(METHOD_STRATEGY, resolved)
     return run_eval(
         resolved,
-        {
-            name: method_task(name, retrievers, queries, k, candidates=candidates)
-            for name in METHODS
-        },
+        {method: ranker_task(ranker, k) for method, ranker in rankers.items()},
         graders(k),
         dataset=dataset.name,
         digest=digest(dataset),

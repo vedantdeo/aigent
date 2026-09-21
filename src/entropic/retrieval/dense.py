@@ -1,13 +1,12 @@
-"""Brute-force cosine search over a matrix of chunk vectors.
+"""The dense index: brute-force cosine search over a matrix of chunk vectors.
 
-No index and no database: a dot product over NumPy is exact and fast enough for this corpus, so a
-miss belongs to the chunking or the embedding rather than to an index's own recall knob. The store
-holds ids and vectors; `Inventory` holds the chunks.
+No approximate index and no database: a dot product over NumPy is exact and fast enough for this
+corpus, so a miss belongs to the chunking or the embedding rather than to an index's own recall
+knob. The index holds ids and vectors; `Inventory` holds the chunks.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -15,18 +14,11 @@ import numpy as np
 from entropic.config import TOP_K
 from entropic.retrieval.chunk import Inventory
 from entropic.retrieval.embed import Embedder, Vectors
+from entropic.retrieval.hits import Hit
 
 
 @dataclass(frozen=True)
-class Hit:
-    """One retrieved chunk id and its similarity, in [-1, 1] for normalised vectors."""
-
-    chunk_id: str
-    score: float
-
-
-@dataclass(frozen=True)
-class VectorStore:
+class DenseIndex:
     """Chunk ids and their vectors, aligned row for row.
 
     Rows are L2-normalised, so cosine similarity is `matrix @ query`.
@@ -37,7 +29,7 @@ class VectorStore:
     embedder_name: str = ""
 
     @classmethod
-    def build(cls, inventory: Inventory, embedder: Embedder) -> VectorStore:
+    def build(cls, inventory: Inventory, embedder: Embedder) -> DenseIndex:
         """Embed every chunk, ids and rows aligned.
 
         Refuses a vector count that does not match the inventory, and un-normalised rows — both
@@ -60,7 +52,7 @@ class VectorStore:
         return len(self.ids)
 
     def search(self, query: Vectors, k: int = TOP_K) -> list[Hit]:
-        """The k most similar chunks, best first.
+        """The k chunks most similar to a query vector, best first, scored by cosine.
 
         Ties break by position in the inventory, so two identical runs cannot disagree.
         """
@@ -71,8 +63,3 @@ class VectorStore:
         scores = self.matrix @ np.asarray(query, dtype=np.float32)
         top = np.argsort(-scores, kind="stable")[:k]
         return [Hit(self.ids[int(row)], float(scores[int(row)])) for row in top]
-
-
-def rank_ids(hits: Sequence[Hit]) -> list[str]:
-    """Just the ids, in rank order — the shape the retrieval graders read."""
-    return [hit.chunk_id for hit in hits]

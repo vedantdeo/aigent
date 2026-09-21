@@ -606,4 +606,16 @@
   back is a test that finds every `messages.parse` in the package by parsing the source, so a new
   structured call is covered without anyone remembering to list it; breaking one site, or the
   forwarding, each failed it.
+- 09-21: the ranking became classes. `Retrievers.rank(method, ...)` branched on the method name
+  inside one function; now `build_ranker(method, indexes)` returns a `Ranker` whose one method is
+  `rank(query, k, doc_id=)`. `DenseRanker` and `SparseRanker` each wrap an index, `HybridRanker`
+  holds the two and fuses them, and `Reranked` wraps any of them — so `+rerank` is literally one
+  ranker around another rather than a branch. The indexes are built once in `Indexes` and shared.
+  Names moved to match: `store.py`/`VectorStore` became `dense.py`/`DenseIndex`, `Bm25Index`
+  became `SparseIndex`, `Hit` got its own module, `search.py` became `rank.py`, and `context_block`
+  went to `chunk.py`, beside `Chunk.citation`.
+- 09-21: one behaviour did change: each dense ranker now embeds its own query, where the eval used
+  to embed each question once and share the vector. Reran the free six-arm eval to check it
+  (110s, $0.00): identical to the committed report on all 324 rows again. The duplicate report was
+  not kept.
 

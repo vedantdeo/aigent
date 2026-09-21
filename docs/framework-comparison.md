@@ -55,5 +55,5 @@ that matter are in what you can *see* and *fix*, not in the scores.
 
 The comparison also flatters the hand-written side on code volume: 336 statements buys four
 chunking strategies, an abbreviation-aware sentence splitter, quote resolution, a disk cache and
-two guards on store construction — most of which LangChain would also give you, from a different
+two guards on building the dense index — most of which LangChain would also give you, from a different
 part of its surface, had the comparison been drawn there instead.

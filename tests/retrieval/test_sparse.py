@@ -1,7 +1,7 @@
 """BM25: what it ranks, and the two things it must do that a dense retriever cannot.
 
 The load-bearing tests are the rare-token one and the no-match one. The first is the entire reason
-this module exists beside the vector store — an acronym or a figure that an embedding smears is
+this module exists beside the dense index — an acronym or a figure that an embedding smears is
 exactly what an inverted index finds. The second is what keeps a fused ranking honest: a chunk
 sharing no word with the query is not a weak match, and padding it in would put text no ranker
 endorsed in front of a reader.
@@ -12,8 +12,8 @@ from __future__ import annotations
 import pytest
 
 from entropic.retrieval.chunk import Document, Inventory, by_sentence
-from entropic.retrieval.sparse import Bm25Index, tokenise
-from entropic.retrieval.store import rank_ids
+from entropic.retrieval.hits import rank_ids
+from entropic.retrieval.sparse import SparseIndex, tokenise
 
 SACE = (
     "The company raised green SACE Push facilities supported by the Italian Export Credit Agency "
@@ -29,9 +29,9 @@ GENERIC = (
 )
 
 
-def _index(*texts: str) -> Bm25Index:
+def _index(*texts: str) -> SparseIndex:
     documents = [Document(doc_id=f"doc-{i}", text=t) for i, t in enumerate(texts, start=1)]
-    return Bm25Index.build(Inventory.build("sentence", documents, by_sentence(400, 0)))
+    return SparseIndex.build(Inventory.build("sentence", documents, by_sentence(400, 0)))
 
 
 @pytest.mark.parametrize(
@@ -98,7 +98,7 @@ def test_rank_all_returns_the_whole_ranking_because_fusion_reads_ranks() -> None
 
 
 def test_an_empty_corpus_scores_nothing_rather_than_dividing_by_zero() -> None:
-    index = Bm25Index.build(Inventory.build("sentence", [], by_sentence(400, 0)))
+    index = SparseIndex.build(Inventory.build("sentence", [], by_sentence(400, 0)))
 
     assert len(index) == 0
     assert index.search("anything", k=3) == []

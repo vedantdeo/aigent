@@ -1,6 +1,6 @@
 """Reciprocal rank fusion: several rankings of the same ids into one.
 
-The scores coming out of a vector store and out of BM25 are not comparable. Cosine lives in
+The scores coming out of the dense index and out of BM25 are not comparable. Cosine lives in
 [-1, 1]; a BM25 score is unbounded and depends on the corpus it was computed over. Averaging them
 is meaningless and normalising them is a tuning problem that has to be redone per corpus.
 
@@ -13,7 +13,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 
 from entropic.config import RRF_K, TOP_K
-from entropic.retrieval.store import Hit
+from entropic.retrieval.hits import Hit
 
 
 def reciprocal_rank_fusion(

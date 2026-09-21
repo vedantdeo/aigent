@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from typing import Protocol, cast
 
 from entropic.config import RERANK_BATCH, RERANK_MODEL, TOP_K
-from entropic.retrieval.store import Hit
+from entropic.retrieval.hits import Hit
 
 
 class Reranker(Protocol):

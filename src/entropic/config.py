@@ -107,8 +107,7 @@ RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 RERANK_CANDIDATES = 30
 RERANK_BATCH = 32
 
-# What `retrieval.search.Searcher` ranks with: the best method on questions not written from the
-# passages.
+# The method to rank with outside the eval: the best on questions not written from the passages.
 SEARCH_METHOD = "hybrid+rerank"
 
 # What counts as page furniture in a PDF, where no markup survives to say what is a running header.

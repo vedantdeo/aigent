@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from entropic.retrieval.fuse import reciprocal_rank_fusion
-from entropic.retrieval.store import rank_ids
+from entropic.retrieval.hits import rank_ids
 
 
 def test_a_chunk_both_rankers_found_beats_one_only_the_first_put_top() -> None:
@@ -62,7 +62,7 @@ def test_a_repeat_inside_one_ranking_counts_once_at_its_best_rank() -> None:
 
 def test_ties_break_by_first_appearance_so_two_identical_runs_agree() -> None:
     """`a` and `b` are symmetric here, so only a stable rule decides. Without one the order comes
-    from whatever the dict happened to do, which is the same wobble `VectorStore.search` refuses."""
+    from whatever the dict happened to do, which is the same wobble `DenseIndex.search` refuses."""
     for _ in range(5):
         assert rank_ids(reciprocal_rank_fusion([["a", "b"], ["b", "a"]], k=2)) == ["a", "b"]
 

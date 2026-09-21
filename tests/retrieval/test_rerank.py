@@ -12,8 +12,8 @@ from collections.abc import Sequence
 
 import pytest
 
+from entropic.retrieval.hits import Hit, rank_ids
 from entropic.retrieval.rerank import rerank
-from entropic.retrieval.store import Hit, rank_ids
 
 from ..conftest import KeywordReranker
 
@@ -87,7 +87,7 @@ def test_a_misaligned_call_is_refused_rather_than_scored(
     texts: list[str], k: int, says: str
 ) -> None:
     """Ids and texts aligned by position is the contract; one short and every citation names the
-    wrong passage while every score still looks plausible. Same shape as the store's row check."""
+    wrong passage while every score still looks plausible. The dense index guards its rows so."""
     with pytest.raises(ValueError, match=says):
         rerank(KeywordReranker(), "dividend", CANDIDATES, texts, k=k)
 

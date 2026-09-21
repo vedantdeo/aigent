@@ -39,12 +39,11 @@ from entropic.evals.judge import JUDGE_SYSTEM, LlmJudge, Verdict
 from entropic.evals.report import write_report
 from entropic.evals.runner import Task, run_eval
 from entropic.pricing import check_request, estimate_eval_usd
-from entropic.retrieval.chunk import Chunk, Inventory
+from entropic.retrieval.chunk import Chunk, Inventory, context_block
 from entropic.retrieval.corpus import load_corpus
+from entropic.retrieval.dense import DenseIndex
 from entropic.retrieval.embed import Embedder, LocalEmbedder, Vectors
 from entropic.retrieval.evaluate import DATASET, STRATEGIES, resolve
-from entropic.retrieval.search import context_block
-from entropic.retrieval.store import VectorStore
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -113,7 +112,7 @@ def prompt_for(question: str, chunks: Sequence[Chunk]) -> list[MessageParam]:
 def answer_task(
     arm: Arm,
     inventory: Inventory,
-    store: VectorStore,
+    index: DenseIndex,
     queries: Mapping[str, Vectors],
     k: int = TOP_K,
     client: anthropic.Anthropic | None = None,
@@ -135,7 +134,7 @@ def answer_task(
             vector = queries.get(case.id)
             if vector is None:
                 return Outcome(error=f"case {case.id} has no query vector")
-            chunks = [inventory.by_id[hit.chunk_id] for hit in store.search(vector, k=k)]
+            chunks = [inventory.by_id[hit.chunk_id] for hit in index.search(vector, k=k)]
 
         messages = prompt_for(question, chunks)
         check_request(
@@ -252,7 +251,7 @@ def main(argv: list[str] | None = None) -> None:
     documents = load_corpus(cache=args.cache)
     embedder: Embedder = LocalEmbedder()
     inventory = Inventory.build(args.strategy, documents, STRATEGIES[args.strategy])
-    store = VectorStore.build(inventory, embedder)
+    index = DenseIndex.build(inventory, embedder)
     resolved = resolve(cases, inventory)
     queries = {case.id: embedder.embed_query(str(case.input["question"])) for case in cases}
 
@@ -262,7 +261,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"arms: {', '.join(ARMS)}  on {MODEL}; judged by {JUDGE_MODEL}")
 
     def passages(case: Case) -> list[Chunk]:
-        return [inventory.by_id[hit.chunk_id] for hit in store.search(queries[case.id], args.k)]
+        return [inventory.by_id[hit.chunk_id] for hit in index.search(queries[case.id], args.k)]
 
     # Counting is free, so price the real request rather than guessing at its size.
     client = get_client()
@@ -306,7 +305,7 @@ def main(argv: list[str] | None = None) -> None:
     run = run_eval(
         resolved,
         {
-            name: answer_task(arm, inventory, store, queries, args.k, client=client)
+            name: answer_task(arm, inventory, index, queries, args.k, client=client)
             for name, arm in ARMS.items()
         },
         graders(args.k, client=client),

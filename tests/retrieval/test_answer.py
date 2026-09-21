@@ -23,9 +23,8 @@ from entropic.retrieval.answer import (
     answer_task,
     spread,
 )
-from entropic.retrieval.chunk import Document, Inventory, by_sentence
-from entropic.retrieval.search import context_block
-from entropic.retrieval.store import VectorStore
+from entropic.retrieval.chunk import Document, Inventory, by_sentence, context_block
+from entropic.retrieval.dense import DenseIndex
 
 from ..conftest import BagOfWordsEmbedder
 
@@ -86,13 +85,13 @@ def _task_and_log(
 ) -> tuple[Task, _Messages]:
     inventory = _inventory()
     embedder = BagOfWordsEmbedder()
-    store = VectorStore.build(inventory, embedder)
+    index = DenseIndex.build(inventory, embedder)
     queries = {"rq-001": embedder.embed_query(str(_case().input["question"]))}
     fake = _Client(record)
     task = answer_task(
         ARMS[arm_name],
         inventory,
-        store,
+        index,
         queries,
         k=k,
         client=cast(anthropic.Anthropic, fake),

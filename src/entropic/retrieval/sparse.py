@@ -1,4 +1,4 @@
-"""BM25 over the same chunks the vector store holds.
+"""The sparse index: BM25 over the same chunks the dense index holds.
 
 The lexical half of hybrid retrieval, and the half that finds what an embedding smears. A dense
 model encodes what a passage is *about*, so `SACE`, `Rs 34,000 crores` and `KPMG` — rare tokens
@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 from entropic.config import BM25_B, BM25_K1, TOP_K
 from entropic.retrieval.chunk import Inventory
-from entropic.retrieval.store import Hit
+from entropic.retrieval.hits import Hit
 
 # Words and bare numbers. `34,000` and `52.3` survive as one token, which is the point of having a
 # lexical ranker at all — splitting them hands the digits back to the same blur BM25 exists to fix.
@@ -36,12 +36,12 @@ def tokenise(text: str) -> list[str]:
 
 
 @dataclass(frozen=True)
-class Bm25Index:
+class SparseIndex:
     """An inverted index over an `Inventory`, plus what scoring needs to know about the corpus.
 
     `postings` maps a term to the rows holding it and how often, so scoring a query touches only
     the chunks that share a term with it rather than all of them. Ids are the inventory's ids, so
-    a hit here is comparable with a `VectorStore` hit over the same inventory — which is what lets
+    a hit here is comparable with a `DenseIndex` hit over the same inventory — which is what lets
     the two be fused at all (invariant 17).
     """
 
@@ -54,7 +54,7 @@ class Bm25Index:
     b: float = BM25_B
 
     @classmethod
-    def build(cls, inventory: Inventory, *, k1: float = BM25_K1, b: float = BM25_B) -> Bm25Index:
+    def build(cls, inventory: Inventory, *, k1: float = BM25_K1, b: float = BM25_B) -> SparseIndex:
         """Tokenise every chunk once, invert it, and precompute each term's inverse frequency."""
         postings: dict[str, list[tuple[int, int]]] = defaultdict(list)
         lengths: list[int] = []
@@ -106,7 +106,7 @@ class Bm25Index:
         return dict(scores)
 
     def search(self, query: str, k: int = TOP_K) -> list[Hit]:
-        """The k best-scoring chunks, best first, ties breaking by position as the store does.
+        """The k best-scoring chunks, best first, ties breaking by position as the dense index does.
 
         A chunk sharing no term with the query is left out rather than padded in to reach k: it is
         not a weak match, it is not a match, and passing it on would put text this ranker never
