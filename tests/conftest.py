@@ -1,21 +1,26 @@
 """Fixtures shared across test modules.
 
-The scripted judge and the fake embedder live here because more than one module needs each, and two
-copies of a fake drift.
+The scripted judge, the fake client and the fake embedder live here because more than one module
+needs each, and two copies of a fake drift.
 """
 
 from __future__ import annotations
 
+import threading
 import zlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from typing import cast
 
 import anthropic
 import numpy as np
 import pytest
-from anthropic.types import MessageTokensCount, Usage
+from anthropic.types import Message, MessageTokensCount, StopReason, TextBlock, Usage
+from pydantic import BaseModel
 
 from entropic.evals.judge import LlmJudge, Verdict
+from entropic.llm import Llm
+from entropic.pricing import Budget
 from entropic.retrieval.embed import Vectors
 
 JUDGE_USAGE = Usage(input_tokens=200, output_tokens=30)
@@ -73,6 +78,150 @@ def make_judge() -> MakeJudge:
         fake = _ScriptedClient(verdict, fails_with)
         judge = LlmJudge(rubric=rubric, reference=reference, client=cast(anthropic.Anthropic, fake))
         return judge, fake.messages
+
+    return build
+
+
+@dataclass(frozen=True)
+class Sent:
+    """One call as the fake client received it."""
+
+    kind: str
+    model: str
+    system: object
+    messages: list[dict[str, object]]
+    schema: type | None
+    thinking: object
+    tools: object
+
+    @property
+    def prompt(self) -> str:
+        """The last message's text, when it is plain text."""
+        content = self.messages[-1]["content"]
+        return content if isinstance(content, str) else ""
+
+
+Reply = Callable[[Sent], str | BaseModel | None]
+FAKE_USAGE = Usage(input_tokens=100, output_tokens=50)
+
+
+class _ParsedReply:
+    def __init__(self, record: BaseModel | None, stop_reason: str) -> None:
+        self.parsed_output = record
+        self.usage = FAKE_USAGE
+        self.stop_reason = stop_reason
+
+
+class _FakeStream:
+    def __init__(self, message: Message) -> None:
+        self._message = message
+
+    def __enter__(self) -> _FakeStream:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    @property
+    def text_stream(self) -> Iterator[str]:
+        for block in self._message.content:
+            if block.type == "text":
+                yield from block.text.split(" ")
+
+    def get_final_message(self) -> Message:
+        return self._message
+
+
+class FakeMessages:
+    """Stands in for `client.messages`, replying through `reply` and logging every call.
+
+    Replies are decided by what was sent rather than by arrival order, so concurrent calls can land
+    in any order and still get the answer meant for them. A reply may be text, a whole `Message`
+    (to script tool use), or for a parse call a record or None.
+    """
+
+    def __init__(self, reply: Reply, stop_reason: str) -> None:
+        self._reply = reply
+        self._stop_reason = stop_reason
+        self._lock = threading.Lock()
+        self.sent: list[Sent] = []
+        self.counted: list[type | None] = []
+
+    def count_tokens(self, **kwargs: object) -> MessageTokensCount:
+        with self._lock:
+            self.counted.append(_schema(kwargs))
+        return MessageTokensCount(input_tokens=FAKE_USAGE.input_tokens)
+
+    def create(self, **kwargs: object) -> Message:
+        return self._message(self._reply(self._log("create", kwargs)), kwargs)
+
+    def stream(self, **kwargs: object) -> _FakeStream:
+        return _FakeStream(self._message(self._reply(self._log("stream", kwargs)), kwargs))
+
+    def parse(self, **kwargs: object) -> _ParsedReply:
+        record = self._reply(self._log("parse", kwargs))
+        assert not isinstance(record, str), f"a parse call wants a record, not {record!r}"
+        return _ParsedReply(record, self._stop_reason)
+
+    def _message(self, reply: str | BaseModel | None, kwargs: dict[str, object]) -> Message:
+        if isinstance(reply, Message):
+            return reply
+        assert isinstance(reply, str), f"a create call is answered with text, not {reply!r}"
+        return Message(
+            id="msg_fake",
+            type="message",
+            role="assistant",
+            model=str(kwargs["model"]),
+            content=[TextBlock(type="text", text=reply)],
+            stop_reason=cast(StopReason, self._stop_reason),
+            stop_sequence=None,
+            usage=FAKE_USAGE,
+        )
+
+    def _log(self, kind: str, kwargs: dict[str, object]) -> Sent:
+        sent = Sent(
+            kind=kind,
+            model=str(kwargs["model"]),
+            system=kwargs.get("system"),
+            messages=list(cast(Sequence[dict[str, object]], kwargs["messages"])),
+            schema=_schema(kwargs),
+            thinking=kwargs.get("thinking"),
+            tools=kwargs.get("tools"),
+        )
+        with self._lock:
+            self.sent.append(sent)
+        return sent
+
+
+def _schema(kwargs: dict[str, object]) -> type | None:
+    output_format = kwargs.get("output_format")
+    return output_format if isinstance(output_format, type) else None
+
+
+class FakeAnthropic:
+    """A client for code that sends several different calls: see `FakeMessages`."""
+
+    def __init__(self, reply: Reply, *, stop_reason: str = "end_turn") -> None:
+        self.messages = FakeMessages(reply, stop_reason)
+
+
+MakeLlm = Callable[..., tuple[Llm, FakeMessages]]
+
+
+@pytest.fixture
+def make_llm() -> MakeLlm:
+    """An `Llm` whose replies `reply` decides, and the log of what it sent."""
+
+    def build(
+        reply: Reply,
+        *,
+        stop_reason: str = "end_turn",
+        limit_usd: float = 1.0,
+        rehearse: bool = False,
+    ) -> tuple[Llm, FakeMessages]:
+        fake = FakeAnthropic(reply, stop_reason=stop_reason)
+        budget = Budget(limit_usd=limit_usd)
+        return Llm(cast(anthropic.Anthropic, fake), budget=budget, rehearse=rehearse), fake.messages
 
     return build
 

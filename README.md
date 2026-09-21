@@ -283,6 +283,7 @@ caught before the graph goes stale.
 - `src/entropic/cli.py`     the `entropic` command and its menu
 - `src/entropic/config.py`  every tunable constant bar the tool pair's: models, ceilings, caps
 - `src/entropic/pricing.py` token prices, cost arithmetic, the two budget guards
+- `src/entropic/llm.py`    the one door to a model: count, admit, send, bill, trace
 - `src/entropic/tools.py`   framework-free tools, reused by everything that calls a tool
 - `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
 - `src/entropic/primitives/` the five modes, plus the failure catalogue

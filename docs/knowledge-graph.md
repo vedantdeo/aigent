@@ -3,8 +3,8 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `4aeb11f` plus budget admission wired through every paid path in this commit (2026-09-21).
-708 tests pass (704 plus 4 that need the `compare` group), 1 live test deselected. The suite is fully green.**
+**Verified against commit `0ee8706` plus `llm.py` landing in this commit (2026-09-21).
+723 tests pass (719 plus 4 that need the `compare` group), 1 live test deselected. The suite is fully green.**
 
 > **The package is organised by capability, not by week.** `week01/` split into `primitives/`
 > (the five CLI modes plus the failure catalogue) and `extraction/` (Project 1a, which is a
@@ -85,6 +85,7 @@ graph TD
     subgraph shared["shared spine"]
         CFG["config<br/>credentials · model · ceilings"]
         PRC["pricing<br/>cost · guards · Budget"]
+        LLMD["llm<br/>count · admit · send · bill"]
         TOOLS["tools<br/>schemas · impls · dispatcher"]
     end
 
@@ -110,6 +111,7 @@ graph TD
     HL --> DISK
     DAT & REP --> DISK
     PRC --> CFG
+    LLMD --> CFG & PRC
     CFG --> SDK
     TOOLS --> BOX
 ```
@@ -133,6 +135,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 |----|------|------|
 | `config` | `src/entropic/config.py` | **Every tunable constant except the tool pair's**: credentials, model selection, spending ceilings, output caps, loop caps. The only module that constructs a client. Holds no arithmetic. |
 | `pricing` | `src/entropic/pricing.py` | Token prices, cost arithmetic, and the two budget guards that enforce `config`'s ceilings. The only module that knows a price. |
+| `llm` | `src/entropic/llm.py` | **The one module meant to talk to a model** (2026-09-21): every request is counted, admitted against a budget, sent, billed and traced. Every call shape the repo uses — plain, structured, streamed, tool-using, concurrent — has a method here. Call sites move onto it in steps; until the last one has, `config` and `pricing` are still also used directly (see §5). |
 | `tools` | `src/entropic/tools.py` | Framework-free tool implementations + their JSON schemas + a name→function dispatcher. Imports nothing from this package except `tools_config`. |
 | `tools_config` | `src/entropic/tools_config.py` | The constants `tools` needs, in a config module that travels with it. Imports nothing internal at all. |
 | `cli` | `src/entropic/cli.py` | The `entropic` command: a mode table, a lookup, an interactive menu. |
@@ -175,22 +178,23 @@ Values, plus the one function that turns them into a client. No arithmetic lives
 | `config.MAX_USD_PER_EVAL` | constant | `config.py:30` | Default `2.00`, env `ENTROPIC_MAX_USD_PER_EVAL`. One eval over a whole dataset. |
 | `config.MAX_TOKENS_*` | constants | `config.py:37-45` | One output cap per call site: `FIRST_CALL` 1024, `STREAMING` 4096, `EXTRACT` 2048, **`HEADLINE` 128**, `TOOL_LOOP` 4096, `CHAT` 4096, `JUDGE` 1024, `QUESTION` 512, **`ANSWER` 512**. Each module imports its own under the local alias `MAX_TOKENS`. Side by side they show which calls are the expensive ones — invisible when each number sits alone in its module. `HEADLINE` is the worked example of why the cap is sized per call site rather than set generously: `estimate_eval_usd` prices the full cap, so Project 1a's worst case is $3.19 at `EXTRACT`'s 2048 and $0.64 at 384. Same run, same real spend; only the guard's verdict changes. It started at 256, clipped one row in 60 on the first live run (2026-09-11), went to 384, and still clipped two rows in 50 — the other edge of the same knife. The cause was not the record: it was **extended thinking**, billed as output and charged against the cap, spending 200-280 tokens before the answer began. With `THINKING_EVAL` off the record is ~45 tokens and 128 is three times what it needs. The old comment claimed 384 sized "a five-field record"; it never did. Tuned against actual runs rather than guessed — three of them. |
 | `config.MAX_AGENT_TURNS` | constant | `config.py:57` | `8`. The tool loop's iteration cap; imported by `tool_loop` as `MAX_TURNS`. |
-| `config.MAX_FAILURES_SHOWN` | constant | `config.py:60` | `10`. Default truncation for an eval report's failure list. |
-| `config.EMBED_MODEL` | constant | `config.py:67` | `BAAI/bge-small-en-v1.5` — 384 dimensions, 512 tokens, ~130MB, runs on MPS. Free to run, which is what makes a retrieval eval free to repeat. |
-| `config.EMBED_QUERY_PREFIX` | constant | `config.py:72` | The instruction BGE v1.5 is trained to see **on the query side only**. Embedding a passage with it, or a query without it, still returns plausible rankings — just measurably worse ones, with nothing in the output to say so. |
-| `config.CHUNK_*` | constants | `config.py:76-80` | `CHARS` 1200, `OVERLAP_CHARS` 200, `OVERLAP_SENTENCES` 1, `MAX_CHARS` 2000, `MIN_CHARS` 80. **In characters, not tokens**: the tokenizer belongs to the embedding model, and a chunker that imports one cannot be pointed at another. `MIN_CHARS` is the floor below which a fragment is dropped rather than embedded. |
-| `config.HEADING_*` | constants | `config.py:83-85` | What `by_heading` accepts as a heading in text whose markup extraction destroyed: `MAX_CHARS` 80, `MAX_WORDS` 12, `MIN_CAPITAL_RATIO` 0.6. |
-| `config.TOP_K` | constant | `config.py:88` | `5`. How many chunks a retriever returns, and therefore how many an answer can cite. |
-| `config.BM25_K1` / `BM25_B` | constants | `config.py:92-93` | `1.5` and `0.75`, where the literature settled. `K1` is where term frequency saturates, `B` how hard a long chunk is penalised. Not tuned here — tuning them on the eval set is how you overfit a retriever to 54 questions. |
-| `config.FUSE_DEPTH` | constant | `config.py:97` | `100`. How deep each ranker's list goes into fusion. Fusing the whole corpus adds runtime and tail noise; cutting at `TOP_K` would throw away the rank-20-lexically, rank-4-densely chunk that fusion exists to promote. |
-| `config.RRF_K` | constant | `config.py:102` | `60`. **The constant that decides what fusion means.** At 0, rank 1 scores 1.0 against rank 2's 0.5, so whichever ranker shouted first wins. At 60 the two are 1/61 and 1/62, so agreement across rankers outweighs a single first place. Measured consequence: on the original question set that property *cost* four rows, because BM25 had them at rank 1 and dense had them nowhere. |
-| `config.RERANK_*` | constants | `config.py:106-108` | `MODEL` `cross-encoder/ms-marco-MiniLM-L-6-v2`, `CANDIDATES` 30, `BATCH` 32. **`CANDIDATES` is a real optimum, not a free knob.** Widening 30 → 100 on the paraphrased set helped `bm25+rerank` (+0.037 hit@5) and *hurt* `dense+rerank` (−0.019): seventy more candidates are seventy more chances for a small cross-encoder to promote a plausible wrong chunk. Widen it where the base has good reach and bad ordering; not otherwise. |
-| `config.SEARCH_METHOD` | constant | `config.py:111` | `hybrid+rerank`, the method to rank with outside the eval. **Chosen on the paraphrased set, not the original**: a caller's queries are written by a user or a model, never from the passages, and on questions not written from the passages `hybrid+rerank` was the best of six (hit@5 0.481 against `bm25+rerank`'s 0.426), where on the original set it came second. The banner's finding, applied. No caller in the repo yet; a test holds it to `METHODS`. |
-| `config.FURNITURE_*` | constants | `config.py:116-118` | What `strip_furniture` calls a running header: `MIN_PAGES` 4, `EDGE_LINES` 2, `RATIO` 0.2. Tuned against the real corpus rather than guessed — at 0.2 over edge lines it removes 1.1% of ITC's lines and 1.7% of Reliance's, and exactly the right ones. The two knobs that matter are not the ratio: **digits must be masked** before counting (a header carries the page number, so it never repeats verbatim — ITC's is on 163 of 412 pages and on none of them twice), and only lines at the **edge** of a page are candidates (`(Rs. in crore)` repeats on 86 ITC pages mid-table and is content). |
+| `config.MAX_PARALLEL_CALLS` | constant | `config.py:60` | `4`. How many calls one `Llm.gather_*` batch keeps in flight. Admission covers the whole batch regardless, so this bounds concurrency and rate-limit pressure, not spend. |
+| `config.MAX_FAILURES_SHOWN` | constant | `config.py:63` | `10`. Default truncation for an eval report's failure list. |
+| `config.EMBED_MODEL` | constant | `config.py:70` | `BAAI/bge-small-en-v1.5` — 384 dimensions, 512 tokens, ~130MB, runs on MPS. Free to run, which is what makes a retrieval eval free to repeat. |
+| `config.EMBED_QUERY_PREFIX` | constant | `config.py:75` | The instruction BGE v1.5 is trained to see **on the query side only**. Embedding a passage with it, or a query without it, still returns plausible rankings — just measurably worse ones, with nothing in the output to say so. |
+| `config.CHUNK_*` | constants | `config.py:79-83` | `CHARS` 1200, `OVERLAP_CHARS` 200, `OVERLAP_SENTENCES` 1, `MAX_CHARS` 2000, `MIN_CHARS` 80. **In characters, not tokens**: the tokenizer belongs to the embedding model, and a chunker that imports one cannot be pointed at another. `MIN_CHARS` is the floor below which a fragment is dropped rather than embedded. |
+| `config.HEADING_*` | constants | `config.py:86-88` | What `by_heading` accepts as a heading in text whose markup extraction destroyed: `MAX_CHARS` 80, `MAX_WORDS` 12, `MIN_CAPITAL_RATIO` 0.6. |
+| `config.TOP_K` | constant | `config.py:91` | `5`. How many chunks a retriever returns, and therefore how many an answer can cite. |
+| `config.BM25_K1` / `BM25_B` | constants | `config.py:95-96` | `1.5` and `0.75`, where the literature settled. `K1` is where term frequency saturates, `B` how hard a long chunk is penalised. Not tuned here — tuning them on the eval set is how you overfit a retriever to 54 questions. |
+| `config.FUSE_DEPTH` | constant | `config.py:100` | `100`. How deep each ranker's list goes into fusion. Fusing the whole corpus adds runtime and tail noise; cutting at `TOP_K` would throw away the rank-20-lexically, rank-4-densely chunk that fusion exists to promote. |
+| `config.RRF_K` | constant | `config.py:105` | `60`. **The constant that decides what fusion means.** At 0, rank 1 scores 1.0 against rank 2's 0.5, so whichever ranker shouted first wins. At 60 the two are 1/61 and 1/62, so agreement across rankers outweighs a single first place. Measured consequence: on the original question set that property *cost* four rows, because BM25 had them at rank 1 and dense had them nowhere. |
+| `config.RERANK_*` | constants | `config.py:109-111` | `MODEL` `cross-encoder/ms-marco-MiniLM-L-6-v2`, `CANDIDATES` 30, `BATCH` 32. **`CANDIDATES` is a real optimum, not a free knob.** Widening 30 → 100 on the paraphrased set helped `bm25+rerank` (+0.037 hit@5) and *hurt* `dense+rerank` (−0.019): seventy more candidates are seventy more chances for a small cross-encoder to promote a plausible wrong chunk. Widen it where the base has good reach and bad ordering; not otherwise. |
+| `config.SEARCH_METHOD` | constant | `config.py:114` | `hybrid+rerank`, the method to rank with outside the eval. **Chosen on the paraphrased set, not the original**: a caller's queries are written by a user or a model, never from the passages, and on questions not written from the passages `hybrid+rerank` was the best of six (hit@5 0.481 against `bm25+rerank`'s 0.426), where on the original set it came second. The banner's finding, applied. No caller in the repo yet; a test holds it to `METHODS`. |
+| `config.FURNITURE_*` | constants | `config.py:119-121` | What `strip_furniture` calls a running header: `MIN_PAGES` 4, `EDGE_LINES` 2, `RATIO` 0.2. Tuned against the real corpus rather than guessed — at 0.2 over edge lines it removes 1.1% of ITC's lines and 1.7% of Reliance's, and exactly the right ones. The two knobs that matter are not the ratio: **digits must be masked** before counting (a header carries the page number, so it never repeats verbatim — ITC's is on 163 of 412 pages and on none of them twice), and only lines at the **edge** of a page are candidates (`(Rs. in crore)` repeats on 86 ITC pages mid-table and is content). |
 | `config.THINKING_EVAL_PARAM` | constant | `config.py:52` | `THINKING_EVAL` in the shape the wire wants it. Built **once** so two call sites cannot disagree about whether thinking is on; `extraction.headlines`, `retrieval.questions` and `retrieval.answer` all read it. Turning it on means raising the output cap at every site that sends it. |
-| `config.PAGE_SEPARATOR` | constant | `config.py:121` | `\n\n`. What joins two pages into one document text, so a page break reads as a paragraph break to every splitter. |
-| `config.has_credentials` | function | `config.py:124` | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` env, or `~/.config/anthropic` (the `ant` CLI profile). Used to skip tests, not only to fail fast. |
-| `config.get_client` | function | `config.py:131` | Raises `SystemExit` with both setup paths when unauthenticated. Adds `anthropic-workspace-id` header only when `ANTHROPIC_WORKSPACE_ID` is set — needed for org-level keys, harmless to omit for workspace-scoped ones. |
+| `config.PAGE_SEPARATOR` | constant | `config.py:124` | `\n\n`. What joins two pages into one document text, so a page break reads as a paragraph break to every splitter. |
+| `config.has_credentials` | function | `config.py:127` | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` env, or `~/.config/anthropic` (the `ant` CLI profile). Used to skip tests, not only to fail fast. |
+| `config.get_client` | function | `config.py:134` | Raises `SystemExit` with both setup paths when unauthenticated. Adds `anthropic-workspace-id` header only when `ANTHROPIC_WORKSPACE_ID` is set — needed for org-level keys, harmless to omit for workspace-scoped ones. |
 
 ### 2.3 Cost and budget (`pricing`)
 
@@ -216,7 +220,29 @@ worst case would carry it past its ceiling, and the run never crosses it at all.
 | `pricing.Budget.admit` | method | `pricing.py:188` | Refuses, **before anything is sent**, spending whose worst case — input plus the full `max_tokens` — would carry the budget past its ceiling. Bills nothing and records nothing; `charge` still bills the actual cost when a call returns. Deliberately does not set `tripped`: a refused chat turn can be retried after `/reset` shrinks the history, and a sticky flag would end that session on its next successful turn. **The cost of the guarantee is stopping early**: the worst case assumes the whole output cap, so a $1.00 tool-loop run refuses its next call at about $0.90 spent, since a 4,096-token cap is ~$0.10 of Opus output, even when the call would cost a cent. |
 | `pricing.Budget.tripped` | field | `pricing.py:167` | The overrun message, or `None`. An **attribute** rather than a flag in a caller's closure: a type checker cannot see a nested function reassign a captured name, so it narrows such a flag to `None` and marks the stop branch unreachable — and unreachable code is never type-checked, which is the real cost. |
 
-### 2.4 Tools (`tools`)
+### 2.4 The model door (`llm`)
+
+The one module meant to talk to a model. `config` builds the client and `pricing` knows the prices;
+this is where they meet a request. Every public method runs the same steps in the same order:
+count (free, schema included) → check the per-request ceiling → admit against the budget → send
+→ bill and trace. A method that returns a judgement (`text`, `record`) bills *before* it judges,
+so a refused or truncated call still shows in the trace and the total.
+
+| ID | Kind | Anchor | Contract |
+|----|------|--------|----------|
+| `llm.Request` | frozen dataclass | `llm.py:36` | One call exactly as it will be sent: `messages`, `max_tokens`, and optionally `system` (a string or cacheable blocks), `model`, `tools`, `thinking`, `output_config`. Unset fields are `omit` and never reach the wire, so the model's own default applies. `step` names the call in the trace and is never sent. `Request.ask` builds the common single-turn shape. |
+| `llm.Llm` | class | `llm.py:88` | One client (built on first use), one `Budget`, one trace. The budget defaults to one run's ceiling; pass one to scope it (`scope="eval"`) or to share it. |
+| `llm.Llm.count` | method | `llm.py:118` | The free count of what a request would send, schema included. Bills nothing and traces nothing, which is what dry runs use. |
+| `llm.Llm.create` / `text` | methods | `llm.py:131,136` | `create` returns the whole `Message` and judges nothing — a tool loop reads `stop_reason` and the `tool_use` blocks itself, and a turn that stops to use a tool is not a failure. `text` returns the text and raises `StepFailed` on a refusal or a truncation. |
+| `llm.Llm.parse` / `record` | methods | `llm.py:141,149` | `parse` returns the whole `ParsedMessage`, whose `parsed_output` is `None` when the output did not validate — an eval task wants that, to record the miss as a row. `record` returns the record or raises `StepFailed` — a workflow step cannot go on without it. |
+| `llm.Llm.stream` | context manager | `llm.py:155` | Admitted before the stream opens, billed from the final message after it closes; nothing is billed while text is still arriving. |
+| `llm.Llm.gather_text` / `gather_records` | methods | `llm.py:171,176` | The only concurrency: every request of a batch at once, results in request order. **The whole batch is admitted before any of it is sent** — calls in flight cannot be recalled, so admitting call by call lets a batch that cannot finish start anyway. Two methods rather than one with an optional schema, so a batch of records cannot be priced without the schema it sends. Local models never run inside one. |
+| `llm.Llm._admit` | method | `llm.py:183` | The shared front half: count each request, check it against the per-request ceiling, sum the worst cases, `Budget.admit` the sum. On a rehearsal, raises `Rehearsed` at the first request instead. |
+| `llm.Rehearsed` | exception | `llm.py:78` | A dry run: raised in place of the first call with its real token count and worst case, so a caller gets a dry run without code of its own. Counts only the first call, since later inputs depend on earlier outputs — which is why a dry run quotes the ceiling beside it. |
+| `llm.StepFailed` | exception | `llm.py:74` | A call that came back refused, truncated or unparseable. Always about a call that happened and was billed. |
+| `llm.describe` | function | `llm.py:249` | The trace as a table: step, model, tokens and dollars per call, then the total. |
+
+### 2.5 Tools (`tools`)
 
 | ID | Kind | Anchor | Contract |
 |----|------|--------|----------|
@@ -231,7 +257,7 @@ worst case would carry it past its ceiling, and the run never crosses it at all.
 | `tools.ALL_TOOLS` | list | `tools.py:140` | The list handed to the API. Adding a tool = impl + schema + `ALL_TOOLS` entry + `execute_tool` branch. Four edits, no registry. |
 | `tools.execute_tool` | function | `tools.py:143` | Dispatch by name → `(content, is_error)`. Type-checks each argument, catches every `Exception`, and returns unknown names as errors. **Never raises.** |
 
-### 2.5 CLI (`cli`)
+### 2.6 CLI (`cli`)
 
 | ID | Kind | Anchor | Contract |
 |----|------|--------|----------|
@@ -242,7 +268,7 @@ worst case would carry it past its ceiling, and the run never crosses it at all.
 | `cli.menu_text` | function | `cli.py:59` | Numbered listing; also the body of the "unknown mode" error. |
 | `cli.main` | function | `cli.py:66` | `argv` injectable for tests. Non-TTY with no args → `SystemExit` rather than a hang on `input()`. |
 
-### 2.6 The primitives (`primitives`) and Project 1a (`extraction`)
+### 2.7 The primitives (`primitives`) and Project 1a (`extraction`)
 
 | ID | Anchor | What it demonstrates | Notable call shape |
 |----|--------|----------------------|--------------------|
@@ -267,7 +293,7 @@ worst case would carry it past its ceiling, and the run never crosses it at all.
 | `extraction.headlines.extraction_task` | `headlines.py:196` | Returns a `Task`. Builds its client lazily so importing the module costs nothing, pre-flights through `check_request`, resolves the ticker, and turns `parsed_output is None` into `Outcome(error=…)` **with** its usage — the call still happened, so the row still bills. Resolution lives here rather than in the harness, so `run_eval` needs no concept of post-processing. | `messages.parse`, `max_tokens=384`. |
 | `extraction.headlines.main` | `headlines.py:303` | Prints the worst case (priced per arm, not averaged), the labelled/skipped split and the directory size, then **stops unless `--yes`**. `--sample N` (`headlines.py:290`) runs N cases taken *evenly across* the dataset rather than the first N — the rows are roughly in the order they were written, so the front is the easy end and a smoke run off it cannot fail. Not in `cli.MODES`: a menu number that spends forty cents on a stray keystroke is a different kind of thing from a demo. | — |
 
-### 2.7 Retrieval (`retrieval`)
+### 2.8 Retrieval (`retrieval`)
 
 Written by hand in Week 2, and green: 58 tests across `test_chunk`, `test_store` (now `test_dense`) and `test_corpus`.
 Nothing here calls the Anthropic API, which is why every number it produces can be re-measured as
@@ -338,7 +364,7 @@ often as the question is worth asking.
 | `retrieval.answer.answer_task` | function | `answer.py:112` | Retrieves (in the `rag` arm), prompts, parses. Sets `Outcome.raw` to the answer text alone, so `LlmJudge` grades the fact against the reference and never sees the chunk ids — those are a hint at best and noise at worst in a correctness judgement. Query vectors are computed once outside the task, so a row's score cannot move because its question was embedded on a different pass. |
 | `retrieval.answer.graders` | function | `answer.py:178` | Two free, one paid, read as a funnel: did it answer, did it cite a passage that holds the answer, was the answer right. `answered` is `flag` and is what keeps an abstention distinguishable from a confabulation — `correct` fails both. `cites_relevant` is `hit_at_k` pointed at the **cited** ids rather than the retrieved ones, so a citation is checked against the label rather than trusted; it costs nothing, which is the whole argument for reusing the grader rather than asking the judge, and it measured 0.667 against the retriever's own hit@5 of 0.685 — the model cites what it was given. `correct` is the judge against the labelled quote. |
 
-### 2.8 The eval harness (`evals`)
+### 2.9 The eval harness (`evals`)
 
 Built Week 1. The shape is the point: the harness never assumes the thing under test is a model
 call, which is what lets Week 2 hand it a retrieval function that spends nothing.
@@ -372,16 +398,18 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `evals.report._grading_models` | function | `report.py:70` | The models a grader actually spent on, read back from `Score.model` rather than from config — so the header records what the run did, not what was configured. |
 | `evals.report.write_report` | function | `report.py:186` | `evals/reports/<dataset>-<date>.md`, created on demand. |
 
-### 2.9 Tests
+### 2.10 Tests
 
 | ID | Path | Covers | Cost |
 |----|------|--------|------|
-| `tests.test_pricing` | `tests/test_pricing.py` | `test_the_price_list` is a table: opus arithmetic, both cache multipliers, unknown-model-is-free, the worst case. Then both guards, `charge` vs `add`, and that both of `config`'s default models are priced. Then invariant 1 as a test: `check_request` hands the schema to the count, and a table built by **scanning the package's own source** — every function that calls `messages.parse`, found by `ast`, one row each — asserts its one pre-flight names the same schema. Discovered rather than listed, so a sixth structured call is covered the day it is written; a floor of five catches the scan itself breaking and leaving the table empty. `admit` is a four-row table whose expectation column is a context manager — `nullcontext()` or `pytest.raises` — each row asserting admission billed nothing; `check_request` handed a budget is two more rows, admitting under a fresh budget and refusing under a spent one. | free |
+| `tests.test_pricing` | `tests/test_pricing.py` | `test_the_price_list` is a table: opus arithmetic, both cache multipliers, unknown-model-is-free, the worst case. Then both guards, `charge` vs `add`, and that both of `config`'s default models are priced. Then invariant 1 as a test: `check_request` hands the schema to the count, and a table built by **scanning the package's own source** — every function that calls `messages.parse`, found by `ast`, one row each — asserts its one pre-flight names the same schema. Discovered rather than listed, so a sixth structured call is covered the day it is written; a floor of five catches the scan itself breaking and leaving the table empty. `admit` is a four-row table whose expectation column is a context manager — `nullcontext()` or `pytest.raises` — each row asserting admission billed nothing; `check_request` handed a budget is two more rows, admitting under a fresh budget and refusing under a spent one. The source scan skips `llm.py`, which counts in `_admit` and sends in `_parse` by design; `tests.test_llm` pins that its schema is counted. | free |
 | `tests.test_tools` | `tests/test_tools.py` | Tables throughout: calculator whitelist and rejections; the three sandbox escapes (`..`, absolute path, **symlink**); truncation at and over the cap; the dispatcher's six rows of (tool, input, `is_error`, expected text). Directory errors stay their own test — they assert two anchored messages. | free |
 | `tests.test_cli` | `tests/test_cli.py` | Mode order, lookup by key/number, unknown-mode exit. | free |
 | `tests.primitives.test_tool_loop` | `tests/primitives/test_tool_loop.py` | The loop's rules, via `_FakeClient`, and one about money: a run too small to afford a single turn's worst case **sends nothing**. | free |
 | `tests.primitives.test_tool_loop._FakeClient` | `tests/primitives/test_tool_loop.py:69` | Scripts `Message` responses and records every `messages` payload sent. **The pattern to copy for any future loop test.** | free |
 | `tests.primitives.test_tool_loop.test_demo_task_live` | `tests/primitives/test_tool_loop.py:133` | The real demo task end to end; asserts the compound-interest answer. | ~$0.02, `-m live` |
+| `tests.test_llm` | `tests/test_llm.py` | Every call shape, 15 tests. The load-bearing one: a batch whose whole does not fit under the ceiling **sends nothing**, though two of its three calls would. Then: counted, sent, billed and traced in that order; the request reaching the wire as written; counting billing nothing; `text` refusing a refused or truncated reply but billing it; `create` passing a tool-use turn through unjudged; `parse` and `record` reading the same failed parse two ways; a batch answering in request order however it finishes; a batch of records priced with its schema; a stream billed only once it closes; a rehearsal sending nothing. Checked by mutation: admitting a batch call by call, and not billing a stream, each failed its test. | free |
+| `tests.conftest.FakeAnthropic` / `make_llm` | `tests/conftest.py` | A client whose reply is a function of **what was sent** — model, system, messages, schema — rather than of arrival order, so a concurrent batch gets the answers meant for it. Fakes `create`, `parse`, `stream` and `count_tokens`, and a reply may be a whole `Message` to script tool use. `make_llm` wraps it in an `Llm` with a budget of its own. | free |
 | `tests.conftest.make_judge` | `tests/conftest.py:63` | The one scripted `LlmJudge` fixture: a verdict decided in the test, a fixed `JUDGE_USAGE`, and a log of prompts and pre-flight counts. Shared so the grader tests and the runner tests cannot drift apart about what a judge costs. | free |
 | `tests.test_api_smoke` | `tests/test_api_smoke.py` | `count_tokens` round-trip; skipped without credentials. | free |
 | `tests.evals.test_dataset` | `tests/evals/test_dataset.py` | `test_the_loader_refuses` tables the four ways a dataset is rejected before the run — typo'd key, duplicate id, bad JSON, empty file — each row naming the message it must produce. Plus the happy path, comment skipping, and that the digest moves with the labels. | free |
@@ -406,7 +434,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 
 `addopts = "-m 'not live'"` in `pyproject.toml:44` — paid tests never run by accident.
 
-### 2.10 Non-code nodes
+### 2.11 Non-code nodes
 
 | ID | Path | Role |
 |----|------|------|
@@ -462,6 +490,7 @@ extraction.headlines     —imports→ config.THINKING_EVAL_PARAM   (was a local
 tests.test_reference_data —imports→ retrieval.corpus.MANIFEST
 config                   —imports→ anthropic, dotenv
 tools                    —imports→ anthropic.types.ToolParam + tools_config   (no client, no network)
+llm                      —imports→ config.{MAX_PARALLEL_CALLS, MODEL, get_client}, pricing.{Budget, assert_request_within_budget}
 tools_config             —imports→ pathlib                    (nothing internal at all)
 
 evals.dataset            —imports→ pydantic                    (no config, no client, no network)
@@ -565,6 +594,7 @@ deliberate: a batch run should die loudly, an interactive session should degrade
 
 ```
 pricing.{cost_usd, worst_case_usd, assert_request_within_budget, Budget} —tested-by→ tests.test_pricing
+llm.{Llm, Request, describe}                                           —tested-by→ tests.test_llm
 tools.{calculate, read_file, execute_tool}                             —tested-by→ tests.test_tools
 cli.{MODES, find_mode, menu_text, main}                                —tested-by→ tests.test_cli
 primitives.tool_loop.run                                                   —tested-by→ tests.primitives.test_tool_loop
@@ -751,6 +781,7 @@ Anchors the code already names, so a future session can find the intended seam r
 | ~~Week 2 — hybrid and rerank~~ | **Consumed 2026-09-20**, $0.00, and the seam note was right about the shape and silent about the finding. Six arms over one inventory: three bases with and without a cross-encoder. Two results outrank the table. **Naive RRF lost to BM25 alone** on the original questions — dense contributed exactly one unique row in 54, and fusion gave back four that BM25 had at rank 1, because `RRF_K` makes agreement beat a single first place and agreement is worthless when one ranker is noise. And **the whole ranking inverts under paraphrase**: see the banner. `RERANK_CANDIDATES` turned out to be a real optimum rather than a free knob. | `sparse.py`, `fuse.py`, `rerank.py`, `evaluate.py:72` |
 | ~~Week 2 — answer-level eval~~ | **Consumed 2026-09-19**, smoke run then all 54 for $1.342. Closed-book `correct` 5/54, RAG 42/54 — **9% to 78%** is what retrieval bought. The number that matters is not there though: closed-book **answered 10 and was right 5**, a coin flip when it speaks, against RAG's 42 right of 43 answered. The failure mode moves from fabrication to silence, and only `flag` can see it. `retrieval.answer` is two arms over the identical questions — `closed_book` and `rag` — so the measurement is the *gap*, not an absolute score: an absolute RAG number conflates what the retriever found with what a large model already knows about ITC, Reliance and Tata Motors. Graded by `cites_relevant` (free: `hit_at_k` pointed at the cited ids, so a citation is checked against the label rather than trusted) and `correct` (`LlmJudge` against the labelled quote). `cites_relevant` hit 37/54 and so did the free retrieval eval's hit@5 — **the same 37 rows, agreeing on all 54**, nothing retrieved-but-uncited and nothing cited-but-unretrieved. Two evals written separately, one free over NumPy and one paid over a model, agreeing row for row: treat a future divergence as a broken harness (stale inventory, mismatched strategy, colliding ids) before treating it as a worse model. | `answer.py:98`, `judge.py:45` |
 | Week 2 — RAG milestone `v0.1-rag` | Both halves are measured and in the README: retrieval free, generation smoke-run. What remains is the tag, and then **going public on Wed 2026-09-23 with branch protection raised in the same move** — decided 2026-09-19 to stay private until then, which is a decision and not a slip (`CLAUDE.md`, last section). Hybrid/rerank and the full 54-case answer run are the next two rows, not blockers for the tag. | roadmap, `README.md`, `CLAUDE.md` |
+| Week 3 — every model call through `llm` | `llm.py` exists and is tested; nothing calls it yet. Still calling the SDK directly: `primitives.{first_call, streaming, structured_output, tool_loop, chat}`, `extraction.headlines` (task and `measure`), `retrieval.{answer, questions}` (tasks and dry-run counts), `evals.judge`. Two steps: the primitives, then the eval paths — whose tasks keep reporting usage to the runner, which stays the one budget an eval is billed to (invariant 12). Then a test that fails on any `client.messages` call outside `llm.py`, and invariant 8 gains a clause. `primitives.failures` is the case to decide: several rows exist to provoke the API's own errors, which a guarded path would intercept first. | `llm.py` |
 | Week 3 — anything that searches the reports | `Indexes.build(inventory)` once (~65s), then `build_ranker(SEARCH_METHOD, indexes).rank(query, k, doc_id=)`; look the hits up in `indexes.inventory.by_id` and format them with `chunk.context_block`. Use it rather than composing indexes, or invariant 21 breaks. | `rank.py:131` |
 | Week 3 — `chat` becomes the default mode | `cli.MODES` order and `cli.main`'s no-arg branch. | `cli.py:29` |
 | Week 5 — SDK tool runner | `tools.ALL_TOOLS` + `execute_tool` are framework-free precisely for this. | `tools.py:1-3` |

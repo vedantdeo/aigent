@@ -635,4 +635,10 @@
 - 09-21: the failure catalogue gained `run-admission`; regenerated for free (the provoked requests
   are rejected before the model runs, and the budget rows never leave the machine), and every
   API-provoked row came back word for word.
+- 09-21: `llm.py`, the module every model call is meant to go through, landed on its own and
+  tested (15 tests, $0.00): count (free, schema included) → per-request ceiling → admit against
+  the budget → send → bill and trace, in that order for every call shape the repo uses — plain,
+  structured, streamed, tool-using and concurrent. A concurrent batch is admitted as a whole
+  before any of it is sent. Nothing calls it yet; the primitives move onto it next, then the eval
+  paths, and then a test makes any other call to the SDK fail.
 

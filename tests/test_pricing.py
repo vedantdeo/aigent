@@ -282,6 +282,8 @@ def _parse_sites() -> list[tuple[str, str | None, list[str | None]]]:
     """Each function in the package calling `messages.parse`, its schema and its pre-flights'."""
     sites: list[tuple[str, str | None, list[str | None]]] = []
     for path in sorted(PACKAGE.rglob("*.py")):
+        if path.name == "llm.py":
+            continue  # counts in `_admit`, sends in `_parse`; tests/test_llm.py pins the schema
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):

@@ -56,6 +56,9 @@ THINKING_EVAL_PARAM: ThinkingConfigParam = (
 # How many times the agent may go round before giving up.
 MAX_AGENT_TURNS = 8
 
+# How many calls one concurrent batch keeps in flight at once.
+MAX_PARALLEL_CALLS = 4
+
 # How many failing rows an eval report prints before it truncates.
 MAX_FAILURES_SHOWN = 10
 
