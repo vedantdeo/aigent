@@ -47,6 +47,7 @@ Each module also runs on its own: `uv run python -m entropic.primitives.first_ca
 | `retrieval/sparse.py` | BM25 over the same chunks: the lexical half, as an inverted index |
 | `retrieval/fuse.py` | reciprocal rank fusion, because two rankers' scores are not comparable |
 | `retrieval/rerank.py` | a cross-encoder that reads query and passage together, then reorders |
+| `retrieval/search.py` | the six ranking methods over one inventory, scoped to one report when asked |
 | `retrieval/evaluate.py` | the runs: chunking strategies, or six retrieval arms, both free |
 | `retrieval/langchain_rag.py` | the same pipeline in LangChain, scored by the same harness |
 | `retrieval/answer.py` | the generation half: answer from retrieved passages, closed-book against RAG |
@@ -284,7 +285,7 @@ caught before the graph goes stale.
 - `src/entropic/tools.py`   framework-free tools, reused by everything that calls a tool
 - `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
 - `src/entropic/primitives/` the five modes, plus the failure catalogue
-- `src/entropic/retrieval/` chunking, local embeddings, the vector store
+- `src/entropic/retrieval/` chunking, local embeddings, the vector store, search
 - `src/entropic/extraction/` Project 1a: headline extraction, graded by the harness
 - `src/entropic/evals/`     the eval harness: dataset, graders, runner, report
 - `evals/`                  eval datasets and the reports they produce

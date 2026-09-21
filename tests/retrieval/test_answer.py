@@ -21,10 +21,10 @@ from entropic.retrieval.answer import (
     ARMS,
     Answer,
     answer_task,
-    context_block,
     spread,
 )
 from entropic.retrieval.chunk import Document, Inventory, by_sentence
+from entropic.retrieval.search import context_block
 from entropic.retrieval.store import VectorStore
 
 from ..conftest import BagOfWordsEmbedder

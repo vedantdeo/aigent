@@ -574,3 +574,17 @@
 - Next: public plus branch protection on Wed 2026-09-23, and Week 3 (agent patterns) starts
   tomorrow. Worth doing when there is time: a question set written by someone who never sees the
   passages, which is the only clean measurement of what dense is really worth.
+
+## Week 3 (2026-09-21 to 2026-09-27)
+
+- 09-21: the ranking moved out of the eval. The six methods lived inside `retrieval/evaluate.py`,
+  so anything else that wanted to search the reports could only copy them or import the eval.
+  They now live in `retrieval/search.py` — `Retrievers.rank` for the eval, `Searcher` for callers
+  that want passages — and `evaluate` calls the same code. Checked the only way that counts: reran
+  the free six-arm eval after the move and it matched the committed report on all 324 rows,
+  failures included (105s, $0.00). The duplicate report was not kept.
+- 09-21: new with it, a search scoped to one report. It ranks every chunk and drops the other
+  reports rather than filtering the global top k, which comes back empty for a report that ranks
+  low overall and reads as "the report does not say". Default method `hybrid+rerank`, the winner
+  on questions not written from the passages.
+

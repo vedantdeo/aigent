@@ -43,6 +43,7 @@ from entropic.retrieval.chunk import Chunk, Inventory
 from entropic.retrieval.corpus import load_corpus
 from entropic.retrieval.embed import Embedder, LocalEmbedder, Vectors
 from entropic.retrieval.evaluate import DATASET, STRATEGIES, resolve
+from entropic.retrieval.search import context_block
 from entropic.retrieval.store import VectorStore
 
 REPO = Path(__file__).resolve().parents[3]
@@ -99,18 +100,6 @@ ARMS = {
     "closed_book": Arm(CLOSED_BOOK_SYSTEM, retrieves=False),
     "rag": Arm(ANSWER_SYSTEM, retrieves=True),
 }
-
-
-def context_block(chunks: Sequence[Chunk]) -> str:
-    """The retrieved passages, each tagged with the id the model must cite it by.
-
-    XML-delimited and one passage per element, so the model can point at one of them rather than
-    at the blob — a citation that names no passage cannot be checked against the label.
-    """
-    return "\n\n".join(
-        f'<passage id="{chunk.id}" source="{chunk.citation}">\n{chunk.text}\n</passage>'
-        for chunk in chunks
-    )
 
 
 def prompt_for(question: str, chunks: Sequence[Chunk]) -> list[MessageParam]:

@@ -20,7 +20,6 @@ import logging
 import sys
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -47,10 +46,10 @@ from entropic.evals.runner import EvalRun, Task, combine, run_eval
 from entropic.retrieval.chunk import Document, Inventory, Splitter, by_sentence, fixed
 from entropic.retrieval.corpus import load_corpus
 from entropic.retrieval.embed import Embedder, LocalEmbedder, Vectors
-from entropic.retrieval.fuse import reciprocal_rank_fusion
-from entropic.retrieval.rerank import LocalReranker, Reranker, rerank
+from entropic.retrieval.rerank import LocalReranker
+from entropic.retrieval.search import METHOD_STRATEGY, METHODS, Retrievers
 from entropic.retrieval.sparse import Bm25Index
-from entropic.retrieval.store import Hit, VectorStore, rank_ids
+from entropic.retrieval.store import VectorStore, rank_ids
 
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "evals" / "datasets" / "retrieval.jsonl"
@@ -63,35 +62,6 @@ STRATEGIES: dict[str, Splitter] = {
     "fixed+overlap": fixed(CHUNK_CHARS, CHUNK_OVERLAP_CHARS),
     "by_sentence": by_sentence(),
 }
-
-
-# The second comparison this module runs, and a different axis from the one above: these rank the
-# *same* `by_sentence` inventory, so they share a set of labels and are tasks of one run rather
-# than runs merged. Three bases, each with and without a cross-encoder over its own candidates,
-# so the grid separates what reach buys from what ordering buys.
-METHODS = (
-    "dense",
-    "dense+rerank",
-    "bm25",
-    "bm25+rerank",
-    "hybrid",
-    "hybrid+rerank",
-)
-METHOD_STRATEGY = "by_sentence"
-
-
-@dataclass(frozen=True)
-class Retrievers:
-    """Everything the four methods rank with, built once over one inventory.
-
-    `reranker` is None until an arm needs one: it is a second local model to download and load,
-    and the three cheap arms must not pay for it.
-    """
-
-    inventory: Inventory
-    store: VectorStore
-    index: Bm25Index
-    reranker: Reranker | None = None
 
 
 def graders(k: int = TOP_K) -> dict[str, Grader]:
@@ -147,34 +117,6 @@ def retrieval_task(store: VectorStore, queries: Mapping[str, Vectors], k: int = 
     return task
 
 
-def base_ranking(
-    base: str,
-    retrievers: Retrievers,
-    question: str,
-    vector: Vectors,
-    k: int,
-    depth: int,
-) -> list[Hit]:
-    """The cheap first stage: one of dense, lexical, or the two fused.
-
-    `bm25` reads the question text and `dense` reads its vector, which is why both are carried —
-    a lexical ranker cannot use an embedding and a dense one cannot use the words.
-    """
-    if base == "bm25":
-        return retrievers.index.search(question, k=k)
-    if base == "dense":
-        return retrievers.store.search(vector, k=k)
-    # Fuse the top `depth` of each ranking rather than its head: a chunk at rank 20 lexically and
-    # rank 4 densely is what fusion is for, and cutting at k throws it away unseen.
-    return reciprocal_rank_fusion(
-        [
-            rank_ids(retrievers.store.search(vector, k=depth)),
-            rank_ids(retrievers.index.search(question, k=depth)),
-        ],
-        k=k,
-    )
-
-
 def method_task(
     method: str,
     retrievers: Retrievers,
@@ -184,31 +126,19 @@ def method_task(
     depth: int = FUSE_DEPTH,
     candidates: int = RERANK_CANDIDATES,
 ) -> Task:
-    """Rank one inventory by one retrieval method. Spends nothing, so `usage` stays None.
-
-    A `+rerank` arm is its base with a second stage: take `candidates` from the base instead of
-    `k`, score every one against the query with the cross-encoder, keep the best `k`. The base is
-    what decides reach; the reranker only decides order within what the base reached.
-    """
+    """Rank one inventory by one retrieval method. Spends nothing, so `usage` stays None."""
     if method not in METHODS:
         raise ValueError(f"unknown retrieval method {method!r}; expected one of {METHODS}")
-    base, reranked = method.removesuffix("+rerank"), method.endswith("+rerank")
 
     def task(case: Case) -> Outcome:
         question = str(case.input["question"])
         vector = queries.get(case.id)
         if vector is None:
             return Outcome(error=f"case {case.id} has no query vector")
+        if method.endswith("+rerank") and retrievers.reranker is None:
+            return Outcome(error="this arm needs a reranker and was given none")
 
-        hits = base_ranking(
-            base, retrievers, question, vector, candidates if reranked else k, depth
-        )
-        if reranked:
-            if retrievers.reranker is None:
-                return Outcome(error="this arm needs a reranker and was given none")
-            texts = [retrievers.inventory.by_id[hit.chunk_id].text for hit in hits]
-            hits = rerank(retrievers.reranker, question, hits, texts, k=k)
-
+        hits = retrievers.rank(method, question, vector, k, depth=depth, candidates=candidates)
         return Outcome(
             output={
                 "retrieved": cast(JsonValue, rank_ids(hits)),
