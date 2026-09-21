@@ -8,6 +8,7 @@ reason the harness takes one instead of a prompt.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 
 import pytest
 from anthropic.types import Usage
@@ -17,7 +18,7 @@ from entropic.evals.dataset import Case
 from entropic.evals.grade import Grader, Outcome, Score, exact_match
 from entropic.evals.judge import Verdict
 from entropic.evals.runner import EvalRun, Task, combine, run_eval
-from entropic.pricing import usage_cost
+from entropic.pricing import BudgetExceeded, usage_cost
 
 from ..conftest import MakeJudge
 
@@ -272,3 +273,36 @@ def test_combine_refuses_runs_whose_columns_would_not_be_comparable(
 def test_combine_needs_something_to_combine() -> None:
     with pytest.raises(ValueError, match="at least one"):
         combine([])
+
+
+@pytest.mark.parametrize(
+    ("worst", "expectation", "ran"),
+    [
+        pytest.param(1.50, nullcontext(), 2, id="a run whose worst case fits goes ahead"),
+        pytest.param(
+            2.50,
+            pytest.raises(BudgetExceeded, match="ENTROPIC_MAX_USD_PER_EVAL"),
+            0,
+            id="a run whose worst case does not is refused before its first row",
+        ),
+    ],
+)
+def test_a_run_is_admitted_whole_before_it_spends(
+    worst: float, expectation: AbstractContextManager[object], ran: int
+) -> None:
+    called: list[str] = []
+
+    def task(case: Case) -> Outcome:
+        called.append(case.id)
+        return Outcome(output={"answer": "yes"}, usage=COSTLY, model=MODEL)
+
+    with expectation:
+        run_eval(
+            _cases(2),
+            {"baseline": task},
+            {"exact": exact_match("answer")},
+            limit_usd=2.00,
+            worst_usd=worst,
+            progress=False,
+        )
+    assert len(called) == ran

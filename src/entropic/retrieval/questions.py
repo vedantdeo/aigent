@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from entropic.config import MAX_TOKENS_QUESTION as MAX_TOKENS
 from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM, get_client
-from entropic.pricing import check_request, estimate_eval_usd, usage_cost
+from entropic.pricing import Budget, check_request, estimate_eval_usd, usage_cost
 from entropic.retrieval.chunk import Chunk, Document, Inventory, by_sentence, squeeze
 from entropic.retrieval.corpus import MANIFEST, load_corpus
 
@@ -228,6 +228,7 @@ def main(argv: list[str] | None = None) -> None:
     if not args.yes:
         print("\nnothing spent. re-run with --yes to send these calls.")
         return
+    Budget(limit_usd=MAX_USD_PER_EVAL, scope="eval").admit(worst)
 
     results: list[Generated] = []
     for number, chunk in enumerate(passages, start=1):

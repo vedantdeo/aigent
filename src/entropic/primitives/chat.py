@@ -56,7 +56,12 @@ def main() -> None:
         history.append({"role": "user", "content": user_text})
         try:
             check_request(
-                client, model=MODEL, max_tokens=MAX_TOKENS, messages=history, system=SYSTEM
+                client,
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                messages=history,
+                system=SYSTEM,
+                budget=budget,
             )
         except BudgetExceeded as exc:
             history.pop()

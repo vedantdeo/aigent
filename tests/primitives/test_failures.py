@@ -23,11 +23,12 @@ from entropic.primitives.failures import (
     _per_request_ceiling,
     _per_run_ceiling,
     _raises,
+    _run_admission,
 )
 
 Provoke = Callable[[Anthropic], str]
 
-# Constructing a client is offline and free; these two rows raise before they would ever use it.
+# Constructing a client is offline and free; these rows raise before they would ever use it.
 UNUSED = Anthropic(api_key="unused")
 
 
@@ -46,11 +47,15 @@ def test_a_provocation_that_stops_failing_is_reported_not_swallowed() -> None:
 
 @pytest.mark.parametrize(
     ("name", "provoke"),
-    [("per request", _per_request_ceiling), ("per run", _per_run_ceiling)],
-    ids=["per request", "per run"],
+    [
+        ("per request", _per_request_ceiling),
+        ("per run", _per_run_ceiling),
+        ("run admission", _run_admission),
+    ],
+    ids=["per request", "per run", "run admission"],
 )
 def test_our_own_ceilings_trip_without_touching_the_network(name: str, provoke: Provoke) -> None:
-    """Two rows are pure arithmetic, which is why they are free and why they matter: the guard
+    """Three rows are pure arithmetic, which is why they are free and why they matter: the guard
     that costs nothing to check is the one you want sitting between you and the API."""
     detail = provoke(UNUSED)
 

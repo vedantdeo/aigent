@@ -312,6 +312,7 @@ def main(argv: list[str] | None = None) -> None:
         dataset=DATASET.name,
         digest=digest(DATASET),
         model=MODEL,
+        worst_usd=worst,
     )
     print(f"\nreport: {write_report(run)}")
 

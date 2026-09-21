@@ -8,6 +8,7 @@ call in the package to invariant 1: its pre-flight counts the schema it sends.
 from __future__ import annotations
 
 import ast
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import cast
 
@@ -162,6 +163,30 @@ def test_add_is_charge_plus_a_raise_so_the_two_cannot_drift() -> None:
     assert raised.spent_usd == charged.spent_usd
 
 
+@pytest.mark.parametrize(
+    ("spent", "worst", "expectation"),
+    [
+        pytest.param(0.0, 0.04, nullcontext(), id="nothing spent and the call fits"),
+        pytest.param(0.03, 0.01, nullcontext(), id="spent plus worst case lands under"),
+        pytest.param(
+            0.03,
+            0.03,
+            pytest.raises(BudgetExceeded, match="ENTROPIC_MAX_USD_PER_EVAL"),
+            id="spent plus worst case lands over",
+        ),
+        pytest.param(0.0, 0.06, pytest.raises(BudgetExceeded), id="the call alone could cross it"),
+    ],
+)
+def test_admit_refuses_what_could_cross_the_ceiling_before_it_is_spent(
+    spent: float, worst: float, expectation: AbstractContextManager[object]
+) -> None:
+    budget = Budget(limit_usd=0.05, spent_usd=spent, scope="eval")
+
+    with expectation:
+        budget.admit(worst)
+    assert budget.spent_usd == spent, "admitting checks; nothing is billed until a call returns"
+
+
 class _Counts:
     """Stands in for `client.messages`, keeping what the free count was asked to count."""
 
@@ -194,6 +219,35 @@ def test_check_request_counts_the_schema_with_the_request() -> None:
     )
 
     assert client.messages.asked["output_format"] is _Schema
+
+
+@pytest.mark.parametrize(
+    ("spent", "expectation"),
+    [
+        pytest.param(0.0, nullcontext(), id="a fresh budget admits the call"),
+        pytest.param(
+            0.95,
+            pytest.raises(BudgetExceeded, match="ENTROPIC_MAX_USD_PER_RUN"),
+            id="a nearly spent budget refuses it",
+        ),
+    ],
+)
+def test_check_request_admits_the_call_against_a_budget(
+    spent: float, expectation: AbstractContextManager[object]
+) -> None:
+    """100 input tokens plus a 4096-token cap is $0.1029 at worst on Opus: under a fresh $1.00
+    budget, over what is left of one that has spent $0.95."""
+    budget = Budget(limit_usd=1.00, spent_usd=spent)
+
+    with expectation:
+        check_request(
+            cast(anthropic.Anthropic, _Client()),
+            model=OPUS,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": "hi"}],
+            budget=budget,
+        )
+    assert budget.spent_usd == spent
 
 
 def _own_calls(function: ast.AST) -> list[ast.Call]:

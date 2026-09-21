@@ -26,6 +26,7 @@ from anthropic.types import (
 
 from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
 from entropic.config import has_credentials
+from entropic.pricing import BudgetExceeded
 from entropic.primitives.tool_loop import run
 
 DEMO_TASK = (
@@ -126,6 +127,16 @@ def test_turn_cap_stops_a_loop_that_never_finishes() -> None:
     with pytest.raises(RuntimeError, match="did not finish"):
         run("loop forever", client=client)
     assert len(log.sent) == MAX_TURNS
+
+
+def test_a_call_that_could_cross_the_run_ceiling_is_never_sent() -> None:
+    """A turn's worst case is its input plus the full 4096-token cap, about $0.10 on Opus, so a
+    $0.05 run cannot afford even the first one — and finds that out before sending it."""
+    client, log = _client([_message([TextBlock(type="text", text="never sent")], "end_turn")])
+
+    with pytest.raises(BudgetExceeded, match="per-run ceiling"):
+        run("anything", client=client, limit_usd=0.05)
+    assert log.sent == []
 
 
 @pytest.mark.live

@@ -74,11 +74,14 @@ def run_eval(
     digest: str = "",
     model: str = MODEL,
     limit_usd: float = MAX_USD_PER_EVAL,
+    worst_usd: float | None = None,
     progress: bool = True,
 ) -> EvalRun:
     """Run every case through every variant, grade each outcome, return the whole run.
 
     `model` is recorded, not applied — the task owns its own call. Pass the one it really uses.
+    `worst_usd` is the whole run's worst case; given, the run is refused before its first row
+    unless all of it fits under `limit_usd`.
     """
     if not variants:
         raise ValueError("run_eval needs at least one variant")
@@ -94,6 +97,8 @@ def run_eval(
         limit_usd=limit_usd,
     )
     budget = Budget(limit_usd=limit_usd, scope="eval")
+    if worst_usd is not None:
+        budget.admit(worst_usd)
 
     total = len(cases) * len(variants)
     done = 0

@@ -1,8 +1,8 @@
-"""Nine failure modes provoked for real, tabulated into `docs/failure-modes.md`.
+"""Ten failure modes provoked for real, tabulated into `docs/failure-modes.md`.
 
-Free to run by construction: a request rejected with a 4xx never reaches the model, and the last two
-rows never touch the network. A successful structured call is the only thing that could make this
-spend, and a test greps this file to be sure there is none.
+Free to run by construction: a request rejected with a 4xx never reaches the model, and the last
+three rows never touch the network. A successful structured call is the only thing that could make
+this spend, and a test greps this file to be sure there is none.
 """
 
 from __future__ import annotations
@@ -15,7 +15,12 @@ import anthropic
 from anthropic.types import MessageParam, Usage
 
 from entropic.config import MODEL, get_client
-from entropic.pricing import Budget, assert_request_within_budget, check_request
+from entropic.pricing import (
+    Budget,
+    assert_request_within_budget,
+    check_request,
+    worst_case_usd,
+)
 
 HELLO: list[MessageParam] = [{"role": "user", "content": "hi"}]
 
@@ -105,6 +110,11 @@ def _per_run_ceiling(_: anthropic.Anthropic) -> str:
     return _raises(lambda: budget.add(MODEL, usage))
 
 
+def _run_admission(_: anthropic.Anthropic) -> str:
+    budget = Budget(limit_usd=1.00, spent_usd=0.95)
+    return _raises(lambda: budget.admit(worst_case_usd(MODEL, 1000, 4096)))
+
+
 FAILURES: tuple[Failure, ...] = (
     Failure("bad-model", "a model name that does not exist", _bad_model),
     Failure("bad-key", "credentials that are not ours", _bad_key),
@@ -115,6 +125,7 @@ FAILURES: tuple[Failure, ...] = (
     Failure("context-too-long", "an input larger than the context window", _context_too_long),
     Failure("per-request-ceiling", "one call worth more than the ceiling", _per_request_ceiling),
     Failure("per-run-ceiling", "a run that spends past its budget", _per_run_ceiling),
+    Failure("run-admission", "a call that could carry a run past its budget", _run_admission),
 )
 
 
@@ -126,7 +137,7 @@ def main() -> None:
         "Regenerate with `uv run python -m entropic.primitives.failures > docs/failure-modes.md`."
     )
     print(
-        "Every row is free: a rejected request is never billed, and the last two "
+        "Every row is free: a rejected request is never billed, and the last three "
         "never leave the machine.\n"
     )
     print("| failure | provoked by | what you get |")

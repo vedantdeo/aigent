@@ -618,4 +618,21 @@
   to embed each question once and share the vector. Reran the free six-arm eval to check it
   (110s, $0.00): identical to the committed report on all 324 rows again. The duplicate report was
   not kept.
+- 09-21: every budget now refuses **before** it spends. Until today a run's ceiling was checked
+  after each call: `Budget.add` billed the call, then tripped, so a run could finish one call over
+  its limit. `Budget.admit` checks the other way round: what a call could cost at most — its
+  counted input plus its full output cap — is knowable before sending, so a call that could carry
+  the run past its ceiling is never sent. Wired into every paid path: the tool loop and chat admit
+  each call through `check_request(budget=...)`; `run_eval` admits a whole eval before its first
+  row from the worst case the dry run already prints; the question generator does the same. The
+  after-the-fact checks stay, as backstops for an estimate that runs low.
+- 09-21: the price of the guarantee, stated rather than discovered later. A worst case assumes
+  the whole output cap, so runs stop with budget left: a $1.00 tool-loop run now refuses its
+  next call at about $0.90 spent, because a 4,096-token cap is ~$0.10 of Opus output. And an eval
+  whose worst case exceeds `MAX_USD_PER_EVAL` is refused outright — the 54-case answer run
+  ($2.22 worst case) would have been, which is what happened by hand on 09-19 when the ceiling
+  was raised to $2.50 for it. Now the raise is required rather than remembered.
+- 09-21: the failure catalogue gained `run-admission`; regenerated for free (the provoked requests
+  are rejected before the model runs, and the budget rows never leave the machine), and every
+  API-provoked row came back word for word.
 

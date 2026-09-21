@@ -26,7 +26,7 @@ Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK f
 | `loop` | `primitives/tool_loop.py` | the agent loop, by hand; takes a task |
 | `chat` | `primitives/chat.py` | multi-turn conversation with a cost meter |
 
-`primitives/failures.py` is not a mode — it provokes nine failure modes and prints the table in
+`primitives/failures.py` is not a mode — it provokes ten failure modes and prints the table in
 `docs/failure-modes.md`. It costs nothing to run: a request rejected with a 4xx is never billed.
 
 ```
@@ -202,8 +202,8 @@ numbers in the message. Trim the input, lower `max_tokens`, or raise the ceiling
 | Guard | Default | Enforced where |
 |-------|---------|----------------|
 | per request | $0.25 | before every call: free token count, worst case is input plus the full `max_tokens` |
-| per run | $1.00 | after every call in a tool loop or a chat session |
-| per eval | $2.00 | across a whole eval run; a trip keeps the rows already paid for and marks the report partial |
+| per run | $1.00 | before every call in a tool loop or a chat session, on that call's worst case, and after it on the real cost |
+| per eval | $2.00 | before the run starts, on the whole run's worst case; then after each row, where a trip keeps the rows already paid for and marks the report partial |
 
 ## Evals
 

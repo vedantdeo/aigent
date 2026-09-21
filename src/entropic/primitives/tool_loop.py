@@ -25,12 +25,14 @@ SYSTEM = (
 )
 
 
-def run(task: str, client: anthropic.Anthropic | None = None) -> str:
+def run(
+    task: str, client: anthropic.Anthropic | None = None, *, limit_usd: float = MAX_USD_PER_RUN
+) -> str:
     """Drive the loop for one task. `client` is injectable so tests can script the responses."""
     if client is None:
         client = get_client()
     messages: list[MessageParam] = [{"role": "user", "content": task}]
-    budget = Budget(limit_usd=MAX_USD_PER_RUN)
+    budget = Budget(limit_usd=limit_usd)
 
     for turn in range(1, MAX_TURNS + 1):
         check_request(
@@ -40,6 +42,7 @@ def run(task: str, client: anthropic.Anthropic | None = None) -> str:
             messages=messages,
             system=SYSTEM,
             tools=ALL_TOOLS,
+            budget=budget,
         )
         response = client.messages.create(
             model=MODEL,

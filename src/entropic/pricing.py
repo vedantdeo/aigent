@@ -1,8 +1,8 @@
 """Token prices, cost arithmetic, and the two budget guards. The only module that knows a price.
 
 `check_request` refuses a call before it is sent, using the free token-count endpoint. `Budget`
-reacts after the call that crosses a ceiling, which is the only honest moment — what a call cost is
-not knowable until it is done.
+bills what each call actually cost once it is done, and `Budget.admit` refuses beforehand any call
+whose worst case would carry spending past the ceiling.
 """
 
 from __future__ import annotations
@@ -137,15 +137,19 @@ def check_request(
     system: str | Sequence[TextBlockParam] | Omit = omit,
     tools: Sequence[ToolParam] | Omit = omit,
     output_format: type | Omit = omit,
+    budget: Budget | None = None,
 ) -> int:
     """Pre-flight one request through the free counting endpoint, returning its input-token count.
 
     Pass exactly what the real call will send, or the count lies — a parse call's schema included.
+    With `budget`, the call must also fit in what that budget has left.
     """
     count = client.messages.count_tokens(
         model=model, messages=messages, system=system, tools=tools, output_format=output_format
     )
-    assert_request_within_budget(model, count.input_tokens, max_tokens)
+    worst = assert_request_within_budget(model, count.input_tokens, max_tokens)
+    if budget is not None:
+        budget.admit(worst)
     return count.input_tokens
 
 
@@ -180,3 +184,16 @@ class Budget:
         if self.tripped is not None:
             raise BudgetExceeded(self.tripped)
         return self.spent_usd
+
+    def admit(self, worst_usd: float) -> None:
+        """Refuse, before anything is sent, spending whose worst case would carry past the ceiling.
+
+        Admitting bills nothing; `charge` still bills the actual cost once a call returns.
+        """
+        if self.spent_usd + worst_usd > self.limit_usd:
+            raise BudgetExceeded(
+                f"{self.scope} has spent ${self.spent_usd:.4f} and the next spending could cost up "
+                f"to ${worst_usd:.4f}, past the per-{self.scope} ceiling of "
+                f"${self.limit_usd:.4f}. Raise ENTROPIC_MAX_USD_PER_{self.scope.upper()} in .env "
+                "if this was intended."
+            )
