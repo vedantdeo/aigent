@@ -11,7 +11,7 @@ from contextlib import AbstractContextManager, nullcontext
 import pytest
 from anthropic.types import Usage
 
-from entropic.config import DEFAULT_JUDGE_MODEL, DEFAULT_MODEL
+from entropic.config import DEFAULT_JUDGE_MODEL, DEFAULT_MODEL, DEFAULT_SMALL_MODEL
 from entropic.pricing import (
     PRICES,
     Budget,
@@ -119,10 +119,10 @@ def test_an_estimate_with_no_cached_prefix_is_the_arithmetic_it_always_was() -> 
     assert estimate_eval_usd(OPUS, 0, 400, 1024, cached_tokens=400) == 0.0
 
 
-def test_both_default_models_are_priced() -> None:
+def test_every_default_model_is_priced() -> None:
     # cost_usd returns 0.0 for an unknown model rather than raising, which is right for a typo in
     # .env and very wrong for a typo in a default: every cost line in the repo would read $0.00000.
-    for model in (DEFAULT_MODEL, DEFAULT_JUDGE_MODEL):
+    for model in (DEFAULT_MODEL, DEFAULT_JUDGE_MODEL, DEFAULT_SMALL_MODEL):
         assert model in PRICES, f"{model} has no price, so it would silently report as free"
 
 

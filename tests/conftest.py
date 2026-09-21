@@ -101,7 +101,7 @@ class Sent:
         return content if isinstance(content, str) else ""
 
 
-Reply = Callable[[Sent], str | BaseModel | None]
+Reply = Callable[[Sent], str | BaseModel | Exception | None]
 FAKE_USAGE = Usage(input_tokens=100, output_tokens=50)
 
 
@@ -137,8 +137,8 @@ class FakeMessages:
 
     Replies are decided by what was sent rather than by arrival order, so concurrent calls can land
     in any order and still get the answer meant for them. A reply may be text, a whole `Message`
-    (to script tool use), or for a parse call a record or None. `input_tokens` and `count_error`
-    decide what the free count says.
+    (to script tool use), or for a parse call a record, None, or an exception to raise.
+    `input_tokens` and `count_error` decide what the free count says.
     """
 
     def __init__(self, reply: Reply, stop_reason: str) -> None:
@@ -165,10 +165,16 @@ class FakeMessages:
 
     def parse(self, **kwargs: object) -> _ParsedReply:
         record = self._reply(self._log("parse", kwargs))
+        if isinstance(record, Exception):
+            raise record
         assert not isinstance(record, str), f"a parse call wants a record, not {record!r}"
         return _ParsedReply(record, self._stop_reason)
 
-    def _message(self, reply: str | BaseModel | None, kwargs: dict[str, object]) -> Message:
+    def _message(
+        self, reply: str | BaseModel | Exception | None, kwargs: dict[str, object]
+    ) -> Message:
+        if isinstance(reply, Exception):
+            raise reply
         if isinstance(reply, Message):
             return reply
         assert isinstance(reply, str), f"a create call is answered with text, not {reply!r}"

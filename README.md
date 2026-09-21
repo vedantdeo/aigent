@@ -191,14 +191,39 @@ re-chunk; a labelled sentence does, and `Inventory.containing` resolves it to wh
 in the inventory being scored. That is what lets four chunking strategies be four columns of one
 table instead of four runs nobody can compare.
 
+## Workflows
+
+The five workflow patterns from Anthropic's "Building effective agents", each under 100 lines, each
+answering questions over the same three annual reports. A workflow is code that fixes the path and
+calls a model at set points; an agent lets the model choose the path.
+
+| Pattern | Module | Over the reports |
+|---------|--------|------------------|
+| prompt chaining | `workflows/chaining.py` | extract facts with quotes → a code gate drops any quote not in its passage → write a note from the survivors |
+| routing | `workflows/routing.py` | Haiku classifies the question; a lookup goes to Haiku, an analysis to Opus, anything else is declined for free |
+| parallelization | `workflows/parallelization.py` | one call per report at once (sectioning), then three reviewers each able to veto the answer (voting) |
+| orchestrator-workers | `workflows/orchestrator_workers.py` | a model writes the plan, workers run each subtask on its own search, a model combines the findings |
+| evaluator-optimizer | `workflows/evaluator_optimizer.py` | Opus drafts, Sonnet grades against four criteria, redraft until it passes or three rounds are up |
+
+```bash
+uv run python -m entropic.workflows.routing --cache            # dry run: counts the first call, sends nothing
+uv run python -m entropic.workflows.routing --cache --yes      # spends, capped at $0.25
+uv run python -m entropic.workflows.chaining "your question" --yes --limit 0.10
+```
+
+Every call goes through `llm.py`, which checks its worst case against the workflow's ceiling before
+sending it, and a batch of parallel calls as a whole. Each demo prints a trace: every call, its
+model, its tokens and what it cost.
+
 ## Budget guards
 
-Three ceilings in USD, each overridable in `.env`. A tripped guard raises `BudgetExceeded` with the
+Four ceilings in USD, each overridable in `.env`. A tripped guard raises `BudgetExceeded` with the
 numbers in the message. Trim the input, lower `max_tokens`, or raise the ceiling on purpose.
 
 | Guard | Default | Enforced where |
 |-------|---------|----------------|
 | per request | $0.25 | before every call: free token count, worst case is input plus the full `max_tokens` |
+| per workflow | $0.25 | before every call and every parallel batch in a workflow demo, on the worst case |
 | per run | $1.00 | before every call in a tool loop or a chat session, on that call's worst case, and after it on the real cost |
 | per eval | $2.00 | before the run starts, on the whole run's worst case; then after each row, where a trip keeps the rows already paid for and marks the report partial |
 
@@ -285,6 +310,7 @@ caught before the graph goes stale.
 - `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
 - `src/entropic/primitives/` the five modes
 - `src/entropic/retrieval/` chunking, local embeddings, the dense and sparse indexes, the rankers
+- `src/entropic/workflows/` the five workflow patterns, over the same reports
 - `src/entropic/extraction/` Project 1a: headline extraction, graded by the harness
 - `src/entropic/evals/`     the eval harness: dataset, graders, runner, report
 - `evals/`                  eval datasets and the reports they produce

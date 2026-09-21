@@ -27,7 +27,7 @@ from anthropic.types import (
     ToolParam,
     Usage,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from entropic.config import MAX_PARALLEL_CALLS, MODEL, get_client
 from entropic.pricing import Budget, assert_request_within_budget
@@ -228,18 +228,39 @@ class Llm:
     def _parse[Record: BaseModel](
         self, request: Request, schema: type[Record]
     ) -> ParsedMessage[Record]:
-        response = self.client.messages.parse(
-            model=request.model,
-            max_tokens=request.max_tokens,
-            messages=request.messages,
-            system=request.system,
-            tools=request.tools,
-            thinking=request.thinking,
-            output_config=request.output_config,
-            output_format=schema,
-        )
+        try:
+            response = self.client.messages.parse(
+                model=request.model,
+                max_tokens=request.max_tokens,
+                messages=request.messages,
+                system=request.system,
+                tools=request.tools,
+                thinking=request.thinking,
+                output_config=request.output_config,
+                output_format=schema,
+            )
+        except ValidationError:
+            # The SDK validates as it reads, so a cut-off record raises before its usage is seen.
+            response = self._unreadable(request, schema)
         self._bill(request, response.usage)
         return response
+
+    def _unreadable[Record: BaseModel](
+        self, request: Request, schema: type[Record]
+    ) -> ParsedMessage[Record]:
+        """A reply the SDK could not read, as an empty message billed at the call's worst case:
+        exact for a record cut off at `max_tokens`, which is what makes one unreadable."""
+        usage = Usage(input_tokens=self.count(request, schema), output_tokens=request.max_tokens)
+        return ParsedMessage[Record](
+            id="unreadable",
+            type="message",
+            role="assistant",
+            model=request.model,
+            content=[],
+            stop_reason="max_tokens",
+            stop_sequence=None,
+            usage=usage,
+        )
 
     def _record[Record: BaseModel](self, request: Request, schema: type[Record]) -> Record:
         response = self._parse(request, schema)

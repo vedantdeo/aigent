@@ -16,17 +16,22 @@ load_dotenv()
 
 
 # MODEL is what Entropic thinks with; JUDGE_MODEL grades an eval, and is deliberately not MODEL.
+# SMALL_MODEL is where the routing workflow sends the questions that do not need MODEL.
 DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_JUDGE_MODEL = "claude-sonnet-5"
+DEFAULT_SMALL_MODEL = "claude-haiku-4-5"
 MODEL: str = os.environ.get("ENTROPIC_MODEL", DEFAULT_MODEL)
 JUDGE_MODEL: str = os.environ.get("ENTROPIC_JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
+SMALL_MODEL: str = os.environ.get("ENTROPIC_SMALL_MODEL", DEFAULT_SMALL_MODEL)
 
 
 # --- Budget ceilings -------------------------------------------------------------------------
-# Three scales: one request, one interactive run, one eval over a dataset. `pricing` enforces them.
+# Four scales: one request, one interactive run, one workflow, one eval over a dataset. `pricing`
+# enforces them.
 
 MAX_USD_PER_REQUEST: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_REQUEST", "0.25"))
 MAX_USD_PER_RUN: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_RUN", "1.00"))
+MAX_USD_PER_WORKFLOW: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_WORKFLOW", "0.25"))
 MAX_USD_PER_EVAL: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_EVAL", "2.00"))
 
 
@@ -44,6 +49,19 @@ MAX_TOKENS_JUDGE = 256  # a verdict is one or two sentences plus a bool
 MAX_TOKENS_QUESTION = 512
 MAX_TOKENS_ANSWER = 256  # two sentences plus five chunk ids is ~140, with thinking off
 
+# The workflows' call sites, grouped by pattern.
+MAX_TOKENS_FACTS = 1024  # chaining: up to six claims, each with a verbatim quote
+MAX_TOKENS_NOTE = 384
+MAX_TOKENS_ROUTE = 128  # routing: a label, a report and one line of reason
+MAX_TOKENS_ROUTED = 768
+MAX_TOKENS_SECTION = 384  # parallelization
+MAX_TOKENS_VOTE = 256
+MAX_TOKENS_PLAN = 512  # orchestrator-workers
+MAX_TOKENS_WORKER = 384
+MAX_TOKENS_SYNTHESIS = 768
+MAX_TOKENS_DRAFT = 384  # evaluator-optimizer
+MAX_TOKENS_CRITIQUE = 256
+
 # Off for eval runs: thinking wobbles, and Claude 5 deprecated temperature and top_p.
 THINKING_EVAL = False
 
@@ -58,6 +76,13 @@ MAX_AGENT_TURNS = 8
 
 # How many calls one concurrent batch keeps in flight at once.
 MAX_PARALLEL_CALLS = 4
+
+# Workflows split a task into small, fully specified calls: the case thinking adds least to.
+THINKING_WORKFLOW_PARAM: ThinkingConfigParam = {"type": "disabled"}
+
+# The most subtasks an orchestrator may hand out, and drafts an evaluator may send back.
+MAX_PLAN_TASKS = 4
+MAX_REFINE_ROUNDS = 3
 
 # How many failing rows an eval report prints before it truncates.
 MAX_FAILURES_SHOWN = 10

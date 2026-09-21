@@ -661,4 +661,55 @@
   call. The probe also found a real hole: **`claude-opus-4-8`, a real model missing from
   `PRICES`, counted without error and would have been admitted and billed at $0.00**, so no
   ceiling could ever trip on it. The per-request check now refuses a model with no price.
+- 09-22: the five workflow patterns are back, rebuilt on `llm` and the rankers rather than on the
+  first draft's own call layer — chaining, routing, parallelization, orchestrator-workers and
+  evaluator-optimizer, each under 100 lines, $0.00 so far. Routing keeps Haiku on the lookup
+  route, to see the difference, and a workflow gets its own $0.25 ceiling. The patterns barely
+  changed: `record` and `gather_text` / `gather_records` replaced the first draft's calls, and each
+  request now states its own thinking setting. The tests came back with them, and the same three
+  mutations as yesterday (skip the gate, swap the routing models, drop the plan cap) each failed.
+- 09-22: fresh dry runs on the new code, token counting only (free). The first call of each:
+
+  | pattern | first call | model | input tokens | worst case |
+  |---|---|---|---|---|
+  | chaining | extract | claude-opus-5 | 2,606 | $0.0322 |
+  | routing | route (×3 questions) | claude-haiku-4-5 | 456-461 | $0.0011 |
+  | parallelization | section (×3, concurrent) | claude-opus-5 | 2,046 | $0.0198 |
+  | orchestrator-workers | plan | claude-opus-5 | 716 | $0.0164 |
+  | evaluator-optimizer | draft | claude-opus-5 | 2,648 | $0.0228 |
+
+  Identical to the first draft's, token for token, bar the plan's two: its schema description was
+  shortened to keep the module under 100 lines. Later calls depend on earlier answers and cannot
+  be counted in advance; the $0.25 ceiling, admitted before every call, is the bound on each run.
+- 09-22: **the five patterns, live**, in two passes. The first ran chaining ($0.04244) and routing
+  ($0.02449), then crashed inside parallelization: a reviewer's one-sentence verdict was cut off
+  at its 128-token cap, and **the SDK validates structured output as it reads it, so the cut-off
+  record raised before its usage came back — a paid call that never reached the budget or the
+  trace.** Parallelization's trace went with it; its six calls had been admitted against the $0.25
+  ceiling before sending, so that is its bound, and a second pass of the identical shape cost
+  $0.175. Fixed in `llm`: an unreadable structured reply is now billed at its worst case, exact
+  for a cut-off one, and returns as nothing parsed. Three caps went up on the run's evidence —
+  facts 768 → 1024 (740 used), routed answer 384 → 768 (an analysis hit 384), vote 128 → 256.
+- 09-22: the second pass, $0.31510 for four patterns, every call recorded:
+
+  | pattern | calls | cost | what it did |
+  |---|---|---|---|
+  | chaining (first pass) | 2 | $0.04244 | 5 of 5 facts through the gate; the note says the passages hold no FY25 cigarette figures |
+  | routing | 5 | $0.02442 | Haiku routes at ~$0.0007; a Haiku lookup $0.0028 against an Opus analysis $0.0195; the RBI question declined for nothing |
+  | parallelization | 6 | $0.17513 | three sections, three reviewers all passing — the reviewers are 68% of the cost, each resending all 15 passages |
+  | orchestrator-workers | 5 | $0.08923 | a plan of three, one per company; "Tata Motors is most exposed", on SCV volumes down 12.7%, with the reports' contradiction flagged |
+  | evaluator-optimizer | 2 | $0.02631 | passed in round one, so the loop never revised |
+
+  Total for the day about $0.55: $0.382 recorded, plus the first parallelization pass, bounded at
+  $0.25 and about $0.17 by the second's shape.
+- 09-22: what the runs say, beyond the costs. **Search, not the models, is the bottleneck**: three
+  of five answers were honest "the passages do not cover it" — ITC's FY25 cigarette figures,
+  Reliance's dividend (twice), Reliance's capex — each a retrieval miss on a question phrased the
+  way a person asks, which is the paraphrased set's hit@5 of 0.48 showing up in use. The models
+  behaved: they declined rather than invented, and the evaluator passed an honest decline, which
+  its criteria allow. **Thinking off caused no tag leakage** in the 15 Opus replies whose text came back; one section ended
+  with a stray "Only one company is covered here.", and the grounding reviewer named it. Two
+  cheap next steps: the reviewers could share one system prompt so the 7.4k-token evidence
+  becomes a cacheable prefix, and the evaluator needs a question hard enough to fail round one
+  before it demonstrates anything.
 

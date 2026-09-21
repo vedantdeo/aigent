@@ -17,7 +17,7 @@ import anthropic
 import httpx2
 import pytest
 from anthropic.types import Message, ToolParam, ToolUseBlock
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 import entropic
 from entropic.config import MODEL
@@ -127,6 +127,31 @@ def test_parse_reports_nothing_parsed_where_record_refuses_it(make_llm: MakeLlm)
         llm.record(REQUEST, Greeting)
     assert len(llm.trace) == 2
     assert fake.counted == [Greeting, Greeting]
+
+
+def _cut_off() -> ValidationError:
+    try:
+        Greeting.model_validate_json('{"words": "cut o')
+    except ValidationError as error:
+        return error
+    raise AssertionError("truncated JSON should not validate")
+
+
+def test_a_reply_the_sdk_cannot_read_is_billed_at_its_worst_case(make_llm: MakeLlm) -> None:
+    """The SDK validates a structured reply as it reads it, so a record cut off at `max_tokens`
+    raises before its usage is returned — and a call raised past is a call nobody billed. It comes
+    back as nothing parsed, billed at the worst case, which is what a cut-off reply costs."""
+    llm, _ = make_llm(lambda sent: _cut_off())
+
+    response = llm.parse(REQUEST, Greeting)
+
+    assert response.parsed_output is None and response.stop_reason == "max_tokens"
+    [call] = llm.trace
+    assert call.usage.output_tokens == REQUEST.max_tokens
+    assert call.usd == pytest.approx(worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64))
+    with pytest.raises(StepFailed, match="nothing parsed"):
+        llm.record(REQUEST, Greeting)
+    assert len(llm.trace) == 2, "the refused record is billed too"
 
 
 def test_record_returns_the_validated_record(make_llm: MakeLlm) -> None:
