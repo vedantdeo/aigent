@@ -5,12 +5,12 @@ A refusal or a `max_tokens` stop leaves `parsed_output` as None, which is the ca
 
 from __future__ import annotations
 
-from anthropic.types import MessageParam
 from pydantic import BaseModel, Field
 
 from entropic.config import MAX_TOKENS_EXTRACT as MAX_TOKENS
-from entropic.config import MODEL, get_client
-from entropic.pricing import check_request, describe_usage
+from entropic.config import MODEL
+from entropic.llm import Llm, Request
+from entropic.pricing import describe_usage
 
 ABSTRACT = """
 Modern Machine Learning (ML) and Artificial Intelligence (AI) models, especially large language
@@ -43,20 +43,10 @@ class PaperSummary(BaseModel):
 
 
 def main() -> None:
-    client = get_client()
-    messages: list[MessageParam] = [
-        {"role": "user", "content": f"Summarize this abstract.\n\n<abstract>{ABSTRACT}</abstract>"}
-    ]
-    check_request(
-        client, model=MODEL, max_tokens=MAX_TOKENS, messages=messages, output_format=PaperSummary
-    )
+    prompt = f"Summarize this abstract.\n\n<abstract>{ABSTRACT}</abstract>"
+    request = Request("summarize", [{"role": "user", "content": prompt}], MAX_TOKENS)
 
-    response = client.messages.parse(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        messages=messages,
-        output_format=PaperSummary,
-    )
+    response = Llm().parse(request, PaperSummary)
 
     summary = response.parsed_output
     if summary is None:

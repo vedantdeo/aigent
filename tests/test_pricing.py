@@ -305,8 +305,9 @@ PARSE_SITES = _parse_sites()
 
 
 def test_the_scan_finds_every_structured_call() -> None:
-    """Five when this was written. Fewer means the scan broke, and the table below went vacuous."""
-    assert len(PARSE_SITES) >= 5, [where for where, _, _ in PARSE_SITES]
+    """Four since the primitives moved onto `llm`. Fewer means the scan broke, or another call
+    moved there — and the table below would go vacuous without anyone noticing."""
+    assert len(PARSE_SITES) >= 4, [where for where, _, _ in PARSE_SITES]
 
 
 @pytest.mark.parametrize(

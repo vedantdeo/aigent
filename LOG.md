@@ -641,4 +641,10 @@
   structured, streamed, tool-using and concurrent. A concurrent batch is admitted as a whole
   before any of it is sent. Nothing calls it yet; the primitives move onto it next, then the eval
   paths, and then a test makes any other call to the SDK fail.
+- 09-21: the five demos in `primitives/` now send through `llm`: `first_call` counts and creates,
+  `streaming` and `chat` stream, `structured_output` parses, and the tool loop creates one turn at
+  a time against its run budget. None of them builds a client or pre-flights by hand any more.
+  They are demos without tests, so each was run end to end against the fake client instead — all
+  four ran, chat kept its session total across turns and honoured `/effort`. Only `failures`
+  still calls the SDK directly in `primitives/`, and it retires with the eval paths' move.
 

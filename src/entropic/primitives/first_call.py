@@ -2,31 +2,21 @@
 
 from __future__ import annotations
 
-from anthropic.types import MessageParam
-
 from entropic.config import MAX_TOKENS_FIRST_CALL as MAX_TOKENS
-from entropic.config import MODEL, get_client
-from entropic.pricing import check_request, describe_usage
+from entropic.config import MODEL
+from entropic.llm import Llm, Request
+from entropic.pricing import describe_usage
 
 SYSTEM = "You are Entropic, an engineer's personal assistant. Answer in at most three sentences."
 QUESTION = "What is a KV cache in a transformer decoder, and why does it speed up generation?"
 
 
 def main() -> None:
-    client = get_client()
-    messages: list[MessageParam] = [{"role": "user", "content": QUESTION}]
+    llm = Llm()
+    request = Request.ask("first-call", SYSTEM, QUESTION, MAX_TOKENS)
 
-    input_tokens = check_request(
-        client, model=MODEL, max_tokens=MAX_TOKENS, messages=messages, system=SYSTEM
-    )
-    print(f"pre-flight input tokens: {input_tokens}\n")
-
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM,
-        messages=messages,
-    )
+    print(f"pre-flight input tokens: {llm.count(request)}\n")
+    response = llm.create(request)
 
     if response.stop_reason == "refusal":
         details = response.stop_details

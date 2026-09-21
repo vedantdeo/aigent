@@ -14,8 +14,9 @@ from anthropic.types import MessageParam, ToolResultBlockParam
 
 from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
 from entropic.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
-from entropic.config import MAX_USD_PER_RUN, MODEL, get_client
-from entropic.pricing import Budget, check_request, describe_usage
+from entropic.config import MAX_USD_PER_RUN, MODEL
+from entropic.llm import Llm, Request
+from entropic.pricing import Budget, BudgetExceeded, describe_usage
 from entropic.tools import ALL_TOOLS, execute_tool
 
 SYSTEM = (
@@ -29,35 +30,20 @@ def run(
     task: str, client: anthropic.Anthropic | None = None, *, limit_usd: float = MAX_USD_PER_RUN
 ) -> str:
     """Drive the loop for one task. `client` is injectable so tests can script the responses."""
-    if client is None:
-        client = get_client()
+    llm = Llm(client, budget=Budget(limit_usd=limit_usd))
     messages: list[MessageParam] = [{"role": "user", "content": task}]
-    budget = Budget(limit_usd=limit_usd)
 
     for turn in range(1, MAX_TURNS + 1):
-        check_request(
-            client,
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            messages=messages,
-            system=SYSTEM,
-            tools=ALL_TOOLS,
-            budget=budget,
-        )
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM,
-            tools=ALL_TOOLS,
-            messages=messages,
-        )
-        budget.add(MODEL, response.usage)
+        request = Request(f"turn:{turn}", messages, MAX_TOKENS, system=SYSTEM, tools=ALL_TOOLS)
+        response = llm.create(request)
+        if llm.budget.tripped is not None:
+            raise BudgetExceeded(llm.budget.tripped)
         usage_line = describe_usage(MODEL, response.usage)
         print(f"turn {turn}: stop_reason={response.stop_reason}  {usage_line}")
 
         if response.stop_reason != "tool_use":
             final_text = "".join(b.text for b in response.content if b.type == "text")
-            print(f"\ntotal cost: ${budget.spent_usd:.5f}")
+            print(f"\ntotal cost: ${llm.spent_usd:.5f}")
             return final_text
 
         # Echo the assistant turn back exactly, tool_use blocks included.

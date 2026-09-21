@@ -3,8 +3,8 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `0ee8706` plus `llm.py` landing in this commit (2026-09-21).
-723 tests pass (719 plus 4 that need the `compare` group), 1 live test deselected. The suite is fully green.**
+**Verified against commit `64d0fc2` plus the primitives moving onto `llm` in this commit (2026-09-21).
+722 tests pass (718 plus 4 that need the `compare` group), 1 live test deselected. The suite is fully green.**
 
 > **The package is organised by capability, not by week.** `week01/` split into `primitives/`
 > (the five CLI modes plus the failure catalogue) and `extraction/` (Project 1a, which is a
@@ -272,14 +272,14 @@ so a refused or truncated call still shows in the trace and the total.
 
 | ID | Anchor | What it demonstrates | Notable call shape |
 |----|--------|----------------------|--------------------|
-| `primitives.first_call.main` | `first_call.py:15` | Stateless API, free pre-flight count, `stop_reason` checked **before** reading content (`refusal`, `max_tokens`). | `messages.create`, `max_tokens=1024`. |
-| `primitives.streaming.main` | `streaming.py:20` | `content_block_start` / `content_block_delta` events; thinking and text as separate blocks; `get_final_message()` still carries usage. | `messages.stream(thinking={"type": "adaptive", "display": "summarized"})`, `max_tokens=4096`. |
+| `primitives.first_call.main` | `first_call.py:14` | Stateless API, the free pre-flight count printed before sending (`Llm.count`), `stop_reason` checked **before** reading content (`refusal`, `max_tokens`). Counts twice — once to print, once to admit — which is free and one extra round trip. | `Llm.create`, `max_tokens=1024`. |
+| `primitives.streaming.main` | `streaming.py:21` | `content_block_start` / `content_block_delta` events; thinking and text as separate blocks; `get_final_message()` still carries usage, and `Llm.stream` bills from it once the stream closes. | `Llm.stream`, `thinking={"type": "adaptive", "display": "summarized"}`, `max_tokens=4096`. |
 | `primitives.structured_output.PaperSummary` | `structured_output.py:29` | Field descriptions are visible to the model — written as prompts; `confidence` bounded `ge=0, le=1`. | — |
-| `primitives.structured_output.main` | `structured_output.py:45` | `messages.parse(output_format=…)` → `parsed_output`, which is `None` when parsing fails. | `max_tokens=2048`. |
-| `primitives.tool_loop.run` | `tool_loop.py:28` | The whole agent. `client` is injectable, which is what makes the loop testable for free, and so is `limit_usd`. Every turn is pre-flighted **and admitted** against the run budget, so the loop stops before the call that could cross its ceiling rather than after it. | `max_tokens=4096`, `MAX_TURNS=8`. |
-| `primitives.tool_loop.main` | `tool_loop.py:91` | Task from argv; empty task → usage `SystemExit`. | — |
-| `primitives.chat.main` | `chat.py:26` | Growing history (you pay for all of it every turn), `/effort`, `/reset`, `/quit`, per-turn and session cost. A turn the session budget cannot admit is **not sent** — dropped with the history kept, so `/reset` can shrink the next attempt back under the ceiling. | `messages.stream(output_config={"effort": …})`. |
-| `primitives.chat.Effort` | `chat.py:17` | `Literal["low","medium","high","xhigh"]`; `EFFORTS` derived via `get_args`, so the command validates against the type. |
+| `primitives.structured_output.main` | `structured_output.py:45` | `Llm.parse(request, PaperSummary)` → `parsed_output`, which is `None` when parsing fails; the whole message comes back so the demo can print why. | `max_tokens=2048`. |
+| `primitives.tool_loop.run` | `tool_loop.py:29` | The whole agent, one `Llm.create` per turn with the history, the system prompt and `ALL_TOOLS`. `client` is injectable, which is what makes the loop testable for free, and so is `limit_usd`. Every turn is admitted against the run budget before it is sent; a billed overrun — possible only when an estimate runs low — still raises `BudgetExceeded`, because a batch run should die loudly. | `max_tokens=4096`, `MAX_TURNS=8`. |
+| `primitives.tool_loop.main` | `tool_loop.py:77` | Task from argv; empty task → usage `SystemExit`. | — |
+| `primitives.chat.main` | `chat.py:27` | Growing history (you pay for all of it every turn), `/effort`, `/reset`, `/quit`, per-turn and session cost read off the `Llm`'s trace. Each turn is one `Llm.stream`; a turn the session budget cannot admit is **not sent** — dropped with the history kept, so `/reset` can shrink the next attempt back under the ceiling. A billed overrun ends the session. | `Llm.stream`, `output_config={"effort": …}`. |
+| `primitives.chat.Effort` | `chat.py:18` | `Literal["low","medium","high","xhigh"]`; `EFFORTS` derived via `get_args`, so the command validates against the type. |
 | `extraction.headlines.Extraction` | `headlines.py:45` | What the **model** returns: `company` — the mention **copied verbatim** from the headline, not canonicalised — plus `metric`, `quarter`, `direction`, `change_pct`. What gets **graded** is `FIELDS` (`headlines.py:39`): `ticker` and the last four, because the task resolves the ticker in code before handing back the outcome. The labelling conventions live in the **field descriptions**, which the model sees, and a convention stated only in the few-shot examples would punish `zero_shot` for failing to guess it — a test asserts each one appears in both arms. They are: copy the mention; the Indian fiscal calendar, where a bare month is a month and not a quarter; a level or a basis-point move leaves `change_pct` null, but a growth **rate** is itself a change, and its direction is the sign of the growth rather than whether the rate rose or fell; a share price move is the market's number and never the metric. The descriptions are **prompt, not documentation**, so they are written short: 1,773 characters for five fields, against 2,530 when every rule was first written out longhand. Rationale that a reader would want and the model would not belongs here in the graph. `company` is **nullable** — a headline naming a sector or an index has no company to extract, and `null` is an answer rather than a miss; `extraction_task` skips the lookup entirely for it, so nothing lands in `unresolved`. |
 | `extraction.headlines.METRICS` | `headlines.py:42` | A **total order** over the metric vocabulary, most preferred first. A headline routinely names two ("narrows Q1 loss; revenue up 63%"); without a tie-break the label is a coin flip the model has no way to call, and the miss reads as a model failure when it is a spec failure. The rule, stated in the `metric` description: the earliest-ranked metric **among those whose percentage change the headline states**, else the earliest among those the headline mentions at all, else — for two that still tie — the one mentioned first. The last two members close the vocabulary: `other` is a company metric the six named ones do not cover (a narrower or domain-specific line — GMV, provisions, volumes, new business premium), and `none` is a headline that reports no metric at all. Both rank last, so they can never outrank a named metric. One clarification is load-bearing — a forward-looking statement about a metric is `guidance`, not that metric, or the mechanical rule reads "cuts revenue guidance" as cueing `revenue` and flips `hl-003` and `hl-023` to a label no reader would write. **Placeholder**: the order is asserted, not researched. |
 | `extraction.headlines.Resolver` | `headlines.py:115` | Company mention → NSE ticker, through the directory. Indexes the ticker, the registered name and every alias under `_key` (`headlines.py:108` — casefold, strip punctuation and a `Ltd`/`Limited` suffix), then looks up **exactly**: never fuzzily, because a lookup that matches approximately is wrong in the same quiet way a guess is. A miss returns `None` and is counted in `unresolved`. **The one silent failure:** a company whose name contains another company's — `Tech Mahindra` holds `Mahindra`, which is `M&M`; `SBI Cards` holds `SBI`, which is `SBIN`; `Kotak Mahindra Bank` holds `Mahindra` too — where a truncated mention resolves to a real but wrong company and the resolver reports success. Those rows carry the `name-contains-name` tag, and a test derives the set rather than trusting it, so the tag stays accurate as the directory grows. `dict.get` is free and cannot hallucinate `HEROMOTOCORP` for `HEROMOTOCO`, and 22 of the 48 rows that name a company spell it as something other than its symbol — so 46% of that field's difficulty leaves the model's job entirely. A parametrized test proves the composed property over every such row: copy the spelling the headline writes, resolve it, land on the label. `ticker` is therefore right **by construction** whenever `company` is, and the eval measures identification rather than symbol recall. |
@@ -402,7 +402,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 
 | ID | Path | Covers | Cost |
 |----|------|--------|------|
-| `tests.test_pricing` | `tests/test_pricing.py` | `test_the_price_list` is a table: opus arithmetic, both cache multipliers, unknown-model-is-free, the worst case. Then both guards, `charge` vs `add`, and that both of `config`'s default models are priced. Then invariant 1 as a test: `check_request` hands the schema to the count, and a table built by **scanning the package's own source** — every function that calls `messages.parse`, found by `ast`, one row each — asserts its one pre-flight names the same schema. Discovered rather than listed, so a sixth structured call is covered the day it is written; a floor of five catches the scan itself breaking and leaving the table empty. `admit` is a four-row table whose expectation column is a context manager — `nullcontext()` or `pytest.raises` — each row asserting admission billed nothing; `check_request` handed a budget is two more rows, admitting under a fresh budget and refusing under a spent one. The source scan skips `llm.py`, which counts in `_admit` and sends in `_parse` by design; `tests.test_llm` pins that its schema is counted. | free |
+| `tests.test_pricing` | `tests/test_pricing.py` | `test_the_price_list` is a table: opus arithmetic, both cache multipliers, unknown-model-is-free, the worst case. Then both guards, `charge` vs `add`, and that both of `config`'s default models are priced. Then invariant 1 as a test: `check_request` hands the schema to the count, and a table built by **scanning the package's own source** — every function that calls `messages.parse`, found by `ast`, one row each — asserts its one pre-flight names the same schema. Discovered rather than listed, so a sixth structured call is covered the day it is written; a floor of five catches the scan itself breaking and leaving the table empty. `admit` is a four-row table whose expectation column is a context manager — `nullcontext()` or `pytest.raises` — each row asserting admission billed nothing; `check_request` handed a budget is two more rows, admitting under a fresh budget and refusing under a spent one. The scan's floor is four since the primitives moved onto `llm` — `structured_output` no longer calls `parse` itself. The source scan skips `llm.py`, which counts in `_admit` and sends in `_parse` by design; `tests.test_llm` pins that its schema is counted. | free |
 | `tests.test_tools` | `tests/test_tools.py` | Tables throughout: calculator whitelist and rejections; the three sandbox escapes (`..`, absolute path, **symlink**); truncation at and over the cap; the dispatcher's six rows of (tool, input, `is_error`, expected text). Directory errors stay their own test — they assert two anchored messages. | free |
 | `tests.test_cli` | `tests/test_cli.py` | Mode order, lookup by key/number, unknown-mode exit. | free |
 | `tests.primitives.test_tool_loop` | `tests/primitives/test_tool_loop.py` | The loop's rules, via `_FakeClient`, and one about money: a run too small to afford a single turn's worst case **sends nothing**. | free |
@@ -469,15 +469,15 @@ Format: `subject —relation→ object`. Greppable by relation name.
 
 ```
 cli                      —imports→ primitives.{first_call, streaming, structured_output, tool_loop, chat}
-primitives.first_call        —imports→ config.{MODEL, MAX_TOKENS_FIRST_CALL as MAX_TOKENS, get_client}
-primitives.streaming         —imports→ config.{MODEL, MAX_TOKENS_STREAMING as MAX_TOKENS, get_client}
-primitives.structured_output —imports→ config.{MODEL, MAX_TOKENS_EXTRACT as MAX_TOKENS, get_client}
-primitives.{first_call, streaming, structured_output} —imports→ pricing.{check_request, describe_usage}
-primitives.tool_loop         —imports→ config.{MODEL, MAX_USD_PER_RUN, MAX_TOKENS_TOOL_LOOP, MAX_AGENT_TURNS, get_client}
-primitives.tool_loop         —imports→ pricing.{Budget, check_request, describe_usage}
+primitives.first_call        —imports→ config.{MODEL, MAX_TOKENS_FIRST_CALL as MAX_TOKENS}
+primitives.streaming         —imports→ config.{MODEL, MAX_TOKENS_STREAMING as MAX_TOKENS}
+primitives.structured_output —imports→ config.{MODEL, MAX_TOKENS_EXTRACT as MAX_TOKENS}
+primitives.{first_call, streaming, structured_output} —imports→ llm.{Llm, Request}, pricing.describe_usage
+primitives.tool_loop         —imports→ config.{MODEL, MAX_USD_PER_RUN, MAX_TOKENS_TOOL_LOOP, MAX_AGENT_TURNS}
+primitives.tool_loop         —imports→ llm.{Llm, Request}, pricing.{Budget, BudgetExceeded, describe_usage}
 primitives.tool_loop         —imports→ tools.{ALL_TOOLS, execute_tool}
-primitives.chat              —imports→ config.{MODEL, MAX_USD_PER_RUN, MAX_TOKENS_CHAT, get_client}
-primitives.chat              —imports→ pricing.{Budget, BudgetExceeded, check_request, usage_cost}
+primitives.chat              —imports→ config.{MODEL, MAX_USD_PER_RUN, MAX_TOKENS_CHAT}
+primitives.chat              —imports→ llm.{Llm, Request}, pricing.{Budget, BudgetExceeded}
 pricing                  —imports→ config.{MAX_USD_PER_REQUEST, MAX_USD_PER_RUN}   (one way; config never imports pricing)
 retrieval.corpus         —imports→ config.{FURNITURE_EDGE_LINES, FURNITURE_MIN_PAGES, FURNITURE_RATIO, PAGE_SEPARATOR}
 retrieval.corpus         —imports→ retrieval.chunk.Document   (one way; chunk never imports corpus)
@@ -565,13 +565,14 @@ pricing.check_request              —calls→ pricing.Budget.admit   (when hand
 pricing.Budget.admit               —raises→ pricing.BudgetExceeded   (before sending, on the worst case)
 config.get_client                  —raises→ SystemExit   (missing credentials)
 
-primitives.tool_loop.run   —guards-each-call-with→ pricing.check_request      (per request, and admitted against the run budget)
-primitives.tool_loop.run   —accumulates-into→      pricing.Budget             (per run, post-call)
+primitives.tool_loop.run   —sends-each-turn-through→ llm.Llm.create        (counted, admitted against the run budget, billed)
+primitives.tool_loop.run   —raises→                pricing.BudgetExceeded     (a billed overrun: the backstop)
 primitives.tool_loop.run   —calls→                 tools.execute_tool
 primitives.tool_loop.run   —sends→                 tools.ALL_TOOLS
 primitives.tool_loop.run   —raises→                RuntimeError               (turn cap, MAX_TURNS=8)
-primitives.chat.main       —catches→               pricing.BudgetExceeded     (pre-flight or admission: drop turn, keep session)
-primitives.chat.main       —catches→               pricing.BudgetExceeded     (per-run: end session)
+primitives.chat.main       —sends-each-turn-through→ llm.Llm.stream
+primitives.chat.main       —catches→               pricing.BudgetExceeded     (admission: drop turn, keep session)
+primitives.chat.main       —reads→                 pricing.Budget.tripped     (a billed overrun: end session)
 tools.execute_tool     —calls→                 tools.{calculate, current_time, read_file}
 tools.read_file        —reads-within→          tools.SANDBOX
 
@@ -643,7 +644,9 @@ what `tests.test_pricing` does.
 
 The rules the code encodes. Breaking one of these is a regression even when tests stay green.
 
-1. **Every paid call is preceded by `pricing.check_request`.** The free token count is the guard's input;
+1. **Every paid call is preceded by a free count and the per-request check** — `llm.Llm._admit` for
+   everything moved onto `llm` (all of `primitives/` bar `failures`), `pricing.check_request` for the
+   rest until it moves. The free token count is the guard's input;
    pass the exact `messages`, `system`, and `tools` the real call will send or the count lies — and
    the `output_format` of a parse call, since a schema is input too. Until 2026-09-21 none of the
    five structured calls passed it, so each was pre-flighted 337 to 1,148 tokens short of what it
@@ -652,8 +655,8 @@ The rules the code encodes. Breaking one of these is a regression even when test
    source and fails on any `messages.parse` whose pre-flight names a different schema, or none.
 2. **Cost is reported, always.** Every path prints `describe_usage` or an equivalent cost line. This
    is the repo's stated purpose, not decoration.
-3. **The assistant turn is echoed back verbatim**, `tool_use` blocks included (`tool_loop.py:64`).
-4. **All tool results for one turn go back in ONE user message** (`tool_loop.py:86`). Splitting them
+3. **The assistant turn is echoed back verbatim**, `tool_use` blocks included (`tool_loop.py:50`).
+4. **All tool results for one turn go back in ONE user message** (`tool_loop.py:72`). Splitting them
    trains the model out of parallel tool calls. `tests.primitives.test_tool_loop` asserts this explicitly.
 5. **Tool errors are `tool_result` with `is_error: True`, never exceptions.** `execute_tool` catches
    everything. The model can recover from a message; it cannot recover from a traceback.
@@ -781,7 +784,7 @@ Anchors the code already names, so a future session can find the intended seam r
 | ~~Week 2 — hybrid and rerank~~ | **Consumed 2026-09-20**, $0.00, and the seam note was right about the shape and silent about the finding. Six arms over one inventory: three bases with and without a cross-encoder. Two results outrank the table. **Naive RRF lost to BM25 alone** on the original questions — dense contributed exactly one unique row in 54, and fusion gave back four that BM25 had at rank 1, because `RRF_K` makes agreement beat a single first place and agreement is worthless when one ranker is noise. And **the whole ranking inverts under paraphrase**: see the banner. `RERANK_CANDIDATES` turned out to be a real optimum rather than a free knob. | `sparse.py`, `fuse.py`, `rerank.py`, `evaluate.py:72` |
 | ~~Week 2 — answer-level eval~~ | **Consumed 2026-09-19**, smoke run then all 54 for $1.342. Closed-book `correct` 5/54, RAG 42/54 — **9% to 78%** is what retrieval bought. The number that matters is not there though: closed-book **answered 10 and was right 5**, a coin flip when it speaks, against RAG's 42 right of 43 answered. The failure mode moves from fabrication to silence, and only `flag` can see it. `retrieval.answer` is two arms over the identical questions — `closed_book` and `rag` — so the measurement is the *gap*, not an absolute score: an absolute RAG number conflates what the retriever found with what a large model already knows about ITC, Reliance and Tata Motors. Graded by `cites_relevant` (free: `hit_at_k` pointed at the cited ids, so a citation is checked against the label rather than trusted) and `correct` (`LlmJudge` against the labelled quote). `cites_relevant` hit 37/54 and so did the free retrieval eval's hit@5 — **the same 37 rows, agreeing on all 54**, nothing retrieved-but-uncited and nothing cited-but-unretrieved. Two evals written separately, one free over NumPy and one paid over a model, agreeing row for row: treat a future divergence as a broken harness (stale inventory, mismatched strategy, colliding ids) before treating it as a worse model. | `answer.py:98`, `judge.py:45` |
 | Week 2 — RAG milestone `v0.1-rag` | Both halves are measured and in the README: retrieval free, generation smoke-run. What remains is the tag, and then **going public on Wed 2026-09-23 with branch protection raised in the same move** — decided 2026-09-19 to stay private until then, which is a decision and not a slip (`CLAUDE.md`, last section). Hybrid/rerank and the full 54-case answer run are the next two rows, not blockers for the tag. | roadmap, `README.md`, `CLAUDE.md` |
-| Week 3 — every model call through `llm` | `llm.py` exists and is tested; nothing calls it yet. Still calling the SDK directly: `primitives.{first_call, streaming, structured_output, tool_loop, chat}`, `extraction.headlines` (task and `measure`), `retrieval.{answer, questions}` (tasks and dry-run counts), `evals.judge`. Two steps: the primitives, then the eval paths — whose tasks keep reporting usage to the runner, which stays the one budget an eval is billed to (invariant 12). Then a test that fails on any `client.messages` call outside `llm.py`, and invariant 8 gains a clause. `primitives.failures` is the case to decide: several rows exist to provoke the API's own errors, which a guarded path would intercept first. | `llm.py` |
+| Week 3 — every model call through `llm` | **Primitives moved 2026-09-21** — `first_call`, `streaming`, `structured_output`, `tool_loop` and `chat` all send through `Llm`. Still calling the SDK directly: `extraction.headlines` (task and `measure`), `retrieval.{answer, questions}` (tasks and dry-run counts), `evals.judge`. Next, the eval paths — whose tasks keep reporting usage to the runner, which stays the one budget an eval is billed to (invariant 12). Then a test that fails on any `client.messages` call outside `llm.py`, and invariant 8 gains a clause. **`primitives.failures` retires with that step** (decided 2026-09-21): each of its failure modes becomes a row of a `test_llm` table asserting `llm` stops it before anything is spent. Its one real finding comes with it — a real model missing from `PRICES` counts without error and is admitted and billed at $0.00, so the ceiling never trips; the per-request check must refuse a model with no price. | `llm.py` |
 | Week 3 — anything that searches the reports | `Indexes.build(inventory)` once (~65s), then `build_ranker(SEARCH_METHOD, indexes).rank(query, k, doc_id=)`; look the hits up in `indexes.inventory.by_id` and format them with `chunk.context_block`. Use it rather than composing indexes, or invariant 21 breaks. | `rank.py:131` |
 | Week 3 — `chat` becomes the default mode | `cli.MODES` order and `cli.main`'s no-arg branch. | `cli.py:29` |
 | Week 5 — SDK tool runner | `tools.ALL_TOOLS` + `execute_tool` are framework-free precisely for this. | `tools.py:1-3` |
