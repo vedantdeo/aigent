@@ -899,4 +899,16 @@
   either way), and the direct run used 2. `response_inclusion` is gone; it only governs filtered
   results. The tests that probed the per-turn ceiling with fixed token counts now derive them
   from the ceiling, so the next change to it will not break them. Free; no run.
+- 09-22: **context management written up** (`docs/context-management.md`), free. By the token
+  count: the system prompt is 185 tokens, our tool schemas about 1,000 with the API's preamble,
+  direct web search 2,726, and a search result of five passages 2,000–2,700. The decision is to
+  not summarize yet. The budget ends every run below 80,000 tokens, a summary would drop the ids
+  the answer cites, and compaction resets the cache.
+- 09-22: **LangGraph, quickstart and source read** (`docs/langgraph.md`), free. `langgraph` 1.2.12
+  went into a non-default `graph` group. Five graphs with no model calls measured what the source
+  says. The default step limit is **10,007**, not the 25 older material gives, and hitting it
+  raises. On resume, **an interrupted node reruns from its first line**, so a paid call before
+  `interrupt()` is paid twice. **A step's tasks all run at once**, 6 of 6, which bypasses `llm`'s
+  batch admission: each worker is admitted alone while its siblings are in flight. And with a
+  checkpointer, a resume after one of three parallel workers failed reran only that one.
 

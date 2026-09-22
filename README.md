@@ -343,6 +343,8 @@ caught before the graph goes stale.
 - `CLAUDE.md`               the eight project rules Claude sessions follow here
 - `docs/knowledge-graph.md` map of every module, edge, and invariant in the repo
 - `docs/tool-runner.md`    the SDK tool runner, read from source against our own loop
+- `docs/context-management.md` what goes in the agent's context, what it costs, when to summarize
+- `docs/langgraph.md`      the LangGraph executor, read from source against our own loop
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind
 - `scripts/`                the rule that hook and CI share
 - `.github/workflows/`      CI: the checks above, and the graph rule for anyone who skipped the hook

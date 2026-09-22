@@ -33,6 +33,9 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.6",
 ]
+graph = [
+    "langgraph>=1.2.12",
+]
 
 [tool.ruff]
 line-length = 100
