@@ -41,7 +41,7 @@ were followed by one `approve`, not three (*measured*).
 |---|---|---|
 | a loop is capped (invariant 6) | `recursion_limit` defaults to **10,007** supersteps, then raises `GraphRecursionError` (*measured*). It raises, unlike the tool runner, but with a model call a step that is ten thousand calls. | set it explicitly |
 | every call is counted and admitted before it is sent (1, 22) | Knows nothing of cost. A node calls whatever it calls. | `llm` stays the door inside every node |
-| a batch is admitted whole, before any of it is sent (`gather_*`) | **Bypassed.** A step's tasks run concurrently, 6 of 6 at once with no limit by default (*measured*). Each node's call is admitted alone, and `Budget.admit` does not count calls still in flight. | see below |
+| a batch is admitted whole, before any of it is sent (`gather_*`) | **Bypassed.** A step's tasks run concurrently, 6 of 6 at once with no limit by default (*measured*), and each node's call is admitted alone. | `Budget` now holds calls in flight: see below |
 | tool errors are results, never exceptions (5) | Not ours to keep here: we write the nodes. The prebuilt `ToolNode` has its own rules. | — |
 
 ## What it hides
@@ -65,7 +65,6 @@ were followed by one `approve`, not three (*measured*).
 The rebuild of orchestrator-workers as a graph keeps every model call in `llm`, sets
 `recursion_limit`, and keeps paid calls out of any node that interrupts. The one real conflict is
 concurrency. The plain version admits all its workers as one batch before sending any; in a graph
-each worker is its own task, admitted alone, while its siblings are in flight. The fix belongs in
-`pricing.Budget`, not in the graph: reserve each admitted call's worst case until it is billed.
-Admission then counts calls in flight, and any framework's concurrency is safe under the same
-ceiling.
+each worker is its own task, admitted alone, while its siblings are in flight. The fix went into
+`pricing.Budget`, not the graph: each admitted call's worst case is held until it is billed, so
+admission counts calls in flight, and any framework's concurrency is safe under the same ceiling.

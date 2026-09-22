@@ -227,3 +227,17 @@ def test_admit_refuses_what_could_cross_the_ceiling_before_it_is_spent(
     with expectation:
         budget.admit(worst)
     assert budget.spent_usd == spent, "admitting checks; nothing is billed until a call returns"
+
+
+def test_a_held_call_counts_until_it_is_released() -> None:
+    """Calls in flight have not been billed, so admission holds their worst case: two that each
+    fit alone are not both admitted while the first is still running."""
+    budget = Budget(limit_usd=0.05, scope="run")
+
+    budget.admit(0.03, hold=True)
+    with pytest.raises(BudgetExceeded, match="held for calls in flight"):
+        budget.admit(0.03)
+    budget.release(0.03)
+    budget.admit(0.03)
+
+    assert (budget.held_usd, budget.spent_usd) == (0.0, 0.0), "checking holds and bills nothing"

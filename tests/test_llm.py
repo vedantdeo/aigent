@@ -196,6 +196,57 @@ def test_a_call_that_could_cross_the_ceiling_is_refused_unsent(make_llm: MakeLlm
     assert fake.sent == []
 
 
+def test_a_call_holds_its_worst_case_while_in_flight_and_lets_go_once_billed(
+    make_llm: MakeLlm,
+) -> None:
+    seen: list[float] = []
+    holder: list[Llm] = []
+
+    def reply(sent: Sent) -> str:
+        seen.append(holder[0].budget.held_usd)
+        return "hi"
+
+    llm, _ = make_llm(reply)
+    holder.append(llm)
+
+    llm.text(REQUEST)
+
+    assert seen == [pytest.approx(worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64))]
+    assert llm.budget.held_usd == 0.0
+
+
+def test_a_failed_call_lets_go_of_its_hold(make_llm: MakeLlm) -> None:
+    llm, _ = make_llm(lambda sent: RuntimeError("connection reset"))
+
+    with pytest.raises(RuntimeError):
+        llm.text(REQUEST)
+
+    assert llm.budget.held_usd == 0.0, "a hold that outlives its call shrinks every later ceiling"
+
+
+def test_a_call_admitted_while_another_is_in_flight_counts_it(make_llm: MakeLlm) -> None:
+    """What a framework's parallel nodes do: two calls, each admitted alone, both in flight. One
+    fits under this ceiling and two do not, so the second is refused while the first runs."""
+    refused: list[str] = []
+    holder: list[Llm] = []
+
+    def reply(sent: Sent) -> str:
+        if sent.prompt == "hello":
+            try:
+                holder[0].text(Request.ask("second", "be brief", "again", 64))
+            except BudgetExceeded as error:
+                refused.append(str(error))
+        return "hi"
+
+    llm, fake = make_llm(reply, limit_usd=0.004)
+    holder.append(llm)
+
+    llm.text(REQUEST)
+
+    assert len(refused) == 1 and "held for calls in flight" in refused[0], refused
+    assert [sent.prompt for sent in fake.sent] == ["hello"], "the second call was never sent"
+
+
 def test_a_batch_is_admitted_whole_or_not_at_all(make_llm: MakeLlm) -> None:
     """Two of these fit under the ceiling and three do not, so none may go: admitting them one at
     a time would send the first two and find the problem with the third already paid for."""
@@ -216,6 +267,7 @@ def test_a_batch_answers_in_request_order_whatever_order_it_finishes(make_llm: M
 
     assert llm.gather_text(batch(3)) == ["0", "1", "2"]
     assert len(fake.counted) == 3, "counted once each, to admit the whole"
+    assert llm.budget.held_usd == 0.0, "the batch's hold is let go once it is billed"
 
 
 def test_a_batch_of_records_is_priced_with_its_schema(make_llm: MakeLlm) -> None:
@@ -487,7 +539,7 @@ def test_run_tools_runs_each_call_and_sends_every_result_in_one_message(make_llm
 
     ran = llm.run_tools(AGENT, execute_tool)
 
-    assert ran.cut_short is None
+    assert ran.cut_short is None and llm.budget.held_usd == 0.0
     assert len(ran.turns) == 2 and ran.turns[-1] is ran.message, "every turn, the last included"
     assert [block.text for block in ran.message.content if block.type == "text"] == [
         "1024, and it is noon"
@@ -517,6 +569,7 @@ def test_a_turn_that_cannot_be_afforded_is_never_sent(make_llm: MakeLlm) -> None
     with pytest.raises(BudgetExceeded, match="per-run ceiling"):
         llm.run_tools(AGENT, execute_tool)
     assert [sent.kind for sent in fake.sent] == ["turn"]
+    assert llm.budget.held_usd == 0.0, "a refused turn holds nothing"
 
 
 def test_running_out_of_turns_raises_rather_than_looking_finished(make_llm: MakeLlm) -> None:

@@ -911,4 +911,10 @@
   `interrupt()` is paid twice. **A step's tasks all run at once**, 6 of 6, which bypasses `llm`'s
   batch admission: each worker is admitted alone while its siblings are in flight. And with a
   checkpointer, a resume after one of three parallel workers failed reran only that one.
+- 09-22: **calls in flight now count, free.** `Budget.admit` counted only what was spent, so
+  parallel callers could each fit a ceiling alone and cross it together. The batch methods never
+  could, since they admit a batch whole, but LangGraph's parallel nodes would. Every call `llm`
+  admits is now held until it is billed, or released if it fails. A test makes a second call from
+  inside the first's reply, and it is refused where the two would cross the ceiling together.
+  Four mutations are each caught.
 

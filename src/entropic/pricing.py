@@ -191,6 +191,7 @@ class Budget:
     spent_usd: float = 0.0
     scope: str = "run"
     tripped: str | None = None
+    held_usd: float = 0.0  # worst cases of calls admitted and not yet billed
 
     def charge(self, model: str, usage: LlmUsage) -> float:
         """Bill one call and return what it added. Never raises; sets `tripped` when over."""
@@ -211,15 +212,23 @@ class Budget:
             raise BudgetExceeded(self.tripped)
         return self.spent_usd
 
-    def admit(self, worst_usd: float) -> None:
-        """Refuse, before anything is sent, spending whose worst case would carry past the ceiling.
+    def admit(self, worst_usd: float, *, hold: bool = False) -> None:
+        """Refuse, before anything is sent, spending whose worst case — with every call still in
+        flight — would carry past the ceiling. With `hold`, keep `worst_usd` held until `release`.
 
         Admitting bills nothing; `charge` still bills the actual cost once a call returns.
         """
-        if self.spent_usd + worst_usd > self.limit_usd:
+        if self.spent_usd + self.held_usd + worst_usd > self.limit_usd:
+            held = f" with ${self.held_usd:.4f} held for calls in flight" if self.held_usd else ""
             raise BudgetExceeded(
-                f"{self.scope} has spent ${self.spent_usd:.4f} and the next spending could cost up "
-                f"to ${worst_usd:.4f}, past the per-{self.scope} ceiling of "
+                f"{self.scope} has spent ${self.spent_usd:.4f}{held}, and the next spending could "
+                f"cost up to ${worst_usd:.4f}, past the per-{self.scope} ceiling of "
                 f"${self.limit_usd:.4f}. Raise ENTROPIC_MAX_USD_PER_{self.scope.upper()} in .env "
                 "if this was intended."
             )
+        if hold:
+            self.held_usd += worst_usd
+
+    def release(self, worst_usd: float) -> None:
+        """Let go of a hold, once its call is billed or has failed."""
+        self.held_usd = max(0.0, self.held_usd - worst_usd)

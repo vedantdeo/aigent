@@ -178,56 +178,58 @@ class Llm:
 
     def create(self, request: Request) -> Message:
         """Send one request; the whole message, for callers that read its blocks."""
-        self._admit([request])
-        return self._create(request)
+        with self._held([request]):
+            return self._create(request)
 
     def text(self, request: Request) -> str:
         """Send one request; its text. Raises `StepFailed` on a refusal or a truncation."""
-        self._admit([request])
-        return self._text(request)
+        with self._held([request]):
+            return self._text(request)
 
     def parse[Record: BaseModel](
         self, request: Request, schema: type[Record]
     ) -> ParsedMessage[Record]:
         """Send one request for a `schema` record; the whole message, whose `parsed_output` is
         None when the output did not validate."""
-        self._admit([request], schema)
-        return self._parse(request, schema)
+        with self._held([request], schema):
+            return self._parse(request, schema)
 
     def record[Record: BaseModel](self, request: Request, schema: type[Record]) -> Record:
         """Send one request for a `schema` record. Raises `StepFailed` when there is none."""
-        self._admit([request], schema)
-        return self._record(request, schema)
+        with self._held([request], schema):
+            return self._record(request, schema)
 
     @contextmanager
     def stream(self, request: Request) -> Iterator[MessageStream]:
         """Send one request as a stream; billed from the final message once the stream closes."""
-        self._admit([request])
-        with self.client.messages.stream(
-            model=request.model,
-            max_tokens=request.max_tokens,
-            messages=request.messages,
-            system=request.system,
-            tools=request.tools,
-            thinking=request.thinking,
-            output_config=request.output_config,
-            cache_control=request.cache_control,
-        ) as stream:
+        with (
+            self._held([request]),
+            self.client.messages.stream(
+                model=request.model,
+                max_tokens=request.max_tokens,
+                messages=request.messages,
+                system=request.system,
+                tools=request.tools,
+                thinking=request.thinking,
+                output_config=request.output_config,
+                cache_control=request.cache_control,
+            ) as stream,
+        ):
             yield stream
             final = stream.get_final_message()
         self._bill(request, final.usage)
 
     def gather_text(self, requests: Sequence[Request]) -> list[str]:
         """`text` for every request concurrently, in request order, once all are admitted."""
-        self._admit(requests)
-        return self._fan_out(requests, self._text)
+        with self._held(requests):
+            return self._fan_out(requests, self._text)
 
     def gather_records[Record: BaseModel](
         self, requests: Sequence[Request], schema: type[Record]
     ) -> list[Record]:
         """`record` for every request concurrently, in request order, once all are admitted."""
-        self._admit(requests, schema)
-        return self._fan_out(requests, lambda request: self._record(request, schema))
+        with self._held(requests, schema):
+            return self._fan_out(requests, lambda request: self._record(request, schema))
 
     def run_tools(
         self,
@@ -247,63 +249,69 @@ class Llm:
             raise ValueError(f"{request.step}: run_tools needs at least one tool")
         messages: list[MessageParam] = list(request.messages)
         first = replace(request, step=f"{request.step}:1", messages=messages)
-        self._admit([first], limit_usd=MAX_USD_PER_TURN, scope="turn")
-        runnable = [_runnable(tool, dispatch) for tool in request.tools if _is_client(tool)]
-        server = [cast(BetaToolUnionParam, t) for t in request.tools if not _is_client(t)]
-        # What the runner puts on the wire: its own tools first, then the ones the API runs.
-        wire = [*(tool.to_dict() for tool in runnable), *server]
-        runner = self.client.beta.messages.tool_runner(
-            model=request.model,
-            max_tokens=request.max_tokens,
-            messages=cast(list[BetaMessageParam], messages),
-            system=cast("str | list[BetaTextBlockParam] | Omit", request.system),
-            thinking=cast("BetaThinkingConfigParam | Omit", request.thinking),
-            output_config=cast("BetaOutputConfigParam | Omit", request.output_config),
-            cache_control=cast("BetaCacheControlEphemeralParam | Omit", request.cache_control),
-            tools=[*runnable, *server],
-            max_iterations=max_turns,
-        )
-        turns: list[BetaMessage] = []
-        for turn, message in enumerate(runner, start=1):
-            self._bill(replace(request, step=f"{request.step}:{turn}"), message.usage)
-            turns.append(message)
-            if message.stop_reason not in ("tool_use", "pause_turn"):
-                return ToolRun(message, turns=tuple(turns))
-            if turn == max_turns:
-                break
-            messages = [
-                *messages,
-                cast(MessageParam, {"role": "assistant", "content": message.content}),
-            ]
-            if message.stop_reason == "tool_use":
-                # Runs the tools now; the runner reuses these results rather than rerun them.
-                results = runner.generate_tool_call_response()
-                if results is None:
-                    return ToolRun(message, turns=tuple(turns))
-                messages.append(cast(MessageParam, results))
-            upcoming = replace(request, step=f"{request.step}:{turn + 1}", messages=messages)
-            stop: Exception | None
-            if finish is not None and turn + 1 == max_turns:
-                stop = TurnsExhausted(
-                    f"{request.step}: the last of {max_turns} turns is kept for an answer"
-                )
-            else:
-                stop = self._refusal(upcoming)
-            if stop is None:
-                continue
-            if finish is None or message.stop_reason != "tool_use":
-                raise stop
-            answer = self._last_answer(upcoming, wire, finish, stop)
-            return ToolRun(answer, str(stop), (*turns, answer))
-        raise TurnsExhausted(f"{request.step}: still asking for tools after {max_turns} turns")
-
-    def _refusal(self, upcoming: Request) -> BudgetExceeded | None:
-        """Why `upcoming` may not be sent as another tool turn, or None once it is admitted."""
+        held = self._admit([first], limit_usd=MAX_USD_PER_TURN, scope="turn")
         try:
-            self._admit([upcoming], limit_usd=MAX_USD_PER_TURN, scope="turn")
+            runnable = [_runnable(tool, dispatch) for tool in request.tools if _is_client(tool)]
+            server = [cast(BetaToolUnionParam, t) for t in request.tools if not _is_client(t)]
+            # What the runner puts on the wire: its own tools first, then the ones the API runs.
+            wire = [*(tool.to_dict() for tool in runnable), *server]
+            runner = self.client.beta.messages.tool_runner(
+                model=request.model,
+                max_tokens=request.max_tokens,
+                messages=cast(list[BetaMessageParam], messages),
+                system=cast("str | list[BetaTextBlockParam] | Omit", request.system),
+                thinking=cast("BetaThinkingConfigParam | Omit", request.thinking),
+                output_config=cast("BetaOutputConfigParam | Omit", request.output_config),
+                cache_control=cast("BetaCacheControlEphemeralParam | Omit", request.cache_control),
+                tools=[*runnable, *server],
+                max_iterations=max_turns,
+            )
+            turns: list[BetaMessage] = []
+            for turn, message in enumerate(runner, start=1):
+                self._bill(replace(request, step=f"{request.step}:{turn}"), message.usage)
+                self._release(held)
+                held = 0.0
+                turns.append(message)
+                if message.stop_reason not in ("tool_use", "pause_turn"):
+                    return ToolRun(message, turns=tuple(turns))
+                if turn == max_turns:
+                    break
+                messages = [
+                    *messages,
+                    cast(MessageParam, {"role": "assistant", "content": message.content}),
+                ]
+                if message.stop_reason == "tool_use":
+                    # Runs the tools now; the runner reuses these results rather than rerun them.
+                    results = runner.generate_tool_call_response()
+                    if results is None:
+                        return ToolRun(message, turns=tuple(turns))
+                    messages.append(cast(MessageParam, results))
+                upcoming = replace(request, step=f"{request.step}:{turn + 1}", messages=messages)
+                stop: Exception
+                if finish is not None and turn + 1 == max_turns:
+                    stop = TurnsExhausted(
+                        f"{request.step}: the last of {max_turns} turns is kept for an answer"
+                    )
+                else:
+                    admitted = self._admit_turn(upcoming)
+                    if not isinstance(admitted, BudgetExceeded):
+                        held = admitted
+                        continue
+                    stop = admitted
+                if finish is None or message.stop_reason != "tool_use":
+                    raise stop
+                answer = self._last_answer(upcoming, wire, finish, stop)
+                return ToolRun(answer, str(stop), (*turns, answer))
+            raise TurnsExhausted(f"{request.step}: still asking for tools after {max_turns} turns")
+        finally:
+            self._release(held)
+
+    def _admit_turn(self, upcoming: Request) -> float | BudgetExceeded:
+        """Admit `upcoming` as the next tool turn and return what it holds, or the refusal."""
+        try:
+            return self._admit([upcoming], limit_usd=MAX_USD_PER_TURN, scope="turn")
         except BudgetExceeded as refused:
             return refused
-        return None
 
     def _last_answer(
         self,
@@ -319,7 +327,8 @@ class Llm:
         blocks = [*cast(list[object], results["content"]), {"type": "text", "text": finish}]
         told = cast(MessageParam, {"role": "user", "content": blocks})
         answer = replace(upcoming, step=f"{upcoming.step} answer", messages=[*history, told])
-        room = min(MAX_USD_PER_TURN, self.budget.limit_usd - self.budget.spent_usd)
+        left = self.budget.limit_usd - self.budget.spent_usd - self.budget.held_usd
+        room = min(MAX_USD_PER_TURN, left)
         fits = affordable_output_tokens(
             answer.model,
             self.count(answer),
@@ -330,8 +339,14 @@ class Llm:
         answer = replace(answer, max_tokens=min(answer.max_tokens, fits))
         if answer.max_tokens < MIN_TOKENS_FINAL_ANSWER:
             raise stop
-        self._admit([answer], limit_usd=MAX_USD_PER_TURN, scope="turn")
         # Sent as the runner sends a turn, bar the messages and the cap, so the cache still holds.
+        with self._held([answer], limit_usd=MAX_USD_PER_TURN, scope="turn"):
+            message = self._answer_turn(answer, wire)
+        if message.stop_reason == "tool_use":
+            raise stop
+        return message
+
+    def _answer_turn(self, answer: Request, wire: Sequence[BetaToolUnionParam]) -> BetaMessage:
         message = self.client.beta.messages.parse(
             model=answer.model,
             max_tokens=answer.max_tokens,
@@ -343,8 +358,6 @@ class Llm:
             tools=wire,
         )
         self._bill(answer, message.usage)
-        if message.stop_reason == "tool_use":
-            raise stop
         return message
 
     def _admit(
@@ -354,7 +367,8 @@ class Llm:
         *,
         limit_usd: float = MAX_USD_PER_REQUEST,
         scope: str = "request",
-    ) -> None:
+    ) -> float:
+        """Admit every request, holding their summed worst case until `_release`; returns it."""
         # The sum, not each call: calls in flight cannot be recalled, so a batch that cannot all
         # fit must not start.
         worst = 0.0
@@ -379,7 +393,28 @@ class Llm:
                 raise Rehearsed(request, tokens, cost)
             worst += cost
         with self._lock:
-            self.budget.admit(worst)
+            self.budget.admit(worst, hold=True)
+        return worst
+
+    @contextmanager
+    def _held(
+        self,
+        requests: Sequence[Request],
+        schema: type[BaseModel] | None = None,
+        *,
+        limit_usd: float = MAX_USD_PER_REQUEST,
+        scope: str = "request",
+    ) -> Iterator[None]:
+        """Admitted for the length of the block, which sends and bills; let go however it ends."""
+        held = self._admit(requests, schema, limit_usd=limit_usd, scope=scope)
+        try:
+            yield
+        finally:
+            self._release(held)
+
+    def _release(self, held: float) -> None:
+        with self._lock:
+            self.budget.release(held)
 
     def _fan_out[Result](
         self, requests: Sequence[Request], send: Callable[[Request], Result]
