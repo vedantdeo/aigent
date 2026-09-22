@@ -816,4 +816,87 @@
   how long a run lasts, and at 8 it was the cap that ended the run above, with the per-turn ceiling
   far off. At the ~4–5k tokens a search adds, `MAX_USD_PER_TURN` now ends a search near turn 11. The
   cap binds only on a loop of turns too cheap for the budget to stop soon. Free; no run.
+- 09-22: **server-side web search, wired and priced, free so far.** The docs give the terms: $10
+  per 1,000 searches on top of tokens, a failed search free, `max_uses` capping searches per
+  request. The trap is that "web search results... are counted as input tokens, in search
+  iterations executed during a single turn": the API adds them mid-call, so the free count before
+  sending cannot see them. So a search is priced at its cap, each with a 10,000-token allowance
+  for results, and that allowance is the one estimate in any pre-send worst case. `llm` refuses a
+  search with no `max_uses`, and any server tool pricing does not model, as it refuses an unpriced
+  model and the 1-hour cache. The agent offers it as a third tool. `tools.ALL_TOOLS` does not, so
+  `primitives.tool_loop` stays as it was: its first search would have ended its run under the
+  $0.25 per-request ceiling. One test gap was found by mutation: nothing checked that the last
+  answer sends the tools in the runner's order, which the cache depends on. **Pending: a paid probe
+  to measure what a filtered search really adds**, and set the allowance from it.
+- 09-22: **the web search probe: $0.30450, answered, and two problems found.** One question,
+  "How has Reliance's share price moved since it announced its FY25 results?", with dynamic
+  filtering and at most two searches a turn.
+
+  | turn | in | cached | out | web | cost |
+  |---|---|---|---|---|---|
+  | 1 | 6,861 | 0 | 305 | 0 | $0.05050 |
+  | 2 | 46,343 | 40,578 | 706 | 1 | $0.08396 |
+  | 3 | 44,914 | 40,564 | 1,292 | 2 | $0.09976 |
+  | 4 | 20,016 | 16,960 | 117 | 0 | $0.03050 |
+  | 5 | 20,200 | 20,014 | 1,144 | 0 | $0.03977 |
+
+  It searched the report first for the results date and any price table, then the web three
+  times. It answered about −4% from roughly ₹1,300 before the results to about ₹1,248 now, via a
+  high of ₹1,611.80. Every report-side claim checked out against its passage. **No web source is
+  listed**: `_with_sources` reads citations from the final message only, the answer came two
+  turns after the searches, and its text carried none. The unit test passed because it put the
+  citations in the final message, which the live run did not. So the web figures cannot be traced.
+  **The trace's `in` is not the context on a search turn**: turn 2 counted 46,343 when the
+  conversation was about 9,000, because the server-side loop rereads the context at every step
+  within the one request, and usage sums them. Turn 4, with no search, shows the real size. The
+  rereads are cached within the turn (40,578 read), so turn 2 cost $0.084 against the ~$0.29 it
+  was admitted at. The 10,000-token allowance held with about 3× margin. But it prices results,
+  when what grows is rereads times context, so it will not scale with a long run. What persisted
+  was small: about 13,000 tokens across three turns, report passages and output included, so a
+  filtered search leaves perhaps 2,000. Turn 1's $0.050 is mostly caching the 6,861-token prompt,
+  5,700 of it the dynamic-filtering tool definition.
+- 09-22: **sources fixed, free.** `run_tools` now returns every turn it took, and the agent reads
+  every turn for web pages: those cited, then others the searches returned. If searches ran and no
+  links came back, it says so. The tests are now shaped like the probe, with the answer a turn
+  after the search. Whether links survive `response_inclusion: excluded` with dynamic filtering is
+  still unknown; the next live run will show it rather than hide it.
+- 09-22: **the web rerun: $0.26387, and the answer to where the links go — nowhere.** Same
+  question, sources now read from every turn. **With dynamic filtering and
+  `response_inclusion: excluded`, no page link reaches us**: no citations, no result blocks,
+  across all five turns. The agent now says so ("2 web searches ran, and no page links came back
+  with them") instead of printing nothing. Its figures agree with the first probe: ₹1,248 on
+  21 September 2026, a 52-week range of ₹1,232.5–1,611.8. It benchmarked against the report's
+  year-end market capitalisation, ₹17,25,378 crore, which gives an implied ₹1,275 a share, so a
+  move of about −2%. Every report figure is in a passage it retrieved (`#0023`, `#0586`), though
+  this answer did not tag them with ids. It said "my search budget was exhausted after one
+  query": at `max_uses` 2, one filtering step can spend both searches. The searching turn read
+  81,600 tokens, 78,921 of them cached: the server loop's rereads again, $0.122 for the turn.
+  Day's total about $2.39.
+- 09-22: **web search, two variants head to head: $0.62532 for both.** Same question, `max_uses`
+  5, the per-turn ceiling raised to $0.75 for these two runs only (`ENTROPIC_MAX_USD_PER_TURN`,
+  no code change). At 5 searches the 10,000-token allowance reserves $0.36 a turn, which the
+  $0.40 ceiling cannot hold. Each variant was run from a scratch script that swapped only the
+  web search tool dict.
+
+  | variant | turns | searches | cost | searching turn | pages cited | pages listed |
+  |---|---|---|---|---|---|---|
+  | direct | 3 | 2 | $0.25025 | 38,744 in, 18,294 cached, $0.171 | 6 | 13 more |
+  | dynamic filtering, `response_inclusion: full` | 5 | 7 | $0.37507 | 86,007 in, 73,509 cached, $0.236 | 0 | 51 |
+
+  **Direct wins on every count that matters here.** It cost a third less. Its text carries
+  citations, so six claims point at the pages behind them. Dynamic filtering with full inclusion
+  returns every page it saw, 51 of them, and cites none. **Dynamic filtering also ran past its
+  cap**: usage reported 7 searches in one turn against a `max_uses` of 5. From here I cannot tell
+  whether the extra two were errors or were billed; the ledger bills them. A cap the worst case
+  depends on has to hold, and with direct search the docs say an extra search is an error, not a
+  charge. **The allowance measures right for direct search**: the searching turn wrote about
+  20,000 new tokens for two searches, and the next turn's context had grown by about 9,000 a
+  search. Both answers agree with each other and with the earlier probes: about −4% from the
+  results-day close (₹1,300.05) to about ₹1,245 now, by way of ₹1,611.80. Every report figure
+  checked out (`#0250`, `#0625`). Day's total about $3.02.
+- 09-22: **web search settled: direct, a cap of 3, a $0.60 per-turn ceiling.** Chosen over a cap
+  of 5 at $0.75, because it reserves less per turn for the same room (about 44,800 input tokens
+  either way), and the direct run used 2. `response_inclusion` is gone; it only governs filtered
+  results. The tests that probed the per-turn ceiling with fixed token counts now derive them
+  from the ceiling, so the next change to it will not break them. Free; no run.
 

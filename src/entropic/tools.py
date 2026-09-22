@@ -12,9 +12,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from anthropic.types import ToolParam
+from anthropic.types import ToolParam, WebSearchTool20260318Param
 
-from entropic.tools_config import MAX_EXPONENT, MAX_FILE_READ_CHARS, SANDBOX
+from entropic.tools_config import MAX_EXPONENT, MAX_FILE_READ_CHARS, MAX_WEB_SEARCHES, SANDBOX
 
 _BINARY_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
     ast.Add: operator.add,
@@ -164,3 +164,13 @@ def execute_tool(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
         return f"Error: unknown tool {name!r}", True
     except Exception as exc:
         return f"Error: {exc}", True
+
+
+# A server tool: the API runs it, so it has a schema here and no implementation or dispatch branch.
+# Called directly, so its results come back with the pages they cite.
+WEB_SEARCH_TOOL: WebSearchTool20260318Param = {
+    "type": "web_search_20260318",
+    "name": "web_search",
+    "max_uses": MAX_WEB_SEARCHES,
+    "allowed_callers": ["direct"],
+}

@@ -25,7 +25,7 @@ from anthropic.types import (
     ToolUseBlock,
     Usage,
 )
-from anthropic.types.beta import BetaMessage
+from anthropic.types.beta import BetaMessage, BetaToolUnionParam
 from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
 from pydantic import BaseModel
 
@@ -248,16 +248,18 @@ class _FakeBetaMessages:
     def tool_runner(
         self,
         *,
-        tools: Sequence[BetaFunctionTool[Callable[..., str]]],
+        tools: Sequence[BetaFunctionTool[Callable[..., str]] | BetaToolUnionParam],
         max_iterations: int | None = None,
         **params: object,
     ) -> BetaToolRunner[None]:
-        sent = cast(
-            ParseMessageCreateParamsBase[None], {**params, "tools": [t.to_dict() for t in tools]}
-        )
+        # As the SDK does: the tools it runs go on the wire first, then the ones the API runs.
+        runnable = [tool for tool in tools if isinstance(tool, BetaFunctionTool)]
+        raw = [tool for tool in tools if not isinstance(tool, BetaFunctionTool)]
+        wire = [*(tool.to_dict() for tool in runnable), *raw]
+        sent = cast(ParseMessageCreateParamsBase[None], {**params, "tools": wire})
         client = cast(anthropic.Anthropic, self._client)
         return BetaToolRunner(
-            params=sent, options={}, tools=tools, client=client, max_iterations=max_iterations
+            params=sent, options={}, tools=runnable, client=client, max_iterations=max_iterations
         )
 
     def parse(self, **kwargs: object) -> BetaMessage:

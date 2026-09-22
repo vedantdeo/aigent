@@ -9,9 +9,14 @@ from __future__ import annotations
 from contextlib import AbstractContextManager, nullcontext
 
 import pytest
-from anthropic.types import Usage
+from anthropic.types import ServerToolUsage, Usage
 
-from entropic.config import DEFAULT_JUDGE_MODEL, DEFAULT_MODEL, DEFAULT_SMALL_MODEL
+from entropic.config import (
+    DEFAULT_JUDGE_MODEL,
+    DEFAULT_MODEL,
+    DEFAULT_SMALL_MODEL,
+    WEB_SEARCH_RESULT_TOKENS,
+)
 from entropic.errors import BudgetExceeded
 from entropic.pricing import (
     PRICES,
@@ -20,10 +25,12 @@ from entropic.pricing import (
     assert_request_within_budget,
     cost_usd,
     estimate_eval_usd,
+    usage_cost,
     worst_case_usd,
 )
 
 OPUS = "claude-opus-5"
+SEARCHED_3 = ServerToolUsage(web_search_requests=3, web_fetch_requests=0)
 
 
 @pytest.mark.parametrize(
@@ -48,6 +55,19 @@ OPUS = "claude-opus-5"
             worst_case_usd(OPUS, 1000, 4096, cached=True),
             0.00625 + 0.1024,
             id="a call that may write the cache writes all its input at worst",
+        ),
+        pytest.param(
+            cost_usd(OPUS, 0, 0, web_searches=1000), 10.0, id="a thousand web searches are $10"
+        ),
+        pytest.param(
+            usage_cost(OPUS, Usage(input_tokens=0, output_tokens=0, server_tool_use=SEARCHED_3)),
+            0.03,
+            id="a response's web searches are billed with its tokens",
+        ),
+        pytest.param(
+            worst_case_usd(OPUS, 1000, 4096, web_searches=2),
+            0.005 + 0.1024 + 2 * (0.01 + WEB_SEARCH_RESULT_TOKENS * 5e-6),
+            id="each search a call may run adds its fee and an allowance for its results",
         ),
     ],
 )

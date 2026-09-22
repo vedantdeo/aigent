@@ -218,15 +218,17 @@ model, its tokens and what it cost.
 ## Agent
 
 `agent.py` is the other side of that line: the model gets the reports as a `search_reports` tool
-beside the calculator and decides for itself what to search, how often, and when it has enough. It
-loops on the Anthropic SDK's tool runner, driven through `llm.run_tools`, which counts and admits
-every turn against the $1.00 run ceiling before it is sent, so the budget decides how long it
-searches; a 25-turn cap is only a backstop against a runaway loop. The conversation is cached, so
-each turn reads what the last one sent instead of paying for it again. Each turn is held to a $0.40
-ceiling of its own, since it resends the whole conversation. When it runs out of turns or budget it
-is told to stop searching and answer from what it has; only if not even a short answer fits does it
-stop empty-handed, printing what it searched and why. `docs/tool-runner.md` is what the runner does
-and hides, read from its source.
+beside the calculator and the web, and decides for itself what to search, how often, and when it has
+enough. It loops on the Anthropic SDK's tool runner, driven through `llm.run_tools`, which counts
+and admits every turn against the $1.00 run ceiling before it is sent, so the budget decides how
+long it searches; a 25-turn cap is only a backstop against a runaway loop. The conversation is
+cached, so each turn reads what the last one sent instead of paying for it again. Each turn is held
+to a $0.60 ceiling of its own, since it resends the whole conversation. When it runs out of turns or
+budget it is told to stop searching and answer from what it has; only if not even a short answer
+fits does it stop empty-handed, printing what it searched and why. Web search is the API's own tool,
+called directly and capped at three searches a turn, $0.01 each; the pages it cited or returned are
+listed after the answer. `docs/tool-runner.md` is what the runner does and hides, read from its
+source.
 
 ```bash
 uv run python -m entropic.agent --cache                       # dry run: counts the first call, sends nothing
@@ -240,8 +242,8 @@ numbers in the message. Trim the input, lower `max_tokens`, or raise the ceiling
 
 | Guard | Default | Enforced where |
 |-------|---------|----------------|
-| per request | $0.25 | before every call: free token count, worst case is input plus the full `max_tokens`, with input at the cache-write price when the call caches |
-| per agent turn | $0.40 | before every turn of the agent, in place of the per-request ceiling, since a turn resends the whole conversation |
+| per request | $0.25 | before every call: free token count, worst case is input plus the full `max_tokens`, with input at the cache-write price when the call caches, plus each web search it may run with an allowance for its results |
+| per agent turn | $0.60 | before every turn of the agent, in place of the per-request ceiling, since a turn resends the whole conversation |
 | per workflow | $0.25 | before every call and every parallel batch in a workflow demo, on the worst case |
 | per run | $1.00 | before every call in a tool loop, the agent or a chat session, on that call's worst case, and after it on the real cost |
 | per eval | $2.00 | before the run starts, on the whole run's worst case; then after each row, where a trip keeps the rows already paid for and marks the report partial |

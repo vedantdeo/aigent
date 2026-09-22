@@ -30,10 +30,12 @@ SMALL_MODEL: str = os.environ.get("ENTROPIC_SMALL_MODEL", DEFAULT_SMALL_MODEL)
 # a dataset. `pricing` enforces them.
 
 MAX_USD_PER_REQUEST: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_REQUEST", "0.25"))
-MAX_USD_PER_TURN: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_TURN", "0.40"))
+MAX_USD_PER_TURN: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_TURN", "0.60"))
 MAX_USD_PER_RUN: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_RUN", "1.00"))
 MAX_USD_PER_WORKFLOW: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_WORKFLOW", "0.25"))
 MAX_USD_PER_EVAL: float = float(os.environ.get("ENTROPIC_MAX_USD_PER_EVAL", "2.00"))
+# Assumed per web search: the API adds results mid-call, where the free count cannot see them.
+WEB_SEARCH_RESULT_TOKENS = 10_000
 
 
 # --- Call shape ------------------------------------------------------------------------------

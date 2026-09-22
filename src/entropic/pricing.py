@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from anthropic.types import Usage
 from anthropic.types.beta import BetaUsage
 
-from entropic.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN
+from entropic.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN, WEB_SEARCH_RESULT_TOKENS
 from entropic.errors import BudgetExceeded
 
 # What a response reports it used. The tool runner answers on the beta endpoint; both carry the
@@ -44,6 +44,9 @@ PRICES: dict[str, Price] = {
     "claude-fable-5-1": Price(input=10.0, output=50.0),
 }
 
+# Billed per search, on top of the tokens its results add.
+PRICE_PER_WEB_SEARCH = 0.01
+
 
 def cost_usd(
     model: str,
@@ -51,18 +54,23 @@ def cost_usd(
     output_tokens: int,
     cache_write_tokens: int = 0,
     cache_read_tokens: int = 0,
+    web_searches: int = 0,
 ) -> float:
     """Dollar cost of one request. Unknown models cost nothing rather than crashing the script."""
     price = PRICES.get(model)
     if price is None:
         return 0.0
     per_token = 1e-6
-    return per_token * (
+    return web_searches * PRICE_PER_WEB_SEARCH + per_token * (
         input_tokens * price.input
         + output_tokens * price.output
         + cache_write_tokens * price.cache_write
         + cache_read_tokens * price.cache_read
     )
+
+
+def web_searches(usage: LlmUsage) -> int:
+    return usage.server_tool_use.web_search_requests if usage.server_tool_use else 0
 
 
 def usage_cost(model: str, usage: LlmUsage) -> float:
@@ -72,6 +80,7 @@ def usage_cost(model: str, usage: LlmUsage) -> float:
         output_tokens=usage.output_tokens,
         cache_write_tokens=usage.cache_creation_input_tokens or 0,
         cache_read_tokens=usage.cache_read_input_tokens or 0,
+        web_searches=web_searches(usage),
     )
 
 
@@ -81,28 +90,35 @@ def describe_usage(model: str, usage: LlmUsage) -> str:
         f"[{model}] in={usage.input_tokens} out={usage.output_tokens} "
         f"cache_write={usage.cache_creation_input_tokens or 0} "
         f"cache_read={usage.cache_read_input_tokens or 0} "
-        f"cost=${usage_cost(model, usage):.5f}"
+        + (f"web_searches={web_searches(usage)} " if web_searches(usage) else "")
+        + f"cost=${usage_cost(model, usage):.5f}"
     )
 
 
 def worst_case_usd(
-    model: str, input_tokens: int, max_tokens: int, *, cached: bool = False
+    model: str, input_tokens: int, max_tokens: int, *, cached: bool = False, web_searches: int = 0
 ) -> float:
     """The most one request can cost: the full output cap, and all input at the input price — or at
-    the cache-write price if `cached`, since a miss writes the whole prefix."""
+    the cache-write price if `cached`, since a miss writes the whole prefix. Each web search adds
+    its fee and `WEB_SEARCH_RESULT_TOKENS` of results: the one part estimated, not bounded."""
+    input_tokens += web_searches * WEB_SEARCH_RESULT_TOKENS
     if cached:
-        return cost_usd(model, 0, max_tokens, cache_write_tokens=input_tokens)
-    return cost_usd(model, input_tokens, max_tokens)
+        return cost_usd(
+            model, 0, max_tokens, cache_write_tokens=input_tokens, web_searches=web_searches
+        )
+    return cost_usd(model, input_tokens, max_tokens, web_searches=web_searches)
 
 
 def affordable_output_tokens(
-    model: str, input_tokens: int, limit_usd: float, *, cached: bool = False
+    model: str, input_tokens: int, limit_usd: float, *, cached: bool = False, web_searches: int = 0
 ) -> int:
     """The largest `max_tokens` whose worst case, with this input, stays within `limit_usd`."""
     price = PRICES.get(model)
     if price is None:
         return 0
-    spare = limit_usd - worst_case_usd(model, input_tokens, 0, cached=cached)
+    spare = limit_usd - worst_case_usd(
+        model, input_tokens, 0, cached=cached, web_searches=web_searches
+    )
     # One token short of the exact figure, so float rounding cannot carry it over the limit.
     return max(0, math.floor(spare / (price.output * 1e-6)) - 1)
 
@@ -137,6 +153,7 @@ def assert_request_within_budget(
     *,
     cached: bool = False,
     scope: str = "request",
+    web_searches: int = 0,
 ) -> float:
     """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded.
 
@@ -147,9 +164,12 @@ def assert_request_within_budget(
             f"{model} has no price, so no ceiling can hold it: its calls would be admitted and "
             "billed as free. Add it to pricing.PRICES."
         )
-    worst = worst_case_usd(model, input_tokens, max_tokens, cached=cached)
+    worst = worst_case_usd(
+        model, input_tokens, max_tokens, cached=cached, web_searches=web_searches
+    )
     if worst > limit_usd:
         written = " written to cache" if cached else ""
+        written += f", {web_searches} web searches" if web_searches else ""
         raise BudgetExceeded(
             f"request could cost up to ${worst:.4f} ({input_tokens} input tokens{written} plus "
             f"max_tokens={max_tokens} on {model}), above the per-{scope} ceiling of "

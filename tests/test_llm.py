@@ -18,15 +18,23 @@ from typing import cast
 import anthropic
 import httpx2
 import pytest
-from anthropic.types import Message, TextBlock, ToolParam, ToolUseBlock, Usage
+from anthropic.types import (
+    Message,
+    ServerToolUsage,
+    TextBlock,
+    ToolParam,
+    ToolUseBlock,
+    Usage,
+)
 from pydantic import BaseModel, ValidationError
 
 import entropic
 from entropic.config import MAX_USD_PER_TURN, MODEL
 from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted
 from entropic.llm import Dispatch, Llm, Rehearsed, Request, describe
-from entropic.pricing import affordable_output_tokens, worst_case_usd
-from entropic.tools import ALL_TOOLS, execute_tool
+from entropic.pricing import PRICES, affordable_output_tokens, worst_case_usd
+from entropic.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
+from entropic.tools_config import MAX_WEB_SEARCHES
 
 from .conftest import FAKE_USAGE, FakeMessages, MakeLlm, Sent, tool_results, tool_turn, turns
 
@@ -36,6 +44,7 @@ CACHED = replace(REQUEST, cache_control={"type": "ephemeral"})
 MARKED = replace(
     REQUEST, system=[{"type": "text", "text": "be brief", "cache_control": {"type": "ephemeral"}}]
 )
+SEARCHING_WEB = replace(REQUEST, tools=[WEB_SEARCH_TOOL])
 LOOKUP: ToolParam = {
     "name": "lookup",
     "description": "look it up",
@@ -242,24 +251,27 @@ def test_a_rehearsal_counts_the_first_call_and_sends_nothing(make_llm: MakeLlm) 
 
 
 @pytest.mark.parametrize(
-    ("asked", "cached"),
+    ("asked", "cached", "searches"),
     [
-        pytest.param(REQUEST, False, id="an uncached call pays the input price at worst"),
-        pytest.param(CACHED, True, id="automatic caching can write every input token"),
-        pytest.param(MARKED, True, id="so can a marked system block"),
+        pytest.param(REQUEST, False, 0, id="an uncached call pays the input price at worst"),
+        pytest.param(CACHED, True, 0, id="automatic caching can write every input token"),
+        pytest.param(MARKED, True, 0, id="so can a marked system block"),
+        pytest.param(
+            SEARCHING_WEB, False, MAX_WEB_SEARCHES, id="a capped web search can run to its cap"
+        ),
     ],
 )
-def test_a_call_that_can_write_the_cache_is_admitted_as_if_it_will(
-    make_llm: MakeLlm, asked: Request, cached: bool
+def test_a_call_is_admitted_at_the_most_it_could_cost(
+    make_llm: MakeLlm, asked: Request, cached: bool, searches: int
 ) -> None:
-    """A miss writes the whole prefix at 1.25x the input price, so that is the worst case."""
+    """A cache miss writes the whole prefix at 1.25x, and a capped search can run to its cap."""
     llm, _ = make_llm(echo, rehearse=True)
 
     with pytest.raises(Rehearsed) as caught:
         llm.text(asked)
 
-    expected = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64, cached=cached)
-    assert caught.value.worst_usd == pytest.approx(expected), asked.system
+    worst = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64, cached=cached, web_searches=searches)
+    assert caught.value.worst_usd == pytest.approx(worst), asked.system
 
 
 def _streamed(llm: Llm) -> str:
@@ -291,9 +303,13 @@ def test_caching_reaches_the_wire_on_every_path(
     assert sent.cache_control == {"type": "ephemeral"}, sent.kind
 
 
-def test_the_trace_counts_cached_input_as_input(make_llm: MakeLlm) -> None:
+def test_the_trace_counts_cached_input_as_input_and_shows_web_searches(make_llm: MakeLlm) -> None:
     usage = Usage(
-        input_tokens=10, cache_creation_input_tokens=20, cache_read_input_tokens=70, output_tokens=5
+        input_tokens=10,
+        cache_creation_input_tokens=20,
+        cache_read_input_tokens=70,
+        output_tokens=5,
+        server_tool_use=ServerToolUsage(web_search_requests=2, web_fetch_requests=0),
     )
     reply = Message(
         id="m",
@@ -310,8 +326,8 @@ def test_the_trace_counts_cached_input_as_input(make_llm: MakeLlm) -> None:
 
     [header, line, _] = describe(llm.trace).splitlines()
 
-    assert header.split()[2:4] == ["in", "cached"]
-    assert line.split()[2:4] == ["100", "70"], line
+    assert header.split()[2:6] == ["in", "cached", "out", "web"]
+    assert line.split()[2:6] == ["100", "70", "5", "2"], line
 
 
 def test_the_trace_prints_a_line_per_call_and_the_total(make_llm: MakeLlm) -> None:
@@ -370,6 +386,20 @@ def test_what_only_the_api_can_reject_is_rejected_at_the_free_count(
         ),
         pytest.param(REQUEST, 2_000_000, 0.0, "per-request ceiling", id="an input too large"),
         pytest.param(REQUEST, 100, 0.999, "per-run ceiling", id="a run with too little left"),
+        pytest.param(
+            replace(REQUEST, tools=[{"type": "web_search_20260318", "name": "web_search"}]),
+            100,
+            0.0,
+            "no max_uses",
+            id="a web search with no cap on how often it runs",
+        ),
+        pytest.param(
+            replace(REQUEST, tools=[{"type": "web_fetch_20260209", "name": "web_fetch"}]),
+            100,
+            0.0,
+            "pricing does not model",
+            id="a server tool pricing does not model",
+        ),
         pytest.param(
             replace(REQUEST, cache_control={"type": "ephemeral", "ttl": "1h"}),
             100,
@@ -458,6 +488,7 @@ def test_run_tools_runs_each_call_and_sends_every_result_in_one_message(make_llm
     ran = llm.run_tools(AGENT, execute_tool)
 
     assert ran.cut_short is None
+    assert len(ran.turns) == 2 and ran.turns[-1] is ran.message, "every turn, the last included"
     assert [block.text for block in ran.message.content if block.type == "text"] == [
         "1024, and it is noon"
     ]
@@ -502,6 +533,15 @@ LONG = replace(AGENT, max_tokens=4096, cache_control={"type": "ephemeral"})
 FINISH = "answer now from what you have"
 
 
+def _context_costing(usd: float) -> int:
+    """The cached context whose write alone costs `usd`: so a row reads relative to the ceiling."""
+    return int(usd / (PRICES[MODEL].cache_write * 1e-6))
+
+
+# Past the per-turn ceiling with the output cap on top, with $0.05 left for an answer.
+GROWN_PAST = _context_costing(MAX_USD_PER_TURN - 0.05)
+
+
 def _growing(fake: FakeMessages, tokens: int, ran: list[str] | None = None) -> Dispatch:
     """A tool whose result makes the next turn `tokens` long, by the free count."""
 
@@ -537,10 +577,10 @@ def test_a_turn_is_held_to_the_per_turn_ceiling_not_the_per_request_one(make_llm
     [
         pytest.param(100, 2, "last of 2 turns", 4096, id="the last turn under the cap"),
         pytest.param(
-            50_000,
+            GROWN_PAST,
             8,
             "per-turn ceiling",
-            affordable_output_tokens(MODEL, 50_000, MAX_USD_PER_TURN, cached=True),
+            affordable_output_tokens(MODEL, GROWN_PAST, MAX_USD_PER_TURN, cached=True),
             id="a search that grows the next turn past the per-turn ceiling",
         ),
     ],
@@ -559,6 +599,7 @@ def test_a_conversation_out_of_room_is_told_to_answer_from_what_it_has(
 
     assert says in str(ran.cut_short), ran.cut_short
     assert len(tools_run) == len(fake.sent) - 1, "each tool turn's tools ran once"
+    assert len(ran.turns) == len(fake.sent), "the last answer is one of the turns"
     before, told = fake.sent[-2:]
     same = ("model", "system", "thinking", "tools", "cache_control")
     assert [getattr(told, f) for f in same] == [getattr(before, f) for f in same]
@@ -571,8 +612,11 @@ def test_a_conversation_out_of_room_is_told_to_answer_from_what_it_has(
 @pytest.mark.parametrize(
     "grown_to",
     [
-        pytest.param(80_000, id="no room at all"),
-        pytest.param(62_000, id="room for less than MIN_TOKENS_FINAL_ANSWER"),
+        pytest.param(_context_costing(MAX_USD_PER_TURN) + 1_000, id="no room at all"),
+        pytest.param(
+            _context_costing(MAX_USD_PER_TURN - 0.01),
+            id="room for less than MIN_TOKENS_FINAL_ANSWER",
+        ),
     ],
 )
 def test_without_room_for_an_answer_the_refusal_stands(make_llm: MakeLlm, grown_to: int) -> None:
@@ -589,6 +633,20 @@ def test_an_answer_turn_that_asks_for_tools_again_ends_the_run(make_llm: MakeLlm
     with pytest.raises(TurnsExhausted, match="last of 2 turns"):
         llm.run_tools(LONG, execute_tool, max_turns=2, finish=FINISH)
     assert len(fake.sent) == len(llm.trace) == 2, "the answer turn was sent, and billed"
+
+
+def test_server_tools_reach_the_wire_as_written_after_ours(make_llm: MakeLlm) -> None:
+    """The runner wraps only the tools we run; one the API runs goes through untouched, last — on
+    the last answer too, which must send the tools exactly as the runner did or miss the cache."""
+    llm, fake = make_llm(_until_told)
+    asked = replace(LONG, tools=[WEB_SEARCH_TOOL, *ALL_TOOLS])
+
+    llm.run_tools(asked, execute_tool, max_turns=2, finish=FINISH)
+
+    first, answer = (cast(list[dict[str, object]], sent.tools) for sent in fake.sent)
+    assert [tool["name"] for tool in first] == [*(tool["name"] for tool in ALL_TOOLS), "web_search"]
+    assert first[-1] == WEB_SEARCH_TOOL
+    assert answer == first
 
 
 def test_run_tools_needs_a_tool(make_llm: MakeLlm) -> None:

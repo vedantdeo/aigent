@@ -7,13 +7,29 @@ stopped run still shows, and how the request is sent. The search tool itself is 
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
-from anthropic.types import Message
+from anthropic.types import (
+    CitationsWebSearchResultLocation,
+    ContentBlock,
+    Message,
+    ServerToolUsage,
+    ServerToolUseBlock,
+    TextBlock,
+    TextCitation,
+    ToolUseBlock,
+    Usage,
+    WebSearchResultBlock,
+    WebSearchToolResultBlock,
+)
 
 from entropic.agent import FINISH, run, show
-from entropic.config import MAX_AGENT_TURNS, MAX_TOKENS_TOOL_LOOP, MODEL
-from entropic.pricing import worst_case_usd
+from entropic.config import MAX_AGENT_TURNS, MAX_TOKENS_TOOL_LOOP, MAX_USD_PER_TURN, MODEL
+from entropic.pricing import PRICES, worst_case_usd
 from entropic.retrieval.chunk import Chunk
+from entropic.tools import WEB_SEARCH_TOOL
+from entropic.tools_config import MAX_WEB_SEARCHES
 
 from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, Sent, tool_results, tool_turn, turns
 
@@ -27,7 +43,9 @@ def until_told(sent: Sent) -> Message | str:
 
 
 # Room for one turn's worst case and not a second, once the first has been billed.
-ONE_TURN_USD = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, MAX_TOKENS_TOOL_LOOP, cached=True)
+ONE_TURN_USD = worst_case_usd(
+    MODEL, FAKE_USAGE.input_tokens, MAX_TOKENS_TOOL_LOOP, cached=True, web_searches=MAX_WEB_SEARCHES
+)
 
 
 def test_a_search_the_model_asks_for_reaches_it_with_ids_to_cite(
@@ -87,7 +105,7 @@ def test_with_no_room_even_to_answer_it_still_shows_what_it_searched(
     llm, fake = make_llm(until_told)
 
     def growing(query: str, /, *, doc_id: str | None = None) -> list[Chunk]:
-        fake.input_tokens = 80_000
+        fake.input_tokens = int(MAX_USD_PER_TURN / (PRICES[MODEL].cache_write * 1e-6)) + 1_000
         return search(query, doc_id=doc_id)
 
     result = run(llm, growing, "who is most exposed to rural demand?")
@@ -119,3 +137,104 @@ def test_how_the_agent_sends_its_turns(
     run(llm, search, "anything")
 
     assert getattr(fake.sent[0], field) == expected
+
+
+PAGE_A, PAGE_B = "https://a.example/ril", "https://b.example/ril"
+
+
+def _cited(text: str, *urls: str) -> TextBlock:
+    citations: list[TextCitation] = [
+        CitationsWebSearchResultLocation(
+            type="web_search_result_location",
+            url=url,
+            title="a page",
+            encrypted_index="x",
+            cited_text=text,
+        )
+        for url in urls
+    ]
+    return TextBlock(type="text", text=text, citations=citations)
+
+
+def _searched(*urls: str) -> list[ContentBlock]:
+    """A web search and the pages it returned, as the API puts them in a turn."""
+    results = [
+        WebSearchResultBlock(
+            type="web_search_result", url=url, title="a page", encrypted_content="x"
+        )
+        for url in urls
+    ]
+    return [
+        ServerToolUseBlock(
+            type="server_tool_use", id="srv1", name="web_search", input={"q": "ril"}
+        ),
+        WebSearchToolResultBlock(
+            type="web_search_tool_result", tool_use_id="srv1", content=results
+        ),
+    ]
+
+
+def _first_turn(blocks: list[ContentBlock], searches: int) -> Message:
+    """A turn that searched the web, then asks for the reports too, so the answer comes later."""
+    report = ToolUseBlock(
+        type="tool_use", id="s1", name="search_reports", input={"query": "q", "report": "all"}
+    )
+    usage = Usage(
+        input_tokens=100,
+        output_tokens=50,
+        server_tool_use=ServerToolUsage(web_search_requests=searches, web_fetch_requests=0),
+    )
+    return Message(
+        id="m",
+        type="message",
+        role="assistant",
+        model=MODEL,
+        content=[*blocks, report],
+        stop_reason="tool_use",
+        stop_sequence=None,
+        usage=usage,
+    )
+
+
+@pytest.mark.parametrize(
+    ("first", "cited", "returned", "says"),
+    [
+        pytest.param(
+            _first_turn([*_searched(PAGE_A, PAGE_B), _cited("Up 4%", PAGE_A)], 1),
+            [PAGE_A],
+            [PAGE_B],
+            f"web pages cited:\n- {PAGE_A}",
+            id="a page cited in the turn that searched, answered a turn later",
+        ),
+        pytest.param(
+            _first_turn(_searched(PAGE_A), 1),
+            [],
+            [PAGE_A],
+            f"web pages searched and not cited:\n- {PAGE_A}",
+            id="a page returned and never cited",
+        ),
+        pytest.param(
+            _first_turn([], 2),
+            [],
+            [],
+            "2 web searches ran, and no page links came back",
+            id="searches whose results were left out of the response",
+        ),
+    ],
+)
+def test_a_web_answer_shows_what_its_searches_found_across_every_turn(
+    make_llm: MakeLlm,
+    search: FakeSearch,
+    first: Message,
+    cited: list[str],
+    returned: list[str],
+    says: str,
+) -> None:
+    llm, fake = make_llm(turns(first, "About -4% since the results."))
+
+    result = run(llm, search, "how has Reliance's share price moved?")
+
+    assert (result.web.cited, result.web.returned) == (cited, returned)
+    assert result.answer == "About -4% since the results."
+    assert says in show(result), show(result)
+    assert WEB_SEARCH_TOOL in cast(list[object], fake.sent[0].tools), "web search is offered"

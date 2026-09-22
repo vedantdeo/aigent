@@ -19,3 +19,6 @@ MAX_FILE_READ_CHARS = 20_000
 # Guard on `**` in the calculator. `2 ** 10` is arithmetic; `2 ** 10_000_000` is a way to hang the
 # process from a tool argument.
 MAX_EXPONENT = 1000.0
+
+# Web searches per request: the cap that lets a search be priced at all.
+MAX_WEB_SEARCHES = 3

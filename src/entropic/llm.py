@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import math
 import threading
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from typing import cast
+from typing import TypeGuard, cast
 
 import anthropic
 from anthropic import Omit, omit
@@ -28,6 +28,7 @@ from anthropic.types import (
     TextBlockParam,
     ThinkingConfigParam,
     ToolParam,
+    ToolUnionParam,
     Usage,
 )
 from anthropic.types.beta import (
@@ -37,6 +38,7 @@ from anthropic.types.beta import (
     BetaOutputConfigParam,
     BetaTextBlockParam,
     BetaThinkingConfigParam,
+    BetaToolUnionParam,
 )
 from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
@@ -56,6 +58,7 @@ from entropic.pricing import (
     LlmUsage,
     affordable_output_tokens,
     assert_request_within_budget,
+    web_searches,
 )
 
 
@@ -68,7 +71,7 @@ class Request:
     max_tokens: int
     system: str | Sequence[TextBlockParam] | Omit = omit
     model: str = MODEL
-    tools: Sequence[ToolParam] | Omit = omit
+    tools: Sequence[ToolUnionParam] | Omit = omit
     thinking: ThinkingConfigParam | Omit = omit
     output_config: OutputConfigParam | Omit = omit
     cache_control: CacheControlEphemeralParam | Omit = omit
@@ -101,11 +104,12 @@ class Call:
 
 @dataclass(frozen=True)
 class ToolRun:
-    """How a tool-using conversation ended: its last message, and why it was told to answer before
-    it was done, if it was."""
+    """How a tool-using conversation ended: its last message, why it was told to answer before it
+    was done, if it was, and every turn it took, the last included."""
 
     message: BetaMessage
     cut_short: str | None = None
+    turns: tuple[BetaMessage, ...] = ()
 
 
 # Runs one tool call: `(name, input)` in, `(content, is_error)` out, as `tools.execute_tool` does.
@@ -244,7 +248,10 @@ class Llm:
         messages: list[MessageParam] = list(request.messages)
         first = replace(request, step=f"{request.step}:1", messages=messages)
         self._admit([first], limit_usd=MAX_USD_PER_TURN, scope="turn")
-        tools = [_runnable(tool, dispatch) for tool in request.tools]
+        runnable = [_runnable(tool, dispatch) for tool in request.tools if _is_client(tool)]
+        server = [cast(BetaToolUnionParam, t) for t in request.tools if not _is_client(t)]
+        # What the runner puts on the wire: its own tools first, then the ones the API runs.
+        wire = [*(tool.to_dict() for tool in runnable), *server]
         runner = self.client.beta.messages.tool_runner(
             model=request.model,
             max_tokens=request.max_tokens,
@@ -253,13 +260,15 @@ class Llm:
             thinking=cast("BetaThinkingConfigParam | Omit", request.thinking),
             output_config=cast("BetaOutputConfigParam | Omit", request.output_config),
             cache_control=cast("BetaCacheControlEphemeralParam | Omit", request.cache_control),
-            tools=tools,
+            tools=[*runnable, *server],
             max_iterations=max_turns,
         )
+        turns: list[BetaMessage] = []
         for turn, message in enumerate(runner, start=1):
             self._bill(replace(request, step=f"{request.step}:{turn}"), message.usage)
+            turns.append(message)
             if message.stop_reason not in ("tool_use", "pause_turn"):
-                return ToolRun(message)
+                return ToolRun(message, turns=tuple(turns))
             if turn == max_turns:
                 break
             messages = [
@@ -270,7 +279,7 @@ class Llm:
                 # Runs the tools now; the runner reuses these results rather than rerun them.
                 results = runner.generate_tool_call_response()
                 if results is None:
-                    return ToolRun(message)
+                    return ToolRun(message, turns=tuple(turns))
                 messages.append(cast(MessageParam, results))
             upcoming = replace(request, step=f"{request.step}:{turn + 1}", messages=messages)
             stop: Exception | None
@@ -284,7 +293,8 @@ class Llm:
                 continue
             if finish is None or message.stop_reason != "tool_use":
                 raise stop
-            return self._last_answer(upcoming, tools, finish, stop)
+            answer = self._last_answer(upcoming, wire, finish, stop)
+            return ToolRun(answer, str(stop), (*turns, answer))
         raise TurnsExhausted(f"{request.step}: still asking for tools after {max_turns} turns")
 
     def _refusal(self, upcoming: Request) -> BudgetExceeded | None:
@@ -298,10 +308,10 @@ class Llm:
     def _last_answer(
         self,
         upcoming: Request,
-        tools: Sequence[BetaFunctionTool[Callable[..., str]]],
+        wire: Sequence[BetaToolUnionParam],
         finish: str,
         stop: Exception,
-    ) -> ToolRun:
+    ) -> BetaMessage:
         """Send `upcoming` as a last answer instead: `finish` after its tool results, and as much
         output as the per-turn ceiling and the budget allow. Raises `stop` if that is too little,
         or if the model asks for tools anyway."""
@@ -311,7 +321,11 @@ class Llm:
         answer = replace(upcoming, step=f"{upcoming.step} answer", messages=[*history, told])
         room = min(MAX_USD_PER_TURN, self.budget.limit_usd - self.budget.spent_usd)
         fits = affordable_output_tokens(
-            answer.model, self.count(answer), room, cached=_writes_cache(answer)
+            answer.model,
+            self.count(answer),
+            room,
+            cached=_writes_cache(answer),
+            web_searches=_web_searches(answer),
         )
         answer = replace(answer, max_tokens=min(answer.max_tokens, fits))
         if answer.max_tokens < MIN_TOKENS_FINAL_ANSWER:
@@ -326,12 +340,12 @@ class Llm:
             thinking=cast("BetaThinkingConfigParam | Omit", answer.thinking),
             output_config=cast("BetaOutputConfigParam | Omit", answer.output_config),
             cache_control=cast("BetaCacheControlEphemeralParam | Omit", answer.cache_control),
-            tools=[tool.to_dict() for tool in tools],
+            tools=wire,
         )
         self._bill(answer, message.usage)
         if message.stop_reason == "tool_use":
             raise stop
-        return ToolRun(message, str(stop))
+        return message
 
     def _admit(
         self,
@@ -350,6 +364,7 @@ class Llm:
                     f"{request.step}: asks for the 1-hour cache, whose writes pricing does not "
                     "model, so no ceiling can hold it. Use the 5-minute default."
                 )
+            searches = _web_searches(request)
             tokens = self.count(request, schema)
             cost = assert_request_within_budget(
                 request.model,
@@ -358,6 +373,7 @@ class Llm:
                 limit_usd,
                 cached=_writes_cache(request),
                 scope=scope,
+                web_searches=searches,
             )
             if self.rehearse:
                 raise Rehearsed(request, tokens, cost)
@@ -471,6 +487,33 @@ def _cache_body(request: Request) -> dict[str, object] | None:
     )
 
 
+def _is_client(tool: ToolUnionParam) -> TypeGuard[ToolParam]:
+    """A tool we run ourselves, as opposed to one the API runs or defines."""
+    return tool.get("type") in (None, "custom")
+
+
+def _web_searches(request: Request) -> int:
+    """The most web searches a request can run. Refuses a tool type pricing does not model, and a
+    web search with no `max_uses`: either would leave the worst case unbounded."""
+    searches = 0
+    for tool in [] if isinstance(request.tools, Omit) else request.tools:
+        if _is_client(tool):
+            continue
+        kind = str(tool.get("type"))
+        if not kind.startswith("web_search_"):
+            raise BudgetExceeded(
+                f"{request.step}: pricing does not model {kind}, so no ceiling can hold it."
+            )
+        uses = cast(Mapping[str, object], tool).get("max_uses")
+        if not isinstance(uses, int):
+            raise BudgetExceeded(
+                f"{request.step}: a web search with no max_uses could search without limit, so no "
+                "ceiling can hold it. Set max_uses."
+            )
+        searches += uses
+    return searches
+
+
 def _runnable(tool: ToolParam, dispatch: Dispatch) -> BetaFunctionTool[Callable[..., str]]:
     """A tool the runner can call, sent exactly as `tool` is written and run through `dispatch`."""
     name = tool["name"]
@@ -493,15 +536,15 @@ def _runnable(tool: ToolParam, dispatch: Dispatch) -> BetaFunctionTool[Callable[
 def describe(trace: Sequence[Call]) -> str:
     """The trace as a table, one line per call, then the total. `in` is every input token, cached
     or not; `cached` is how many of them were read from the cache."""
-    lines = [f"  {'step':<22}{'model':<18}{'in':>7}{'cached':>8}{'out':>6}{'usd':>10}"]
+    lines = [f"  {'step':<22}{'model':<18}{'in':>7}{'cached':>8}{'out':>6}{'web':>5}{'usd':>10}"]
     for call in trace:
         usage = call.usage
         read = usage.cache_read_input_tokens or 0
         total = usage.input_tokens + (usage.cache_creation_input_tokens or 0) + read
         lines.append(
             f"  {call.step:<22}{call.model:<18}{total:>7}{read:>8}"
-            f"{usage.output_tokens:>6}{call.usd:>10.5f}"
+            f"{usage.output_tokens:>6}{web_searches(usage):>5}{call.usd:>10.5f}"
         )
     calls = f"{len(trace)} calls"
-    lines.append(f"  {calls:<61}{sum(call.usd for call in trace):>10.5f}")
+    lines.append(f"  {calls:<66}{sum(call.usd for call in trace):>10.5f}")
     return "\n".join(lines)
