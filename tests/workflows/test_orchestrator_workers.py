@@ -1,17 +1,36 @@
 """Orchestrator-workers: the plan decides how many workers run, and code only caps it.
 
 What separates this from sectioning is that the split is data the model wrote, so the table's
-rows are plans of different sizes rather than inputs of different kinds.
+rows are plans of different sizes rather than inputs of different kinds. Every test runs against
+both builds, plain and LangGraph: the rebuild must behave exactly as the original.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 from entropic.config import MAX_PLAN_TASKS
-from entropic.workflows.orchestrator_workers import SYNTHESISE, WORK, Plan, Subtask, run
+from entropic.llm import Llm
+from entropic.workflows import orchestrator_workers
+from entropic.workflows.orchestrator_workers import SYNTHESISE, WORK, Orchestrated, Plan, Subtask
+from entropic.workflows.reports import Search
 
 from ..conftest import FakeSearch, MakeLlm, Sent
+
+Run = Callable[[Llm, Search, str], Orchestrated]
+
+try:
+    from entropic.workflows import orchestrator_workers_graph
+
+    AS_GRAPH = pytest.param(orchestrator_workers_graph.run, id="as a LangGraph graph")
+except ImportError:
+    AS_GRAPH = pytest.param(
+        None, id="as a LangGraph graph", marks=pytest.mark.skip("no graph group")
+    )
+
+BUILDS = [pytest.param(orchestrator_workers.run, id="plain"), AS_GRAPH]
 
 
 def plan_of(n: int) -> Plan:
@@ -23,6 +42,7 @@ def plan_of(n: int) -> Plan:
     )
 
 
+@pytest.mark.parametrize("run", BUILDS)
 @pytest.mark.parametrize(
     ("planned", "workers"),
     [
@@ -32,7 +52,7 @@ def plan_of(n: int) -> Plan:
     ],
 )
 def test_the_plan_decides_the_workers_and_code_caps_them(
-    make_llm: MakeLlm, search: FakeSearch, planned: int, workers: int
+    make_llm: MakeLlm, search: FakeSearch, planned: int, workers: int, run: Run
 ) -> None:
     def reply(sent: Sent) -> Plan | str:
         if sent.schema is Plan:
@@ -54,7 +74,10 @@ def test_the_plan_decides_the_workers_and_code_caps_them(
     assert all(finding in synthesis.prompt for finding in result.findings)
 
 
-def test_an_empty_plan_costs_nothing_further(make_llm: MakeLlm, search: FakeSearch) -> None:
+@pytest.mark.parametrize("run", BUILDS)
+def test_an_empty_plan_costs_nothing_further(
+    make_llm: MakeLlm, search: FakeSearch, run: Run
+) -> None:
     llm, fake = make_llm(lambda sent: Plan(subtasks=[]))
 
     result = run(llm, search, "the question")

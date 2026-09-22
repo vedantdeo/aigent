@@ -917,4 +917,11 @@
   admits is now held until it is billed, or released if it fails. A test makes a second call from
   inside the first's reply, and it is refused where the two would cross the ceiling together.
   Four mutations are each caught.
+- 09-22: **orchestrator-workers rebuilt as a LangGraph graph, free.** The same eight tests pass
+  against both builds. The orchestration is 67 lines against 24. The graph needed a reducer, an
+  input schema, a destination list on its conditional edge and a step limit. Without the
+  destination list, the drawn diagram ended the run at `plan`. A failing worker surfaces the same
+  error with the same calls billed in both, through 19 frames against 13. The graph admits
+  workers one at a time, not as a batch. Verdict: not worth it for a three-step workflow; its
+  checkpoints and interrupts are for Week 4's agent. A live comparison run is not done.
 

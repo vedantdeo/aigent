@@ -203,6 +203,7 @@ calls a model at set points; an agent lets the model choose the path.
 | routing | `workflows/routing.py` | Haiku classifies the question; a lookup goes to Haiku, an analysis to Opus, anything else is declined for free |
 | parallelization | `workflows/parallelization.py` | one call per report at once (sectioning), then three reviewers each able to veto the answer (voting) |
 | orchestrator-workers | `workflows/orchestrator_workers.py` | a model writes the plan, workers run each subtask on its own search, a model combines the findings |
+| orchestrator-workers, as a graph | `workflows/orchestrator_workers_graph.py` | the same, rebuilt in LangGraph to compare; needs `--group graph` |
 | evaluator-optimizer | `workflows/evaluator_optimizer.py` | Opus drafts, Sonnet grades against four criteria, redraft until it passes or three rounds are up |
 
 ```bash
@@ -344,7 +345,7 @@ caught before the graph goes stale.
 - `docs/knowledge-graph.md` map of every module, edge, and invariant in the repo
 - `docs/tool-runner.md`    the SDK tool runner, read from source against our own loop
 - `docs/context-management.md` what goes in the agent's context, what it costs, when to summarize
-- `docs/langgraph.md`      the LangGraph executor, read from source against our own loop
+- `docs/langgraph.md`      the LangGraph executor read from source, and orchestrator-workers rebuilt in it
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind
 - `scripts/`                the rule that hook and CI share
 - `.github/workflows/`      CI: the checks above, and the graph rule for anyone who skipped the hook

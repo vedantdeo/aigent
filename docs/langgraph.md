@@ -68,3 +68,50 @@ concurrency. The plain version admits all its workers as one batch before sendin
 each worker is its own task, admitted alone, while its siblings are in flight. The fix went into
 `pricing.Budget`, not the graph: each admitted call's worst case is held until it is billed, so
 admission counts calls in flight, and any framework's concurrency is safe under the same ceiling.
+
+## The rebuild, compared
+
+`workflows/orchestrator_workers_graph.py` rebuilds `workflows/orchestrator_workers.py` as a graph:
+`plan`, then `gather`, then one `work` per subtask, then `synthesise`. It uses the same prompts,
+the same plan schema and the same calls, all through `llm`. **The same eight tests pass against
+both builds**: `test_orchestrator_workers` is one table run against each, so the rebuild is held to
+behave exactly as the original.
+
+**Lines.** The orchestration is 24 lines plain and 67 as a graph: `State` 7, the worker's `Brief`
+4, `build` 48, `run` 8. The modules are 98 and 122 lines, and the graph's imports the prompts and
+schema from the plain one.
+
+**What the graph needed that the plain version did not:**
+
+- a reducer on `findings`, because parallel workers write it in one step; and a number on each
+  finding to restore plan order, because the reducer concatenates in completion order;
+- a separate `gather` node, so searches stay one at a time; the workers run in threads, and the
+  local search models are not shared across threads;
+- `input_schema=Brief` on the worker node, and its argument named `state`: pyright holds a node to
+  LangGraph's protocol by parameter name;
+- a list of destinations on the conditional edge after `plan`. Without it, the drawn diagram showed
+  the run ending at `plan`, with every node after it missing;
+- an explicit `recursion_limit` (`MAX_GRAPH_STEPS`, 10) in place of the 10,007 default.
+
+**Debugging**, measured with a worker made to fail and no model calls:
+
+| | plain | graph |
+|---|---|---|
+| a failing worker | `RuntimeError`, 13 frames, 7 of them ours | the same error, 19 frames, 7 of them ours |
+| calls billed before it surfaced | `plan`, `worker:1`, `worker:3` | the same |
+| calls, tokens and cost | `llm.describe` | the same trace, unchanged |
+| a picture of the flow | read `run` | `build(...).get_graph().draw_mermaid()`, once every conditional edge lists its destinations |
+| state between steps | local variables | `stream_mode="updates"` per node; with a checkpointer, a checkpoint per step, and a resume that reruns only the worker that failed |
+
+**One behaviour differs: admission.** The plain build admits all its workers as one batch, so if
+the batch cannot fit, none is sent. The graph admits each worker as its task starts. Holds keep the
+ceiling true, but a batch that does not fit is partly sent before the refusal. That changes how a
+run fails, not how much it can spend.
+
+**Verdict for this pattern:** the graph costs almost three times the orchestration lines, plus
+rules the plain version never needed: reducers, input schemas, destination lists, a step limit.
+The call trace, which is most of what debugging here needs, we already had. What it adds is real,
+but for other shapes: checkpointed resume, a drawable flow, streaming per node, and interrupts for
+human approval. Those pay off in a long-running agent with approvals and retries, which is
+Week 4's Project 2, and not in a three-step workflow.
+

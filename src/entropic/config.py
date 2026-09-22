@@ -87,6 +87,7 @@ THINKING_WORKFLOW_PARAM: ThinkingConfigParam = {"type": "disabled"}
 # The most subtasks an orchestrator may hand out, and drafts an evaluator may send back.
 MAX_PLAN_TASKS = 4
 MAX_REFINE_ROUNDS = 3
+MAX_GRAPH_STEPS = 10  # LangGraph's own default is 10,007 supersteps
 
 # How many failing rows an eval report prints before it truncates.
 MAX_FAILURES_SHOWN = 10
