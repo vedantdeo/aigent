@@ -712,4 +712,17 @@
   cheap next steps: the reviewers could share one system prompt so the 7.4k-token evidence
   becomes a cacheable prefix, and the evaluator needs a question hard enough to fail round one
   before it demonstrates anything.
-
+- 09-22: **the SDK tool runner, read from source** (`anthropic` 1.4.0, `docs/tool-runner.md`). It
+  keeps three of our four loop rules — the assistant turn echoed verbatim, every result in one
+  user message, a tool error returned as a result — and drops the fourth: `max_iterations`
+  defaults to no cap. Worse than missing is quiet: at the cap it simply stops, and `until_done()`
+  returns a `tool_use` turn whose tools never ran. Nothing counts or budgets a turn, and its
+  per-turn hook fires after the send. `llm.run_tools` drives it anyway, because the hook has one
+  opening: `generate_tool_call_response()` runs the turn's tools and caches them, so the next
+  request can be built, counted and admitted before the runner sends it. The cap is always
+  passed and exhausting it raises. `agent.py` is the first agent on it: search as a tool beside
+  the calculator, thinking on. Written and tested against the SDK's real `BetaToolRunner` over
+  the fake client, $0.00.
+- 09-22: agent dry run, free: `agent:1` on claude-opus-5 is 1,118 input tokens, up to $0.1080
+  with the full 4,096-token output cap. Later turns carry every earlier result and cannot be
+  counted in advance; each is admitted against the $1.00 run ceiling before it is sent.

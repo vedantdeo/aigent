@@ -3,8 +3,9 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `6553f81` plus the five workflow patterns landing in this commit (2026-09-22).
-746 tests pass (742 plus 4 that need the `compare` group), 1 live test deselected. The suite is fully green.**
+**Verified against commit `a9331b4` plus the SDK tool runner and the first agent landing in this commit
+(2026-09-22). 756 tests pass (752 plus 4 that need the `compare` group), 1 live test deselected. The
+suite is fully green.**
 
 > **The package is organised by capability, not by week.** `week01/` split into `primitives/`
 > (the five CLI modes) and `extraction/` (Project 1a, which is a
@@ -16,6 +17,12 @@ a future session that needs orientation before touching code.
 > each under 100 lines, each over the Project 1 corpus, every call through `llm`. Written and
 > tested for free against the fake client, then run live for about $0.55 (2026-09-22). Three of
 > five answers were honest declines on retrieval misses: search, not the models, is the bottleneck.
+
+> **The first agent runs on the SDK's tool runner** (`agent`, through `llm.run_tools`). The runner
+> keeps the echo, one-message and error-result rules, but by default it has no turn cap, no
+> pre-flight and no budget, and running out of turns looks like finishing. `run_tools` counts and
+> admits every turn before it is sent, and raises at the cap. Read against the source in
+> `docs/tool-runner.md`.
 
 > **Retrieval runs end to end**: chunk → embed → rank → grade → report. Written by hand against
 > tests that were written first, the same arrangement as the `underhood` repo (Track B).
@@ -80,6 +87,8 @@ graph TD
         PAT["chaining · routing · parallelization<br/>orchestrator_workers · evaluator_optimizer"]
     end
 
+    AG["agent<br/>the model picks the searches"]
+
     subgraph extraction["extraction/ — Project 1a"]
         HL["headlines<br/>schema · Resolver · Task"]
     end
@@ -115,6 +124,7 @@ graph TD
     STR --> CHK & EMB & CFG
     RANK --> STR
     PAT --> LLMD & RANK
+    AG --> LLMD & RANK & TOOLS
     EMB --> ST2["sentence-transformers<br/>(local, no network)"]
     REP --> RUN
     HL --> CFG & PRC
@@ -147,6 +157,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 | `config` | `src/entropic/config.py` | **Every tunable constant except the tool pair's**: credentials, model selection, spending ceilings, output caps, loop caps. The only module that constructs a client. Holds no arithmetic. |
 | `pricing` | `src/entropic/pricing.py` | Token prices, cost arithmetic, and the two budget guards that enforce `config`'s ceilings. The only module that knows a price. |
 | `llm` | `src/entropic/llm.py` | **The one module that talks to a model** (2026-09-21): every request is counted, admitted against a budget, sent, billed and traced. Every call shape the repo uses — plain, structured, streamed, tool-using, concurrent — has a method here. Every call in the package goes through it, and a test fails on any other module that calls `client.messages` itself (invariant 8). |
+| `errors` | `src/entropic/errors.py` | **Every error the package defines** (2026-09-22): `BudgetExceeded`, `DatasetError`, `StepFailed`, `TurnsExhausted`. Imports nothing, so any module can raise one without an import cycle. Reuse one before adding another (invariant 23). |
 | `tools` | `src/entropic/tools.py` | Framework-free tool implementations + their JSON schemas + a name→function dispatcher. Imports nothing from this package except `tools_config`. |
 | `tools_config` | `src/entropic/tools_config.py` | The constants `tools` needs, in a config module that travels with it. Imports nothing internal at all. |
 | `cli` | `src/entropic/cli.py` | The `entropic` command: a mode table, a lookup, an interactive menu. |
@@ -174,8 +185,9 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 | `retrieval.hits` | `src/entropic/retrieval/hits.py` | `Hit` and `rank_ids`: what every index, ranker, fusion and reranker returns. Its own module so none of them imports another to get the type. |
 | `retrieval.rank` | `src/entropic/retrieval/rank.py` | **The rankers.** `build_ranker(method, indexes)` turns any of the six method names into a `Ranker`, whose one method is `rank(query, k, doc_id=)`. `DenseRanker` and `SparseRanker` each wrap one index; `HybridRanker` holds the two and fuses them; `Reranked` wraps any of the three. The indexes are built once in `Indexes` and shared. The eval ranks through these and so does anything else (invariant 21). |
 | `workflows.reports` | `src/entropic/workflows/reports.py` | `DocId`, `REPORTS`, `CATALOGUE`, and the `Search` protocol the patterns take — so a pattern test hands in a fake search and never builds an index. |
-| `workflows.demo` | `src/entropic/workflows/demo.py` | The command line the five share: build the search once (~65s), dry run by default, `--yes` to spend, `--limit` for the ceiling. |
+| `workflows.demo` | `src/entropic/workflows/demo.py` | The command line the five and `agent` share: build the search once (~65s), dry run by default, `--yes` to spend, `--limit` for the ceiling. |
 | `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}` | `src/entropic/workflows/*.py` | The five patterns, one module each, each under 100 lines — a test holds them to it. See §2.9. |
+| `agent` | `src/entropic/agent.py` | **The first agent** (2026-09-22): the reports as a `search_reports` tool beside `tools.ALL_TOOLS`, looped on the SDK's tool runner through `llm.run_tools`. Shares `workflows.demo`'s command line and `Search`. See §2.10. |
 | `retrieval.answer` | `src/entropic/retrieval/answer.py` | **Project 1's generation half**: answer the question set from retrieved passages, closed-book against RAG. The first part of Week 2 that spends, and the reason the rest of `retrieval` staying free matters — the two numbers stay separable. |
 
 ### 2.2 Settings (`config`)
@@ -224,18 +236,19 @@ worst case would carry it past its ceiling, and the run never crosses it at all.
 
 | ID | Kind | Anchor | Contract |
 |----|------|--------|----------|
-| `pricing.Price` | frozen dataclass | `pricing.py:18` | USD per million tokens. `cache_write` = input × 1.25, `cache_read` = input × 0.10, as properties — not stored fields. |
-| `pricing.PRICES` | dict | `pricing.py:33` | `claude-opus-5` 5/25, `claude-sonnet-5` 2/10, `claude-haiku-4-5` 1/5, `claude-fable-5-1` 10/50. Both of `config`'s default models must appear here. |
-| `pricing.cost_usd` | function | `pricing.py:41` | Prices one request across four token classes. **An unknown model costs `0.0`, it does not raise** — a typo in `ENTROPIC_MODEL` silently reports free. That stays true for display, but **no call on an unpriced model is admitted**: `assert_request_within_budget` refuses it. |
-| `pricing.usage_cost` | function | `pricing.py:61` | `cost_usd` applied to an SDK `Usage`; `None` cache fields coerce to 0. |
-| `pricing.describe_usage` | function | `pricing.py:71` | One paste-into-`LOG.md` line. The house format for reporting a call. |
-| `pricing.BudgetExceeded` | exception | `pricing.py:81` | `RuntimeError`. Message always names the amount and the env var to turn. |
-| `pricing.worst_case_usd` | function | `pricing.py:85` | Input at input price + **the full `max_tokens`** at output price. Thinking counts against `max_tokens`, so this really is a ceiling. |
-| `pricing.estimate_eval_usd` | function | `pricing.py:91` | Worst case for a whole run: cases × calls-per-case × `worst_case_usd`. The per-request check cannot see this coming — no single row of an eval is expensive. Takes `cached_tokens`: a prefix behind a breakpoint is written once at a 25% premium and read thereafter at a tenth of input price, so a cached run is priced as one write plus n-1 reads. Without that the estimator would refuse a cached run for costing what the uncached one costs — blocking the experiment on the arithmetic it exists to check. Note the sign flips at n=1: caching a single row costs *more* than not caching it, because you pay the write premium and never read it back, which makes `--sample 1` the one place the wiring cannot be smoke-tested. |
-| `pricing.assert_request_within_budget` | function | `pricing.py:113` | Pure, no network. Returns worst case or raises. `llm` calls it on every request after the free count. **Refuses a model with no price** (2026-09-21): a real model missing from `PRICES` counts without error, costs $0.00 by the arithmetic, and so would be admitted by every ceiling and billed as free — `claude-opus-4-8` did exactly that when probed. |
-| `pricing.Budget` | mutable dataclass | `pricing.py:137` | Per-run accumulator, billed two ways. `charge()` returns the increment and **records** the overrun in `tripped`; `add()` is `charge()` plus a raise, which is what an interactive run wants. Both bill before they trip, so `spent_usd` always includes the crossing call. `scope` (`"run"` \| `"eval"`) only shapes the message, but it is what makes it name the right env var. |
-| `pricing.Budget.admit` | method | `pricing.py:168` | Refuses, **before anything is sent**, spending whose worst case — input plus the full `max_tokens` — would carry the budget past its ceiling. Bills nothing and records nothing; `charge` still bills the actual cost when a call returns. Deliberately does not set `tripped`: a refused chat turn can be retried after `/reset` shrinks the history, and a sticky flag would end that session on its next successful turn. **The cost of the guarantee is stopping early**: the worst case assumes the whole output cap, so a $1.00 tool-loop run refuses its next call at about $0.90 spent, since a 4,096-token cap is ~$0.10 of Opus output, even when the call would cost a cent. |
-| `pricing.Budget.tripped` | field | `pricing.py:147` | The overrun message, or `None`. An **attribute** rather than a flag in a caller's closure: a type checker cannot see a nested function reassign a captured name, so it narrows such a flag to `None` and marks the stop branch unreachable — and unreachable code is never type-checked, which is the real cost. |
+| `pricing.Price` | frozen dataclass | `pricing.py:24` | USD per million tokens. `cache_write` = input × 1.25, `cache_read` = input × 0.10, as properties — not stored fields. |
+| `pricing.PRICES` | dict | `pricing.py:39` | `claude-opus-5` 5/25, `claude-sonnet-5` 2/10, `claude-haiku-4-5` 1/5, `claude-fable-5-1` 10/50. Both of `config`'s default models must appear here. |
+| `pricing.cost_usd` | function | `pricing.py:47` | Prices one request across four token classes. **An unknown model costs `0.0`, it does not raise** — a typo in `ENTROPIC_MODEL` silently reports free. That stays true for display, but **no call on an unpriced model is admitted**: `assert_request_within_budget` refuses it. |
+| `pricing.LlmUsage` | type alias | `pricing.py:20` | `Usage \| BetaUsage`. The tool runner answers on the beta endpoint, and both types carry the same four token counts, so every function that reads usage takes either and `llm` converts nothing. |
+| `pricing.usage_cost` | function | `pricing.py:67` | `cost_usd` applied to an `LlmUsage`; `None` cache fields coerce to 0. |
+| `pricing.describe_usage` | function | `pricing.py:77` | One paste-into-`LOG.md` line. The house format for reporting a call. |
+| `errors.BudgetExceeded` | exception | `errors.py:4` | `RuntimeError`. Message always names the amount and the env var to turn. |
+| `pricing.worst_case_usd` | function | `pricing.py:87` | Input at input price + **the full `max_tokens`** at output price. Thinking counts against `max_tokens`, so this really is a ceiling. |
+| `pricing.estimate_eval_usd` | function | `pricing.py:93` | Worst case for a whole run: cases × calls-per-case × `worst_case_usd`. The per-request check cannot see this coming — no single row of an eval is expensive. Takes `cached_tokens`: a prefix behind a breakpoint is written once at a 25% premium and read thereafter at a tenth of input price, so a cached run is priced as one write plus n-1 reads. Without that the estimator would refuse a cached run for costing what the uncached one costs — blocking the experiment on the arithmetic it exists to check. Note the sign flips at n=1: caching a single row costs *more* than not caching it, because you pay the write premium and never read it back, which makes `--sample 1` the one place the wiring cannot be smoke-tested. |
+| `pricing.assert_request_within_budget` | function | `pricing.py:115` | Pure, no network. Returns worst case or raises. `llm` calls it on every request after the free count. **Refuses a model with no price** (2026-09-21): a real model missing from `PRICES` counts without error, costs $0.00 by the arithmetic, and so would be admitted by every ceiling and billed as free — `claude-opus-4-8` did exactly that when probed. |
+| `pricing.Budget` | mutable dataclass | `pricing.py:139` | Per-run accumulator, billed two ways. `charge()` returns the increment and **records** the overrun in `tripped`; `add()` is `charge()` plus a raise, which is what an interactive run wants. Both bill before they trip, so `spent_usd` always includes the crossing call. `scope` (`"run"` \| `"eval"`) only shapes the message, but it is what makes it name the right env var. |
+| `pricing.Budget.admit` | method | `pricing.py:170` | Refuses, **before anything is sent**, spending whose worst case — input plus the full `max_tokens` — would carry the budget past its ceiling. Bills nothing and records nothing; `charge` still bills the actual cost when a call returns. Deliberately does not set `tripped`: a refused chat turn can be retried after `/reset` shrinks the history, and a sticky flag would end that session on its next successful turn. **The cost of the guarantee is stopping early**: the worst case assumes the whole output cap, so a $1.00 tool-loop run refuses its next call at about $0.90 spent, since a 4,096-token cap is ~$0.10 of Opus output, even when the call would cost a cent. |
+| `pricing.Budget.tripped` | field | `pricing.py:149` | The overrun message, or `None`. An **attribute** rather than a flag in a caller's closure: a type checker cannot see a nested function reassign a captured name, so it narrows such a flag to `None` and marks the stop branch unreachable — and unreachable code is never type-checked, which is the real cost. |
 
 ### 2.4 The model door (`llm`)
 
@@ -247,18 +260,22 @@ so a refused or truncated call still shows in the trace and the total.
 
 | ID | Kind | Anchor | Contract |
 |----|------|--------|----------|
-| `llm.Request` | frozen dataclass | `llm.py:37` | One call exactly as it will be sent: `messages`, `max_tokens`, and optionally `system` (a string or cacheable blocks), `model`, `tools`, `thinking`, `output_config`. Unset fields are `omit` and never reach the wire, so the model's own default applies. `step` names the call in the trace and is never sent. `Request.ask` builds the common single-turn shape. |
-| `llm.Llm` | class | `llm.py:89` | One client (built on first use), one `Budget`, one trace. The budget defaults to one run's ceiling; pass one to scope it (`scope="eval"`) or to share it. |
-| `llm.Llm.for_eval` | classmethod | `llm.py:110` | An `Llm` for an eval's task or grader: every call counted and checked against the per-request ceiling, but no run ceiling of its own, because the runner admits and bills the whole run (invariant 12). Without it each task's `Llm` would carry its own $1.00 run ceiling and start refusing partway through a run the runner had already admitted. |
-| `llm.Llm.count` | method | `llm.py:125` | The free count of what a request would send, schema included. Bills nothing and traces nothing, which is what dry runs use. |
-| `llm.Llm.create` / `text` | methods | `llm.py:138,143` | `create` returns the whole `Message` and judges nothing — a tool loop reads `stop_reason` and the `tool_use` blocks itself, and a turn that stops to use a tool is not a failure. `text` returns the text and raises `StepFailed` on a refusal or a truncation. |
-| `llm.Llm.parse` / `record` | methods | `llm.py:148,156` | `parse` returns the whole `ParsedMessage`, whose `parsed_output` is `None` when the output did not validate — an eval task wants that, to record the miss as a row. **That includes a reply the SDK could not read**: it validates structured output as it reads, so a record cut off at `max_tokens` raises before its usage is returned, and the first live workflow run lost a paid call that way. `_parse` now catches it and bills the call at its worst case, which is exact for a cut-off reply — all of `max_tokens` out, the counted input in. `record` returns the record or raises `StepFailed` — a workflow step cannot go on without it. |
-| `llm.Llm.stream` | context manager | `llm.py:162` | Admitted before the stream opens, billed from the final message after it closes; nothing is billed while text is still arriving. |
-| `llm.Llm.gather_text` / `gather_records` | methods | `llm.py:178,183` | The only concurrency: every request of a batch at once, results in request order. **The whole batch is admitted before any of it is sent** — calls in flight cannot be recalled, so admitting call by call lets a batch that cannot finish start anyway. Two methods rather than one with an optional schema, so a batch of records cannot be priced without the schema it sends. Local models never run inside one. |
-| `llm.Llm._admit` | method | `llm.py:190` | The shared front half: count each request, check it against the per-request ceiling, sum the worst cases, `Budget.admit` the sum. On a rehearsal, raises `Rehearsed` at the first request instead. |
-| `llm.Rehearsed` | exception | `llm.py:79` | A dry run: raised in place of the first call with its real token count and worst case, so a caller gets a dry run without code of its own. Counts only the first call, since later inputs depend on earlier outputs — which is why a dry run quotes the ceiling beside it. |
-| `llm.StepFailed` | exception | `llm.py:75` | A call that came back refused, truncated or unparseable. Always about a call that happened and was billed. |
-| `llm.describe` | function | `llm.py:256` | The trace as a table: step, model, tokens and dollars per call, then the total. |
+| `llm.Request` | frozen dataclass | `llm.py:48` | One call exactly as it will be sent: `messages`, `max_tokens`, and optionally `system` (a string or cacheable blocks), `model`, `tools`, `thinking`, `output_config`. Unset fields are `omit` and never reach the wire, so the model's own default applies. `step` names the call in the trace and is never sent. `Request.ask` builds the common single-turn shape. |
+| `llm.Llm` | class | `llm.py:100` | One client (built on first use), one `Budget`, one trace. The budget defaults to one run's ceiling; pass one to scope it (`scope="eval"`) or to share it. |
+| `llm.Llm.for_eval` | classmethod | `llm.py:121` | An `Llm` for an eval's task or grader: every call counted and checked against the per-request ceiling, but no run ceiling of its own, because the runner admits and bills the whole run (invariant 12). Without it each task's `Llm` would carry its own $1.00 run ceiling and start refusing partway through a run the runner had already admitted. |
+| `llm.Llm.count` | method | `llm.py:136` | The free count of what a request would send, schema included. Bills nothing and traces nothing, which is what dry runs use. |
+| `llm.Llm.create` / `text` | methods | `llm.py:149,154` | `create` returns the whole `Message` and judges nothing — a tool loop reads `stop_reason` and the `tool_use` blocks itself, and a turn that stops to use a tool is not a failure. `text` returns the text and raises `StepFailed` on a refusal or a truncation. |
+| `llm.Llm.parse` / `record` | methods | `llm.py:159,167` | `parse` returns the whole `ParsedMessage`, whose `parsed_output` is `None` when the output did not validate — an eval task wants that, to record the miss as a row. **That includes a reply the SDK could not read**: it validates structured output as it reads, so a record cut off at `max_tokens` raises before its usage is returned, and the first live workflow run lost a paid call that way. `_parse` now catches it and bills the call at its worst case, which is exact for a cut-off reply — all of `max_tokens` out, the counted input in. `record` returns the record or raises `StepFailed` — a workflow step cannot go on without it. |
+| `llm.Llm.stream` | context manager | `llm.py:173` | Admitted before the stream opens, billed from the final message after it closes; nothing is billed while text is still arriving. |
+| `llm.Llm.gather_text` / `gather_records` | methods | `llm.py:189,194` | The only concurrency: every request of a batch at once, results in request order. **The whole batch is admitted before any of it is sent** — calls in flight cannot be recalled, so admitting call by call lets a batch that cannot finish start anyway. Two methods rather than one with an optional schema, so a batch of records cannot be priced without the schema it sends. Local models never run inside one. |
+| `llm.Llm._admit` | method | `llm.py:239` | The shared front half: count each request, check it against the per-request ceiling, sum the worst cases, `Budget.admit` the sum. On a rehearsal, raises `Rehearsed` at the first request instead. |
+| `llm.Rehearsed` | exception | `llm.py:90` | A dry run: raised in place of the first call with its real token count and worst case, so a caller gets a dry run without code of its own. Counts only the first call, since later inputs depend on earlier outputs — which is why a dry run quotes the ceiling beside it. |
+| `errors.StepFailed` | exception | `errors.py:12` | A call that came back refused, truncated or unparseable. Always about a call that happened and was billed. |
+| `llm.describe` | function | `llm.py:345` | The trace as a table: step, model, tokens and dollars per call, then the total. |
+| `llm.Llm.run_tools` | method | `llm.py:201` | **An agent loop on the SDK's `beta.messages.tool_runner`, with every turn admitted before it is sent** (2026-09-22). The first request is counted and admitted before the runner exists. Each yielded turn is billed as `step:N`. Inside the yield, `generate_tool_call_response()` runs that turn's tools — the runner caches the result and does not run them again — and the next request, history plus results, is counted and admitted, so a turn the budget cannot afford is never sent. Returns the first turn that does not stop for a tool. `max_turns` is always passed (default `MAX_AGENT_TURNS`); running out raises `errors.TurnsExhausted`, where the runner alone would end silently. Refuses a request with no tools. **A turn's tools run before the next turn is admitted**, since their results are what it sends; every tool here is free, so nothing is spent early. `docs/tool-runner.md` is the source read behind it. |
+| `errors.TurnsExhausted` | exception | `errors.py:16` | `RuntimeError`: still asking for tools at the cap. The runner's own `until_done()` returns the last message instead, which can be a `tool_use` turn whose tools never ran — an agent that stopped mid-task looking finished. |
+| `llm.Dispatch` | type alias | `llm.py:87` | `(name, arguments) -> (content, is_error)`, the shape `tools.execute_tool` already has, so it passes straight in. A caller with a tool of its own wraps it, as `agent.run` does for `search_reports`. |
+| `llm._runnable` | function | `llm.py:326` | One `ToolParam` plus the dispatcher as the runner's `BetaFunctionTool`, keeping the hand-written schema, description and `strict` rather than deriving them from a docstring. An `is_error` result is raised as `ToolError`, which the runner returns as `is_error: true` with the content intact (invariant 5). It takes `**arguments: object`, so the runner's argument validation — which drops the reason — accepts anything, and `execute_tool` names a bad argument itself. |
 
 ### 2.5 Tools (`tools`)
 
@@ -294,10 +311,10 @@ so a refused or truncated call still shows in the trace and the total.
 | `primitives.streaming.main` | `streaming.py:21` | `content_block_start` / `content_block_delta` events; thinking and text as separate blocks; `get_final_message()` still carries usage, and `Llm.stream` bills from it once the stream closes. | `Llm.stream`, `thinking={"type": "adaptive", "display": "summarized"}`, `max_tokens=4096`. |
 | `primitives.structured_output.PaperSummary` | `structured_output.py:29` | Field descriptions are visible to the model — written as prompts; `confidence` bounded `ge=0, le=1`. | — |
 | `primitives.structured_output.main` | `structured_output.py:45` | `Llm.parse(request, PaperSummary)` → `parsed_output`, which is `None` when parsing fails; the whole message comes back so the demo can print why. | `max_tokens=2048`. |
-| `primitives.tool_loop.run` | `tool_loop.py:29` | The whole agent, one `Llm.create` per turn with the history, the system prompt and `ALL_TOOLS`. `client` is injectable, which is what makes the loop testable for free, and so is `limit_usd`. Every turn is admitted against the run budget before it is sent; a billed overrun — possible only when an estimate runs low — still raises `BudgetExceeded`, because a batch run should die loudly. | `max_tokens=4096`, `MAX_TURNS=8`. |
-| `primitives.tool_loop.main` | `tool_loop.py:77` | Task from argv; empty task → usage `SystemExit`. | — |
-| `primitives.chat.main` | `chat.py:27` | Growing history (you pay for all of it every turn), `/effort`, `/reset`, `/quit`, per-turn and session cost read off the `Llm`'s trace. Each turn is one `Llm.stream`; a turn the session budget cannot admit is **not sent** — dropped with the history kept, so `/reset` can shrink the next attempt back under the ceiling. A billed overrun ends the session. | `Llm.stream`, `output_config={"effort": …}`. |
-| `primitives.chat.Effort` | `chat.py:18` | `Literal["low","medium","high","xhigh"]`; `EFFORTS` derived via `get_args`, so the command validates against the type. |
+| `primitives.tool_loop.run` | `tool_loop.py:30` | The whole agent, one `Llm.create` per turn with the history, the system prompt and `ALL_TOOLS`. `client` is injectable, which is what makes the loop testable for free, and so is `limit_usd`. Every turn is admitted against the run budget before it is sent; a billed overrun — possible only when an estimate runs low — still raises `BudgetExceeded`, because a batch run should die loudly. | `max_tokens=4096`, `MAX_TURNS=8`. |
+| `primitives.tool_loop.main` | `tool_loop.py:78` | Task from argv; empty task → usage `SystemExit`. | — |
+| `primitives.chat.main` | `chat.py:28` | Growing history (you pay for all of it every turn), `/effort`, `/reset`, `/quit`, per-turn and session cost read off the `Llm`'s trace. Each turn is one `Llm.stream`; a turn the session budget cannot admit is **not sent** — dropped with the history kept, so `/reset` can shrink the next attempt back under the ceiling. A billed overrun ends the session. | `Llm.stream`, `output_config={"effort": …}`. |
+| `primitives.chat.Effort` | `chat.py:19` | `Literal["low","medium","high","xhigh"]`; `EFFORTS` derived via `get_args`, so the command validates against the type. |
 | `extraction.headlines.Extraction` | `headlines.py:46` | What the **model** returns: `company` — the mention **copied verbatim** from the headline, not canonicalised — plus `metric`, `quarter`, `direction`, `change_pct`. What gets **graded** is `FIELDS` (`headlines.py:40`): `ticker` and the last four, because the task resolves the ticker in code before handing back the outcome. The labelling conventions live in the **field descriptions**, which the model sees, and a convention stated only in the few-shot examples would punish `zero_shot` for failing to guess it — a test asserts each one appears in both arms. They are: copy the mention; the Indian fiscal calendar, where a bare month is a month and not a quarter; a level or a basis-point move leaves `change_pct` null, but a growth **rate** is itself a change, and its direction is the sign of the growth rather than whether the rate rose or fell; a share price move is the market's number and never the metric. The descriptions are **prompt, not documentation**, so they are written short: 1,773 characters for five fields, against 2,530 when every rule was first written out longhand. Rationale that a reader would want and the model would not belongs here in the graph. `company` is **nullable** — a headline naming a sector or an index has no company to extract, and `null` is an answer rather than a miss; `extraction_task` skips the lookup entirely for it, so nothing lands in `unresolved`. |
 | `extraction.headlines.METRICS` | `headlines.py:43` | A **total order** over the metric vocabulary, most preferred first. A headline routinely names two ("narrows Q1 loss; revenue up 63%"); without a tie-break the label is a coin flip the model has no way to call, and the miss reads as a model failure when it is a spec failure. The rule, stated in the `metric` description: the earliest-ranked metric **among those whose percentage change the headline states**, else the earliest among those the headline mentions at all, else — for two that still tie — the one mentioned first. The last two members close the vocabulary: `other` is a company metric the six named ones do not cover (a narrower or domain-specific line — GMV, provisions, volumes, new business premium), and `none` is a headline that reports no metric at all. Both rank last, so they can never outrank a named metric. One clarification is load-bearing — a forward-looking statement about a metric is `guidance`, not that metric, or the mechanical rule reads "cuts revenue guidance" as cueing `revenue` and flips `hl-003` and `hl-023` to a label no reader would write. **Placeholder**: the order is asserted, not researched. |
 | `extraction.headlines.Resolver` | `headlines.py:116` | Company mention → NSE ticker, through the directory. Indexes the ticker, the registered name and every alias under `_key` (`headlines.py:109` — casefold, strip punctuation and a `Ltd`/`Limited` suffix), then looks up **exactly**: never fuzzily, because a lookup that matches approximately is wrong in the same quiet way a guess is. A miss returns `None` and is counted in `unresolved`. **The one silent failure:** a company whose name contains another company's — `Tech Mahindra` holds `Mahindra`, which is `M&M`; `SBI Cards` holds `SBI`, which is `SBIN`; `Kotak Mahindra Bank` holds `Mahindra` too — where a truncated mention resolves to a real but wrong company and the resolver reports success. Those rows carry the `name-contains-name` tag, and a test derives the set rather than trusting it, so the tag stays accurate as the directory grows. `dict.get` is free and cannot hallucinate `HEROMOTOCORP` for `HEROMOTOCO`, and 22 of the 48 rows that name a company spell it as something other than its symbol — so 46% of that field's difficulty leaves the model's job entirely. A parametrized test proves the composed property over every such row: copy the spelling the headline writes, resolve it, land on the label. `ticker` is therefore right **by construction** whenever `company` is, and the eval measures identification rather than symbol recall. |
@@ -394,24 +411,39 @@ the demo prints — nothing about a pattern needs a class. Every call is an `llm
 |----|------|--------|----------|
 | `workflows.reports.DocId` | Literal | `reports.py:12` | The three doc ids as a type, so a schema field of it holds the model to a real report. Hand-written; `tests.workflows.test_patterns` holds it to the manifest. |
 | `workflows.reports.Search` | Protocol | `reports.py:21` | `(query, /, *, doc_id=None) -> list[Chunk]`. `demo.build_search` makes the real one from a ranker; tests hand in `FakeSearch`. |
-| `workflows.demo.build_search` | function | `demo.py:20` | Chunk the corpus by sentence, build `Indexes`, and rank by `SEARCH_METHOD`, returning passages rather than hits. |
-| `workflows.demo.run_demo` | function | `demo.py:31` | Build the search once, then each question through `run`. **Dry run by default**: an `Llm` with `rehearse=True` prints the first call's count and worst case beside the ceiling, then stops. `--yes` spends, `--limit` sets the workflow ceiling, `--cache` reuses PDF text. On `BudgetExceeded` or `StepFailed` it prints the trace so far before exiting. |
+| `workflows.demo.build_search` | function | `demo.py:21` | Chunk the corpus by sentence, build `Indexes`, and rank by `SEARCH_METHOD`, returning passages rather than hits. |
+| `workflows.demo.run_demo` | function | `demo.py:32` | Build the search once, then each question through `run`. **Dry run by default**: an `Llm` with `rehearse=True` prints the first call's count and worst case beside the ceiling, then stops. `--yes` spends, `--limit` sets the workflow ceiling, `--cache` reuses PDF text. On `BudgetExceeded` or `StepFailed` it prints the trace so far before exiting. `limit_usd` and `scope` (defaults `MAX_USD_PER_WORKFLOW`, `"workflow"`) let `agent` reuse it with a run budget. |
 | `workflows.chaining` | module | `chaining.py:67` | extract (`Llm.record` → `Facts`) → **gate** (code) → write (`Llm.text`). The gate keeps a fact only if its quote, squeezed, is in the passage it cites and runs to at least `_MIN_QUOTE_WORDS` (3) words. **Nothing survives, nothing is written**: the second call is never paid for. Invariant 13 in a new place — the model reads, code checks. |
 | `workflows.routing` | module | `routing.py:66` | route (`Llm.record` → `Route`, on `SMALL_MODEL`) → handler. `lookup` goes to `SMALL_MODEL`, `analysis` to `MODEL`, `out_of_scope` is declined in code with no second call. The route's `report` scopes the search. |
 | `workflows.parallelization` | module | `parallelization.py:52` | Both forms in one run. **Sectioning**: one call per report through `Llm.gather_text`, each on its own scoped passages, joined in code. **Voting**: three reviewers (`figures`, `attribution`, `grounding`) through `Llm.gather_records`, each checking one thing about the joined answer, and **each a veto**. Each batch is admitted whole before any call is sent. |
 | `workflows.orchestrator_workers` | module | `orchestrator_workers.py:58` | plan (`Llm.record` → `Plan`) → workers (`Llm.gather_text`, each on its own search) → synthesise. What separates it from sectioning is who decides the split: here it is data the model wrote. Code caps it at `MAX_PLAN_TASKS` by slicing, and an empty plan ends the run with no further calls. Search runs on the calling thread, since the local models are not shared across threads. **The one to rebuild as a LangGraph graph.** |
 | `workflows.evaluator_optimizer` | module | `evaluator_optimizer.py:49` | draft (`MODEL`) → evaluate (`Llm.record` → `Critique`, on **`JUDGE_MODEL`**) → redraft with the last draft and its problems, until a pass or `MAX_REFINE_ROUNDS`. The evaluator is a different model from the drafter for the reason the eval's judge is. |
 
-### 2.10 The eval harness (`evals`)
+### 2.10 The first agent (`agent`)
+
+The contrast to §2.9: the model chooses which searches to run and when it has enough. One function,
+`run(llm, search, question)`, on `llm.run_tools`. It uses `workflows.demo`'s command line and the
+same `Search`, but with a run budget (`MAX_USD_PER_RUN`) rather than a workflow one. **Thinking
+stays on** (`adaptive`): with it off, Opus 5 can write a tool call as plain text, which ends the loop
+looking like an answer.
+
+| ID | Kind | Anchor | Contract |
+|----|------|--------|----------|
+| `agent.QUESTIONS` | tuple | `agent.py:24` | Two: a judgement across all three reports (rural demand), and one figure (Reliance's FY25 dividend per share) that wants a scoped search. |
+| `agent.SEARCH_TOOL` | `ToolParam` | `agent.py:36` | `search_reports(query, report)`, strict, both required, `report` an enum of the three doc ids plus `all`. The description says different words find different passages, since retrieval misses were what the workflows' live run found. |
+| `agent.TOOLS` | list | `agent.py:57` | `SEARCH_TOOL` plus `tools.ALL_TOOLS`, so the calculator is there for per-share arithmetic. |
+| `agent.run` | function | `agent.py:67` | Dispatches `search_reports` to the `Search` (`all` searches unscoped) and returns `chunk.context_block`, or a one-line no-match message; any other tool goes to `tools.execute_tool`. Returns `Answered(answer, searches, turns)`, where `turns` is how many calls the trace grew by. |
+
+### 2.11 The eval harness (`evals`)
 
 Built Week 1. The shape is the point: the harness never assumes the thing under test is a model
 call, which is what lets Week 2 hand it a retrieval function that spends nothing.
 
 | ID | Kind | Anchor | Contract |
 |----|------|--------|----------|
-| `evals.dataset.Case` | Pydantic model | `dataset.py:22` | `id`, `input`, `expected`, `tags`. **`extra="forbid"`** — a mistyped `expcted` is refused rather than silently labelling nothing. `input`/`expected` are objects, not strings, so the same row shape carries a per-field label now and a list of chunk ids in Week 2. |
-| `evals.dataset.load_jsonl` | function | `dataset.py:36` | Validates the whole file before the run. Raises `DatasetError` naming the line for bad JSON, a bad row, or a duplicate id. Blank and `//` lines are skipped. An empty dataset is an error. |
-| `evals.dataset.digest` | function | `dataset.py:76` | 12 hex chars of SHA-256, recorded in every report. Without it you cannot tell whether a score moved because the prompt changed or the labels did. |
+| `evals.dataset.Case` | Pydantic model | `dataset.py:20` | `id`, `input`, `expected`, `tags`. **`extra="forbid"`** — a mistyped `expcted` is refused rather than silently labelling nothing. `input`/`expected` are objects, not strings, so the same row shape carries a per-field label now and a list of chunk ids in Week 2. |
+| `evals.dataset.load_jsonl` | function | `dataset.py:34` | Validates the whole file before the run. Raises `DatasetError` naming the line for bad JSON, a bad row, or a duplicate id. Blank and `//` lines are skipped. An empty dataset is an error. |
+| `evals.dataset.digest` | function | `dataset.py:74` | 12 hex chars of SHA-256, recorded in every report. Without it you cannot tell whether a score moved because the prompt changed or the labels did. |
 | `evals.grade.Outcome` | frozen dataclass | `grade.py:20` | What a task produced: `output`, plus optional `usage`/`model`/`raw`/`error`. `usage=None` means the task never called the API — the runner bills what is there and nothing more. |
 | `evals.grade.Score` | frozen dataclass | `grade.py:34` | A verdict: `passed`, `detail`, `parts` (field-level detail), **`value`** (a number, for a grader whose verdict is one), and `usage`/`model` for a grader that spent. `value` exists because a reciprocal rank of 0.5 is not a failure, and averaging booleans instead would throw away the difference between rank 2 and rank 40. `passed` stays the strict reading of the same measurement. |
 | `evals.grade.Grader` | type alias | `grade.py:50` | `Callable[[Case, Outcome], Score]`. Every grader is a factory returning one of these, so the runner treats all eleven identically. |
@@ -436,7 +468,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `evals.report._grading_models` | function | `report.py:70` | The models a grader actually spent on, read back from `Score.model` rather than from config — so the header records what the run did, not what was configured. |
 | `evals.report.write_report` | function | `report.py:186` | `evals/reports/<dataset>-<date>.md`, created on demand. |
 
-### 2.11 Tests
+### 2.12 Tests
 
 | ID | Path | Covers | Cost |
 |----|------|--------|------|
@@ -446,16 +478,17 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `tests.primitives.test_tool_loop` | `tests/primitives/test_tool_loop.py` | The loop's rules, via `_FakeClient`, and one about money: a run too small to afford a single turn's worst case **sends nothing**. | free |
 | `tests.primitives.test_tool_loop._FakeClient` | `tests/primitives/test_tool_loop.py:69` | Scripts `Message` responses and records every `messages` payload sent. **The pattern to copy for any future loop test.** | free |
 | `tests.primitives.test_tool_loop.test_demo_task_live` | `tests/primitives/test_tool_loop.py:133` | The real demo task end to end; asserts the compound-interest answer. | ~$0.02, `-m live` |
-| `tests.test_llm` | `tests/test_llm.py` | Every call shape, and the failure catalogue that `primitives.failures` used to be, 25 tests. One more since the first live run: a structured reply the SDK cannot read comes back as nothing parsed and billed at its worst case, rather than raising past the bill. The load-bearing one: a batch whose whole does not fit under the ceiling **sends nothing**, though two of its three calls would. Then: counted, sent, billed and traced in that order; the request reaching the wire as written; counting billing nothing; `text` refusing a refused or truncated reply but billing it; `create` passing a tool-use turn through unjudged; `parse` and `record` reading the same failed parse two ways; a batch answering in request order however it finishes; a batch of records priced with its schema; a stream billed only once it closes; a rehearsal sending nothing. Checked by mutation: admitting a batch call by call, and not billing a stream, each failed its test. **The catalogue, as tests** (2026-09-21): a three-row table of what only the API can reject — a missing model, a wrong key, an empty request — each raised by the *free* count, so nothing billable is sent; a four-row table of what our own guards refuse — an unpriced model, an output cap and an input no single call may carry, a run with too little left — each never sent; a `Request` that has no field for what the API rejects (`temperature`, `top_p`, unknown fields); and **a scan of the package's source that fails unless `llm.py` is the only file calling `client.messages`**. The three API statuses are what the counting endpoint returned when probed. | free |
-| `tests.conftest.FakeAnthropic` / `make_llm` | `tests/conftest.py` | A client whose reply is a function of **what was sent** — model, system, messages, schema — rather than of arrival order, so a concurrent batch gets the answers meant for it. Fakes `create`, `parse`, `stream` and `count_tokens`, and a reply may be a whole `Message` to script tool use. `input_tokens` and `count_error` decide what the free count says, which is how the catalogue tests provoke a rejection or an oversized request. `make_llm` wraps it in an `Llm` with a budget of its own. | free |
-| `tests.workflows.test_<pattern>` | `tests/workflows/` | One file per pattern, against `make_llm` and `workflows/conftest.FakeSearch` (one passage per report). Each asserts the property that defines its pattern: the gate as a six-row table and an empty gate costing no second call; a route per row with its model and its scope; sections landing under their own report and each reviewer a veto; the plan deciding the worker count and code capping it; the loop ending at a pass or the cap, with the evaluator never the drafter. Checked by mutation on the rebuilt code (2026-09-22): skipping the gate, swapping the routing models and not capping the plan each failed the test written for it. | free |
+| `tests.test_llm` | `tests/test_llm.py` | Every call shape, and the failure catalogue that `primitives.failures` used to be, 30 tests. One more since the first live run: a structured reply the SDK cannot read comes back as nothing parsed and billed at its worst case, rather than raising past the bill. The load-bearing one: a batch whose whole does not fit under the ceiling **sends nothing**, though two of its three calls would. Then: counted, sent, billed and traced in that order; the request reaching the wire as written; counting billing nothing; `text` refusing a refused or truncated reply but billing it; `create` passing a tool-use turn through unjudged; `parse` and `record` reading the same failed parse two ways; a batch answering in request order however it finishes; a batch of records priced with its schema; a stream billed only once it closes; a rehearsal sending nothing. Checked by mutation: admitting a batch call by call, and not billing a stream, each failed its test. **The catalogue, as tests** (2026-09-21): a three-row table of what only the API can reject — a missing model, a wrong key, an empty request — each raised by the *free* count, so nothing billable is sent; a four-row table of what our own guards refuse — an unpriced model, an output cap and an input no single call may carry, a run with too little left — each never sent; a `Request` that has no field for what the API rejects (`temperature`, `top_p`, unknown fields); and **a scan of the package's source that fails unless `llm.py` is the only file calling `.messages.{create, parse, stream, count_tokens, tool_runner}`**. **`run_tools`, five more** (2026-09-22): two tool calls whose results go back in one user message; a failed tool returned as `is_error` with its content; a turn the budget cannot afford never sent; a model still asking for tools at the cap raising `TurnsExhausted`; a request with no tools refused. Checked by mutation: dropping the next-turn admission failed two tests, dropping the cap's raise failed one. The three API statuses are what the counting endpoint returned when probed. | free |
+| `tests.conftest.FakeAnthropic` / `make_llm` | `tests/conftest.py` | A client whose reply is a function of **what was sent** — model, system, messages, schema — rather than of arrival order, so a concurrent batch gets the answers meant for it. Fakes `create`, `parse`, `stream` and `count_tokens`, and a reply may be a whole `Message` to script tool use, or an exception to raise. **`beta.messages.tool_runner` returns the SDK's real `BetaToolRunner`** over the fake, so `run_tools` is tested against the runner's own loop rather than a copy of it; `tool_turn`, `turns` and `tool_results` script and read a tool conversation. Also home to `FakeSearch` and its `search` fixture (one passage per report), moved up from `tests/workflows/conftest.py` when the agent needed it too. `input_tokens` and `count_error` decide what the free count says, which is how the catalogue tests provoke a rejection or an oversized request. `make_llm` wraps it in an `Llm` with a budget of its own. | free |
+| `tests.workflows.test_<pattern>` | `tests/workflows/` | One file per pattern, against `make_llm` and `conftest.FakeSearch` (one passage per report). Each asserts the property that defines its pattern: the gate as a six-row table and an empty gate costing no second call; a route per row with its model and its scope; sections landing under their own report and each reviewer a veto; the plan deciding the worker count and code capping it; the loop ending at a pass or the cap, with the evaluator never the drafter. Checked by mutation on the rebuilt code (2026-09-22): skipping the gate, swapping the routing models and not capping the plan each failed the test written for it. | free |
+| `tests.test_agent` | `tests/test_agent.py` | Against `make_llm` and `FakeSearch`, with the real runner. A two-row table: the model's search runs where it asked, one named report or `all`. Then the calculator still runs beside search, and the request keeps thinking `adaptive`. | free |
 | `tests.workflows.test_patterns` | `tests/workflows/test_patterns.py` | What holds for all five: `DocId` names exactly the manifest's reports, and each pattern module is under 100 lines — the roadmap's constraint, kept as a test so it survives the next edit. | free |
-| `tests.conftest.make_judge` | `tests/conftest.py:63` | The one scripted `LlmJudge` fixture: a verdict decided in the test, a fixed `JUDGE_USAGE`, and a log of prompts and pre-flight counts. Shared so the grader tests and the runner tests cannot drift apart about what a judge costs. | free |
+| `tests.conftest.make_judge` | `tests/conftest.py:80` | The one scripted `LlmJudge` fixture: a verdict decided in the test, a fixed `JUDGE_USAGE`, and a log of prompts and pre-flight counts. Shared so the grader tests and the runner tests cannot drift apart about what a judge costs. | free |
 | `tests.test_api_smoke` | `tests/test_api_smoke.py` | `count_tokens` round-trip; skipped without credentials. | free |
 | `tests.evals.test_dataset` | `tests/evals/test_dataset.py` | `test_the_loader_refuses` tables the four ways a dataset is rejected before the run — typo'd key, duplicate id, bad JSON, empty file — each row naming the message it must produce. Plus the happy path, comment skipping, and that the digest moves with the labels. | free |
 | `tests.evals.test_graders` | `tests/evals/test_graders.py` | One table per free grader, since each is a pure function of (case, outcome): `regex` alone is eight rows of (pattern, value, passed). Then the judge, whose verdict is scripted through `conftest.make_judge`, so the paid grader is tested for nothing. `flag` adds a four-row table and one test for the pair it exists to separate — a decline and a confabulation, which differ only here. The retrieval trio adds four tables — rank-by-rank recall, the `hit@k` rows that separate it from recall, rank-by-rank reciprocal rank, and the five ways one side or the other is unusable, run against **all three** graders from one table since they read the same two fields. Two rows carry the argument: repeats-collapse would silently pass without `_id_list`, and `one of three is enough` is the row where `hit@k` says 1.0 and `recall@k` says 1/3 on identical input. | free |
-| `tests.conftest.KeywordReranker` | `tests/conftest.py:78` | The shared fake cross-encoder: score a passage by how many query words it holds. Crude, and crucially a **different ordering** from `BagOfWordsEmbedder`'s, so a rerank test can prove the second stage moved something. |
-| `tests.conftest.BagOfWordsEmbedder` | `tests/conftest.py:82` | The shared fake embedder: words hashed into 32 buckets by **CRC32, not `hash`**, which Python randomises per process — a fake that embeds differently on Tuesday is worse than no fake. Similarity is real if crude, so a test can say "this query should find that chunk" without importing torch. `normalise=False` breaks the contract on purpose, for the test that the dense index notices. | free |
+| `tests.conftest.KeywordReranker` | `tests/conftest.py:353` | The shared fake cross-encoder: score a passage by how many query words it holds. Crude, and crucially a **different ordering** from `BagOfWordsEmbedder`'s, so a rerank test can prove the second stage moved something. |
+| `tests.conftest.BagOfWordsEmbedder` | `tests/conftest.py:373` | The shared fake embedder: words hashed into 32 buckets by **CRC32, not `hash`**, which Python randomises per process — a fake that embeds differently on Tuesday is worse than no fake. Similarity is real if crude, so a test can say "this query should find that chunk" without importing torch. `normalise=False` breaks the contract on purpose, for the test that the dense index notices. | free |
 | `tests.retrieval.test_chunk` | `tests/retrieval/test_chunk.py` | The four splitters as tables over the text they must survive. The abbreviation table is the load-bearing one — `Rs.` opens every other sentence in an annual report, and a splitter that breaks on it shears the figure off its unit, which surfaces as a retrieval failure three layers later. Then: the fixed window's mid-word cut asserted rather than apologised for, headings recognised in text that lost its markup, ordinals staying contiguous across a dropped fragment, a page number derived from an offset, and the two ends of quote resolution — a quote found in the chunk that holds it, and a quote **split across a boundary resolving to nothing**, which is the finding that a chunking strategy has capped its own recall. | free |
 | `tests.retrieval.test_corpus` | `tests/retrieval/test_corpus.py` | The corpus, 24 tests. `normalise` is an eleven-row table of extraction artefacts, each row naming the one thing it fixes. `build_pdf` writes a real uncompressed PDF in the test — byte offsets, xref and all — so `load_pdf` and `read_pages` are covered end to end without a binary in the repo. The load-bearing test is the page-offset one: every citation downstream names a page, and offsets taken before normalisation are wrong in a way nothing else in the pipeline notices. Then the cache, tested for the ways it could go *silently* wrong rather than loudly: a second load that does not re-parse (counted, not timed), a republished report invalidating on bytes, an ingestion-code change invalidating on fingerprint, a truncated entry re-parsed instead of raised on, superseded entries swept, and **the default pinned as no-cache** so an opt-in convenience cannot quietly become the norm. | free |
 | `tests.retrieval.test_questions` | `tests/retrieval/test_questions.py` | The generator's free half, then **the dataset as an asset**. `verify` is a seven-row table of the ways a label is unusable, the paraphrase row being the one that matters, plus a test of its own shape for the eighth — a quote two documents share, which needs a second `Document` and so is not a row. Then a row per case over all 54, asserting each has a question, a quote past the floor, a quote that is not inside its own question, and a `[doc_id, topic]` tag pair — plus that no question is asked twice. **Corpus-free on purpose**: CI has no PDFs, so these check the shape of the labels; whether they resolve is what `resolvable` reports at run time. | free |
@@ -473,7 +506,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 
 `addopts = "-m 'not live'"` in `pyproject.toml:44` — paid tests never run by accident.
 
-### 2.12 Non-code nodes
+### 2.13 Non-code nodes
 
 | ID | Path | Role |
 |----|------|------|
@@ -487,6 +520,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `evals/datasets/retrieval.jsonl` | repo root | The Project 1 question set: **54 questions, each labelled with a verified quote**, 19 ITC / 16 Reliance / 19 Tata Motors across 24 topics. **Authored by hand on 2026-09-18 rather than generated**, after the dry run priced 60 API calls at $1.17 — the session model could read the passages and write them directly, and the verification gate is the same code either way. Every quote was put through `questions.verify` against its own document: 53 of 54 passed first time, the one rejection being a real quote under the 25-character floor. **One label was wrong and the gate could not have caught it** — `rq-054` was labelled `KPMG Assurance and Consulting Services LLP`, which is Tata Motors' assurance provider and also ITC's, so it resolved to 21 chunks across two documents and the retriever scored zero for returning a chunk that held it. Found on 2026-09-18 while working through a `hit@k` example, fixed to a quote that names one passage, and the gate tightened (invariant 20) so the class cannot recur. A sweep of the other 53 found no second instance; `rq-009` resolves to five chunks but all of them in ITC, which is a repeated ESOP sentence and a correct label — every occurrence answers the question. It stays, and it is the row to remember when reading `recall@5`: a label with five right answers cannot score above 1/5 at k=5 without retrieval returning all five. **It is also the whole dataset's exposure to a bug of that shape being found late.** Two biases to state when quoting a number from it. The questions are written *from* the passages, so they inherit their vocabulary and absolute recall will read high — the **ordering** of strategies is what survives that, since all face the identical set. And the quotes are clause-length rather than whole sentences, which straddle boundaries less often: `fixed` resolves 96.3% of these labels against 87.7% of 300 random sentences. Both numbers are real and answer different questions; quote them together. |
 | `evals/datasets/retrieval-paraphrased.jsonl` | repo root | **The control set, written 2026-09-20.** The same 54 ids, the same quotes, the same labels — only the questions are reworded, so it isolates question style as the single variable. Authored under a rule fixed *before* writing any of them, because the author knew the mechanism being tested: *phrase each question as someone who knows the fact exists but has not read the passage; prefer everyday wording over the report's terminology; keep the company name.* Mean idf-weighted overlap between question and answer chunk falls **0.569 → 0.285**; all 54 pass `questions.verify`, cross-document uniqueness included. **Two caveats it must carry.** The author both knew the hypothesis and wrote the questions, so read these as plausibly natural rather than verifiably so — the unbiased version is a set written by someone who never sees the passages. And the absolute scores are confounded: every arm fell, so "lower overlap" is mixed with "vaguer question". The *relative* inversion is the robust part, since both rankers faced identical questions. Ten first-draft questions were rewritten for being contrived rather than merely low-overlap (`bank-club lending`, `going paperless in people management`), which cost 0.025 of overlap and was worth it: a question nobody would ask is not a harder question, it is a different bug. |
 | `docs/framework-comparison.md` | repo root | The LangChain rebuild in ten lines, with the table both pipelines produced through the same harness. The conclusion is not "write it yourself" — it is that a framework is worth it until you need to know *why* a number moved, and every hidden thing listed there is something you would then need to know. |
+| `docs/tool-runner.md` | repo root | The SDK tool runner read from source (`anthropic` 1.4.0): its loop, a table against invariants 3–6 (three kept, the cap not by default), nine things it hides, and what `llm.run_tools` does about each. |
 | `LOG.md` | repo root | Weekly log: what shipped, what broke, real token counts and dollar figures. Append here after live runs. |
 | `README.md` | repo root | The five modes, the budget table, the check commands. |
 | `pyproject.toml` deps | repo root | Plus a **non-default `compare` group** (2026-09-20): three LangChain packages for the framework comparison, which pull **31 transitive packages** (61 installed → 92), SQLAlchemy and a telemetry client among them. Non-default, so an ordinary `uv sync` installs none of it and `test_langchain_rag` skips. **CI installs it anyway** (`--group compare`): the module lives in `src/`, and a file nobody typechecks is a file that rots — pyright found two real type errors the moment it could see the package, which is how `Retrieves` came to be a protocol rather than LangChain's concrete `VectorStoreRetriever`. The core: `anthropic`, `pydantic`, `python-dotenv`, and from Week 2 `sentence-transformers` (which brings torch, transformers and numpy) and `pypdf`. The first dependencies that are not about talking to Anthropic: Anthropic ships no embedding model, so retrieval runs on local weights. They are heavy — torch dominates the install — which is why `retrieval.embed` defers importing them until an embedder is actually built. |
@@ -513,11 +547,12 @@ primitives.streaming         —imports→ config.{MODEL, MAX_TOKENS_STREAMING a
 primitives.structured_output —imports→ config.{MODEL, MAX_TOKENS_EXTRACT as MAX_TOKENS}
 primitives.{first_call, streaming, structured_output} —imports→ llm.{Llm, Request}, pricing.describe_usage
 primitives.tool_loop         —imports→ config.{MODEL, MAX_USD_PER_RUN, MAX_TOKENS_TOOL_LOOP, MAX_AGENT_TURNS}
-primitives.tool_loop         —imports→ llm.{Llm, Request}, pricing.{Budget, BudgetExceeded, describe_usage}
+primitives.tool_loop         —imports→ llm.{Llm, Request}, pricing.{Budget, describe_usage}, errors.BudgetExceeded
 primitives.tool_loop         —imports→ tools.{ALL_TOOLS, execute_tool}
 primitives.chat              —imports→ config.{MODEL, MAX_USD_PER_RUN, MAX_TOKENS_CHAT}
-primitives.chat              —imports→ llm.{Llm, Request}, pricing.{Budget, BudgetExceeded}
+primitives.chat              —imports→ llm.{Llm, Request}, pricing.Budget, errors.BudgetExceeded
 pricing                  —imports→ config.{MAX_USD_PER_REQUEST, MAX_USD_PER_RUN}   (one way; config never imports pricing)
+pricing                  —imports→ errors.BudgetExceeded   (errors imports nothing)
 retrieval.corpus         —imports→ config.{FURNITURE_EDGE_LINES, FURNITURE_MIN_PAGES, FURNITURE_RATIO, PAGE_SEPARATOR}
 retrieval.corpus         —imports→ retrieval.chunk.Document   (one way; chunk never imports corpus)
 retrieval.corpus         —reads/writes→ corpus/.cache/*.json   (git-ignored; keyed by PDF bytes + ingestion-code hash)
@@ -529,10 +564,11 @@ extraction.headlines     —imports→ config.THINKING_EVAL_PARAM   (was a local
 tests.test_reference_data —imports→ retrieval.corpus.MANIFEST
 config                   —imports→ anthropic, dotenv
 tools                    —imports→ anthropic.types.ToolParam + tools_config   (no client, no network)
-llm                      —imports→ config.{MAX_PARALLEL_CALLS, MODEL, get_client}, pricing.{Budget, assert_request_within_budget}
+llm                      —imports→ config.{MAX_AGENT_TURNS, MAX_PARALLEL_CALLS, MODEL, get_client}, pricing.{Budget, LlmUsage, assert_request_within_budget}
+llm                      —imports→ errors.{StepFailed, TurnsExhausted}
 tools_config             —imports→ pathlib                    (nothing internal at all)
 
-evals.dataset            —imports→ pydantic                    (no config, no client, no network)
+evals.dataset            —imports→ pydantic, errors.DatasetError   (no config, no client, no network)
 evals.grade              —imports→ evals.dataset, anthropic.types.Usage, pydantic
 evals.judge              —imports→ config.{JUDGE_MODEL, MAX_TOKENS_JUDGE} + llm.{Llm, Request}   (the harness's one edge to llm)
 evals.judge              —imports→ evals.{dataset, grade}
@@ -570,8 +606,10 @@ retrieval.answer            —imports→ evals.{dataset, grade, judge, report, 
 retrieval.answer            —imports→ retrieval.{chunk, corpus, embed, evaluate}   (the one module here that builds a client)
 
 workflows.reports           —imports→ retrieval.{chunk.Chunk, corpus.MANIFEST}
-workflows.demo              —imports→ config.{MAX_USD_PER_WORKFLOW, SEARCH_METHOD}, llm.{Llm, Rehearsed, StepFailed, describe}, pricing.{Budget, BudgetExceeded}
+workflows.demo              —imports→ config.{MAX_USD_PER_WORKFLOW, SEARCH_METHOD}, llm.{Llm, Rehearsed, describe}, errors.{BudgetExceeded, StepFailed}, pricing.Budget
 workflows.demo              —imports→ retrieval.{chunk, corpus, rank.{Indexes, build_ranker}}
+agent                       —imports→ config.{MAX_AGENT_TURNS, MAX_USD_PER_RUN, MAX_TOKENS_TOOL_LOOP}, llm.{Llm, Request}, tools.{ALL_TOOLS, execute_tool}
+agent                       —imports→ workflows.demo.run_demo, workflows.reports.{CATALOGUE, REPORTS, Search}, retrieval.chunk.context_block
 workflows.<pattern>         —imports→ workflows.{demo, reports}, llm.{Llm, Request}, retrieval.chunk.context_block, config.{MAX_TOKENS_<its call sites>, THINKING_WORKFLOW_PARAM}
 workflows.chaining          —imports→ retrieval.chunk.squeeze   (the gate compares the way a label resolves)
 workflows.routing           —imports→ config.{MODEL, SMALL_MODEL}
@@ -609,23 +647,28 @@ pricing.assert_request_within_budget —calls→ pricing.worst_case_usd —calls
 pricing.Budget.charge              —calls→ pricing.usage_cost
 pricing.Budget.charge              —records-into→ pricing.Budget.tripped  (bills, never raises)
 pricing.Budget.add                 —calls→ pricing.Budget.charge, then raises if tripped
-pricing.{assert_request_within_budget, Budget.add} —raises→ pricing.BudgetExceeded
+pricing.{assert_request_within_budget, Budget.add} —raises→ errors.BudgetExceeded
 llm.Llm._admit                     —calls→ pricing.Budget.admit   (the summed worst case of every request it was handed)
-pricing.Budget.admit               —raises→ pricing.BudgetExceeded   (before sending, on the worst case)
+pricing.Budget.admit               —raises→ errors.BudgetExceeded   (before sending, on the worst case)
 config.get_client                  —raises→ SystemExit   (missing credentials)
+llm.Llm.run_tools                  —drives→ client.beta.messages.tool_runner   (admits turn 1 before it exists, turn N+1 inside turn N's yield)
+llm.Llm.run_tools                  —raises→ errors.TurnsExhausted   (still asking for tools at max_turns)
+llm._runnable                      —raises→ anthropic.lib.tools.ToolError   (an is_error result; the runner sends it back as one)
 
 primitives.tool_loop.run   —sends-each-turn-through→ llm.Llm.create        (counted, admitted against the run budget, billed)
-primitives.tool_loop.run   —raises→                pricing.BudgetExceeded     (a billed overrun: the backstop)
+primitives.tool_loop.run   —raises→                errors.BudgetExceeded     (a billed overrun: the backstop)
 primitives.tool_loop.run   —calls→                 tools.execute_tool
 primitives.tool_loop.run   —sends→                 tools.ALL_TOOLS
 primitives.tool_loop.run   —raises→                RuntimeError               (turn cap, MAX_TURNS=8)
 primitives.chat.main       —sends-each-turn-through→ llm.Llm.stream
-primitives.chat.main       —catches→               pricing.BudgetExceeded     (admission: drop turn, keep session)
+agent.run                  —sends-each-turn-through→ llm.Llm.run_tools     (run budget, MAX_AGENT_TURNS)
+agent.run                  —calls→                 workflows.reports.Search, tools.execute_tool
+primitives.chat.main       —catches→               errors.BudgetExceeded     (admission: drop turn, keep session)
 primitives.chat.main       —reads→                 pricing.Budget.tripped     (a billed overrun: end session)
 tools.execute_tool     —calls→                 tools.{calculate, current_time, read_file}
 tools.read_file        —reads-within→          tools.SANDBOX
 
-evals.dataset.load_jsonl   —raises→        evals.dataset.DatasetError   (before any paid call)
+evals.dataset.load_jsonl   —raises→        errors.DatasetError   (before any paid call)
 evals.runner.run_eval      —admits→          worst_usd into pricing.Budget(scope="eval") before the first row
 evals.runner.run_eval      —accumulates-into→ pricing.Budget(scope="eval"), via Budget.charge
 evals.runner.run_eval      —bills→          Outcome.usage and Score.usage into that one budget
@@ -644,7 +687,8 @@ deliberate: a batch run should die loudly, an interactive session should degrade
 
 ```
 pricing.{cost_usd, worst_case_usd, assert_request_within_budget, Budget} —tested-by→ tests.test_pricing
-llm.{Llm, Request, describe}                                           —tested-by→ tests.test_llm
+llm.{Llm, Request, describe, Llm.run_tools}                            —tested-by→ tests.test_llm
+agent.run                                                              —tested-by→ tests.test_agent
 workflows.<pattern>.run                                                —tested-by→ tests.workflows.test_<pattern>
 tools.{calculate, read_file, execute_tool}                             —tested-by→ tests.test_tools
 cli.{MODES, find_mode, menu_text, main}                                —tested-by→ tests.test_cli
@@ -706,20 +750,22 @@ The rules the code encodes. Breaking one of these is a regression even when test
    read as free.
 2. **Cost is reported, always.** Every path prints `describe_usage` or an equivalent cost line. This
    is the repo's stated purpose, not decoration.
-3. **The assistant turn is echoed back verbatim**, `tool_use` blocks included (`tool_loop.py:50`).
-4. **All tool results for one turn go back in ONE user message** (`tool_loop.py:72`). Splitting them
+3. **The assistant turn is echoed back verbatim**, `tool_use` blocks included (`tool_loop.py:51`).
+4. **All tool results for one turn go back in ONE user message** (`tool_loop.py:73`). Splitting them
    trains the model out of parallel tool calls. `tests.primitives.test_tool_loop` asserts this explicitly.
 5. **Tool errors are `tool_result` with `is_error: True`, never exceptions.** `execute_tool` catches
    everything. The model can recover from a message; it cannot recover from a traceback.
-6. **The loop is capped** (`config.MAX_AGENT_TURNS` = 8) and backed by two dollar ceilings, both
-   checked before each call since 2026-09-21. An uncapped loop is a cost bug waiting to happen.
+6. **Both loops are capped** (`config.MAX_AGENT_TURNS` = 8) and backed by two dollar ceilings, both
+   checked before each call since 2026-09-21. An uncapped loop is a cost bug waiting to happen. The
+   SDK's tool runner has no cap unless one is passed and ends quietly when it runs out, so
+   `llm.run_tools` always passes one and raises `TurnsExhausted` at it, as `tool_loop.run` does.
 7. **`read_file` resolves before it compares.** `.resolve()` then `is_relative_to` defeats `..`,
    absolute paths, and symlinks alike — all three are tested. Any new filesystem tool must repeat
    this check; do not add a tool that takes a path without it.
 8. **`config` holds every tunable constant and is the only module that builds a client; `pricing` is
    the only module that knows a price; `llm` is the only module that talks to a model.** The third
    clause is enforced by `tests.test_llm`, which scans the package and fails on any other file that
-   calls `client.messages`; it is what makes invariants 1 and 22 hold everywhere at once. New modules import `MODEL` (or `JUDGE_MODEL`, if they grade), they do not name a model,
+   calls `.messages.{create, parse, stream, count_tokens, tool_runner}`; it is what makes invariants 1 and 22 hold everywhere at once. New modules import `MODEL` (or `JUDGE_MODEL`, if they grade), they do not name a model,
    and they never do cost arithmetic of their own. Both defaults must appear in `pricing.PRICES`: an
    unknown model costs `0.0` rather than raising, so a typo in a default would report every run as
    free. `tests.test_pricing` pins this. `pricing` imports `config`, never the reverse. The one
@@ -727,7 +773,7 @@ The rules the code encodes. Breaking one of these is a regression even when test
    and carries its own config — see §3.
 9. **Paid tests carry `@pytest.mark.live`** and are deselected by default.
 10. **Types are complete.** `pyright` runs in standard mode; `cast` is used where SDK stubs are loose
-    (`tests/primitives/test_tool_loop.py:43`, `chat.py:66`), never `# type: ignore`.
+    (`tests/primitives/test_tool_loop.py:43`, `chat.py:67`), never `# type: ignore`.
 11. **An eval survives its own bad rows.** A task that raises, a task that reports an error, a grader
     that raises — each becomes one row in the report, and the run continues. The dataset is validated
     in full *before* the first paid call, so the failures that do happen are the system's, not the
@@ -814,6 +860,10 @@ The rules the code encodes. Breaking one of these is a regression even when test
     a worst case assumes the full output cap, so a run stops while it still has some budget left,
     rather than finishing one call over. A new paid path that takes a budget and does not admit
     against it has only half a ceiling.
+23. **Every error the package defines lives in `errors`.** Reuse one before adding another, and put
+    a new one there rather than beside the code that raises it. `errors` imports nothing, so a
+    module never needs another to raise. `llm.Rehearsed` is the one exception class outside it: a
+    dry-run signal carrying a `Request`, not an error. Nothing checks this yet; it is a convention.
 ---
 
 ## 5. Where the next work attaches
@@ -824,7 +874,7 @@ Anchors the code already names, so a future session can find the intended seam r
 |---------|------|----------|
 | ~~Week 1 — Project 1a~~ | **Consumed.** `extraction.headlines`: `messages.parse` behind a `Task`, `field_match` + `pydantic_valid` over 50 labelled headlines, two prompt variants. Nothing new in the harness, as predicted — the only code change outside the new module was one right-sized output cap. | `extraction.py` |
 | ~~Week 1 — prompt caching~~ | **Consumed 2026-09-12.** 76% off per row; `Variant` carries the breakpoint, `estimate_eval_usd` prices it, `measure` counts it. The seam note below was wrong about where the tokens were — see `CACHE_VARIANTS`. | `headlines.py:226` |
-| ~~superseded~~ | System prompts are already byte-identical per call, which is the precondition. `Price.cache_write` / `cache_read` and the cache columns in `describe_usage` are already wired. Measure it as two variants of one eval — `baseline` and `cached` — rather than a toy script. **`extraction.headlines.VARIANTS` is the seam**: `FEW_SHOT` is ~1,400 characters of byte-identical system prompt resent on all 50 rows of its arm, which is the shape caching pays for — smaller than it was, since the prompts were cut by a third, so the measured saving will be smaller too. `extraction.main` already prices each arm by its own prompt length, so the saving will show up in the estimate as well as the bill. | `headlines.py:196`, `pricing.py:18-31` |
+| ~~superseded~~ | System prompts are already byte-identical per call, which is the precondition. `Price.cache_write` / `cache_read` and the cache columns in `describe_usage` are already wired. Measure it as two variants of one eval — `baseline` and `cached` — rather than a toy script. **`extraction.headlines.VARIANTS` is the seam**: `FEW_SHOT` is ~1,400 characters of byte-identical system prompt resent on all 50 rows of its arm, which is the shape caching pays for — smaller than it was, since the prompts were cut by a third, so the measured saving will be smaller too. `extraction.main` already prices each arm by its own prompt length, so the saving will show up in the estimate as well as the bill. | `headlines.py:196`, `pricing.py:24-37` |
 | ~~Week 1 — measure the un-saturated eval~~ | **Consumed.** Run 2026-09-12, $1.00809. 49/50 both arms after two label fixes; `few_shot` bought nothing. The remaining miss is `hl-032`, where both arms read a dimming sector outlook as `guidance` and the label says `none` — kept as a label, so the row stays a real disagreement rather than being tuned away. | `evals/reports/headlines-20260911-1537.md` |
 | ~~Week 1 — label the backlog~~ | **Consumed.** All 50 rows carry an `expected`. The 12 hard ones each needed a schema decision first, and those landed in the field descriptions: `other`/`none` close the metric vocabulary, `H1`/`H2` the quarter one, `company` became nullable, and a subsidiary resolves to its listed parent. | `evals/datasets/headlines.jsonl` |
 | ~~Week 1 — break things on purpose~~ | **Consumed 2026-09-12; retired 2026-09-21** into `tests.test_llm`, once every call went through `llm`. `primitives.failures` provokes nine failure modes and writes `docs/failure-modes.md`. Two findings worth keeping: the SDK refuses `max_tokens=10_000_000` client-side with a `ValueError` rather than letting the API reject it, and `context-too-long` never becomes a 400 because `check_request` prices it first. The one failure deliberately *not* in the table is a `cache_control` breakpoint below the model's minimum prefix — silently ignored, correct answer, full price — because provoking it needs a successful call and the catalogue is free. | `failures.py` |
@@ -843,8 +893,8 @@ Anchors the code already names, so a future session can find the intended seam r
 | Week 3 — measure a pattern | The patterns are demos with a trace, not yet an eval. `evaluator_optimizer` against the plain `rag` arm on the 54 questions, graded by `answer.graders`, is the first comparison worth paying for: does a critic buy correctness, and at what multiple of cost. | `answer.py:167`, `evaluator_optimizer.py:49` |
 | Week 3 — anything that searches the reports | `Indexes.build(inventory)` once (~65s), then `build_ranker(SEARCH_METHOD, indexes).rank(query, k, doc_id=)`; look the hits up in `indexes.inventory.by_id` and format them with `chunk.context_block`. Use it rather than composing indexes, or invariant 21 breaks. | `rank.py:131` |
 | Week 3 — `chat` becomes the default mode | `cli.MODES` order and `cli.main`'s no-arg branch. | `cli.py:29` |
-| Week 5 — SDK tool runner | `tools.ALL_TOOLS` + `execute_tool` are framework-free precisely for this. | `tools.py:1-3` |
-| Week 5 — async and batch evals | `run_eval` is serial on purpose: concurrent rows race the budget ceiling, and a wrong total is worse than a slow run. `Budget` is where that would have to become thread-safe; `admit` is already the other half, since concurrent rows would each have to be admitted against the same ceiling before being sent. | `pricing.py:168`, `runner.py:106` |
+| ~~Week 5 — SDK tool runner~~ | **Consumed 2026-09-22, in Week 3.** `llm.run_tools` drives it with the dispatcher passed straight in, and `agent` is the first thing built on it. `tools.py` needed no change, as the seam predicted. What the runner hides is in `docs/tool-runner.md`. | `llm.py:201` |
+| Week 5 — async and batch evals | `run_eval` is serial on purpose: concurrent rows race the budget ceiling, and a wrong total is worse than a slow run. `Budget` is where that would have to become thread-safe; `admit` is already the other half, since concurrent rows would each have to be admitted against the same ceiling before being sent. | `pricing.py:170`, `runner.py:106` |
 | Week 6 — LangGraph agent | Same two symbols; `tool_loop.run` is the reference semantics to preserve. | `tools.py:1-3` |
 
 Adding a tool, concretely: implement it in `tools.py`, add a `ToolParam` with `strict: True` and

@@ -12,11 +12,13 @@ import threading
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import cast
 
 import anthropic
 from anthropic import Omit, omit
 from anthropic.lib.streaming import MessageStream
+from anthropic.lib.tools import BetaFunctionTool, ToolError, beta_tool
 from anthropic.types import (
     Message,
     MessageParam,
@@ -27,10 +29,19 @@ from anthropic.types import (
     ToolParam,
     Usage,
 )
+from anthropic.types.beta import (
+    BetaMessage,
+    BetaMessageParam,
+    BetaOutputConfigParam,
+    BetaTextBlockParam,
+    BetaThinkingConfigParam,
+)
+from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
 
-from entropic.config import MAX_PARALLEL_CALLS, MODEL, get_client
-from entropic.pricing import Budget, assert_request_within_budget
+from entropic.config import MAX_AGENT_TURNS, MAX_PARALLEL_CALLS, MODEL, get_client
+from entropic.errors import StepFailed, TurnsExhausted
+from entropic.pricing import Budget, LlmUsage, assert_request_within_budget
 
 
 @dataclass(frozen=True)
@@ -68,12 +79,12 @@ class Call:
 
     step: str
     model: str
-    usage: Usage
+    usage: LlmUsage
     usd: float
 
 
-class StepFailed(RuntimeError):
-    """A call came back refused, truncated or unparseable. It was billed all the same."""
+# Runs one tool call: `(name, input)` in, `(content, is_error)` out, as `tools.execute_tool` does.
+Dispatch = Callable[[str, dict[str, object]], tuple[str, bool]]
 
 
 class Rehearsed(Exception):
@@ -187,6 +198,44 @@ class Llm:
         self._admit(requests, schema)
         return self._fan_out(requests, lambda request: self._record(request, schema))
 
+    def run_tools(
+        self, request: Request, dispatch: Dispatch, *, max_turns: int = MAX_AGENT_TURNS
+    ) -> BetaMessage:
+        """Run a tool-using conversation on the SDK's tool runner until the model stops asking for
+        tools; its last message. Every turn is admitted before it is sent and billed after."""
+        if isinstance(request.tools, Omit) or not request.tools:
+            raise ValueError(f"{request.step}: run_tools needs at least one tool")
+        messages: list[MessageParam] = list(request.messages)
+        self._admit([replace(request, step=f"{request.step}:1", messages=messages)])
+        runner = self.client.beta.messages.tool_runner(
+            model=request.model,
+            max_tokens=request.max_tokens,
+            messages=cast(list[BetaMessageParam], messages),
+            system=cast("str | list[BetaTextBlockParam] | Omit", request.system),
+            thinking=cast("BetaThinkingConfigParam | Omit", request.thinking),
+            output_config=cast("BetaOutputConfigParam | Omit", request.output_config),
+            tools=[_runnable(tool, dispatch) for tool in request.tools],
+            max_iterations=max_turns,
+        )
+        for turn, message in enumerate(runner, start=1):
+            self._bill(replace(request, step=f"{request.step}:{turn}"), message.usage)
+            if message.stop_reason not in ("tool_use", "pause_turn"):
+                return message
+            if turn == max_turns:
+                break
+            messages = [
+                *messages,
+                cast(MessageParam, {"role": "assistant", "content": message.content}),
+            ]
+            if message.stop_reason == "tool_use":
+                # Runs the tools now; the runner reuses these results rather than rerun them.
+                results = runner.generate_tool_call_response()
+                if results is None:
+                    return message
+                messages.append(cast(MessageParam, results))
+            self._admit([replace(request, step=f"{request.step}:{turn + 1}", messages=messages)])
+        raise TurnsExhausted(f"{request.step}: still asking for tools after {max_turns} turns")
+
     def _admit(self, requests: Sequence[Request], schema: type[BaseModel] | None = None) -> None:
         # The sum, not each call: calls in flight cannot be recalled, so a batch that cannot all
         # fit must not start.
@@ -268,10 +317,29 @@ class Llm:
             raise StepFailed(f"{request.step}: nothing parsed, stop_reason={response.stop_reason}")
         return response.parsed_output
 
-    def _bill(self, request: Request, usage: Usage) -> None:
+    def _bill(self, request: Request, usage: LlmUsage) -> None:
         with self._lock:
             usd = self.budget.charge(request.model, usage)
             self.trace.append(Call(request.step, request.model, usage, usd))
+
+
+def _runnable(tool: ToolParam, dispatch: Dispatch) -> BetaFunctionTool[Callable[..., str]]:
+    """A tool the runner can call, sent exactly as `tool` is written and run through `dispatch`."""
+    name = tool["name"]
+
+    def run(**arguments: object) -> str:
+        content, is_error = dispatch(name, arguments)
+        if is_error:
+            raise ToolError(content)
+        return content
+
+    return beta_tool(
+        run,
+        name=name,
+        description=tool.get("description"),
+        input_schema=cast(InputSchema, tool["input_schema"]),
+        strict=tool.get("strict"),
+    )
 
 
 def describe(trace: Sequence[Call]) -> str:

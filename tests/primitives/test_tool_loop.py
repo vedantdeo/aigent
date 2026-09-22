@@ -26,7 +26,7 @@ from anthropic.types import (
 
 from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
 from entropic.config import has_credentials
-from entropic.pricing import BudgetExceeded
+from entropic.errors import BudgetExceeded
 from entropic.primitives.tool_loop import run
 
 DEMO_TASK = (

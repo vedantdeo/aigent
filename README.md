@@ -215,6 +215,19 @@ Every call goes through `llm.py`, which checks its worst case against the workfl
 sending it, and a batch of parallel calls as a whole. Each demo prints a trace: every call, its
 model, its tokens and what it cost.
 
+## Agent
+
+`agent.py` is the other side of that line: the model gets the reports as a `search_reports` tool
+beside the calculator and decides for itself what to search, how often, and when it has enough. It
+loops on the Anthropic SDK's tool runner, driven through `llm.run_tools`, which counts and admits
+every turn against the $1.00 run ceiling before it is sent and stops with an error at eight turns.
+`docs/tool-runner.md` is what the runner does and hides, read from its source.
+
+```bash
+uv run python -m entropic.agent --cache                       # dry run: counts the first call, sends nothing
+uv run python -m entropic.agent "your question" --cache --yes # spends, capped at $1.00
+```
+
 ## Budget guards
 
 Four ceilings in USD, each overridable in `.env`. A tripped guard raises `BudgetExceeded` with the
@@ -224,7 +237,7 @@ numbers in the message. Trim the input, lower `max_tokens`, or raise the ceiling
 |-------|---------|----------------|
 | per request | $0.25 | before every call: free token count, worst case is input plus the full `max_tokens` |
 | per workflow | $0.25 | before every call and every parallel batch in a workflow demo, on the worst case |
-| per run | $1.00 | before every call in a tool loop or a chat session, on that call's worst case, and after it on the real cost |
+| per run | $1.00 | before every call in a tool loop, the agent or a chat session, on that call's worst case, and after it on the real cost |
 | per eval | $2.00 | before the run starts, on the whole run's worst case; then after each row, where a trip keeps the rows already paid for and marks the report partial |
 
 ## Evals
@@ -306,11 +319,13 @@ caught before the graph goes stale.
 - `src/entropic/config.py`  every tunable constant bar the tool pair's: models, ceilings, caps
 - `src/entropic/pricing.py` token prices, cost arithmetic, the two budget guards
 - `src/entropic/llm.py`    the one door to a model: count, admit, send, bill, trace
+- `src/entropic/errors.py` every error the package defines, to reuse before adding one
 - `src/entropic/tools.py`   framework-free tools, reused by everything that calls a tool
 - `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
 - `src/entropic/primitives/` the five modes
 - `src/entropic/retrieval/` chunking, local embeddings, the dense and sparse indexes, the rankers
 - `src/entropic/workflows/` the five workflow patterns, over the same reports
+- `src/entropic/agent.py`   the first agent: search as a tool, on the SDK's tool runner
 - `src/entropic/extraction/` Project 1a: headline extraction, graded by the harness
 - `src/entropic/evals/`     the eval harness: dataset, graders, runner, report
 - `evals/`                  eval datasets and the reports they produce
@@ -318,6 +333,7 @@ caught before the graph goes stale.
 - `LOG.md`                  the log: what shipped, what broke, numbers
 - `CLAUDE.md`               the eight project rules Claude sessions follow here
 - `docs/knowledge-graph.md` map of every module, edge, and invariant in the repo
+- `docs/tool-runner.md`    the SDK tool runner, read from source against our own loop
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind
 - `scripts/`                the rule that hook and CI share
 - `.github/workflows/`      CI: the checks above, and the graph rule for anyone who skipped the hook

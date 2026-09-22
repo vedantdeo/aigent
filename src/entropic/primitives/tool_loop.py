@@ -15,8 +15,9 @@ from anthropic.types import MessageParam, ToolResultBlockParam
 from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
 from entropic.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from entropic.config import MAX_USD_PER_RUN, MODEL
+from entropic.errors import BudgetExceeded
 from entropic.llm import Llm, Request
-from entropic.pricing import Budget, BudgetExceeded, describe_usage
+from entropic.pricing import Budget, describe_usage
 from entropic.tools import ALL_TOOLS, execute_tool
 
 SYSTEM = (

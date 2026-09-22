@@ -11,8 +11,7 @@ import pytest
 from entropic.config import MAX_PLAN_TASKS
 from entropic.workflows.orchestrator_workers import SYNTHESISE, WORK, Plan, Subtask, run
 
-from ..conftest import MakeLlm, Sent
-from .conftest import FakeSearch
+from ..conftest import FakeSearch, MakeLlm, Sent
 
 
 def plan_of(n: int) -> Plan:

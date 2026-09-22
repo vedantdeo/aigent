@@ -10,8 +10,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from anthropic.types import Usage
+from anthropic.types.beta import BetaUsage
 
 from entropic.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN
+from entropic.errors import BudgetExceeded
+
+# What a response reports it used. The tool runner answers on the beta endpoint; both carry the
+# same token counts.
+LlmUsage = Usage | BetaUsage
 
 
 @dataclass(frozen=True)
@@ -58,7 +64,7 @@ def cost_usd(
     )
 
 
-def usage_cost(model: str, usage: Usage) -> float:
+def usage_cost(model: str, usage: LlmUsage) -> float:
     return cost_usd(
         model,
         input_tokens=usage.input_tokens,
@@ -68,7 +74,7 @@ def usage_cost(model: str, usage: Usage) -> float:
     )
 
 
-def describe_usage(model: str, usage: Usage) -> str:
+def describe_usage(model: str, usage: LlmUsage) -> str:
     """One line you can paste into LOG.md."""
     return (
         f"[{model}] in={usage.input_tokens} out={usage.output_tokens} "
@@ -76,10 +82,6 @@ def describe_usage(model: str, usage: Usage) -> str:
         f"cache_read={usage.cache_read_input_tokens or 0} "
         f"cost=${usage_cost(model, usage):.5f}"
     )
-
-
-class BudgetExceeded(RuntimeError):
-    """Raised before money is spent (per request) or right after a ceiling is crossed (per run)."""
 
 
 def worst_case_usd(model: str, input_tokens: int, max_tokens: int) -> float:
@@ -146,7 +148,7 @@ class Budget:
     scope: str = "run"
     tripped: str | None = None
 
-    def charge(self, model: str, usage: Usage) -> float:
+    def charge(self, model: str, usage: LlmUsage) -> float:
         """Bill one call and return what it added. Never raises; sets `tripped` when over."""
         charged = usage_cost(model, usage)
         self.spent_usd += charged
@@ -158,7 +160,7 @@ class Budget:
             )
         return charged
 
-    def add(self, model: str, usage: Usage) -> float:
+    def add(self, model: str, usage: LlmUsage) -> float:
         """Bill one call and raise once the ceiling is crossed. Returns the running total."""
         self.charge(model, usage)
         if self.tripped is not None:

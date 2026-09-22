@@ -10,8 +10,7 @@ import pytest
 
 from entropic.workflows.chaining import Fact, Facts, gate, run
 
-from ..conftest import MakeLlm, Sent
-from .conftest import PASSAGES, FakeSearch
+from ..conftest import PASSAGES, FakeSearch, MakeLlm, Sent
 
 EVERYTHING = [chunk for chunks in PASSAGES.values() for chunk in chunks]
 REVENUE = PASSAGES["ITC-FY25"][0]

@@ -13,7 +13,8 @@ retrieval function that spends nothing, and Week 4 grades an agent trajectory. S
     from entropic.evals import Case, load_jsonl, exact_match, run_eval, write_report
 """
 
-from entropic.evals.dataset import Case, DatasetError, digest, load_jsonl
+from entropic.errors import DatasetError
+from entropic.evals.dataset import Case, digest, load_jsonl
 from entropic.evals.grade import (
     Grader,
     Outcome,

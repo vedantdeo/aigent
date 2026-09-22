@@ -10,8 +10,7 @@ import pytest
 from entropic.workflows.parallelization import REVIEWERS, Vote, run
 from entropic.workflows.reports import REPORTS
 
-from ..conftest import MakeLlm, Sent
-from .conftest import FakeSearch
+from ..conftest import FakeSearch, MakeLlm, Sent
 
 
 def _reviewer(sent: Sent) -> str:

@@ -14,9 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
-
-class DatasetError(ValueError):
-    """A dataset that cannot be trusted: bad JSON, an invalid row, or duplicate ids."""
+from entropic.errors import DatasetError
 
 
 class Case(BaseModel):

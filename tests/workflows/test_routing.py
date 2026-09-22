@@ -8,8 +8,7 @@ import pytest
 from entropic.config import MODEL, SMALL_MODEL
 from entropic.workflows.routing import DECLINED, Route, run
 
-from ..conftest import MakeLlm, Sent
-from .conftest import FakeSearch
+from ..conftest import FakeSearch, MakeLlm, Sent
 
 
 @pytest.mark.parametrize(

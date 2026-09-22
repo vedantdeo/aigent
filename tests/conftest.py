@@ -1,7 +1,7 @@
 """Fixtures shared across test modules.
 
-The scripted judge, the fake client and the fake embedder live here because more than one module
-needs each, and two copies of a fake drift.
+The scripted judge, the fake client, the fake search and the fake embedder live here because more
+than one module needs each, and two copies of a fake drift.
 """
 
 from __future__ import annotations
@@ -15,12 +15,24 @@ from typing import cast
 import anthropic
 import numpy as np
 import pytest
-from anthropic.types import Message, MessageTokensCount, StopReason, TextBlock, Usage
+from anthropic.lib.tools import BetaFunctionTool, BetaToolRunner
+from anthropic.types import (
+    Message,
+    MessageTokensCount,
+    StopReason,
+    TextBlock,
+    ToolUseBlock,
+    Usage,
+)
+from anthropic.types.beta import BetaMessage
+from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
 from pydantic import BaseModel
 
+from entropic.config import MODEL
 from entropic.evals.judge import LlmJudge, Verdict
 from entropic.llm import Llm
 from entropic.pricing import Budget
+from entropic.retrieval.chunk import Chunk
 from entropic.retrieval.embed import Vectors
 
 JUDGE_USAGE = Usage(input_tokens=200, output_tokens=30)
@@ -163,6 +175,11 @@ class FakeMessages:
     def stream(self, **kwargs: object) -> _FakeStream:
         return _FakeStream(self._message(self._reply(self._log("stream", kwargs)), kwargs))
 
+    def turn(self, **kwargs: object) -> BetaMessage:
+        """One tool-runner turn: the runner calls `beta.messages.parse`, which lands here."""
+        message = self._message(self._reply(self._log("turn", kwargs)), kwargs)
+        return BetaMessage.model_validate(message.model_dump())
+
     def parse(self, **kwargs: object) -> _ParsedReply:
         record = self._reply(self._log("parse", kwargs))
         if isinstance(record, Exception):
@@ -209,11 +226,72 @@ def _schema(kwargs: dict[str, object]) -> type | None:
     return output_format if isinstance(output_format, type) else None
 
 
+class _FakeBetaMessages:
+    """`client.beta.messages`: `tool_runner` builds the SDK's own runner over this fake, so a test
+    exercises the real loop, and each turn it sends comes back through `FakeMessages.turn`."""
+
+    def __init__(self, client: FakeAnthropic) -> None:
+        self._client = client
+
+    def tool_runner(
+        self,
+        *,
+        tools: Sequence[BetaFunctionTool[Callable[..., str]]],
+        max_iterations: int | None = None,
+        **params: object,
+    ) -> BetaToolRunner[None]:
+        sent = cast(
+            ParseMessageCreateParamsBase[None], {**params, "tools": [t.to_dict() for t in tools]}
+        )
+        client = cast(anthropic.Anthropic, self._client)
+        return BetaToolRunner(
+            params=sent, options={}, tools=tools, client=client, max_iterations=max_iterations
+        )
+
+    def parse(self, **kwargs: object) -> BetaMessage:
+        return self._client.messages.turn(**kwargs)
+
+
+class _FakeBeta:
+    def __init__(self, client: FakeAnthropic) -> None:
+        self.messages = _FakeBetaMessages(client)
+
+
 class FakeAnthropic:
     """A client for code that sends several different calls: see `FakeMessages`."""
 
     def __init__(self, reply: Reply, *, stop_reason: str = "end_turn") -> None:
         self.messages = FakeMessages(reply, stop_reason)
+        self.beta = _FakeBeta(self)
+
+
+def tool_turn(*calls: tuple[str, str, dict[str, object]]) -> Message:
+    """An assistant turn asking for tools: `(id, name, input)` per call."""
+    blocks = [ToolUseBlock(type="tool_use", id=i, name=name, input=args) for i, name, args in calls]
+    return Message(
+        id="msg_tool",
+        type="message",
+        role="assistant",
+        model=MODEL,
+        content=list(blocks),
+        stop_reason="tool_use",
+        stop_sequence=None,
+        usage=FAKE_USAGE,
+    )
+
+
+def turns(*replies: Message | str) -> Reply:
+    """The first request gets the first reply, the next the second: each turn adds two messages."""
+
+    def reply(sent: Sent) -> Message | str:
+        return replies[min((len(sent.messages) - 1) // 2, len(replies) - 1)]
+
+    return reply
+
+
+def tool_results(sent: Sent) -> list[dict[str, object]]:
+    """The tool results a turn carried back: its last message's blocks."""
+    return cast(list[dict[str, object]], sent.messages[-1]["content"])
 
 
 MakeLlm = Callable[..., tuple[Llm, FakeMessages]]
@@ -235,6 +313,41 @@ def make_llm() -> MakeLlm:
         return Llm(cast(anthropic.Anthropic, fake), budget=budget, rehearse=rehearse), fake.messages
 
     return build
+
+
+def _passage(doc_id: str, text: str) -> Chunk:
+    return Chunk(id=f"{doc_id}#0001", text=text, doc_id=doc_id, ordinal=1, start=0, page=12)
+
+
+PASSAGES: dict[str, list[Chunk]] = {
+    "ITC-FY25": [
+        _passage("ITC-FY25", "Cigarettes net segment revenue grew 6.5 per cent during the year.")
+    ],
+    "RELIANCE-FY25": [
+        _passage("RELIANCE-FY25", "The Board recommended a dividend of Rs 5.50 per equity share.")
+    ],
+    "TATAMOTORS-FY25": [
+        _passage("TATAMOTORS-FY25", "Jaguar Land Rover delivered record free cash flow in FY25.")
+    ],
+}
+
+
+class FakeSearch:
+    """Every report's passages when unscoped, one report's when scoped; every query logged."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, str | None]] = []
+
+    def __call__(self, query: str, /, *, doc_id: str | None = None) -> list[Chunk]:
+        self.asked.append((query, doc_id))
+        if doc_id is None:
+            return [chunk for chunks in PASSAGES.values() for chunk in chunks]
+        return list(PASSAGES[doc_id])
+
+
+@pytest.fixture
+def search() -> FakeSearch:
+    return FakeSearch()
 
 
 class KeywordReranker:

@@ -14,11 +14,12 @@ import pytest
 from anthropic.types import Usage
 
 from entropic.config import JUDGE_MODEL
+from entropic.errors import BudgetExceeded
 from entropic.evals.dataset import Case
 from entropic.evals.grade import Grader, Outcome, Score, exact_match
 from entropic.evals.judge import Verdict
 from entropic.evals.runner import EvalRun, Task, combine, run_eval
-from entropic.pricing import BudgetExceeded, usage_cost
+from entropic.pricing import usage_cost
 
 from ..conftest import MakeJudge
 

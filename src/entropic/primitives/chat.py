@@ -12,8 +12,9 @@ from anthropic.types import MessageParam
 
 from entropic.config import MAX_TOKENS_CHAT as MAX_TOKENS
 from entropic.config import MAX_USD_PER_RUN, MODEL
+from entropic.errors import BudgetExceeded
 from entropic.llm import Llm, Request
-from entropic.pricing import Budget, BudgetExceeded
+from entropic.pricing import Budget
 
 Effort = Literal["low", "medium", "high", "xhigh"]
 EFFORTS: tuple[str, ...] = get_args(Effort)

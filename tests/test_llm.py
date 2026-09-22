@@ -21,10 +21,12 @@ from pydantic import BaseModel, ValidationError
 
 import entropic
 from entropic.config import MODEL
-from entropic.llm import Rehearsed, Request, StepFailed, describe
-from entropic.pricing import BudgetExceeded, worst_case_usd
+from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted
+from entropic.llm import Rehearsed, Request, describe
+from entropic.pricing import worst_case_usd
+from entropic.tools import ALL_TOOLS, execute_tool
 
-from .conftest import FAKE_USAGE, MakeLlm, Sent
+from .conftest import FAKE_USAGE, MakeLlm, Sent, tool_results, tool_turn, turns
 
 # Worst case on the fake: 100 input tokens at $5/M plus 64 output at $25/M, $0.0021.
 REQUEST = Request.ask("greet", "be brief", "hello", 64)
@@ -305,7 +307,7 @@ def _talks_to_the_model(path: Path) -> bool:
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {"create", "parse", "stream", "count_tokens"}
+            and node.func.attr in {"create", "parse", "stream", "count_tokens", "tool_runner"}
             and isinstance(node.func.value, ast.Attribute)
             and node.func.value.attr == "messages"
         ):
@@ -314,8 +316,8 @@ def _talks_to_the_model(path: Path) -> bool:
 
 
 def test_only_llm_talks_to_the_model() -> None:
-    """Every count, send and stream in the package goes through `llm`, so every one is counted,
-    checked, admitted and billed. A module calling `client.messages` itself skips all four."""
+    """Every count, send, stream and tool loop in the package goes through `llm`, so every one is
+    counted, checked, admitted and billed. A module calling the SDK itself skips all four."""
     package = Path(entropic.__file__).parent
     talkers = {
         str(path.relative_to(package))
@@ -323,3 +325,69 @@ def test_only_llm_talks_to_the_model() -> None:
         if _talks_to_the_model(path)
     }
     assert talkers == {"llm.py"}
+
+
+AGENT = Request(
+    "agent",
+    [{"role": "user", "content": "what is 2 ** 10, and what time is it?"}],
+    256,
+    system="use the tools",
+    tools=ALL_TOOLS,
+)
+
+
+def test_run_tools_runs_each_call_and_sends_every_result_in_one_message(make_llm: MakeLlm) -> None:
+    """The runner's loop, driven from `llm`: the model asks for two tools in one turn, both run,
+    both results travel back in a single user message (invariant 4), and each turn is counted,
+    admitted and billed like any other call."""
+    both = tool_turn(("t1", "calculate", {"expression": "2 ** 10"}), ("t2", "current_time", {}))
+    llm, fake = make_llm(turns(both, "1024, and it is noon"))
+
+    final = llm.run_tools(AGENT, execute_tool)
+
+    assert [block.text for block in final.content if block.type == "text"] == [
+        "1024, and it is noon"
+    ]
+    results = tool_results(fake.sent[1])
+    assert [result["tool_use_id"] for result in results] == ["t1", "t2"]
+    assert results[0]["content"] == "1024.0"
+    assert [call.step for call in llm.trace] == ["agent:1", "agent:2"]
+    assert len(fake.counted) == 2, "each turn counted once, to admit it"
+
+
+def test_a_tool_error_goes_back_to_the_model_as_an_error_result(make_llm: MakeLlm) -> None:
+    llm, fake = make_llm(turns(tool_turn(("t1", "calculate", {"expression": "1 / 0"})), "sorry"))
+
+    llm.run_tools(AGENT, execute_tool)
+
+    [result] = tool_results(fake.sent[1])
+    assert result.get("is_error") is True
+    assert str(result["content"]).startswith("Error:"), result
+
+
+def test_a_turn_that_cannot_be_afforded_is_never_sent(make_llm: MakeLlm) -> None:
+    """A turn's worst case here is $0.0069 and the first costs $0.00175, so a $0.008 ceiling admits
+    the first and not the second — which the runner would otherwise send without asking."""
+    llm, fake = make_llm(turns(tool_turn(("t1", "current_time", {})), "done"), limit_usd=0.008)
+
+    with pytest.raises(BudgetExceeded, match="per-run ceiling"):
+        llm.run_tools(AGENT, execute_tool)
+    assert [sent.kind for sent in fake.sent] == ["turn"]
+
+
+def test_running_out_of_turns_raises_rather_than_looking_finished(make_llm: MakeLlm) -> None:
+    """The runner ends quietly at its cap and hands back a turn whose tools never ran; an agent
+    that stopped mid-task must not look like one that finished."""
+    llm, fake = make_llm(turns(tool_turn(("t1", "current_time", {}))))
+
+    with pytest.raises(TurnsExhausted, match="after 2 turns"):
+        llm.run_tools(AGENT, execute_tool, max_turns=2)
+    assert len(fake.sent) == 2
+
+
+def test_run_tools_needs_a_tool(make_llm: MakeLlm) -> None:
+    llm, fake = make_llm(echo)
+
+    with pytest.raises(ValueError, match="at least one tool"):
+        llm.run_tools(REQUEST, execute_tool)
+    assert fake.sent == [] and fake.counted == []
