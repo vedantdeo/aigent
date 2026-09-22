@@ -73,7 +73,7 @@ THINKING_EVAL_PARAM: ThinkingConfigParam = (
 )
 
 # How many times the agent may go round before giving up.
-MAX_AGENT_TURNS = 8
+MAX_AGENT_TURNS = 25  # a backstop against a loop of cheap turns; the budget ends a real one first
 MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this much output fits
 
 # How many calls one concurrent batch keeps in flight at once.

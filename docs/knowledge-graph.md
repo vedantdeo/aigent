@@ -3,8 +3,8 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `704be44` plus the per-turn ceiling and the agent's last answer landing in
-this commit (2026-09-22). 781 tests pass (777 plus 4 that need the `compare` group), 1 live test
+**Verified against commit `0692a10` plus the 25-turn backstop landing in this commit
+(2026-09-22). 781 tests pass (777 plus 4 that need the `compare` group), 1 live test
 deselected. The suite is fully green.**
 
 > **The package is organised by capability, not by week.** `week01/` split into `primitives/`
@@ -205,7 +205,7 @@ Values, plus the one function that turns them into a client. No arithmetic lives
 | `config.MAX_USD_PER_WORKFLOW` | constant | `config.py:35` | Default `0.25`, env `ENTROPIC_MAX_USD_PER_WORKFLOW`. One workflow demo's ceiling, admitted before every call and every batch through `llm`, so a demo cannot cross it at all. A single demo question has no business costing a dollar, so it sits under the run ceiling. `--limit` overrides it per run. |
 | `config.MAX_USD_PER_EVAL` | constant | `config.py:36` | Default `2.00`, env `ENTROPIC_MAX_USD_PER_EVAL`. One eval over a whole dataset. |
 | `config.MAX_TOKENS_*` | constants | `config.py:43-51` | One output cap per call site: `FIRST_CALL` 1024, `STREAMING` 4096, `EXTRACT` 2048, **`HEADLINE` 128**, `TOOL_LOOP` 4096, `CHAT` 4096, `JUDGE` 256, `QUESTION` 512, **`ANSWER` 256**, and eleven for the workflows, grouped by pattern — `FACTS` 1024 and `NOTE` 384 (chaining), `ROUTE` 128 and `ROUTED` 768, `SECTION` 384 and `VOTE` 256, `PLAN` 512, `WORKER` 384 and `SYNTHESIS` 768, `DRAFT` 384 and `CRITIQUE` 256. Three were raised after the first live run (2026-09-22): the fact extractor used 740 of 768, an analysis answer hit 384, and a reviewer's one-sentence verdict was cut off at 128 — which is also what found the unbilled-reply bug in `llm`. Each module imports its own under the local alias `MAX_TOKENS`. Side by side they show which calls are the expensive ones — invisible when each number sits alone in its module. `HEADLINE` is the worked example of why the cap is sized per call site rather than set generously: `estimate_eval_usd` prices the full cap, so Project 1a's worst case is $3.19 at `EXTRACT`'s 2048 and $0.64 at 384. Same run, same real spend; only the guard's verdict changes. It started at 256, clipped one row in 60 on the first live run (2026-09-11), went to 384, and still clipped two rows in 50 — the other edge of the same knife. The cause was not the record: it was **extended thinking**, billed as output and charged against the cap, spending 200-280 tokens before the answer began. With `THINKING_EVAL` off the record is ~45 tokens and 128 is three times what it needs. The old comment claimed 384 sized "a five-field record"; it never did. Tuned against actual runs rather than guessed — three of them. |
-| `config.MAX_AGENT_TURNS` | constant | `config.py:76` | `8`. The tool loop's iteration cap; imported by `tool_loop` as `MAX_TURNS`. |
+| `config.MAX_AGENT_TURNS` | constant | `config.py:76` | `25` (was `8` until 2026-09-22). Both tool loops' iteration cap; imported by `tool_loop` as `MAX_TURNS`. **A backstop, not the policy**: every turn is admitted against the budget before it is sent, so the budget decides how long a run lasts. At the ~4–5k tokens a search adds, `MAX_USD_PER_TURN` ends a search near turn 11; the cap binds only on a loop of turns too cheap for the budget to stop soon. At 8 it was the cap that ended the third live run, with the ceiling far off. |
 | `config.MIN_TOKENS_FINAL_ANSWER` | constant | `config.py:77` | `1024`. The least output `llm.run_tools` will send a last answer with; below it, the refusal that ended the searching stands. |
 | `config.MAX_PARALLEL_CALLS` | constant | `config.py:80` | `4`. How many calls one `Llm.gather_*` batch keeps in flight. Admission covers the whole batch regardless, so this bounds concurrency and rate-limit pressure, not spend. |
 | `config.THINKING_WORKFLOW_PARAM` | constant | `config.py:83` | `{"type": "disabled"}`, stated on every workflow `Request`. A workflow splits the work into small, fully specified calls, which is where thinking adds least, and off keeps output inside caps a few hundred tokens wide. On Opus 5 thinking-off is accepted at effort `high` or below, the default, and can leak thinking tags into text — watch for that in the live runs. **Not for a tool-using agent**: with thinking off, Opus 5 can write a tool call into its visible text, where it never runs. |
@@ -682,7 +682,7 @@ primitives.tool_loop.run   —sends-each-turn-through→ llm.Llm.create        (
 primitives.tool_loop.run   —raises→                errors.BudgetExceeded     (a billed overrun: the backstop)
 primitives.tool_loop.run   —calls→                 tools.execute_tool
 primitives.tool_loop.run   —sends→                 tools.ALL_TOOLS
-primitives.tool_loop.run   —raises→                RuntimeError               (turn cap, MAX_TURNS=8)
+primitives.tool_loop.run   —raises→                RuntimeError               (turn cap, MAX_TURNS=25)
 primitives.chat.main       —sends-each-turn-through→ llm.Llm.stream
 agent.run                  —sends-each-turn-through→ llm.Llm.run_tools     (run budget, MAX_AGENT_TURNS, cached)
 agent.run                  —catches→               errors.{BudgetExceeded, TurnsExhausted}   (returns what it searched)
@@ -781,8 +781,10 @@ The rules the code encodes. Breaking one of these is a regression even when test
    trains the model out of parallel tool calls. `tests.primitives.test_tool_loop` asserts this explicitly.
 5. **Tool errors are `tool_result` with `is_error: True`, never exceptions.** `execute_tool` catches
    everything. The model can recover from a message; it cannot recover from a traceback.
-6. **Both loops are capped** (`config.MAX_AGENT_TURNS` = 8) and backed by two dollar ceilings, both
+6. **Both loops are capped** (`config.MAX_AGENT_TURNS` = 25) and backed by two dollar ceilings, both
    checked before each call since 2026-09-21. An uncapped loop is a cost bug waiting to happen. The
+   ceilings are the policy and the cap the backstop: it is set well past where the budget ends a
+   real run, so it binds only on a loop of cheap turns. The
    SDK's tool runner has no cap unless one is passed and ends quietly when it runs out, so
    `llm.run_tools` always passes one and raises `TurnsExhausted` at it, as `tool_loop.run` does.
    With `finish`, the last turn under the cap is the answer turn, so the cap still counts every

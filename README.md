@@ -220,11 +220,13 @@ model, its tokens and what it cost.
 `agent.py` is the other side of that line: the model gets the reports as a `search_reports` tool
 beside the calculator and decides for itself what to search, how often, and when it has enough. It
 loops on the Anthropic SDK's tool runner, driven through `llm.run_tools`, which counts and admits
-every turn against the $1.00 run ceiling before it is sent and stops at eight turns. The
-conversation is cached, so each turn reads what the last one sent instead of paying for it again.
-Each turn is held to a $0.40 ceiling of its own, since it resends the whole conversation. When it
-runs out of turns or budget it is told to stop searching and answer from what it has; only if not
-even a short answer fits does it stop empty-handed, printing what it searched and why. `docs/tool-runner.md` is what the runner does and hides, read from its source.
+every turn against the $1.00 run ceiling before it is sent, so the budget decides how long it
+searches; a 25-turn cap is only a backstop against a runaway loop. The conversation is cached, so
+each turn reads what the last one sent instead of paying for it again. Each turn is held to a $0.40
+ceiling of its own, since it resends the whole conversation. When it runs out of turns or budget it
+is told to stop searching and answer from what it has; only if not even a short answer fits does it
+stop empty-handed, printing what it searched and why. `docs/tool-runner.md` is what the runner does
+and hides, read from its source.
 
 ```bash
 uv run python -m entropic.agent --cache                       # dry run: counts the first call, sends nothing

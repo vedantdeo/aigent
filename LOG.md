@@ -792,4 +792,28 @@
   would re-write the whole conversation at 1.25×. The request stays identical and the text asks
   instead. Also closed: `test_pricing` still imported `BudgetExceeded` from `pricing`, missed by the
   errors move's single-line grep, and now imports it from `errors`.
+- 09-22: **the agent, live with room and a last answer: $0.40019, both questions answered.**
+
+  | question | turns | searches | cost | outcome |
+  |---|---|---|---|---|
+  | rural-demand exposure | 7 + the answer | 11 | $0.35115 | ITC by size of exposure, Tata Motors by sharpness, and a section on what the reports do not disclose |
+  | Reliance FY25 dividend | 2 | 2 | $0.04903 | ₹5.50 again, citing `RELIANCE-FY25#0335` |
+
+  The turn cap, not the $0.40 ceiling, ended the searching: turn 7 was 28,578 tokens, far under
+  the ceiling's ~47,600, and the eighth turn was kept for the answer. **The cache held across
+  the switch from the runner to the direct call**: the answer turn read 28,576 of its 28,952 input
+  tokens from cache, wrote 2,077 tokens of answer, and cost $0.069. I checked the rural answer's
+  figures against the passages it cited, which is free. All were there, in the reports' own
+  format (`35893.57` cited as ₹35,894 cr). One citation was a passage off: the SCV unit counts
+  are in `TATAMOTORS-FY25#0779`, which the same search returned, but were cited to `#0780`, which
+  holds the 12.7% and the "muted rural demand" wording. The answer differs from
+  orchestrator-workers' ("Tata Motors is most exposed"). With segment revenue in hand, it separates
+  the size of the exposure (ITC, 71.5% of revenue in FMCG, plus an agri arm tied to farm incomes)
+  from its sharpness (Tata's SCVs, down 12.7%, in a CV business that is about 17% of revenue).
+  Day's total about $1.83.
+- 09-22: **the turn cap becomes a backstop.** `MAX_AGENT_TURNS` goes from 8 to 25, for both tool
+  loops. Every turn is admitted against the budget before it is sent, so the budget should decide
+  how long a run lasts, and at 8 it was the cap that ended the run above, with the per-turn ceiling
+  far off. At the ~4–5k tokens a search adds, `MAX_USD_PER_TURN` now ends a search near turn 11. The
+  cap binds only on a loop of turns too cheap for the budget to stop soon. Free; no run.
 
