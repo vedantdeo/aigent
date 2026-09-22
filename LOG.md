@@ -726,3 +726,35 @@
 - 09-22: agent dry run, free: `agent:1` on claude-opus-5 is 1,118 input tokens, up to $0.1080
   with the full 4,096-token output cap. Later turns carry every earlier result and cannot be
   counted in advance; each is admitted against the $1.00 run ceiling before it is sent.
+- 09-22: **the agent, live: $0.62616 and no answer.** The rural-demand question ran seven Opus
+  turns, each a search, and never answered. The eighth turn was refused before it was sent: 29,654
+  input tokens plus the 4,096-token cap is $0.2507 at worst, over the $0.25 per-request ceiling.
+  The demo stops on `BudgetExceeded`, so the Reliance dividend question never ran.
+
+  | turn | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+  |---|---|---|---|---|---|---|---|
+  | input tokens | 1,118 | 5,510 | 11,247 | 16,376 | 21,723 | 26,875 | 29,464 |
+  | cost | $0.0105 | $0.0352 | $0.0664 | $0.0926 | $0.1227 | $0.1485 | $0.1503 |
+
+  **An agent's cost grows with the square of its turns**: each search adds about 5,000 tokens of
+  passages, and every turn resends all of them, so turn 7 cost 14× turn 1 and the seven came to
+  112k input tokens. At Opus prices the per-request ceiling also caps the context: with a
+  4,096-token output cap, $0.25 leaves room for about 29,500 input tokens, so this agent has about
+  six searches in it, whatever the turn cap says. The guard did its job — nothing unaffordable was
+  sent — but the run lost its evidence: the searches the model chose, and any text it wrote, went
+  with the exception, so the trace shows what the turns cost and not what they looked for.
+- 09-22: **the agent's two fixes, free.** A stopped run now returns what it searched — each query,
+  its scope and the passage ids it found — instead of losing them with the exception, and the demo
+  goes on to the next question. The conversation is cached with top-level `cache_control`, so
+  each turn reads the last one's prompt at a tenth of the input price instead of paying for it
+  again. Priced from the first run's token counts, that would have cut its input bill by about
+  60%. **It does not buy reach, and I said it would.** A call that may write the cache is admitted
+  at the cache-write price (1.25×), because a miss writes the whole prefix, so the $0.25 per-request
+  ceiling now binds at about 23,600 input tokens instead of 29,500: fewer turns than before, each
+  cheaper. The first run ended at 29,464. Reach needs a decision about that ceiling, or smaller
+  searches, not caching. Along the way: the SDK's `messages.parse` has no `cache_control`
+  parameter though the API takes it, so `llm` sends it in the request body there; and the trace's
+  `in` column now counts cached tokens as input, since the API's `input_tokens` is only the
+  uncached remainder. One gap closed: `Price.cache_write` is the 5-minute cache's 1.25×, and the
+  1-hour cache writes at 2×, so a request asking for it would have been under-priced by every
+  guard and billed low. `llm` now refuses one outright; nothing uses it.

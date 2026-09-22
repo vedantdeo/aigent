@@ -4,7 +4,8 @@ uv run python -m entropic.agent ["question"] [--yes]
 
 The workflows fix the path in code. Here the model gets the reports as a tool beside the calculator
 and loops on the SDK's tool runner — through `llm`, so every turn is admitted before it is sent —
-until it answers. Thinking stays on: with it off, a tool call can come out as plain text.
+until it answers. Thinking stays on: with it off, a tool call can come out as plain text. The
+conversation is cached, so each turn reads what the last one sent rather than paying for it again.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from anthropic.types import ToolParam
 
 from entropic.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from entropic.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
+from entropic.errors import BudgetExceeded, TurnsExhausted
 from entropic.llm import Llm, Request
 from entropic.retrieval.chunk import context_block
 from entropic.tools import ALL_TOOLS, execute_tool
@@ -58,21 +60,31 @@ TOOLS = [SEARCH_TOOL, *ALL_TOOLS]
 
 
 @dataclass(frozen=True)
+class Searched:
+    query: str
+    report: str
+    found: list[str]
+
+
+@dataclass(frozen=True)
 class Answered:
-    answer: str
-    searches: list[tuple[str, str]]
+    """`answer` is None when a guard stopped the run; `stopped` then says which, and why."""
+
+    answer: str | None
+    searches: list[Searched]
     turns: int
+    stopped: str | None = None
 
 
 def run(llm: Llm, search: Search, question: str) -> Answered:
-    searches: list[tuple[str, str]] = []
+    searches: list[Searched] = []
 
     def dispatch(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
         if name != SEARCH_TOOL["name"]:
             return execute_tool(name, arguments)
         query, report = str(arguments.get("query", "")), str(arguments.get("report", "all"))
-        searches.append((query, report))
         passages = search(query, doc_id=None if report == "all" else report)
+        searches.append(Searched(query, report, [chunk.id for chunk in passages]))
         return (context_block(passages) or "No passages matched that query.", False)
 
     request = Request(
@@ -82,17 +94,25 @@ def run(llm: Llm, search: Search, question: str) -> Answered:
         system=SYSTEM,
         tools=TOOLS,
         thinking={"type": "adaptive"},
+        cache_control={"type": "ephemeral"},
     )
     before = len(llm.trace)
-    final = llm.run_tools(request, dispatch, max_turns=MAX_AGENT_TURNS)
+    try:
+        final = llm.run_tools(request, dispatch, max_turns=MAX_AGENT_TURNS)
+    except (BudgetExceeded, TurnsExhausted) as stop:
+        # Both stop before sending, so what was searched so far is all there is to show for it.
+        return Answered(None, searches, len(llm.trace) - before, stopped=str(stop))
     answer = "".join(block.text for block in final.content if block.type == "text")
-    return Answered(answer, searches, turns=len(llm.trace) - before)
+    return Answered(answer, searches, len(llm.trace) - before)
 
 
 def show(result: Answered) -> str:
     lines = [f"{result.turns} turns, {len(result.searches)} searches:"]
-    lines += [f"  search_reports({query!r}, {report})" for query, report in result.searches]
-    lines.append(f"\n{result.answer}")
+    for searched in result.searches:
+        found = ", ".join(searched.found) or "nothing"
+        lines.append(f"  search_reports({searched.query!r}, {searched.report}) -> {found}")
+    ending = result.answer if result.answer is not None else f"stopped: {result.stopped}"
+    lines.append(f"\n{ending}")
     return "\n".join(lines)
 
 

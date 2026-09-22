@@ -15,6 +15,7 @@ from typing import cast
 import anthropic
 import numpy as np
 import pytest
+from anthropic import Omit
 from anthropic.lib.tools import BetaFunctionTool, BetaToolRunner
 from anthropic.types import (
     Message,
@@ -105,6 +106,7 @@ class Sent:
     schema: type | None
     thinking: object
     tools: object
+    cache_control: object
 
     @property
     def prompt(self) -> str:
@@ -215,10 +217,18 @@ class FakeMessages:
             schema=_schema(kwargs),
             thinking=kwargs.get("thinking"),
             tools=kwargs.get("tools"),
+            cache_control=_cache_control(kwargs),
         )
         with self._lock:
             self.sent.append(sent)
         return sent
+
+
+def _cache_control(kwargs: dict[str, object]) -> object:
+    """Top-level caching as the wire sees it, whether passed by name or, for parse, in the body."""
+    body = cast(dict[str, object], kwargs.get("extra_body") or {})
+    value = kwargs.get("cache_control", body.get("cache_control"))
+    return None if isinstance(value, Omit) else value
 
 
 def _schema(kwargs: dict[str, object]) -> type | None:

@@ -84,10 +84,14 @@ def describe_usage(model: str, usage: LlmUsage) -> str:
     )
 
 
-def worst_case_usd(model: str, input_tokens: int, max_tokens: int) -> float:
-    """The most one request can cost: all input at the input price, the full output cap at the
-    output price. Thinking counts against max_tokens, so this really is the ceiling."""
-    return cost_usd(model, input_tokens=input_tokens, output_tokens=max_tokens)
+def worst_case_usd(
+    model: str, input_tokens: int, max_tokens: int, *, cached: bool = False
+) -> float:
+    """The most one request can cost: the full output cap, and all input at the input price — or at
+    the cache-write price if `cached`, since a miss writes the whole prefix."""
+    if cached:
+        return cost_usd(model, 0, max_tokens, cache_write_tokens=input_tokens)
+    return cost_usd(model, input_tokens, max_tokens)
 
 
 def estimate_eval_usd(
@@ -113,7 +117,12 @@ def estimate_eval_usd(
 
 
 def assert_request_within_budget(
-    model: str, input_tokens: int, max_tokens: int, limit_usd: float = MAX_USD_PER_REQUEST
+    model: str,
+    input_tokens: int,
+    max_tokens: int,
+    limit_usd: float = MAX_USD_PER_REQUEST,
+    *,
+    cached: bool = False,
 ) -> float:
     """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded.
 
@@ -124,10 +133,11 @@ def assert_request_within_budget(
             f"{model} has no price, so no ceiling can hold it: its calls would be admitted and "
             "billed as free. Add it to pricing.PRICES."
         )
-    worst = worst_case_usd(model, input_tokens, max_tokens)
+    worst = worst_case_usd(model, input_tokens, max_tokens, cached=cached)
     if worst > limit_usd:
+        written = " written to cache" if cached else ""
         raise BudgetExceeded(
-            f"request could cost up to ${worst:.4f} ({input_tokens} input tokens plus "
+            f"request could cost up to ${worst:.4f} ({input_tokens} input tokens{written} plus "
             f"max_tokens={max_tokens} on {model}), above the per-request ceiling of "
             f"${limit_usd:.4f}. Trim the input, lower max_tokens, or raise "
             "ENTROPIC_MAX_USD_PER_REQUEST in .env."

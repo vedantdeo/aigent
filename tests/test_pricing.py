@@ -43,6 +43,11 @@ OPUS = "claude-opus-5"
             0.005 + 0.1024,
             id="the worst case charges the full output cap",
         ),
+        pytest.param(
+            worst_case_usd(OPUS, 1000, 4096, cached=True),
+            0.00625 + 0.1024,
+            id="a call that may write the cache writes all its input at worst",
+        ),
     ],
 )
 def test_the_price_list(charged: float, expected: float) -> None:

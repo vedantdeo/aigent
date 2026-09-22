@@ -20,6 +20,7 @@ from anthropic import Omit, omit
 from anthropic.lib.streaming import MessageStream
 from anthropic.lib.tools import BetaFunctionTool, ToolError, beta_tool
 from anthropic.types import (
+    CacheControlEphemeralParam,
     Message,
     MessageParam,
     OutputConfigParam,
@@ -30,6 +31,7 @@ from anthropic.types import (
     Usage,
 )
 from anthropic.types.beta import (
+    BetaCacheControlEphemeralParam,
     BetaMessage,
     BetaMessageParam,
     BetaOutputConfigParam,
@@ -40,7 +42,7 @@ from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
 
 from entropic.config import MAX_AGENT_TURNS, MAX_PARALLEL_CALLS, MODEL, get_client
-from entropic.errors import StepFailed, TurnsExhausted
+from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted
 from entropic.pricing import Budget, LlmUsage, assert_request_within_budget
 
 
@@ -56,6 +58,7 @@ class Request:
     tools: Sequence[ToolParam] | Omit = omit
     thinking: ThinkingConfigParam | Omit = omit
     output_config: OutputConfigParam | Omit = omit
+    cache_control: CacheControlEphemeralParam | Omit = omit
 
     @classmethod
     def ask(
@@ -144,6 +147,7 @@ class Llm:
             thinking=request.thinking,
             output_config=request.output_config,
             output_format=output_format,
+            cache_control=request.cache_control,
         ).input_tokens
 
     def create(self, request: Request) -> Message:
@@ -181,6 +185,7 @@ class Llm:
             tools=request.tools,
             thinking=request.thinking,
             output_config=request.output_config,
+            cache_control=request.cache_control,
         ) as stream:
             yield stream
             final = stream.get_final_message()
@@ -214,6 +219,7 @@ class Llm:
             system=cast("str | list[BetaTextBlockParam] | Omit", request.system),
             thinking=cast("BetaThinkingConfigParam | Omit", request.thinking),
             output_config=cast("BetaOutputConfigParam | Omit", request.output_config),
+            cache_control=cast("BetaCacheControlEphemeralParam | Omit", request.cache_control),
             tools=[_runnable(tool, dispatch) for tool in request.tools],
             max_iterations=max_turns,
         )
@@ -241,8 +247,15 @@ class Llm:
         # fit must not start.
         worst = 0.0
         for request in requests:
+            if any(marker.get("ttl") == "1h" for marker in _cache_markers(request)):
+                raise BudgetExceeded(
+                    f"{request.step}: asks for the 1-hour cache, whose writes pricing does not "
+                    "model, so no ceiling can hold it. Use the 5-minute default."
+                )
             tokens = self.count(request, schema)
-            cost = assert_request_within_budget(request.model, tokens, request.max_tokens)
+            cost = assert_request_within_budget(
+                request.model, tokens, request.max_tokens, cached=_writes_cache(request)
+            )
             if self.rehearse:
                 raise Rehearsed(request, tokens, cost)
             worst += cost
@@ -264,6 +277,7 @@ class Llm:
             tools=request.tools,
             thinking=request.thinking,
             output_config=request.output_config,
+            cache_control=request.cache_control,
         )
         self._bill(request, response.usage)
         return response
@@ -287,6 +301,8 @@ class Llm:
                 thinking=request.thinking,
                 output_config=request.output_config,
                 output_format=schema,
+                # The SDK's parse has no cache_control parameter; the API takes it all the same.
+                extra_body=_cache_body(request),
             )
         except ValidationError:
             # The SDK validates as it reads, so a cut-off record raises before its usage is seen.
@@ -299,7 +315,13 @@ class Llm:
     ) -> ParsedMessage[Record]:
         """A reply the SDK could not read, as an empty message billed at the call's worst case:
         exact for a record cut off at `max_tokens`, which is what makes one unreadable."""
-        usage = Usage(input_tokens=self.count(request, schema), output_tokens=request.max_tokens)
+        tokens = self.count(request, schema)
+        if _writes_cache(request):
+            usage = Usage(
+                input_tokens=0, cache_creation_input_tokens=tokens, output_tokens=request.max_tokens
+            )
+        else:
+            usage = Usage(input_tokens=tokens, output_tokens=request.max_tokens)
         return ParsedMessage[Record](
             id="unreadable",
             type="message",
@@ -323,6 +345,29 @@ class Llm:
             self.trace.append(Call(request.step, request.model, usage, usd))
 
 
+def _cache_markers(request: Request) -> list[CacheControlEphemeralParam]:
+    """Every cache marker a request carries: the top-level one and any on its system blocks."""
+    markers = [] if isinstance(request.cache_control, Omit) else [request.cache_control]
+    for block in [] if isinstance(request.system, (str, Omit)) else request.system:
+        marker = block.get("cache_control")
+        if marker is not None:
+            markers.append(marker)
+    return markers
+
+
+def _writes_cache(request: Request) -> bool:
+    """Whether a request can write to the cache: automatic caching, or a marked system block."""
+    return bool(_cache_markers(request))
+
+
+def _cache_body(request: Request) -> dict[str, object] | None:
+    return (
+        None
+        if isinstance(request.cache_control, Omit)
+        else {"cache_control": request.cache_control}
+    )
+
+
 def _runnable(tool: ToolParam, dispatch: Dispatch) -> BetaFunctionTool[Callable[..., str]]:
     """A tool the runner can call, sent exactly as `tool` is written and run through `dispatch`."""
     name = tool["name"]
@@ -343,13 +388,17 @@ def _runnable(tool: ToolParam, dispatch: Dispatch) -> BetaFunctionTool[Callable[
 
 
 def describe(trace: Sequence[Call]) -> str:
-    """The trace as a table: one line per call, then the total."""
-    lines = [f"  {'step':<22}{'model':<18}{'in':>7}{'out':>6}{'usd':>10}"]
+    """The trace as a table, one line per call, then the total. `in` is every input token, cached
+    or not; `cached` is how many of them were read from the cache."""
+    lines = [f"  {'step':<22}{'model':<18}{'in':>7}{'cached':>8}{'out':>6}{'usd':>10}"]
     for call in trace:
+        usage = call.usage
+        read = usage.cache_read_input_tokens or 0
+        total = usage.input_tokens + (usage.cache_creation_input_tokens or 0) + read
         lines.append(
-            f"  {call.step:<22}{call.model:<18}{call.usage.input_tokens:>7}"
-            f"{call.usage.output_tokens:>6}{call.usd:>10.5f}"
+            f"  {call.step:<22}{call.model:<18}{total:>7}{read:>8}"
+            f"{usage.output_tokens:>6}{call.usd:>10.5f}"
         )
     calls = f"{len(trace)} calls"
-    lines.append(f"  {calls:<53}{sum(call.usd for call in trace):>10.5f}")
+    lines.append(f"  {calls:<61}{sum(call.usd for call in trace):>10.5f}")
     return "\n".join(lines)

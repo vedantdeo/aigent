@@ -10,19 +10,20 @@ from __future__ import annotations
 
 import ast
 import time
-from dataclasses import fields
+from collections.abc import Callable
+from dataclasses import fields, replace
 from pathlib import Path
 
 import anthropic
 import httpx2
 import pytest
-from anthropic.types import Message, ToolParam, ToolUseBlock
+from anthropic.types import Message, TextBlock, ToolParam, ToolUseBlock, Usage
 from pydantic import BaseModel, ValidationError
 
 import entropic
 from entropic.config import MODEL
 from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted
-from entropic.llm import Rehearsed, Request, describe
+from entropic.llm import Llm, Rehearsed, Request, describe
 from entropic.pricing import worst_case_usd
 from entropic.tools import ALL_TOOLS, execute_tool
 
@@ -30,6 +31,10 @@ from .conftest import FAKE_USAGE, MakeLlm, Sent, tool_results, tool_turn, turns
 
 # Worst case on the fake: 100 input tokens at $5/M plus 64 output at $25/M, $0.0021.
 REQUEST = Request.ask("greet", "be brief", "hello", 64)
+CACHED = replace(REQUEST, cache_control={"type": "ephemeral"})
+MARKED = replace(
+    REQUEST, system=[{"type": "text", "text": "be brief", "cache_control": {"type": "ephemeral"}}]
+)
 LOOKUP: ToolParam = {
     "name": "lookup",
     "description": "look it up",
@@ -139,20 +144,30 @@ def _cut_off() -> ValidationError:
     raise AssertionError("truncated JSON should not validate")
 
 
-def test_a_reply_the_sdk_cannot_read_is_billed_at_its_worst_case(make_llm: MakeLlm) -> None:
+@pytest.mark.parametrize(
+    ("asked", "cached"),
+    [
+        pytest.param(REQUEST, False, id="an uncached call"),
+        pytest.param(CACHED, True, id="a cached call, billed as a full cache write"),
+    ],
+)
+def test_a_reply_the_sdk_cannot_read_is_billed_at_its_worst_case(
+    make_llm: MakeLlm, asked: Request, cached: bool
+) -> None:
     """The SDK validates a structured reply as it reads it, so a record cut off at `max_tokens`
     raises before its usage is returned — and a call raised past is a call nobody billed. It comes
     back as nothing parsed, billed at the worst case, which is what a cut-off reply costs."""
     llm, _ = make_llm(lambda sent: _cut_off())
 
-    response = llm.parse(REQUEST, Greeting)
+    response = llm.parse(asked, Greeting)
 
     assert response.parsed_output is None and response.stop_reason == "max_tokens"
     [call] = llm.trace
-    assert call.usage.output_tokens == REQUEST.max_tokens
-    assert call.usd == pytest.approx(worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64))
+    assert call.usage.output_tokens == asked.max_tokens
+    worst = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64, cached=cached)
+    assert call.usd == pytest.approx(worst), call.usage
     with pytest.raises(StepFailed, match="nothing parsed"):
-        llm.record(REQUEST, Greeting)
+        llm.record(asked, Greeting)
     assert len(llm.trace) == 2, "the refused record is billed too"
 
 
@@ -225,6 +240,79 @@ def test_a_rehearsal_counts_the_first_call_and_sends_nothing(make_llm: MakeLlm) 
     assert fake.sent == [] and llm.trace == []
 
 
+@pytest.mark.parametrize(
+    ("asked", "cached"),
+    [
+        pytest.param(REQUEST, False, id="an uncached call pays the input price at worst"),
+        pytest.param(CACHED, True, id="automatic caching can write every input token"),
+        pytest.param(MARKED, True, id="so can a marked system block"),
+    ],
+)
+def test_a_call_that_can_write_the_cache_is_admitted_as_if_it_will(
+    make_llm: MakeLlm, asked: Request, cached: bool
+) -> None:
+    """A miss writes the whole prefix at 1.25x the input price, so that is the worst case."""
+    llm, _ = make_llm(echo, rehearse=True)
+
+    with pytest.raises(Rehearsed) as caught:
+        llm.text(asked)
+
+    expected = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64, cached=cached)
+    assert caught.value.worst_usd == pytest.approx(expected), asked.system
+
+
+def _streamed(llm: Llm) -> str:
+    with llm.stream(CACHED) as stream:
+        return "".join(stream.text_stream)
+
+
+def _looped(llm: Llm) -> object:
+    return llm.run_tools(replace(CACHED, tools=[LOOKUP]), lambda name, args: ("found", False))
+
+
+@pytest.mark.parametrize(
+    "send",
+    [
+        pytest.param(lambda llm: llm.text(CACHED), id="create"),
+        pytest.param(lambda llm: llm.parse(CACHED, Greeting), id="parse, through the body"),
+        pytest.param(_streamed, id="stream"),
+        pytest.param(_looped, id="the tool runner"),
+    ],
+)
+def test_caching_reaches_the_wire_on_every_path(
+    make_llm: MakeLlm, send: Callable[[Llm], object]
+) -> None:
+    llm, fake = make_llm(lambda sent: Greeting(words="hi") if sent.kind == "parse" else "hi")
+
+    send(llm)
+
+    [sent] = fake.sent
+    assert sent.cache_control == {"type": "ephemeral"}, sent.kind
+
+
+def test_the_trace_counts_cached_input_as_input(make_llm: MakeLlm) -> None:
+    usage = Usage(
+        input_tokens=10, cache_creation_input_tokens=20, cache_read_input_tokens=70, output_tokens=5
+    )
+    reply = Message(
+        id="m",
+        type="message",
+        role="assistant",
+        model=MODEL,
+        content=[TextBlock(type="text", text="hi")],
+        stop_reason="end_turn",
+        stop_sequence=None,
+        usage=usage,
+    )
+    llm, _ = make_llm(lambda sent: reply)
+    llm.text(CACHED)
+
+    [header, line, _] = describe(llm.trace).splitlines()
+
+    assert header.split()[2:4] == ["in", "cached"]
+    assert line.split()[2:4] == ["100", "70"], line
+
+
 def test_the_trace_prints_a_line_per_call_and_the_total(make_llm: MakeLlm) -> None:
     llm, _ = make_llm(echo)
     llm.text(REQUEST)
@@ -281,6 +369,29 @@ def test_what_only_the_api_can_reject_is_rejected_at_the_free_count(
         ),
         pytest.param(REQUEST, 2_000_000, 0.0, "per-request ceiling", id="an input too large"),
         pytest.param(REQUEST, 100, 0.999, "per-run ceiling", id="a run with too little left"),
+        pytest.param(
+            replace(REQUEST, cache_control={"type": "ephemeral", "ttl": "1h"}),
+            100,
+            0.0,
+            "1-hour cache",
+            id="the 1-hour cache, whose writes are not priced",
+        ),
+        pytest.param(
+            replace(
+                REQUEST,
+                system=[
+                    {
+                        "type": "text",
+                        "text": "be brief",
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                    }
+                ],
+            ),
+            100,
+            0.0,
+            "1-hour cache",
+            id="the 1-hour cache on a system block",
+        ),
     ],
 )
 def test_what_our_own_guards_refuse_is_never_sent(
