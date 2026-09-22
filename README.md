@@ -222,8 +222,9 @@ beside the calculator and decides for itself what to search, how often, and when
 loops on the Anthropic SDK's tool runner, driven through `llm.run_tools`, which counts and admits
 every turn against the $1.00 run ceiling before it is sent and stops at eight turns. The
 conversation is cached, so each turn reads what the last one sent instead of paying for it again.
-When a guard stops a question, the agent prints what it searched and why it stopped, then moves on
-to the next. `docs/tool-runner.md` is what the runner does and hides, read from its source.
+Each turn is held to a $0.40 ceiling of its own, since it resends the whole conversation. When it
+runs out of turns or budget it is told to stop searching and answer from what it has; only if not
+even a short answer fits does it stop empty-handed, printing what it searched and why. `docs/tool-runner.md` is what the runner does and hides, read from its source.
 
 ```bash
 uv run python -m entropic.agent --cache                       # dry run: counts the first call, sends nothing
@@ -232,12 +233,13 @@ uv run python -m entropic.agent "your question" --cache --yes # spends, capped a
 
 ## Budget guards
 
-Four ceilings in USD, each overridable in `.env`. A tripped guard raises `BudgetExceeded` with the
+Five ceilings in USD, each overridable in `.env`. A tripped guard raises `BudgetExceeded` with the
 numbers in the message. Trim the input, lower `max_tokens`, or raise the ceiling on purpose.
 
 | Guard | Default | Enforced where |
 |-------|---------|----------------|
 | per request | $0.25 | before every call: free token count, worst case is input plus the full `max_tokens`, with input at the cache-write price when the call caches |
+| per agent turn | $0.40 | before every turn of the agent, in place of the per-request ceiling, since a turn resends the whole conversation |
 | per workflow | $0.25 | before every call and every parallel batch in a workflow demo, on the worst case |
 | per run | $1.00 | before every call in a tool loop, the agent or a chat session, on that call's worst case, and after it on the real cost |
 | per eval | $2.00 | before the run starts, on the whole run's worst case; then after each row, where a trip keeps the rows already paid for and marks the report partial |

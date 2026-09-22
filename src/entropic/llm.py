@@ -41,9 +41,22 @@ from anthropic.types.beta import (
 from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
 
-from entropic.config import MAX_AGENT_TURNS, MAX_PARALLEL_CALLS, MODEL, get_client
+from entropic.config import (
+    MAX_AGENT_TURNS,
+    MAX_PARALLEL_CALLS,
+    MAX_USD_PER_REQUEST,
+    MAX_USD_PER_TURN,
+    MIN_TOKENS_FINAL_ANSWER,
+    MODEL,
+    get_client,
+)
 from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted
-from entropic.pricing import Budget, LlmUsage, assert_request_within_budget
+from entropic.pricing import (
+    Budget,
+    LlmUsage,
+    affordable_output_tokens,
+    assert_request_within_budget,
+)
 
 
 @dataclass(frozen=True)
@@ -84,6 +97,15 @@ class Call:
     model: str
     usage: LlmUsage
     usd: float
+
+
+@dataclass(frozen=True)
+class ToolRun:
+    """How a tool-using conversation ended: its last message, and why it was told to answer before
+    it was done, if it was."""
+
+    message: BetaMessage
+    cut_short: str | None = None
 
 
 # Runs one tool call: `(name, input)` in, `(content, is_error)` out, as `tools.execute_tool` does.
@@ -204,14 +226,25 @@ class Llm:
         return self._fan_out(requests, lambda request: self._record(request, schema))
 
     def run_tools(
-        self, request: Request, dispatch: Dispatch, *, max_turns: int = MAX_AGENT_TURNS
-    ) -> BetaMessage:
+        self,
+        request: Request,
+        dispatch: Dispatch,
+        *,
+        max_turns: int = MAX_AGENT_TURNS,
+        finish: str | None = None,
+    ) -> ToolRun:
         """Run a tool-using conversation on the SDK's tool runner until the model stops asking for
-        tools; its last message. Every turn is admitted before it is sent and billed after."""
+        tools. Each turn is admitted against the per-turn ceiling before it is sent, billed after.
+
+        With `finish`, a conversation about to run out of turns or budget is sent one last turn with
+        `finish` after its tool results, to answer from what it has, if enough output still fits.
+        """
         if isinstance(request.tools, Omit) or not request.tools:
             raise ValueError(f"{request.step}: run_tools needs at least one tool")
         messages: list[MessageParam] = list(request.messages)
-        self._admit([replace(request, step=f"{request.step}:1", messages=messages)])
+        first = replace(request, step=f"{request.step}:1", messages=messages)
+        self._admit([first], limit_usd=MAX_USD_PER_TURN, scope="turn")
+        tools = [_runnable(tool, dispatch) for tool in request.tools]
         runner = self.client.beta.messages.tool_runner(
             model=request.model,
             max_tokens=request.max_tokens,
@@ -220,13 +253,13 @@ class Llm:
             thinking=cast("BetaThinkingConfigParam | Omit", request.thinking),
             output_config=cast("BetaOutputConfigParam | Omit", request.output_config),
             cache_control=cast("BetaCacheControlEphemeralParam | Omit", request.cache_control),
-            tools=[_runnable(tool, dispatch) for tool in request.tools],
+            tools=tools,
             max_iterations=max_turns,
         )
         for turn, message in enumerate(runner, start=1):
             self._bill(replace(request, step=f"{request.step}:{turn}"), message.usage)
             if message.stop_reason not in ("tool_use", "pause_turn"):
-                return message
+                return ToolRun(message)
             if turn == max_turns:
                 break
             messages = [
@@ -237,12 +270,77 @@ class Llm:
                 # Runs the tools now; the runner reuses these results rather than rerun them.
                 results = runner.generate_tool_call_response()
                 if results is None:
-                    return message
+                    return ToolRun(message)
                 messages.append(cast(MessageParam, results))
-            self._admit([replace(request, step=f"{request.step}:{turn + 1}", messages=messages)])
+            upcoming = replace(request, step=f"{request.step}:{turn + 1}", messages=messages)
+            stop: Exception | None
+            if finish is not None and turn + 1 == max_turns:
+                stop = TurnsExhausted(
+                    f"{request.step}: the last of {max_turns} turns is kept for an answer"
+                )
+            else:
+                stop = self._refusal(upcoming)
+            if stop is None:
+                continue
+            if finish is None or message.stop_reason != "tool_use":
+                raise stop
+            return self._last_answer(upcoming, tools, finish, stop)
         raise TurnsExhausted(f"{request.step}: still asking for tools after {max_turns} turns")
 
-    def _admit(self, requests: Sequence[Request], schema: type[BaseModel] | None = None) -> None:
+    def _refusal(self, upcoming: Request) -> BudgetExceeded | None:
+        """Why `upcoming` may not be sent as another tool turn, or None once it is admitted."""
+        try:
+            self._admit([upcoming], limit_usd=MAX_USD_PER_TURN, scope="turn")
+        except BudgetExceeded as refused:
+            return refused
+        return None
+
+    def _last_answer(
+        self,
+        upcoming: Request,
+        tools: Sequence[BetaFunctionTool[Callable[..., str]]],
+        finish: str,
+        stop: Exception,
+    ) -> ToolRun:
+        """Send `upcoming` as a last answer instead: `finish` after its tool results, and as much
+        output as the per-turn ceiling and the budget allow. Raises `stop` if that is too little,
+        or if the model asks for tools anyway."""
+        *history, results = upcoming.messages
+        blocks = [*cast(list[object], results["content"]), {"type": "text", "text": finish}]
+        told = cast(MessageParam, {"role": "user", "content": blocks})
+        answer = replace(upcoming, step=f"{upcoming.step} answer", messages=[*history, told])
+        room = min(MAX_USD_PER_TURN, self.budget.limit_usd - self.budget.spent_usd)
+        fits = affordable_output_tokens(
+            answer.model, self.count(answer), room, cached=_writes_cache(answer)
+        )
+        answer = replace(answer, max_tokens=min(answer.max_tokens, fits))
+        if answer.max_tokens < MIN_TOKENS_FINAL_ANSWER:
+            raise stop
+        self._admit([answer], limit_usd=MAX_USD_PER_TURN, scope="turn")
+        # Sent as the runner sends a turn, bar the messages and the cap, so the cache still holds.
+        message = self.client.beta.messages.parse(
+            model=answer.model,
+            max_tokens=answer.max_tokens,
+            messages=cast(list[BetaMessageParam], answer.messages),
+            system=cast("str | list[BetaTextBlockParam] | Omit", answer.system),
+            thinking=cast("BetaThinkingConfigParam | Omit", answer.thinking),
+            output_config=cast("BetaOutputConfigParam | Omit", answer.output_config),
+            cache_control=cast("BetaCacheControlEphemeralParam | Omit", answer.cache_control),
+            tools=[tool.to_dict() for tool in tools],
+        )
+        self._bill(answer, message.usage)
+        if message.stop_reason == "tool_use":
+            raise stop
+        return ToolRun(message, str(stop))
+
+    def _admit(
+        self,
+        requests: Sequence[Request],
+        schema: type[BaseModel] | None = None,
+        *,
+        limit_usd: float = MAX_USD_PER_REQUEST,
+        scope: str = "request",
+    ) -> None:
         # The sum, not each call: calls in flight cannot be recalled, so a batch that cannot all
         # fit must not start.
         worst = 0.0
@@ -254,7 +352,12 @@ class Llm:
                 )
             tokens = self.count(request, schema)
             cost = assert_request_within_budget(
-                request.model, tokens, request.max_tokens, cached=_writes_cache(request)
+                request.model,
+                tokens,
+                request.max_tokens,
+                limit_usd,
+                cached=_writes_cache(request),
+                scope=scope,
             )
             if self.rehearse:
                 raise Rehearsed(request, tokens, cost)

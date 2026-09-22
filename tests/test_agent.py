@@ -8,16 +8,24 @@ is a question for a live run.
 from __future__ import annotations
 
 import pytest
+from anthropic.types import Message
 
-from entropic.agent import run
+from entropic.agent import FINISH, run, show
 from entropic.config import MAX_AGENT_TURNS, MAX_TOKENS_TOOL_LOOP, MODEL
 from entropic.pricing import worst_case_usd
+from entropic.retrieval.chunk import Chunk
 
-from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, tool_results, tool_turn, turns
+from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, Sent, tool_results, tool_turn, turns
 
 ANSWER = "Tata Motors, on its small commercial vehicles [TATAMOTORS-FY25#0001]"
 EVERY_REPORT = ["ITC-FY25#0001", "RELIANCE-FY25#0001", "TATAMOTORS-FY25#0001"]
 SEARCHING = tool_turn(("s1", "search_reports", {"query": "rural demand", "report": "all"}))
+
+
+def until_told(sent: Sent) -> Message | str:
+    return ANSWER if FINISH in str(sent.messages[-1]["content"]) else SEARCHING
+
+
 # Room for one turn's worst case and not a second, once the first has been billed.
 ONE_TURN_USD = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, MAX_TOKENS_TOOL_LOOP, cached=True)
 
@@ -62,35 +70,45 @@ def test_the_other_tools_still_run_beside_search(make_llm: MakeLlm, search: Fake
 
 
 @pytest.mark.parametrize(
-    ("limit_usd", "stopped", "turns", "searches"),
+    ("limit_usd", "says", "turns", "searches"),
     [
         pytest.param(
             1.0,
-            f"after {MAX_AGENT_TURNS} turns",
+            f"last of {MAX_AGENT_TURNS} turns",
             MAX_AGENT_TURNS,
             MAX_AGENT_TURNS - 1,
-            id="the turn cap, whose last turn's tools never run",
+            id="the turn cap, whose last turn is kept for an answer",
         ),
         pytest.param(
-            ONE_TURN_USD + 0.001, "could cost up to", 1, 1, id="a turn the budget cannot afford"
+            ONE_TURN_USD + 0.001, "per-run ceiling", 2, 1, id="a search the budget cannot afford"
         ),
     ],
 )
-def test_a_stopped_run_still_shows_what_it_searched(
-    make_llm: MakeLlm,
-    search: FakeSearch,
-    limit_usd: float,
-    stopped: str,
-    turns: int,
-    searches: int,
+def test_a_run_out_of_room_answers_from_what_it_searched(
+    make_llm: MakeLlm, search: FakeSearch, limit_usd: float, says: str, turns: int, searches: int
 ) -> None:
-    llm, _ = make_llm(lambda sent: SEARCHING, limit_usd=limit_usd)
+    llm, _ = make_llm(until_told, limit_usd=limit_usd)
 
     result = run(llm, search, "who is most exposed to rural demand?")
 
-    assert result.answer is None and stopped in str(result.stopped), result.stopped
+    assert result.answer == ANSWER and says in str(result.stopped), result.stopped
     assert (result.turns, len(result.searches)) == (turns, searches)
-    assert result.searches[0].found == EVERY_REPORT
+    assert "searching stopped" in show(result)
+
+
+def test_with_no_room_even_to_answer_it_still_shows_what_it_searched(
+    make_llm: MakeLlm, search: FakeSearch
+) -> None:
+    llm, fake = make_llm(until_told)
+
+    def growing(query: str, /, *, doc_id: str | None = None) -> list[Chunk]:
+        fake.input_tokens = 80_000
+        return search(query, doc_id=doc_id)
+
+    result = run(llm, growing, "who is most exposed to rural demand?")
+
+    assert result.answer is None and "per-turn ceiling" in str(result.stopped), result.stopped
+    assert (result.turns, [searched.found for searched in result.searches]) == (1, [EVERY_REPORT])
 
 
 @pytest.mark.parametrize(

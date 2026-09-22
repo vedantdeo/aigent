@@ -7,6 +7,7 @@ any call whose worst case would carry spending past the ceiling. `llm` applies b
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from anthropic.types import Usage
@@ -94,6 +95,18 @@ def worst_case_usd(
     return cost_usd(model, input_tokens, max_tokens)
 
 
+def affordable_output_tokens(
+    model: str, input_tokens: int, limit_usd: float, *, cached: bool = False
+) -> int:
+    """The largest `max_tokens` whose worst case, with this input, stays within `limit_usd`."""
+    price = PRICES.get(model)
+    if price is None:
+        return 0
+    spare = limit_usd - worst_case_usd(model, input_tokens, 0, cached=cached)
+    # One token short of the exact figure, so float rounding cannot carry it over the limit.
+    return max(0, math.floor(spare / (price.output * 1e-6)) - 1)
+
+
 def estimate_eval_usd(
     model: str,
     n_cases: int,
@@ -123,6 +136,7 @@ def assert_request_within_budget(
     limit_usd: float = MAX_USD_PER_REQUEST,
     *,
     cached: bool = False,
+    scope: str = "request",
 ) -> float:
     """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded.
 
@@ -138,9 +152,9 @@ def assert_request_within_budget(
         written = " written to cache" if cached else ""
         raise BudgetExceeded(
             f"request could cost up to ${worst:.4f} ({input_tokens} input tokens{written} plus "
-            f"max_tokens={max_tokens} on {model}), above the per-request ceiling of "
+            f"max_tokens={max_tokens} on {model}), above the per-{scope} ceiling of "
             f"${limit_usd:.4f}. Trim the input, lower max_tokens, or raise "
-            "ENTROPIC_MAX_USD_PER_REQUEST in .env."
+            f"ENTROPIC_MAX_USD_PER_{scope.upper()} in .env."
         )
     return worst
 

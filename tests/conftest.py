@@ -101,6 +101,7 @@ class Sent:
 
     kind: str
     model: str
+    max_tokens: int
     system: object
     messages: list[dict[str, object]]
     schema: type | None
@@ -212,6 +213,7 @@ class FakeMessages:
         sent = Sent(
             kind=kind,
             model=str(kwargs["model"]),
+            max_tokens=cast(int, kwargs["max_tokens"]),
             system=kwargs.get("system"),
             messages=list(cast(Sequence[dict[str, object]], kwargs["messages"])),
             schema=_schema(kwargs),

@@ -6,6 +6,7 @@ The workflows fix the path in code. Here the model gets the reports as a tool be
 and loops on the SDK's tool runner — through `llm`, so every turn is admitted before it is sent —
 until it answers. Thinking stays on: with it off, a tool call can come out as plain text. The
 conversation is cached, so each turn reads what the last one sent rather than paying for it again.
+Out of turns or budget, it is told to stop searching and answer from what it has.
 """
 
 from __future__ import annotations
@@ -33,6 +34,11 @@ SYSTEM = (
     "Find what you need with search_reports: search as often as the question needs, rephrase when "
     "the passages miss, and search one report when the question names a company. Cite passage ids "
     "in square brackets, and say what the reports do not cover. Use calculate for arithmetic."
+)
+
+FINISH = (
+    "You are out of searches: do not call any more tools. Answer now from the passages you have, "
+    "cite them, and say plainly what you could not check."
 )
 
 SEARCH_TOOL: ToolParam = {
@@ -68,7 +74,8 @@ class Searched:
 
 @dataclass(frozen=True)
 class Answered:
-    """`answer` is None when a guard stopped the run; `stopped` then says which, and why."""
+    """`stopped` says why searching ended early, if it did; `answer` is None when there was no
+    room left even to answer."""
 
     answer: str | None
     searches: list[Searched]
@@ -98,12 +105,12 @@ def run(llm: Llm, search: Search, question: str) -> Answered:
     )
     before = len(llm.trace)
     try:
-        final = llm.run_tools(request, dispatch, max_turns=MAX_AGENT_TURNS)
+        ran = llm.run_tools(request, dispatch, max_turns=MAX_AGENT_TURNS, finish=FINISH)
     except (BudgetExceeded, TurnsExhausted) as stop:
-        # Both stop before sending, so what was searched so far is all there is to show for it.
+        # No room even to answer: what was searched so far is all there is to show for it.
         return Answered(None, searches, len(llm.trace) - before, stopped=str(stop))
-    answer = "".join(block.text for block in final.content if block.type == "text")
-    return Answered(answer, searches, len(llm.trace) - before)
+    answer = "".join(block.text for block in ran.message.content if block.type == "text")
+    return Answered(answer, searches, len(llm.trace) - before, stopped=ran.cut_short)
 
 
 def show(result: Answered) -> str:
@@ -111,8 +118,10 @@ def show(result: Answered) -> str:
     for searched in result.searches:
         found = ", ".join(searched.found) or "nothing"
         lines.append(f"  search_reports({searched.query!r}, {searched.report}) -> {found}")
-    ending = result.answer if result.answer is not None else f"stopped: {result.stopped}"
-    lines.append(f"\n{ending}")
+    if result.stopped is not None:
+        lines.append(f"\nsearching stopped: {result.stopped}")
+    if result.answer is not None:
+        lines.append(f"\n{result.answer}")
     return "\n".join(lines)
 
 

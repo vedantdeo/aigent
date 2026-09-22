@@ -12,10 +12,11 @@ import pytest
 from anthropic.types import Usage
 
 from entropic.config import DEFAULT_JUDGE_MODEL, DEFAULT_MODEL, DEFAULT_SMALL_MODEL
+from entropic.errors import BudgetExceeded
 from entropic.pricing import (
     PRICES,
     Budget,
-    BudgetExceeded,
+    affordable_output_tokens,
     assert_request_within_budget,
     cost_usd,
     estimate_eval_usd,
@@ -52,6 +53,24 @@ OPUS = "claude-opus-5"
 )
 def test_the_price_list(charged: float, expected: float) -> None:
     assert charged == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("input_tokens", "cached", "expected"),
+    [
+        pytest.param(
+            10_000, False, 13_999, id="what $0.40 leaves after $0.05 of input, less a token"
+        ),
+        pytest.param(10_000, True, 13_499, id="less again when the input may be written to cache"),
+        pytest.param(100_000, False, 0, id="none when the input alone is over the limit"),
+    ],
+)
+def test_the_output_a_limit_affords(input_tokens: int, cached: bool, expected: int) -> None:
+    affords = affordable_output_tokens(OPUS, input_tokens, 0.40, cached=cached)
+
+    assert affords == expected
+    worst = worst_case_usd(OPUS, input_tokens, affords, cached=cached)
+    assert affords == 0 or worst <= 0.40, worst
 
 
 def _usage(input_tokens: int, output_tokens: int) -> Usage:

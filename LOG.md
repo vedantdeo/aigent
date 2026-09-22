@@ -758,3 +758,38 @@
   uncached remainder. One gap closed: `Price.cache_write` is the 5-minute cache's 1.25×, and the
   1-hour cache writes at 2×, so a request asking for it would have been under-priced by every
   guard and billed low. `llm` now refuses one outright; nothing uses it.
+- 09-22: **the agent, live with caching: $0.25026, one answer and one stop.** Both questions ran
+  this time, since a stop now returns instead of raising.
+
+  | question | turns | searches | cost | outcome |
+  |---|---|---|---|---|
+  | rural-demand exposure | 5 | 10 | $0.19910 | stopped: turn 6 was 25,891 tokens, up to $0.2642 at the write price |
+  | Reliance FY25 dividend | 2 | 2 | $0.05117 | ₹5.50 per share, ₹7,443 crore in all, citing `RELIANCE-FY25#0335` |
+
+  **The dividend is the agent's point.** Every workflow run declined this question as "not in the
+  passages". The agent's first search missed too. It then rephrased into the report's own words
+  ("Directors recommend dividend equity share ₹ per share subject to approval members AGM") and
+  found the answer on its second search. A fixed path cannot do that, so its first retrieval miss
+  is its last.
+
+  **Caching worked as priced.** Each turn read the previous turn's whole prompt: 1,116 of 5,596,
+  then 5,594, 10,326 and 16,210. The rural question cost $0.199 for five turns, against $0.322 for
+  the same tokens uncached, 38% less with output included. Its turns ran two searches in parallel,
+  one or two reports at a time: rural demand per company, then segment shares of revenue to size the
+  exposure, then monsoon risk, rural reach and cigarette volumes. That is a sensible plan, not a
+  flailing one. The per-request ceiling cut it off as predicted: it sits at about 23,600 input
+  tokens, and turn 6 would have been 25,891. Day's total now about $1.43.
+- 09-22: **more room for the agent, and a last answer instead of a stop, free.** Turns of
+  `run_tools` are held to a new per-turn ceiling, `MAX_USD_PER_TURN` = $0.40, in place of the
+  per-request $0.25. At the cache-write price that admits about 47,600 input tokens a turn, twice
+  the reach. And a run about to run out, of turns or of budget, now gets one last turn told to
+  answer from what it has, with as much output as still fits. Below 1,024 tokens it stops as
+  before. Two things found building it. **Taking the runner's history over runs the tools
+  twice**: `append_messages` clears its cached tool results, and the runner calls for them again
+  before checking whether it was taken over. A test counting tool calls caught it, so the answer
+  turn is sent directly, with the runner's own tool dicts. **`tool_choice: none` would have been
+  the obvious way to force an answer**, but changing it invalidates the messages cache, so that turn
+  would re-write the whole conversation at 1.25×. The request stays identical and the text asks
+  instead. Also closed: `test_pricing` still imported `BudgetExceeded` from `pricing`, missed by the
+  errors move's single-line grep, and now imports it from `errors`.
+

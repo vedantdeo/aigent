@@ -55,6 +55,11 @@ while iterations < max_iterations:              # no limit unless you pass one
    `name`, `description`, `input_schema` and `strict`, so our hand-written schemas can be kept.
 9. **It always uses the beta endpoint** (`beta.messages.parse`), even with no output schema, and
    adds an `x-stainless-helper` header naming itself.
+10. **Taking the history over runs the tools twice.** `append_messages` clears the cached tool
+    results, and after the yield the runner calls `generate_tool_call_response()` again before it
+    checks whether the history was taken over, so a turn whose tools already ran in the hook runs
+    them a second time. Harmless for a search; a paid or side-effecting tool would be charged or
+    applied twice. Found by a test counting tool calls, not by reading.
 
 ## What we do about it
 
@@ -71,5 +76,11 @@ results are part of what that turn sends and so of what is counted. Every tool h
 local search, arithmetic, a file read — so nothing is spent early; a paid tool would need its own
 admission.
 
+Given `finish`, a conversation about to run out — its next turn refused by a ceiling, or the last
+under the cap — gets one last turn to answer from what it has, with `finish` after its tool results
+and as much output as still fits. That turn is sent directly with the runner's own tool dicts, not
+by taking the runner's history over (item 10), and not with `tool_choice: none`, which would
+invalidate the cached conversation and re-write all of it at 1.25×.
+
 `entropic/agent.py` is the first agent built on it: the reports as a `search_reports` tool beside
-the calculator, thinking on, a $1.00 run ceiling and eight turns.
+the calculator, thinking on, a $1.00 run ceiling, a $0.40 ceiling per turn and eight turns.

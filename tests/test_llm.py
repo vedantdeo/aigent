@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable
 from dataclasses import fields, replace
 from pathlib import Path
+from typing import cast
 
 import anthropic
 import httpx2
@@ -21,13 +22,13 @@ from anthropic.types import Message, TextBlock, ToolParam, ToolUseBlock, Usage
 from pydantic import BaseModel, ValidationError
 
 import entropic
-from entropic.config import MODEL
+from entropic.config import MAX_USD_PER_TURN, MODEL
 from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted
-from entropic.llm import Llm, Rehearsed, Request, describe
-from entropic.pricing import worst_case_usd
+from entropic.llm import Dispatch, Llm, Rehearsed, Request, describe
+from entropic.pricing import affordable_output_tokens, worst_case_usd
 from entropic.tools import ALL_TOOLS, execute_tool
 
-from .conftest import FAKE_USAGE, MakeLlm, Sent, tool_results, tool_turn, turns
+from .conftest import FAKE_USAGE, FakeMessages, MakeLlm, Sent, tool_results, tool_turn, turns
 
 # Worst case on the fake: 100 input tokens at $5/M plus 64 output at $25/M, $0.0021.
 REQUEST = Request.ask("greet", "be brief", "hello", 64)
@@ -454,9 +455,10 @@ def test_run_tools_runs_each_call_and_sends_every_result_in_one_message(make_llm
     both = tool_turn(("t1", "calculate", {"expression": "2 ** 10"}), ("t2", "current_time", {}))
     llm, fake = make_llm(turns(both, "1024, and it is noon"))
 
-    final = llm.run_tools(AGENT, execute_tool)
+    ran = llm.run_tools(AGENT, execute_tool)
 
-    assert [block.text for block in final.content if block.type == "text"] == [
+    assert ran.cut_short is None
+    assert [block.text for block in ran.message.content if block.type == "text"] == [
         "1024, and it is noon"
     ]
     results = tool_results(fake.sent[1])
@@ -494,6 +496,99 @@ def test_running_out_of_turns_raises_rather_than_looking_finished(make_llm: Make
     with pytest.raises(TurnsExhausted, match="after 2 turns"):
         llm.run_tools(AGENT, execute_tool, max_turns=2)
     assert len(fake.sent) == 2
+
+
+LONG = replace(AGENT, max_tokens=4096, cache_control={"type": "ephemeral"})
+FINISH = "answer now from what you have"
+
+
+def _growing(fake: FakeMessages, tokens: int, ran: list[str] | None = None) -> Dispatch:
+    """A tool whose result makes the next turn `tokens` long, by the free count."""
+
+    def dispatch(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
+        fake.input_tokens = tokens
+        if ran is not None:
+            ran.append(name)
+        return ("found", False)
+
+    return dispatch
+
+
+def _until_told(sent: Sent) -> Message | str:
+    told = FINISH in str(sent.messages[-1]["content"])
+    return "all I found" if told else tool_turn(("t1", "current_time", {}))
+
+
+def test_a_turn_is_held_to_the_per_turn_ceiling_not_the_per_request_one(make_llm: MakeLlm) -> None:
+    """A turn resends the whole conversation, so it has a ceiling of its own: $0.35 at worst is
+    refused as a single call and admitted as a turn."""
+    llm, fake = make_llm(lambda sent: "done")
+    fake.input_tokens = 40_000
+
+    with pytest.raises(BudgetExceeded, match="per-request ceiling"):
+        llm.text(LONG)
+    llm.run_tools(LONG, execute_tool)
+
+    assert [sent.kind for sent in fake.sent] == ["turn"]
+
+
+@pytest.mark.parametrize(
+    ("grown_to", "max_turns", "says", "max_tokens"),
+    [
+        pytest.param(100, 2, "last of 2 turns", 4096, id="the last turn under the cap"),
+        pytest.param(
+            50_000,
+            8,
+            "per-turn ceiling",
+            affordable_output_tokens(MODEL, 50_000, MAX_USD_PER_TURN, cached=True),
+            id="a search that grows the next turn past the per-turn ceiling",
+        ),
+    ],
+)
+def test_a_conversation_out_of_room_is_told_to_answer_from_what_it_has(
+    make_llm: MakeLlm, grown_to: int, max_turns: int, says: str, max_tokens: int
+) -> None:
+    """Instead of stopping empty-handed, one last turn: `finish` after the tool results, and as
+    much output as still fits — sent as the turns before it were, so the cache still holds."""
+    llm, fake = make_llm(_until_told)
+    tools_run: list[str] = []
+
+    ran = llm.run_tools(
+        LONG, _growing(fake, grown_to, tools_run), max_turns=max_turns, finish=FINISH
+    )
+
+    assert says in str(ran.cut_short), ran.cut_short
+    assert len(tools_run) == len(fake.sent) - 1, "each tool turn's tools ran once"
+    before, told = fake.sent[-2:]
+    same = ("model", "system", "thinking", "tools", "cache_control")
+    assert [getattr(told, f) for f in same] == [getattr(before, f) for f in same]
+    assert cast(list[object], told.messages[-1]["content"])[-1] == {"type": "text", "text": FINISH}
+    assert told.max_tokens == max_tokens
+    assert [block.text for block in ran.message.content if block.type == "text"] == ["all I found"]
+    assert [call.step for call in llm.trace] == ["agent:1", "agent:2 answer"]
+
+
+@pytest.mark.parametrize(
+    "grown_to",
+    [
+        pytest.param(80_000, id="no room at all"),
+        pytest.param(62_000, id="room for less than MIN_TOKENS_FINAL_ANSWER"),
+    ],
+)
+def test_without_room_for_an_answer_the_refusal_stands(make_llm: MakeLlm, grown_to: int) -> None:
+    llm, fake = make_llm(_until_told)
+
+    with pytest.raises(BudgetExceeded, match="per-turn ceiling"):
+        llm.run_tools(LONG, _growing(fake, grown_to), finish=FINISH)
+    assert len(fake.sent) == 1, "no answer turn is sent"
+
+
+def test_an_answer_turn_that_asks_for_tools_again_ends_the_run(make_llm: MakeLlm) -> None:
+    llm, fake = make_llm(lambda sent: tool_turn(("t1", "current_time", {})))
+
+    with pytest.raises(TurnsExhausted, match="last of 2 turns"):
+        llm.run_tools(LONG, execute_tool, max_turns=2, finish=FINISH)
+    assert len(fake.sent) == len(llm.trace) == 2, "the answer turn was sent, and billed"
 
 
 def test_run_tools_needs_a_tool(make_llm: MakeLlm) -> None:
