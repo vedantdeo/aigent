@@ -1,8 +1,8 @@
 """The first agent, on the SDK's real tool runner over the fake client: the model picks searches.
 
-What is tested is the part that is ours — which report a search runs on, what the model is handed
-back, what a stopped run still shows, and how the request is sent. Whether the model searches well
-is a question for a live run.
+What is tested is the part that is ours — that a search the model asks for reaches it, what a
+stopped run still shows, and how the request is sent. The search tool itself is tested in
+`test_report_tools`; whether the model searches well is a question for a live run.
 """
 
 from __future__ import annotations
@@ -30,29 +30,14 @@ def until_told(sent: Sent) -> Message | str:
 ONE_TURN_USD = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, MAX_TOKENS_TOOL_LOOP, cached=True)
 
 
-@pytest.mark.parametrize(
-    ("report", "scope", "found"),
-    [
-        pytest.param(
-            "TATAMOTORS-FY25",
-            "TATAMOTORS-FY25",
-            ["TATAMOTORS-FY25#0001"],
-            id="a named report is searched alone",
-        ),
-        pytest.param("all", None, EVERY_REPORT, id="all searches every report"),
-    ],
-)
-def test_the_model_s_search_runs_where_it_asked(
-    make_llm: MakeLlm, search: FakeSearch, report: str, scope: str | None, found: list[str]
+def test_a_search_the_model_asks_for_reaches_it_with_ids_to_cite(
+    make_llm: MakeLlm, search: FakeSearch
 ) -> None:
-    asked = tool_turn(("s1", "search_reports", {"query": "rural demand", "report": report}))
-    llm, fake = make_llm(turns(asked, ANSWER))
+    llm, fake = make_llm(turns(SEARCHING, ANSWER))
 
     result = run(llm, search, "who is most exposed to rural demand?")
 
-    assert search.asked == [("rural demand", scope)]
-    [searched] = result.searches
-    assert (searched.query, searched.report, searched.found) == ("rural demand", report, found)
+    assert [searched.found for searched in result.searches] == [EVERY_REPORT]
     assert (result.turns, result.answer) == (2, ANSWER)
     [passages] = tool_results(fake.sent[1])
     assert 'id="TATAMOTORS-FY25#0001"' in str(passages["content"]), "passages carry ids to cite"

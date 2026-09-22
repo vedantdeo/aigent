@@ -328,6 +328,7 @@ caught before the graph goes stale.
 - `src/entropic/errors.py` every error the package defines, to reuse before adding one
 - `src/entropic/tools.py`   framework-free tools, reused by everything that calls a tool
 - `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
+- `src/entropic/report_tools.py` tools that need the package, like search over the reports
 - `src/entropic/primitives/` the five modes
 - `src/entropic/retrieval/` chunking, local embeddings, the dense and sparse indexes, the rankers
 - `src/entropic/workflows/` the five workflow patterns, over the same reports

@@ -13,16 +13,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from anthropic.types import ToolParam
-
 from entropic.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from entropic.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from entropic.errors import BudgetExceeded, TurnsExhausted
 from entropic.llm import Llm, Request
-from entropic.retrieval.chunk import context_block
+from entropic.report_tools import SEARCH_TOOL, ReportSearch, Searched
 from entropic.tools import ALL_TOOLS, execute_tool
 from entropic.workflows.demo import run_demo
-from entropic.workflows.reports import CATALOGUE, REPORTS, Search
+from entropic.workflows.reports import CATALOGUE, Search
 
 QUESTIONS = (
     "Which of the three companies is most exposed to a slowdown in rural demand, and why?",
@@ -41,35 +39,7 @@ FINISH = (
     "cite them, and say plainly what you could not check."
 )
 
-SEARCH_TOOL: ToolParam = {
-    "name": "search_reports",
-    "description": (
-        "Search the annual reports for passages that answer a query. Returns up to five passages, "
-        "each tagged with the id to cite it by. Different words find different passages."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "What to look for, in a report's words."},
-            "report": {
-                "type": "string",
-                "enum": [*REPORTS, "all"],
-                "description": "One report's id to search only it, or all.",
-            },
-        },
-        "required": ["query", "report"],
-        "additionalProperties": False,
-    },
-    "strict": True,
-}
 TOOLS = [SEARCH_TOOL, *ALL_TOOLS]
-
-
-@dataclass(frozen=True)
-class Searched:
-    query: str
-    report: str
-    found: list[str]
 
 
 @dataclass(frozen=True)
@@ -84,15 +54,12 @@ class Answered:
 
 
 def run(llm: Llm, search: Search, question: str) -> Answered:
-    searches: list[Searched] = []
+    reports = ReportSearch(search)
 
     def dispatch(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
-        if name != SEARCH_TOOL["name"]:
-            return execute_tool(name, arguments)
-        query, report = str(arguments.get("query", "")), str(arguments.get("report", "all"))
-        passages = search(query, doc_id=None if report == "all" else report)
-        searches.append(Searched(query, report, [chunk.id for chunk in passages]))
-        return (context_block(passages) or "No passages matched that query.", False)
+        if name == SEARCH_TOOL["name"]:
+            return (reports(arguments), False)
+        return execute_tool(name, arguments)
 
     request = Request(
         "agent",
@@ -108,9 +75,9 @@ def run(llm: Llm, search: Search, question: str) -> Answered:
         ran = llm.run_tools(request, dispatch, max_turns=MAX_AGENT_TURNS, finish=FINISH)
     except (BudgetExceeded, TurnsExhausted) as stop:
         # No room even to answer: what was searched so far is all there is to show for it.
-        return Answered(None, searches, len(llm.trace) - before, stopped=str(stop))
+        return Answered(None, reports.searches, len(llm.trace) - before, stopped=str(stop))
     answer = "".join(block.text for block in ran.message.content if block.type == "text")
-    return Answered(answer, searches, len(llm.trace) - before, stopped=ran.cut_short)
+    return Answered(answer, reports.searches, len(llm.trace) - before, stopped=ran.cut_short)
 
 
 def show(result: Answered) -> str:

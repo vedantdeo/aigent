@@ -3,9 +3,8 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `0692a10` plus the 25-turn backstop landing in this commit
-(2026-09-22). 781 tests pass (777 plus 4 that need the `compare` group), 1 live test
-deselected. The suite is fully green.**
+**Verified against commit `4788078` plus `report_tools` landing in this commit (2026-09-22). 783 tests
+pass (779 plus 4 that need the `compare` group), 1 live test deselected. The suite is fully green.**
 
 > **The package is organised by capability, not by week.** `week01/` split into `primitives/`
 > (the five CLI modes) and `extraction/` (Project 1a, which is a
@@ -159,6 +158,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 | `llm` | `src/entropic/llm.py` | **The one module that talks to a model** (2026-09-21): every request is counted, admitted against a budget, sent, billed and traced. Every call shape the repo uses — plain, structured, streamed, tool-using, concurrent — has a method here. Every call in the package goes through it, and a test fails on any other module that calls `client.messages` itself (invariant 8). |
 | `errors` | `src/entropic/errors.py` | **Every error the package defines** (2026-09-22): `BudgetExceeded`, `DatasetError`, `StepFailed`, `TurnsExhausted`. Imports nothing, so any module can raise one without an import cycle. Reuse one before adding another (invariant 23). |
 | `tools` | `src/entropic/tools.py` | Framework-free tool implementations + their JSON schemas + a name→function dispatcher. Imports nothing from this package except `tools_config`. |
+| `report_tools` | `src/entropic/report_tools.py` | **Tools over the annual reports** (2026-09-22): `search_reports`'s schema, what runs it, and the record of each search. The home for any tool that needs the rest of the package, which is exactly what `tools` must not import. Moved out of `agent` so the agent holds only its choice of tools and its loop. |
 | `tools_config` | `src/entropic/tools_config.py` | The constants `tools` needs, in a config module that travels with it. Imports nothing internal at all. |
 | `cli` | `src/entropic/cli.py` | The `entropic` command: a mode table, a lookup, an interactive menu. |
 | `primitives.first_call` | `src/entropic/primitives/first_call.py` | One non-streaming call; token count and cost. |
@@ -187,7 +187,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 | `workflows.reports` | `src/entropic/workflows/reports.py` | `DocId`, `REPORTS`, `CATALOGUE`, and the `Search` protocol the patterns take — so a pattern test hands in a fake search and never builds an index. |
 | `workflows.demo` | `src/entropic/workflows/demo.py` | The command line the five and `agent` share: build the search once (~65s), dry run by default, `--yes` to spend, `--limit` for the ceiling. |
 | `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}` | `src/entropic/workflows/*.py` | The five patterns, one module each, each under 100 lines — a test holds them to it. See §2.9. |
-| `agent` | `src/entropic/agent.py` | **The first agent** (2026-09-22): the reports as a `search_reports` tool beside `tools.ALL_TOOLS`, looped on the SDK's tool runner through `llm.run_tools`. Shares `workflows.demo`'s command line and `Search`. See §2.10. |
+| `agent` | `src/entropic/agent.py` | **The first agent** (2026-09-22): `report_tools.SEARCH_TOOL` beside `tools.ALL_TOOLS`, looped on the SDK's tool runner through `llm.run_tools`. Shares `workflows.demo`'s command line and `Search`. See §2.10. |
 | `retrieval.answer` | `src/entropic/retrieval/answer.py` | **Project 1's generation half**: answer the question set from retrieved passages, closed-book against RAG. The first part of Week 2 that spends, and the reason the rest of `retrieval` staying free matters — the two numbers stay separable. |
 
 ### 2.2 Settings (`config`)
@@ -284,7 +284,12 @@ so a refused or truncated call still shows in the trace and the total.
 | `llm.Dispatch` | type alias | `llm.py:112` | `(name, arguments) -> (content, is_error)`, the shape `tools.execute_tool` already has, so it passes straight in. A caller with a tool of its own wraps it, as `agent.run` does for `search_reports`. |
 | `llm._runnable` | function | `llm.py:474` | One `ToolParam` plus the dispatcher as the runner's `BetaFunctionTool`, keeping the hand-written schema, description and `strict` rather than deriving them from a docstring. An `is_error` result is raised as `ToolError`, which the runner returns as `is_error: true` with the content intact (invariant 5). It takes `**arguments: object`, so the runner's argument validation — which drops the reason — accepts anything, and `execute_tool` names a bad argument itself. |
 
-### 2.5 Tools (`tools`)
+### 2.5 Tools (`tools`, `report_tools`)
+
+Two modules on one seam. `tools` imports nothing from this package, so it lifts into another
+framework by copying two files. `report_tools` holds the tools that cannot: they need a ranker and
+the reports. A new tool goes in `tools` if it can stand alone, and in `report_tools` if not — never
+the other way round, which would cost `tools` its independence.
 
 | ID | Kind | Anchor | Contract |
 |----|------|--------|----------|
@@ -298,6 +303,9 @@ so a refused or truncated call still shows in the trace and the total.
 | `tools.CALCULATOR_TOOL` / `TIME_TOOL` / `READ_FILE_TOOL` | `ToolParam` | `tools.py:86,106,118` | All three are `strict: True` with `additionalProperties: False`. Descriptions are written as prompts ("use this instead of computing in your head"). |
 | `tools.ALL_TOOLS` | list | `tools.py:140` | The list handed to the API. Adding a tool = impl + schema + `ALL_TOOLS` entry + `execute_tool` branch. Four edits, no registry. |
 | `tools.execute_tool` | function | `tools.py:143` | Dispatch by name → `(content, is_error)`. Type-checks each argument, catches every `Exception`, and returns unknown names as errors. **Never raises.** |
+| `report_tools.SEARCH_TOOL` | `ToolParam` | `report_tools.py:16` | `search_reports(query, report)`, strict, both required, `report` an enum of the three doc ids plus `all`. The description says different words find different passages, since retrieval misses were what the workflows' live run found. |
+| `report_tools.ReportSearch` | dataclass | `report_tools.py:49` | `search_reports` over one `Search`: called with a tool call's arguments, it searches one report or all, records a `Searched`, and returns `chunk.context_block` — every passage tagged with the id to cite — or a one-line no-match message. Its `searches` is the run's record of what was asked and found. |
+| `report_tools.Searched` | frozen dataclass | `report_tools.py:40` | One call: `query`, `report`, and the passage ids `found`. |
 
 ### 2.6 CLI (`cli`)
 
@@ -445,11 +453,10 @@ empty-handed. It comes back with no answer only when not even `MIN_TOKENS_FINAL_
 
 | ID | Kind | Anchor | Contract |
 |----|------|--------|----------|
-| `agent.QUESTIONS` | tuple | `agent.py:27` | Two: a judgement across all three reports (rural demand), and one figure (Reliance's FY25 dividend per share) that wants a scoped search. |
-| `agent.SEARCH_TOOL` | `ToolParam` | `agent.py:44` | `search_reports(query, report)`, strict, both required, `report` an enum of the three doc ids plus `all`. The description says different words find different passages, since retrieval misses were what the workflows' live run found. |
-| `agent.TOOLS` | list | `agent.py:65` | `SEARCH_TOOL` plus `tools.ALL_TOOLS`, so the calculator is there for per-share arithmetic. |
-| `agent.run` | function | `agent.py:86` | Dispatches `search_reports` to the `Search` (`all` searches unscoped) and returns `chunk.context_block`, or a one-line no-match message; any other tool goes to `tools.execute_tool`. Returns `Answered(answer, searches, turns, stopped)`: each search a `Searched(query, report, found)` with the passage ids it returned, and `turns` how many calls the trace grew by. `stopped` is `ToolRun.cut_short` when the run answered early. **`BudgetExceeded` and `TurnsExhausted` are caught here**, for a run with no room left even to answer: `answer` is `None`, `stopped` says why, and what was searched survives. |
-| `agent.FINISH` | constant | `agent.py:39` | The last turn's instruction: no more tools, answer from the passages you have, cite them, say what you could not check. |
+| `agent.QUESTIONS` | tuple | `agent.py:25` | Two: a judgement across all three reports (rural demand), and one figure (Reliance's FY25 dividend per share) that wants a scoped search. |
+| `agent.TOOLS` | list | `agent.py:42` | `report_tools.SEARCH_TOOL` plus `tools.ALL_TOOLS`, so the calculator is there for per-share arithmetic. |
+| `agent.run` | function | `agent.py:56` | Routes `search_reports` to a `report_tools.ReportSearch` over the `Search`, and any other tool to `tools.execute_tool`. Returns `Answered(answer, searches, turns, stopped)`: `searches` is the `ReportSearch`'s record, and `turns` how many calls the trace grew by. `stopped` is `ToolRun.cut_short` when the run answered early. **`BudgetExceeded` and `TurnsExhausted` are caught here**, for a run with no room left even to answer: `answer` is `None`, `stopped` says why, and what was searched survives. |
+| `agent.FINISH` | constant | `agent.py:37` | The last turn's instruction: no more tools, answer from the passages you have, cite them, say what you could not check. |
 
 ### 2.11 The eval harness (`evals`)
 
@@ -498,7 +505,8 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `tests.test_llm` | `tests/test_llm.py` | Every call shape, and the failure catalogue that `primitives.failures` used to be, 47 tests. One more since the first live run: a structured reply the SDK cannot read comes back as nothing parsed and billed at its worst case, rather than raising past the bill. The load-bearing one: a batch whose whole does not fit under the ceiling **sends nothing**, though two of its three calls would. Then: counted, sent, billed and traced in that order; the request reaching the wire as written; counting billing nothing; `text` refusing a refused or truncated reply but billing it; `create` passing a tool-use turn through unjudged; `parse` and `record` reading the same failed parse two ways; a batch answering in request order however it finishes; a batch of records priced with its schema; a stream billed only once it closes; a rehearsal sending nothing. Checked by mutation: admitting a batch call by call, and not billing a stream, each failed its test. **The catalogue, as tests** (2026-09-21): a three-row table of what only the API can reject — a missing model, a wrong key, an empty request — each raised by the *free* count, so nothing billable is sent; a six-row table of what our own guards refuse — an unpriced model, an output cap and an input no single call may carry, a run with too little left, and the 1-hour cache, top-level or on a system block — each never sent; a `Request` that has no field for what the API rejects (`temperature`, `top_p`, unknown fields); and ****caching, nine more** (2026-09-22): a call that can write the cache admitted at the cache-write price, three rows (uncached, automatic, a marked system block); `cache_control` reaching the wire on every path, four rows (create, parse through the body, stream, the tool runner); an unreadable reply billed as a full write when cached; the trace counting cached input as input. Each was checked by mutation. **The last answer, six more** (2026-09-22): a turn held to the per-turn ceiling rather than the per-request one; a conversation out of room told to answer, two rows (the last turn under the cap, a search that grows the next turn past the ceiling), asserting the instruction, the cap it was given, that it went out exactly as the turn before it did, and that each turn's tools ran once; no answer when there is no room or too little, two rows; an answer turn that asks for tools again. Checked by mutation, which is how the too-little row was found missing. Then **a scan of the package's source that fails unless `llm.py` is the only file calling `.messages.{create, parse, stream, count_tokens, tool_runner}`**. **`run_tools`, five more** (2026-09-22): two tool calls whose results go back in one user message; a failed tool returned as `is_error` with its content; a turn the budget cannot afford never sent; a model still asking for tools at the cap raising `TurnsExhausted`; a request with no tools refused. Checked by mutation: dropping the next-turn admission failed two tests, dropping the cap's raise failed one. The three API statuses are what the counting endpoint returned when probed. | free |
 | `tests.conftest.FakeAnthropic` / `make_llm` | `tests/conftest.py` | A client whose reply is a function of **what was sent** — model, system, messages, schema — and which records each call's top-level `cache_control`, from `extra_body` too, rather than of arrival order, so a concurrent batch gets the answers meant for it. Fakes `create`, `parse`, `stream` and `count_tokens`, and a reply may be a whole `Message` to script tool use, or an exception to raise. **`beta.messages.tool_runner` returns the SDK's real `BetaToolRunner`** over the fake, so `run_tools` is tested against the runner's own loop rather than a copy of it; `tool_turn`, `turns` and `tool_results` script and read a tool conversation. Also home to `FakeSearch` and its `search` fixture (one passage per report), moved up from `tests/workflows/conftest.py` when the agent needed it too. `input_tokens` and `count_error` decide what the free count says, which is how the catalogue tests provoke a rejection or an oversized request. `make_llm` wraps it in an `Llm` with a budget of its own. | free |
 | `tests.workflows.test_<pattern>` | `tests/workflows/` | One file per pattern, against `make_llm` and `conftest.FakeSearch` (one passage per report). Each asserts the property that defines its pattern: the gate as a six-row table and an empty gate costing no second call; a route per row with its model and its scope; sections landing under their own report and each reviewer a veto; the plan deciding the worker count and code capping it; the loop ending at a pass or the cap, with the evaluator never the drafter. Checked by mutation on the rebuilt code (2026-09-22): skipping the gate, swapping the routing models and not capping the plan each failed the test written for it. | free |
-| `tests.test_agent` | `tests/test_agent.py` | Against `make_llm` and `FakeSearch`, with the real runner, 8 tests. A two-row table: the model's search runs where it asked, one named report or `all`, recording the ids it found. The calculator still runs beside search. **A run out of room answers from what it searched**, two rows: the turn cap, whose last turn is kept for the answer, and a search the budget cannot afford. With no room even to answer, it still shows what it searched. Then how each turn is sent, two rows: thinking `adaptive`, and the conversation cached. | free |
+| `tests.test_agent` | `tests/test_agent.py` | Against `make_llm` and `FakeSearch`, with the real runner, 7 tests. A search the model asks for reaches it with ids to cite. The calculator still runs beside search. **A run out of room answers from what it searched**, two rows: the turn cap, whose last turn is kept for the answer, and a search the budget cannot afford. With no room even to answer, it still shows what it searched. Then how each turn is sent, two rows: thinking `adaptive`, and the conversation cached. | free |
+| `tests.test_report_tools` | `tests/test_report_tools.py` | `ReportSearch` called directly, no model. A two-row table: a search runs where the model asked, one named report or `all`, recording the ids found and handing back each passage with its id. A search that finds nothing says so. | free |
 | `tests.workflows.test_patterns` | `tests/workflows/test_patterns.py` | What holds for all five: `DocId` names exactly the manifest's reports, and each pattern module is under 100 lines — the roadmap's constraint, kept as a test so it survives the next edit. | free |
 | `tests.conftest.make_judge` | `tests/conftest.py:80` | The one scripted `LlmJudge` fixture: a verdict decided in the test, a fixed `JUDGE_USAGE`, and a log of prompts and pre-flight counts. Shared so the grader tests and the runner tests cannot drift apart about what a judge costs. | free |
 | `tests.test_api_smoke` | `tests/test_api_smoke.py` | `count_tokens` round-trip; skipped without credentials. | free |
@@ -628,7 +636,8 @@ workflows.demo              —imports→ config.{MAX_USD_PER_WORKFLOW, SEARCH_M
 workflows.demo              —imports→ retrieval.{chunk, corpus, rank.{Indexes, build_ranker}}
 agent                       —imports→ config.{MAX_AGENT_TURNS, MAX_USD_PER_RUN, MAX_TOKENS_TOOL_LOOP}, llm.{Llm, Request}, tools.{ALL_TOOLS, execute_tool}
 agent                       —imports→ errors.{BudgetExceeded, TurnsExhausted}
-agent                       —imports→ workflows.demo.run_demo, workflows.reports.{CATALOGUE, REPORTS, Search}, retrieval.chunk.context_block
+agent                       —imports→ workflows.demo.run_demo, workflows.reports.{CATALOGUE, Search}, report_tools.{SEARCH_TOOL, ReportSearch, Searched}
+report_tools                —imports→ workflows.reports.{REPORTS, Search}, retrieval.chunk.context_block   (never imported by tools)
 workflows.<pattern>         —imports→ workflows.{demo, reports}, llm.{Llm, Request}, retrieval.chunk.context_block, config.{MAX_TOKENS_<its call sites>, THINKING_WORKFLOW_PARAM}
 workflows.chaining          —imports→ retrieval.chunk.squeeze   (the gate compares the way a label resolves)
 workflows.routing           —imports→ config.{MODEL, SMALL_MODEL}
@@ -686,7 +695,8 @@ primitives.tool_loop.run   —raises→                RuntimeError             
 primitives.chat.main       —sends-each-turn-through→ llm.Llm.stream
 agent.run                  —sends-each-turn-through→ llm.Llm.run_tools     (run budget, MAX_AGENT_TURNS, cached)
 agent.run                  —catches→               errors.{BudgetExceeded, TurnsExhausted}   (returns what it searched)
-agent.run                  —calls→                 workflows.reports.Search, tools.execute_tool
+agent.run                  —calls→                 report_tools.ReportSearch, tools.execute_tool
+report_tools.ReportSearch  —calls→                 workflows.reports.Search
 primitives.chat.main       —catches→               errors.BudgetExceeded     (admission: drop turn, keep session)
 primitives.chat.main       —reads→                 pricing.Budget.tripped     (a billed overrun: end session)
 tools.execute_tool     —calls→                 tools.{calculate, current_time, read_file}
@@ -713,6 +723,7 @@ deliberate: a batch run should die loudly, an interactive session should degrade
 pricing.{cost_usd, worst_case_usd, assert_request_within_budget, Budget} —tested-by→ tests.test_pricing
 llm.{Llm, Request, describe, Llm.run_tools}                            —tested-by→ tests.test_llm
 agent.run                                                              —tested-by→ tests.test_agent
+report_tools.ReportSearch                                              —tested-by→ tests.test_report_tools
 workflows.<pattern>.run                                                —tested-by→ tests.workflows.test_<pattern>
 tools.{calculate, read_file, execute_tool}                             —tested-by→ tests.test_tools
 cli.{MODES, find_mode, menu_text, main}                                —tested-by→ tests.test_cli
