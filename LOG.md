@@ -925,3 +925,64 @@
   workers one at a time, not as a batch. Verdict: not worth it for a three-step workflow; its
   checkpoints and interrupts are for Week 4's agent. A live comparison run is not done.
 
+- 09-23: **Track B, Week 3: what quantization costs, predicted first and then measured.**
+  `underhood`'s `inference/quantization.py` takes Llama-3.2-3B-Instruct in bf16 and converts it
+  locally to 8, 6 and 4 bits, so the rows differ in bit width and nothing else. Free; it runs on
+  this machine. Predictions were written before the run and are kept beside the results.
+
+  | variant | weights | peak | TTFT | decode | weights read |
+  |---|---|---|---|---|---|
+  | bf16 | 6.43 GB | 6.56 GB | 375 ms | 14.7 tok/s | 94.2 GB/s |
+  | q8 | 3.41 GB | 3.67 GB | 286 ms | 28.2 tok/s | 96.2 GB/s |
+  | q6 | 2.61 GB | 2.91 GB | 280 ms | 36.3 tok/s | 94.7 GB/s |
+  | q4 | 1.81 GB | 2.17 GB | 276 ms | 49.8 tok/s | 90.1 GB/s |
+
+  **The decode roofline was the right instrument.** Predicted rates were weight bytes ÷ 120 GB/s
+  exactly — 18.9, 35.7, 45.5, 66.7 tok/s — and every variant landed at **74–80% of its own
+  roofline**, so one efficiency figure explains all four rows. The q4 : bf16 ratio came in at
+  **3.39×**, below the 3.5× the weight sizes alone imply, because fixed per-token overhead weighs
+  heaviest on the shortest token. That part of the prediction was right; the claim that efficiency
+  falls monotonically with bits was half right — q4 is the least efficient at 75.1%, but bf16 does
+  not lead, and bf16, q8 and q6 sit in a flat 78.5–80.2% band.
+
+  **Prefill has a crossover between 128 and 512 tokens**, which was not predicted. At a 128-token
+  prompt every quantized variant beats bf16 (354–393 ms against 402); at 512 the order has fully
+  inverted; at 2048 bf16 wins by 25% over q4 (4156 ms against 5211), with q8 and q6 laddered
+  between. Short prefill has too little arithmetic per weight to be compute-bound, so it still pays
+  for bytes the way decode does. Long prefill is compute-bound and charges for dequantization.
+
+  **mlx is faster than torch on this silicon.** bf16's 2048-token TTFT of 4156 ms against 14.6
+  TFLOP of work implies **3.5 TFLOP/s**, where Week 2's torch matmul on MPS gave 2.75. The estimate
+  built on the torch number was 13% high. Week 2's constant is a torch number, not a hardware one.
+
+  **Quality, teacher-forced on bf16's own generations:** q8 KL 0.0007 / 98.5% top-1 / 6 of 10
+  answers byte-identical; q6 0.0040 / 97.8% / 3 of 10; q4 0.0477 / 93.9% / 2 of 10. As perplexity
+  that is +0.07%, +0.40% and +4.9%. The same harness on a 135M model gave 4–5× worse numbers at
+  every bit width, which is redundancy absorbing the error. **The per-prompt spread is 24× and
+  tracks how constrained the output is, not how hard the task is**: `extraction` 0.0036 and
+  `format` 0.0062 at the robust end, both at 100% top-1 with byte-identical JSON from all four
+  variants, against `factual` 0.0851 and `summary` 0.0685 at the other. Open prose has many
+  acceptable next tokens, so rounding flips near-ties; `"company": "Northwind` has one, by a margin
+  4-bit rounding cannot overturn. That is the good news for pointing a RAG pipeline at a local
+  model, since its output is the constrained kind.
+
+  **The caveat outranks the table: this measures fidelity to bf16, not correctness.** On the
+  `logic` prompt all four variants answer wrongly, bf16 included — the chain is Asha > Ben >
+  Chitra > Dev, so the second shortest is Chitra, and they said Dev, Ben, Ben, Dev, each
+  contradicting its own restated premises. A KL of 0.000 there would have meant being perfectly
+  wrong. Four of the ten prompts have checkable answers and none of them are graded; the Week 1
+  harness is what would.
+
+  **Two upstream findings in mlx-lm 0.31.3, both candidates for Week 7's PR.** `mlx_lm.convert`
+  from a hub repo id fails on huggingface-hub 1.32.0, released 09-17: `load` fetches only weights
+  and tokenizer, then `save()` calls `snapshot_download(local_files_only=True)` and the new hub
+  raises `IncompleteSnapshotError` over a missing README. The stock CLI reproduces it; the
+  workaround is to hand `convert` a resolved local path. And the vocab projection runs at **every**
+  prefill position and is then discarded — 12% of prefill FLOPs and a 0.53 GB transient at 2048
+  tokens. `transformers` has `logits_to_keep` for exactly this; the fix has to be a parameter
+  rather than a slice, because speculative decoding needs logits at more than the last position.
+
+  **Still open:** peak memory above the weights grows as the model shrinks (0.13 GB for bf16 to
+  0.36 GB for q4) and nothing explains it yet. And part 2 of the roadmap item — `mlx_lm.server`
+  behind Project 1 — is not started; it needs `llm.py` to speak to a local model, and the answer
+  eval's judge is paid.
