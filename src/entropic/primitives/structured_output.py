@@ -48,7 +48,7 @@ def main() -> None:
 
     response = Llm().parse(request, PaperSummary)
 
-    summary = response.parsed_output
+    summary = response.parsed
     if summary is None:
         print(f"no parsed output; stop_reason={response.stop_reason}")
         return

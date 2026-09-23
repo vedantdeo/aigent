@@ -8,12 +8,11 @@ from __future__ import annotations
 
 from typing import Literal, cast, get_args
 
-from anthropic.types import MessageParam
-
 from entropic.config import MAX_TOKENS_CHAT as MAX_TOKENS
 from entropic.config import MAX_USD_PER_RUN, MODEL
 from entropic.errors import BudgetExceeded
 from entropic.llm import Llm, Request
+from entropic.messages import Msg
 from entropic.pricing import Budget
 
 Effort = Literal["low", "medium", "high", "xhigh"]
@@ -27,7 +26,7 @@ SYSTEM = (
 
 def main() -> None:
     llm = Llm(budget=Budget(limit_usd=MAX_USD_PER_RUN))
-    history: list[MessageParam] = []
+    history: list[Msg] = []
     effort: Effort = "medium"
 
     print(f"entropic  model={MODEL}  effort={effort}   (/effort, /reset, /quit)\n")
@@ -63,13 +62,13 @@ def main() -> None:
                 print("entropic> ", end="", flush=True)
                 for text in stream.text_stream:
                     print(text, end="", flush=True)
-                final = stream.get_final_message()
+                final = stream.final()
         except BudgetExceeded as exc:
             history.pop()
             print(f"[not sent] {exc}\n   /reset clears the history.\n")
             continue
 
-        history.append({"role": "assistant", "content": final.content})
+        history.append({"role": "assistant", "content": final.blocks})
         if llm.budget.tripped is not None:
             print(f"\n[session over] {llm.budget.tripped}")
             break

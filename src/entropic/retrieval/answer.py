@@ -19,11 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-import anthropic
-from anthropic.types import MessageParam
 from pydantic import BaseModel, Field, JsonValue
 
 from entropic.config import (
+    CLIENT,
     JUDGE_MODEL,
     MAX_TOKENS_JUDGE,
     MAX_USD_PER_EVAL,
@@ -38,6 +37,7 @@ from entropic.evals.judge import JUDGE_SYSTEM, LlmJudge, Verdict
 from entropic.evals.report import write_report
 from entropic.evals.runner import Task, run_eval
 from entropic.llm import Llm, Request
+from entropic.messages import Msg
 from entropic.pricing import estimate_eval_usd
 from entropic.retrieval.chunk import Chunk, Inventory, context_block
 from entropic.retrieval.corpus import load_corpus
@@ -101,7 +101,7 @@ ARMS = {
 }
 
 
-def prompt_for(question: str, chunks: Sequence[Chunk]) -> list[MessageParam]:
+def prompt_for(question: str, chunks: Sequence[Chunk]) -> list[Msg]:
     """The one user message. With no chunks this is the closed-book prompt."""
     if not chunks:
         return [{"role": "user", "content": f"question: {question}"}]
@@ -115,11 +115,13 @@ def answer_task(
     index: DenseIndex,
     queries: Mapping[str, Vectors],
     k: int = TOP_K,
-    client: anthropic.Anthropic | None = None,
+    client: str = CLIENT,
+    sdk: object | None = None,
     model: str = MODEL,
 ) -> Task:
-    """Build the `Task` the runner calls once per case. `client` is injectable so tests are free."""
-    llm = Llm.for_eval(client)
+    """Build the `Task` the runner calls once per case. `sdk` is injectable, so
+    tests are free."""
+    llm = Llm.for_eval(client, sdk=sdk)
 
     def task(case: Case) -> Outcome:
         question = case.input.get("question")
@@ -142,7 +144,7 @@ def answer_task(
             thinking=THINKING_EVAL_PARAM,
         )
         response = llm.parse(request, Answer)
-        record = response.parsed_output
+        record = response.parsed
         if record is None:
             return Outcome(
                 usage=response.usage,
@@ -164,7 +166,7 @@ def answer_task(
     return task
 
 
-def graders(k: int = TOP_K, client: anthropic.Anthropic | None = None) -> dict[str, Grader]:
+def graders(k: int = TOP_K, client: str = CLIENT, sdk: object | None = None) -> dict[str, Grader]:
     """Two free graders and one paid one, read in that order: did it answer, did it cite a
     passage that holds the answer, was the answer right.
 
@@ -177,7 +179,7 @@ def graders(k: int = TOP_K, client: anthropic.Anthropic | None = None) -> dict[s
     return {
         "answered": flag("answered"),
         "cites_relevant": hit_at_k(k, retrieved="cited"),
-        "correct": LlmJudge(rubric=RUBRIC, reference="quote", client=client),
+        "correct": LlmJudge(rubric=RUBRIC, reference="quote", client=client, sdk=sdk),
     }
 
 
@@ -276,7 +278,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  {name}: {tokens} input tokens for the largest row, ${arm_usd:.2f} worst case")
 
     # The judge is half this eval's calls, so count its real prompt too rather than guessing.
-    judge = graders(args.k, client=llm.client)["correct"]
+    judge = graders(args.k, client=llm.client, sdk=llm.sdk)["correct"]
     assert isinstance(judge, LlmJudge)
     longest = max(resolved, key=lambda case: len(str(case.expected.get("quote", ""))))
     prompt = judge.prompt_for(longest, _judged_shape())
@@ -295,10 +297,12 @@ def main(argv: list[str] | None = None) -> None:
     run = run_eval(
         resolved,
         {
-            name: answer_task(arm, inventory, index, queries, args.k, client=llm.client)
+            name: answer_task(
+                arm, inventory, index, queries, args.k, client=llm.client, sdk=llm.sdk
+            )
             for name, arm in ARMS.items()
         },
-        graders(args.k, client=llm.client),
+        graders(args.k, client=llm.client, sdk=llm.sdk),
         dataset=DATASET.name,
         digest=digest(DATASET),
         model=MODEL,

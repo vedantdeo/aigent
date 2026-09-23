@@ -19,17 +19,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict, cast
 
-import anthropic
-from anthropic.types import MessageParam, TextBlockParam
 from pydantic import BaseModel, Field
 
+from entropic.config import CLIENT, MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM
 from entropic.config import MAX_TOKENS_HEADLINE as MAX_TOKENS
-from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM
 from entropic.evals.dataset import Case, digest, load_jsonl
 from entropic.evals.grade import Outcome, field_match, pydantic_valid
 from entropic.evals.report import write_report
 from entropic.evals.runner import Task, run_eval
 from entropic.llm import Llm, Request
+from entropic.messages import Block, Msg
 from entropic.pricing import estimate_eval_usd
 
 REPO = Path(__file__).resolve().parents[3]
@@ -179,7 +178,7 @@ class Variant:
     system: str
     cache: bool = False
 
-    def as_sent(self) -> str | list[TextBlockParam]:
+    def as_sent(self) -> str | list[Block]:
         """What goes on the wire. A breakpoint needs the block form; a plain prompt does not."""
         if not self.cache:
             return self.system
@@ -197,11 +196,13 @@ CACHE_VARIANTS = {"few_shot": Variant(FEW_SHOT), "few_shot_cached": Variant(FEW_
 def extraction_task(
     variant: Variant,
     resolve: Resolver | None = None,
-    client: anthropic.Anthropic | None = None,
+    client: str = CLIENT,
+    sdk: object | None = None,
     model: str = MODEL,
 ) -> Task:
-    """Build the `Task` the runner calls once per case. `client` is injectable so tests are free."""
-    llm = Llm.for_eval(client)
+    """Build the `Task` the runner calls once per case. `sdk` is injectable, so
+    tests are free."""
+    llm = Llm.for_eval(client, sdk=sdk)
     resolver = resolve if resolve is not None else Resolver()
     system = variant.as_sent()
 
@@ -210,13 +211,13 @@ def extraction_task(
         if not isinstance(headline, str):
             return Outcome(error=f"case {case.id} has no headline")
 
-        messages: list[MessageParam] = [{"role": "user", "content": f"headline: {headline}"}]
+        messages: list[Msg] = [{"role": "user", "content": f"headline: {headline}"}]
         request = Request(
             case.id, messages, MAX_TOKENS, system=system, model=model, thinking=THINKING
         )
         response = llm.parse(request, Extraction)
 
-        record = response.parsed_output
+        record = response.parsed
         if record is None:
             return Outcome(
                 usage=response.usage,
@@ -244,7 +245,7 @@ def measure(llm: Llm, variant: Variant, headline: str, model: str = MODEL) -> Sh
 
     Counting the real request rather than estimating it: the schema alone is over a thousand tokens.
     """
-    probe: list[MessageParam] = [{"role": "user", "content": f"headline: {headline}"}]
+    probe: list[Msg] = [{"role": "user", "content": f"headline: {headline}"}]
     whole = Request("measure", probe, MAX_TOKENS, system=variant.as_sent(), model=model)
     total = llm.count(whole, Extraction)
     if not variant.cache:
@@ -319,7 +320,10 @@ def main(argv: list[str] | None = None) -> None:
     resolver = Resolver()
     run = run_eval(
         labelled,
-        {n: extraction_task(v, resolver, client=llm.client) for n, v in variants.items()},
+        {
+            n: extraction_task(v, resolver, client=llm.client, sdk=llm.sdk)
+            for n, v in variants.items()
+        },
         {"valid": pydantic_valid(Extraction), "fields": field_match(FIELDS)},
         dataset=DATASET.name,
         digest=digest(DATASET),

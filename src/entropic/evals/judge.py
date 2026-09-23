@@ -9,10 +9,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-import anthropic
 from pydantic import BaseModel, Field
 
-from entropic.config import JUDGE_MODEL
+from entropic.config import CLIENT, JUDGE_MODEL
 from entropic.config import MAX_TOKENS_JUDGE as MAX_TOKENS
 from entropic.evals.dataset import Case
 from entropic.evals.grade import Outcome, Score
@@ -46,19 +45,20 @@ class LlmJudge:
     name: str = "answer"
     reference: str | None = None
     model: str = JUDGE_MODEL
-    client: anthropic.Anthropic | None = None
+    client: str = CLIENT
+    sdk: object | None = None
     _llm: Llm | None = field(default=None, init=False, repr=False)
 
     def __call__(self, case: Case, outcome: Outcome) -> Score:
         if outcome.error is not None:
             return Score(False, f"task failed: {outcome.error}")
         if self._llm is None:
-            self._llm = Llm.for_eval(self.client)
+            self._llm = Llm.for_eval(self.client, sdk=self.sdk)
 
         prompt = self.prompt_for(case, outcome)
         request = Request.ask("judge", JUDGE_SYSTEM, prompt, MAX_TOKENS, model=self.model)
         response = self._llm.parse(request, Verdict)
-        verdict = response.parsed_output
+        verdict = response.parsed
         if verdict is None:
             return Score(
                 False,

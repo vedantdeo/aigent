@@ -9,15 +9,13 @@ from __future__ import annotations
 from contextlib import AbstractContextManager, nullcontext
 
 import pytest
-from anthropic.types import ServerToolUsage, Usage
 
+from entropic.adapters import CLIENTS
 from entropic.config import (
-    DEFAULT_JUDGE_MODEL,
-    DEFAULT_MODEL,
-    DEFAULT_SMALL_MODEL,
     WEB_SEARCH_RESULT_TOKENS,
 )
 from entropic.errors import BudgetExceeded
+from entropic.messages import Usage
 from entropic.pricing import (
     PRICES,
     Budget,
@@ -30,7 +28,6 @@ from entropic.pricing import (
 )
 
 OPUS = "claude-opus-5"
-SEARCHED_3 = ServerToolUsage(web_search_requests=3, web_fetch_requests=0)
 
 
 @pytest.mark.parametrize(
@@ -60,7 +57,7 @@ SEARCHED_3 = ServerToolUsage(web_search_requests=3, web_fetch_requests=0)
             cost_usd(OPUS, 0, 0, web_searches=1000), 10.0, id="a thousand web searches are $10"
         ),
         pytest.param(
-            usage_cost(OPUS, Usage(input_tokens=0, output_tokens=0, server_tool_use=SEARCHED_3)),
+            usage_cost(OPUS, Usage(input_tokens=0, output_tokens=0, web_searches=3)),
             0.03,
             id="a response's web searches are billed with its tokens",
         ),
@@ -163,17 +160,20 @@ def test_an_estimate_with_no_cached_prefix_is_the_arithmetic_it_always_was() -> 
     assert estimate_eval_usd(OPUS, 0, 400, 1024, cached_tokens=400) == 0.0
 
 
-def test_every_default_model_is_priced() -> None:
+def test_every_model_any_client_names_is_priced() -> None:
     # cost_usd returns 0.0 for an unknown model rather than raising, which is right for a typo in
-    # .env and very wrong for a typo in a default: every cost line in the repo would read $0.00000.
-    for model in (DEFAULT_MODEL, DEFAULT_JUDGE_MODEL, DEFAULT_SMALL_MODEL):
-        assert model in PRICES, f"{model} has no price, so it would silently report as free"
+    # .env and very wrong for a typo in a client's config: every cost line would read $0.00000.
+    # A local model is priced too, at what its hour of machine costs — free is a price, not a gap.
+    for client in CLIENTS.values():
+        for model in (client.model, client.judge_model, client.small_model):
+            assert model in PRICES, f"{client.name} names {model}, which would report as free"
 
 
-def test_the_judge_does_not_default_to_the_model_it_grades() -> None:
+def test_no_client_lets_the_judge_grade_the_model_it_is() -> None:
     # Not a style preference: a model asked to grade its own output favours it.
-    assert DEFAULT_JUDGE_MODEL != DEFAULT_MODEL
-    assert PRICES[DEFAULT_JUDGE_MODEL].output < PRICES[DEFAULT_MODEL].output
+    for client in CLIENTS.values():
+        assert client.judge_model != client.model, client.name
+        assert PRICES[client.judge_model].output < PRICES[client.model].output, client.name
 
 
 def test_charge_records_the_trip_instead_of_raising() -> None:

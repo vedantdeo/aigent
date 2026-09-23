@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import cast
 
-import anthropic
 import pytest
 from anthropic.types import MessageTokensCount, Usage
 
@@ -26,20 +25,13 @@ from entropic.retrieval.answer import (
 from entropic.retrieval.chunk import Document, Inventory, by_sentence, context_block
 from entropic.retrieval.dense import DenseIndex
 
-from ..conftest import BagOfWordsEmbedder
+from ..conftest import BagOfWordsEmbedder, ParsedReply
 
 REVENUE = "Revenue for the year rose seven per cent on stronger retail volumes across the country. "
 DIVIDEND = "The board recommended a final dividend of ten rupees per equity share for the year. "
 
 ANSWERED = Answer(answered=True, answer="Ten rupees per equity share.", cited=["doc-2#0000"])
 DECLINED = Answer(answered=False, answer="", cited=[])
-
-
-class _Parsed:
-    def __init__(self, record: Answer | None) -> None:
-        self.parsed_output = record
-        self.usage = Usage(input_tokens=1800, output_tokens=40)
-        self.stop_reason = "max_tokens" if record is None else "end_turn"
 
 
 class _Messages:
@@ -54,13 +46,17 @@ class _Messages:
         self.counted += 1
         return MessageTokensCount(input_tokens=1800)
 
-    def parse(self, **kwargs: object) -> _Parsed:
+    def parse(self, **kwargs: object) -> ParsedReply:
         messages = cast(list[dict[str, str]], kwargs["messages"])
         self.sent.append(messages[0]["content"])
         self.systems.append(kwargs["system"])
         self.thinking.append(kwargs["thinking"])
         assert kwargs["max_tokens"] == MAX_TOKENS_ANSWER
-        return _Parsed(self._record)
+        return ParsedReply(
+            self._record,
+            stop_reason="max_tokens" if self._record is None else "end_turn",
+            usage=Usage(input_tokens=1800, output_tokens=40),
+        )
 
 
 class _Client:
@@ -94,7 +90,7 @@ def _task_and_log(
         index,
         queries,
         k=k,
-        client=cast(anthropic.Anthropic, fake),
+        sdk=fake,
     )
     return task, fake.messages
 

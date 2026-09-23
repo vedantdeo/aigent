@@ -11,6 +11,7 @@ from collections.abc import Callable
 import pytest
 from pydantic import BaseModel, JsonValue
 
+from entropic.adapters.anthropic import usage_of
 from entropic.config import JUDGE_MODEL, MODEL
 from entropic.evals.dataset import Case
 from entropic.evals.grade import (
@@ -148,7 +149,7 @@ def test_judge_returns_the_verdict_and_bills_its_usage_to_the_score(make_judge: 
 
     assert score.passed
     assert score.detail.startswith("Names Infosys")
-    assert score.usage == log.usage, "the score carries the judge's own usage, unmodified"
+    assert score.usage == usage_of(log.usage), "the score carries the judge's own usage"
     assert log.counted == 1, "a paid call is counted first, like every other paid call in the repo"
     assert score.model == JUDGE_MODEL, "the score names the judge's model, not the task's"
 

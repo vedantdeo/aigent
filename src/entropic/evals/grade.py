@@ -11,10 +11,10 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from anthropic.types import Usage
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from entropic.evals.dataset import Case
+from entropic.messages import Usage
 
 
 @dataclass(frozen=True)

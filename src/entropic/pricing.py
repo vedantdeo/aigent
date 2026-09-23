@@ -10,15 +10,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from anthropic.types import Usage
-from anthropic.types.beta import BetaUsage
-
 from entropic.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN, WEB_SEARCH_RESULT_TOKENS
 from entropic.errors import BudgetExceeded
-
-# What a response reports it used. The tool runner answers on the beta endpoint; both carry the
-# same token counts.
-LlmUsage = Usage | BetaUsage
+from entropic.messages import Usage
 
 
 @dataclass(frozen=True)
@@ -69,28 +63,24 @@ def cost_usd(
     )
 
 
-def web_searches(usage: LlmUsage) -> int:
-    return usage.server_tool_use.web_search_requests if usage.server_tool_use else 0
-
-
-def usage_cost(model: str, usage: LlmUsage) -> float:
+def usage_cost(model: str, usage: Usage) -> float:
     return cost_usd(
         model,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
-        cache_write_tokens=usage.cache_creation_input_tokens or 0,
-        cache_read_tokens=usage.cache_read_input_tokens or 0,
-        web_searches=web_searches(usage),
+        cache_write_tokens=usage.cache_write_tokens,
+        cache_read_tokens=usage.cache_read_tokens,
+        web_searches=usage.web_searches,
     )
 
 
-def describe_usage(model: str, usage: LlmUsage) -> str:
+def describe_usage(model: str, usage: Usage) -> str:
     """One line you can paste into LOG.md."""
     return (
         f"[{model}] in={usage.input_tokens} out={usage.output_tokens} "
-        f"cache_write={usage.cache_creation_input_tokens or 0} "
-        f"cache_read={usage.cache_read_input_tokens or 0} "
-        + (f"web_searches={web_searches(usage)} " if web_searches(usage) else "")
+        f"cache_write={usage.cache_write_tokens} "
+        f"cache_read={usage.cache_read_tokens} "
+        + (f"web_searches={usage.web_searches} " if usage.web_searches else "")
         + f"cost=${usage_cost(model, usage):.5f}"
     )
 
@@ -193,7 +183,7 @@ class Budget:
     tripped: str | None = None
     held_usd: float = 0.0  # worst cases of calls admitted and not yet billed
 
-    def charge(self, model: str, usage: LlmUsage) -> float:
+    def charge(self, model: str, usage: Usage) -> float:
         """Bill one call and return what it added. Never raises; sets `tripped` when over."""
         charged = usage_cost(model, usage)
         self.spent_usd += charged
@@ -205,7 +195,7 @@ class Budget:
             )
         return charged
 
-    def add(self, model: str, usage: LlmUsage) -> float:
+    def add(self, model: str, usage: Usage) -> float:
         """Bill one call and raise once the ceiling is crossed. Returns the running total."""
         self.charge(model, usage)
         if self.tripped is not None:

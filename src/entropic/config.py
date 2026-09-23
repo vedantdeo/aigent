@@ -6,23 +6,23 @@ Values only, plus the one function that builds a client. Pricing and enforcement
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
-import anthropic
-from anthropic.types import ThinkingConfigParam
 from dotenv import load_dotenv
+
+from entropic.adapters import spec
+from entropic.messages import Thinking
 
 load_dotenv()
 
 
-# MODEL is what Entropic thinks with; JUDGE_MODEL grades an eval, and is deliberately not MODEL.
-# SMALL_MODEL is where the routing workflow sends the questions that do not need MODEL.
-DEFAULT_MODEL = "claude-opus-5"
-DEFAULT_JUDGE_MODEL = "claude-sonnet-5"
-DEFAULT_SMALL_MODEL = "claude-haiku-4-5"
-MODEL: str = os.environ.get("ENTROPIC_MODEL", DEFAULT_MODEL)
-JUDGE_MODEL: str = os.environ.get("ENTROPIC_JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
-SMALL_MODEL: str = os.environ.get("ENTROPIC_SMALL_MODEL", DEFAULT_SMALL_MODEL)
+# Which client `llm` talks to; its settings live in `adapters/cfg_<name>.py`, and the three models
+# below are that client's, overridable one at a time for a run.
+CLIENT: str = os.environ.get("ENTROPIC_CLIENT", "anthropic")
+ACTIVE = spec(CLIENT)
+
+MODEL: str = os.environ.get("ENTROPIC_MODEL", ACTIVE.model)
+JUDGE_MODEL: str = os.environ.get("ENTROPIC_JUDGE_MODEL", ACTIVE.judge_model)
+SMALL_MODEL: str = os.environ.get("ENTROPIC_SMALL_MODEL", ACTIVE.small_model)
 
 
 # --- Budget ceilings -------------------------------------------------------------------------
@@ -40,37 +40,68 @@ WEB_SEARCH_RESULT_TOKENS = 10_000
 
 # --- Call shape ------------------------------------------------------------------------------
 # One output cap per call site. The pre-flight guard prices the full cap, so an oversized number
-# trips the per-request ceiling for nothing; thinking tokens count against it too.
+# trips the per-request ceiling for nothing; thinking tokens count against it too. Side by side
+# they show which calls are the expensive ones. A client raises or lowers one of these for itself
+# in its own `adapters/cfg_<name>.py`, by key, and inherits every cap it does not name.
 
-MAX_TOKENS_FIRST_CALL = 1024
-MAX_TOKENS_STREAMING = 4096
-MAX_TOKENS_EXTRACT = 2048
-MAX_TOKENS_HEADLINE = 128  # a five-field record is ~45 tokens with THINKING_EVAL off
-MAX_TOKENS_TOOL_LOOP = 4096
-MAX_TOKENS_CHAT = 4096
-MAX_TOKENS_JUDGE = 256  # a verdict is one or two sentences plus a bool
-MAX_TOKENS_QUESTION = 512
-MAX_TOKENS_ANSWER = 256  # two sentences plus five chunk ids is ~140, with thinking off
+DEFAULT_MAX_TOKENS: dict[str, int] = {
+    "ANSWER": 256,  # two sentences plus five chunk ids is ~140, with thinking off
+    "CHAT": 4096,
+    "CRITIQUE": 256,  # evaluator-optimizer
+    "DRAFT": 384,
+    "EXTRACT": 2048,
+    "FACTS": 1024,  # chaining: up to six claims, each with a verbatim quote
+    "FIRST_CALL": 1024,
+    "HEADLINE": 128,  # a five-field record is ~45 tokens with THINKING_EVAL off
+    "JUDGE": 256,  # a verdict is one or two sentences plus a bool
+    "NOTE": 384,
+    "PLAN": 512,  # orchestrator-workers
+    "QUESTION": 512,
+    "ROUTE": 128,  # routing: a label, a report and one line of reason
+    "ROUTED": 768,
+    "SECTION": 384,  # parallelization
+    "STREAMING": 4096,
+    "SYNTHESIS": 768,
+    "TOOL_LOOP": 4096,
+    "VOTE": 256,
+    "WORKER": 384,
+}
 
-# The workflows' call sites, grouped by pattern.
-MAX_TOKENS_FACTS = 1024  # chaining: up to six claims, each with a verbatim quote
-MAX_TOKENS_NOTE = 384
-MAX_TOKENS_ROUTE = 128  # routing: a label, a report and one line of reason
-MAX_TOKENS_ROUTED = 768
-MAX_TOKENS_SECTION = 384  # parallelization
-MAX_TOKENS_VOTE = 256
-MAX_TOKENS_PLAN = 512  # orchestrator-workers
-MAX_TOKENS_WORKER = 384
-MAX_TOKENS_SYNTHESIS = 768
-MAX_TOKENS_DRAFT = 384  # evaluator-optimizer
-MAX_TOKENS_CRITIQUE = 256
+
+def max_tokens(site: str) -> int:
+    """The cap for one call site: the active client's override, or the shared default."""
+    return ACTIVE.max_tokens.get(site, DEFAULT_MAX_TOKENS[site])
+
+
+# Resolved once, so a call site imports a number as it always did. `tests.test_config` checks that
+# these names and the table above stay in step.
+MAX_TOKENS_ANSWER = max_tokens("ANSWER")
+MAX_TOKENS_CHAT = max_tokens("CHAT")
+MAX_TOKENS_CRITIQUE = max_tokens("CRITIQUE")
+MAX_TOKENS_DRAFT = max_tokens("DRAFT")
+MAX_TOKENS_EXTRACT = max_tokens("EXTRACT")
+MAX_TOKENS_FACTS = max_tokens("FACTS")
+MAX_TOKENS_FIRST_CALL = max_tokens("FIRST_CALL")
+MAX_TOKENS_HEADLINE = max_tokens("HEADLINE")
+MAX_TOKENS_JUDGE = max_tokens("JUDGE")
+MAX_TOKENS_NOTE = max_tokens("NOTE")
+MAX_TOKENS_PLAN = max_tokens("PLAN")
+MAX_TOKENS_QUESTION = max_tokens("QUESTION")
+MAX_TOKENS_ROUTE = max_tokens("ROUTE")
+MAX_TOKENS_ROUTED = max_tokens("ROUTED")
+MAX_TOKENS_SECTION = max_tokens("SECTION")
+MAX_TOKENS_STREAMING = max_tokens("STREAMING")
+MAX_TOKENS_SYNTHESIS = max_tokens("SYNTHESIS")
+MAX_TOKENS_TOOL_LOOP = max_tokens("TOOL_LOOP")
+MAX_TOKENS_VOTE = max_tokens("VOTE")
+MAX_TOKENS_WORKER = max_tokens("WORKER")
 
 # Off for eval runs: thinking wobbles, and Claude 5 deprecated temperature and top_p.
 THINKING_EVAL = False
 
 # The same setting as the wire wants it. Built once so two call sites cannot disagree about
 # whether thinking is on; turning it on means raising the output cap at every site that sends it.
-THINKING_EVAL_PARAM: ThinkingConfigParam = (
+THINKING_EVAL_PARAM: Thinking = (
     {"type": "enabled", "budget_tokens": 1024} if THINKING_EVAL else {"type": "disabled"}
 )
 
@@ -82,7 +113,7 @@ MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this m
 MAX_PARALLEL_CALLS = 4
 
 # Workflows split a task into small, fully specified calls: the case thinking adds least to.
-THINKING_WORKFLOW_PARAM: ThinkingConfigParam = {"type": "disabled"}
+THINKING_WORKFLOW_PARAM: Thinking = {"type": "disabled"}
 
 # The most subtasks an orchestrator may hand out, and drafts an evaluator may send back.
 MAX_PLAN_TASKS = 4
@@ -152,28 +183,3 @@ FURNITURE_RATIO = 0.2
 
 # What joins two pages into one document text. Read as a paragraph break by every splitter.
 PAGE_SEPARATOR = "\n\n"
-
-
-def has_credentials() -> bool:
-    """True if the SDK will find something to authenticate with."""
-    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
-        return True
-    return (Path.home() / ".config" / "anthropic").exists()
-
-
-def get_client() -> anthropic.Anthropic:
-    """Build the SDK client.
-
-    Set ANTHROPIC_WORKSPACE_ID only for an org-level key; the API refuses one without the header.
-    """
-    if not has_credentials():
-        raise SystemExit(
-            "No Anthropic credentials found.\n"
-            "  Option 1: copy .env.example to .env and set ANTHROPIC_API_KEY\n"
-            "  Option 2: install the `ant` CLI and run `ant auth login`\n"
-        )
-    headers: dict[str, str] = {}
-    workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
-    if workspace_id:
-        headers["anthropic-workspace-id"] = workspace_id
-    return anthropic.Anthropic(default_headers=headers)

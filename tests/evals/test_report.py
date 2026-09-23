@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from anthropic.types import Usage
 from pydantic import JsonValue
 
 from entropic.config import MAX_USD_PER_EVAL, MODEL
@@ -19,6 +18,7 @@ from entropic.evals.grade import (
 )
 from entropic.evals.report import to_markdown, write_report
 from entropic.evals.runner import EvalRun, RowResult, Task, run_eval
+from entropic.messages import Usage
 
 FIELDS = ("company", "quarter")
 

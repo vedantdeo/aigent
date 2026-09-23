@@ -29,7 +29,7 @@ from anthropic.types.beta import BetaMessage, BetaToolUnionParam
 from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
 from pydantic import BaseModel
 
-from entropic.config import MODEL
+from entropic.config import JUDGE_MODEL, MODEL
 from entropic.evals.judge import LlmJudge, Verdict
 from entropic.llm import Llm
 from entropic.pricing import Budget
@@ -37,14 +37,31 @@ from entropic.retrieval.chunk import Chunk
 from entropic.retrieval.embed import Vectors
 
 JUDGE_USAGE = Usage(input_tokens=200, output_tokens=30)
+
+
 RUBRIC = "The answer must name the company and the direction of the move."
 
 
-class _Parsed:
-    def __init__(self, verdict: Verdict | None) -> None:
-        self.parsed_output = verdict
-        self.usage = JUDGE_USAGE
-        self.stop_reason = "end_turn"
+class ParsedReply:
+    """What the SDK's `parse` returns, as far as the Anthropic adapter reads it.
+
+    One copy, shared: three modules grew their own, and each had to be found again the day the
+    adapter started reading a field none of them had.
+    """
+
+    def __init__(
+        self,
+        record: BaseModel | None,
+        *,
+        stop_reason: str = "end_turn",
+        model: str = MODEL,
+        usage: Usage = JUDGE_USAGE,
+    ) -> None:
+        self.parsed_output = record
+        self.usage = usage
+        self.stop_reason = stop_reason
+        self.model = model
+        self.content: list[TextBlock] = []
 
 
 class ScriptedMessages:
@@ -63,10 +80,10 @@ class ScriptedMessages:
         self.counted += 1
         return MessageTokensCount(input_tokens=JUDGE_USAGE.input_tokens)
 
-    def parse(self, **kwargs: object) -> _Parsed:
+    def parse(self, **kwargs: object) -> ParsedReply:
         messages = cast("list[dict[str, str]]", kwargs["messages"])
         self.prompts.append(messages[0]["content"])
-        return _Parsed(self._verdict)
+        return ParsedReply(self._verdict, model=JUDGE_MODEL)
 
 
 class _ScriptedClient:
@@ -89,7 +106,7 @@ def make_judge() -> MakeJudge:
         fails_with: Exception | None = None,
     ) -> tuple[LlmJudge, ScriptedMessages]:
         fake = _ScriptedClient(verdict, fails_with)
-        judge = LlmJudge(rubric=rubric, reference=reference, client=cast(anthropic.Anthropic, fake))
+        judge = LlmJudge(rubric=rubric, reference=reference, sdk=fake)
         return judge, fake.messages
 
     return build
@@ -118,13 +135,6 @@ class Sent:
 
 Reply = Callable[[Sent], str | BaseModel | Exception | None]
 FAKE_USAGE = Usage(input_tokens=100, output_tokens=50)
-
-
-class _ParsedReply:
-    def __init__(self, record: BaseModel | None, stop_reason: str) -> None:
-        self.parsed_output = record
-        self.usage = FAKE_USAGE
-        self.stop_reason = stop_reason
 
 
 class _FakeStream:
@@ -183,12 +193,14 @@ class FakeMessages:
         message = self._message(self._reply(self._log("turn", kwargs)), kwargs)
         return BetaMessage.model_validate(message.model_dump())
 
-    def parse(self, **kwargs: object) -> _ParsedReply:
+    def parse(self, **kwargs: object) -> ParsedReply:
         record = self._reply(self._log("parse", kwargs))
         if isinstance(record, Exception):
             raise record
         assert not isinstance(record, str), f"a parse call wants a record, not {record!r}"
-        return _ParsedReply(record, self._stop_reason)
+        return ParsedReply(
+            record, stop_reason=self._stop_reason, model=str(kwargs["model"]), usage=FAKE_USAGE
+        )
 
     def _message(
         self, reply: str | BaseModel | Exception | None, kwargs: dict[str, object]
@@ -324,7 +336,7 @@ def make_llm() -> MakeLlm:
     ) -> tuple[Llm, FakeMessages]:
         fake = FakeAnthropic(reply, stop_reason=stop_reason)
         budget = Budget(limit_usd=limit_usd)
-        return Llm(cast(anthropic.Anthropic, fake), budget=budget, rehearse=rehearse), fake.messages
+        return Llm(sdk=fake, budget=budget, rehearse=rehearse), fake.messages
 
     return build
 

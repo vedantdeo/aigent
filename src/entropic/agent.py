@@ -10,14 +10,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-
-from anthropic.types.beta import BetaMessage
+from typing import cast
 
 from entropic.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from entropic.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from entropic.errors import BudgetExceeded, TurnsExhausted
 from entropic.llm import Llm, Request
-from entropic.pricing import web_searches
+from entropic.messages import Block, Reply
 from entropic.report_tools import SEARCH_TOOL, ReportSearch, Searched
 from entropic.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
 from entropic.workflows.demo import run_demo
@@ -90,25 +89,28 @@ def run(llm: Llm, search: Search, question: str) -> Answered:
     except (BudgetExceeded, TurnsExhausted) as stop:
         # No room even to answer: what was searched so far is all there is to show for it.
         return Answered(None, reports.searches, len(llm.trace) - before, stopped=str(stop))
-    answer = "".join(block.text for block in ran.message.content if block.type == "text")
+    answer = ran.message.text
     turns = len(llm.trace) - before
     return Answered(answer, reports.searches, turns, ran.cut_short, _web_sources(ran.turns))
 
 
-def _web_sources(turns: Sequence[BetaMessage]) -> WebSources:
+def _web_sources(turns: Sequence[Reply]) -> WebSources:
     """Every page cited or returned in any turn, not just the last: a model answers after it
     searches, often turns later."""
     cited: dict[str, None] = {}
     returned: dict[str, None] = {}
     for message in turns:
-        for block in message.content:
-            if block.type == "text":
-                for citation in block.citations or []:
-                    if citation.type == "web_search_result_location":
-                        cited[citation.url] = None
-            elif block.type == "web_search_tool_result" and isinstance(block.content, list):
-                returned.update(dict.fromkeys(result.url for result in block.content))
-    searches = sum(web_searches(message.usage) for message in turns)
+        for block in message.blocks:
+            if block.get("type") == "text":
+                for citation in cast(Sequence[Block], block.get("citations") or []):
+                    if citation.get("type") == "web_search_result_location":
+                        cited[cast(str, citation["url"])] = None
+            elif block.get("type") == "web_search_tool_result":
+                results = block.get("content")
+                if isinstance(results, list):
+                    found = cast(Sequence[Block], results)
+                    returned.update(dict.fromkeys(cast(str, page["url"]) for page in found))
+    searches = sum(message.usage.web_searches for message in turns)
     return WebSources(list(cited), [url for url in returned if url not in cited], searches)
 
 

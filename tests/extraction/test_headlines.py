@@ -11,7 +11,6 @@ import re
 from itertools import pairwise
 from typing import cast
 
-import anthropic
 import pytest
 from anthropic.types import MessageTokensCount, Usage
 from pydantic import JsonValue
@@ -36,6 +35,8 @@ from entropic.extraction.headlines import (
     load_directory,
     spread,
 )
+
+from ..conftest import ParsedReply
 
 DIRECTORY = load_directory()
 
@@ -94,13 +95,6 @@ RECORD = Extraction(
 )
 
 
-class _Parsed:
-    def __init__(self, record: Extraction | None) -> None:
-        self.parsed_output = record
-        self.usage = Usage(input_tokens=320, output_tokens=60)
-        self.stop_reason = "max_tokens" if record is None else "end_turn"
-
-
 class _Messages:
     def __init__(self, record: Extraction | None) -> None:
         self._record = record
@@ -112,11 +106,15 @@ class _Messages:
         self.counted += 1
         return MessageTokensCount(input_tokens=320)
 
-    def parse(self, **kwargs: object) -> _Parsed:
+    def parse(self, **kwargs: object) -> ParsedReply:
         self.systems.append(kwargs["system"])
         self.thinking.append(kwargs["thinking"])
         assert kwargs["max_tokens"] == MAX_TOKENS_HEADLINE
-        return _Parsed(self._record)
+        return ParsedReply(
+            self._record,
+            stop_reason="max_tokens" if self._record is None else "end_turn",
+            usage=Usage(input_tokens=320, output_tokens=60),
+        )
 
 
 class _Client:
@@ -130,7 +128,7 @@ def _task_and_log(
     resolver: Resolver | None = None,
 ) -> tuple[Task, _Messages]:
     fake = _Client(record)
-    task = extraction_task(variant, resolver, client=cast(anthropic.Anthropic, fake))
+    task = extraction_task(variant, resolver, sdk=fake)
     return task, fake.messages
 
 

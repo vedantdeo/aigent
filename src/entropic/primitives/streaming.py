@@ -5,11 +5,13 @@ Usage totals only arrive at the end of the stream, so the cost line comes after 
 
 from __future__ import annotations
 
-from anthropic.types import MessageParam
+from typing import cast
 
+from entropic.adapters.anthropic import Streaming
 from entropic.config import MAX_TOKENS_STREAMING as MAX_TOKENS
 from entropic.config import MODEL
 from entropic.llm import Llm, Request
+from entropic.messages import Msg
 from entropic.pricing import describe_usage
 
 PROMPT = (
@@ -19,7 +21,7 @@ PROMPT = (
 
 
 def main() -> None:
-    messages: list[MessageParam] = [{"role": "user", "content": PROMPT}]
+    messages: list[Msg] = [{"role": "user", "content": PROMPT}]
     request = Request(
         "stream",
         messages,
@@ -28,7 +30,8 @@ def main() -> None:
     )
 
     with Llm().stream(request) as stream:
-        for event in stream:
+        # The event shapes are Anthropic's own; this demo is about them.
+        for event in cast(Streaming, stream).raw:
             if event.type == "content_block_start":
                 if event.content_block.type == "thinking":
                     print("\n--- thinking (summarized) ---")
@@ -40,7 +43,7 @@ def main() -> None:
                 elif event.delta.type == "text_delta":
                     print(event.delta.text, end="", flush=True)
 
-        final = stream.get_final_message()
+        final = stream.final()
 
     print("\n")
     print(f"stop_reason={final.stop_reason}")

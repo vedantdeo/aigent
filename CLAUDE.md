@@ -84,6 +84,12 @@ this machine. Edit both, or neither.
   can be lifted into the SDK tool runner in Week 5 and a LangGraph node in Week 6. Its constants live
   in `tools_config.py`, travelling beside it. Not in `config.py`, which would cost `tools` its
   independence; not loose in `tools.py`, which would cost the one-place rule.
+- *Split by concern, one file per client:* `adapters/cfg_<name>.py` holds what changes with the
+  endpoint — which wire it speaks, which models it serves, where it lives, and any output cap it
+  wants different — beside the adapters that talk to it. `config.py` keeps what is the same
+  whoever answers: the spending ceilings, the loop caps, and `DEFAULT_MAX_TOKENS`, the one table a
+  client overrides by key. A client that is happy with a default restates nothing, and
+  `tests/test_config.py` holds the table and the `MAX_TOKENS_*` names it derives together.
 - Staying put: `report.REPORTS_DIR`, a location computed from `__file__` rather than a knob.
 
 ## Tests

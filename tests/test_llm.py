@@ -130,7 +130,7 @@ def test_create_hands_back_the_whole_message_for_the_caller_to_read(make_llm: Ma
     )
     llm, _ = make_llm(lambda sent: wants_tool)
 
-    assert llm.create(REQUEST) is wants_tool
+    assert llm.create(REQUEST).raw is wants_tool
     assert len(llm.trace) == 1
 
 
@@ -139,7 +139,7 @@ def test_parse_reports_nothing_parsed_where_record_refuses_it(make_llm: MakeLlm)
     a workflow step wants the record and cannot go on without it. Both calls are billed."""
     llm, fake = make_llm(lambda sent: None)
 
-    assert llm.parse(REQUEST, Greeting).parsed_output is None
+    assert llm.parse(REQUEST, Greeting).parsed is None
     with pytest.raises(StepFailed, match="nothing parsed"):
         llm.record(REQUEST, Greeting)
     assert len(llm.trace) == 2
@@ -171,7 +171,7 @@ def test_a_reply_the_sdk_cannot_read_is_billed_at_its_worst_case(
 
     response = llm.parse(asked, Greeting)
 
-    assert response.parsed_output is None and response.stop_reason == "max_tokens"
+    assert response.parsed is None and response.stop_reason == "max_tokens"
     [call] = llm.trace
     assert call.usage.output_tokens == asked.max_tokens
     worst = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64, cached=cached)
@@ -509,16 +509,21 @@ def _talks_to_the_model(path: Path) -> bool:
     return False
 
 
-def test_only_llm_talks_to_the_model() -> None:
+def test_only_an_adapter_talks_to_the_model() -> None:
     """Every count, send, stream and tool loop in the package goes through `llm`, so every one is
-    counted, checked, admitted and billed. A module calling the SDK itself skips all four."""
+    counted, checked, admitted and billed. A module calling an SDK itself skips all four.
+
+    Only the adapters touch a wire, and they are reached only from `llm` — which is what counts,
+    admits and bills whatever they send. `llm` itself no longer names a provider, so the day a
+    second wire arrives it is a new adapter and not a branch through this module.
+    """
     package = Path(entropic.__file__).parent
     talkers = {
         str(path.relative_to(package))
         for path in package.rglob("*.py")
         if _talks_to_the_model(path)
     }
-    assert talkers == {"llm.py"}
+    assert talkers == {"adapters/anthropic.py"}
 
 
 AGENT = Request(
@@ -541,9 +546,7 @@ def test_run_tools_runs_each_call_and_sends_every_result_in_one_message(make_llm
 
     assert ran.cut_short is None and llm.budget.held_usd == 0.0
     assert len(ran.turns) == 2 and ran.turns[-1] is ran.message, "every turn, the last included"
-    assert [block.text for block in ran.message.content if block.type == "text"] == [
-        "1024, and it is noon"
-    ]
+    assert ran.message.text == "1024, and it is noon"
     results = tool_results(fake.sent[1])
     assert [result["tool_use_id"] for result in results] == ["t1", "t2"]
     assert results[0]["content"] == "1024.0"
@@ -658,7 +661,7 @@ def test_a_conversation_out_of_room_is_told_to_answer_from_what_it_has(
     assert [getattr(told, f) for f in same] == [getattr(before, f) for f in same]
     assert cast(list[object], told.messages[-1]["content"])[-1] == {"type": "text", "text": FINISH}
     assert told.max_tokens == max_tokens
-    assert [block.text for block in ran.message.content if block.type == "text"] == ["all I found"]
+    assert ran.message.text == "all I found"
     assert [call.step for call in llm.trace] == ["agent:1", "agent:2 answer"]
 
 

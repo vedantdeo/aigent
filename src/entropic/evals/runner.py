@@ -11,11 +11,10 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from anthropic.types import Usage
-
 from entropic.config import MAX_USD_PER_EVAL, MODEL
 from entropic.evals.dataset import Case
 from entropic.evals.grade import Grader, Outcome, Score
+from entropic.messages import Usage
 from entropic.pricing import Budget
 
 Task = Callable[[Case], Outcome]

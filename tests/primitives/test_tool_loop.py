@@ -24,8 +24,8 @@ from anthropic.types import (
     Usage,
 )
 
+from entropic.adapters.anthropic import has_credentials
 from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
-from entropic.config import has_credentials
 from entropic.errors import BudgetExceeded
 from entropic.primitives.tool_loop import run
 
@@ -103,7 +103,7 @@ def test_parallel_tool_results_go_back_in_one_message_and_errors_are_flagged() -
         ]
     )
 
-    answer = run("compute two things", client=client)
+    answer = run("compute two things", sdk=client)
 
     assert answer == "1024; the second one failed."
     assert len(log.sent) == 2
@@ -125,7 +125,7 @@ def test_turn_cap_stops_a_loop_that_never_finishes() -> None:
     client, log = _client([endless] * (MAX_TURNS + 1))
 
     with pytest.raises(RuntimeError, match="did not finish"):
-        run("loop forever", client=client)
+        run("loop forever", sdk=client)
     assert len(log.sent) == MAX_TURNS
 
 
@@ -135,7 +135,7 @@ def test_a_call_that_could_cross_the_run_ceiling_is_never_sent() -> None:
     client, log = _client([_message([TextBlock(type="text", text="never sent")], "end_turn")])
 
     with pytest.raises(BudgetExceeded, match="per-run ceiling"):
-        run("anything", client=client, limit_usd=0.05)
+        run("anything", sdk=client, limit_usd=0.05)
     assert log.sent == []
 
 

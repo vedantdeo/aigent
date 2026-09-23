@@ -11,14 +11,15 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 
 import pytest
-from anthropic.types import Usage
 
+from entropic.adapters.anthropic import usage_of
 from entropic.config import JUDGE_MODEL
 from entropic.errors import BudgetExceeded
 from entropic.evals.dataset import Case
 from entropic.evals.grade import Grader, Outcome, Score, exact_match
 from entropic.evals.judge import Verdict
 from entropic.evals.runner import EvalRun, Task, combine, run_eval
+from entropic.messages import Usage
 from entropic.pricing import usage_cost
 
 from ..conftest import MakeJudge
@@ -201,7 +202,7 @@ def test_an_llm_judge_is_just_another_grader_to_the_runner(make_judge: MakeJudge
 
     # Each row pays twice, and the verdict is priced as the judge's model. Billing it at the task's
     # would be a quiet overcharge that still looked like a plausible total.
-    per_row = usage_cost(MODEL, answering) + usage_cost(JUDGE_MODEL, log.usage)
+    per_row = usage_cost(MODEL, answering) + usage_cost(JUDGE_MODEL, usage_of(log.usage))
     assert run.rows[0].cost_usd == pytest.approx(per_row)
     assert run.spent_usd == pytest.approx(2 * per_row)
 

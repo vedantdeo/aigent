@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from entropic.config import MODEL, get_client, has_credentials
+from entropic.adapters.anthropic import get_client, has_credentials
+from entropic.config import MODEL
 
 pytestmark = pytest.mark.skipif(not has_credentials(), reason="no Anthropic credentials configured")
 

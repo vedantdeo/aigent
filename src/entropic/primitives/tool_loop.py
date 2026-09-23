@@ -8,15 +8,14 @@ and the loop is capped.
 from __future__ import annotations
 
 import sys
-
-import anthropic
-from anthropic.types import MessageParam, ToolResultBlockParam
+from typing import cast
 
 from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
 from entropic.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from entropic.config import MAX_USD_PER_RUN, MODEL
 from entropic.errors import BudgetExceeded
 from entropic.llm import Llm, Request
+from entropic.messages import Block, Msg
 from entropic.pricing import Budget, describe_usage
 from entropic.tools import ALL_TOOLS, execute_tool
 
@@ -27,12 +26,10 @@ SYSTEM = (
 )
 
 
-def run(
-    task: str, client: anthropic.Anthropic | None = None, *, limit_usd: float = MAX_USD_PER_RUN
-) -> str:
-    """Drive the loop for one task. `client` is injectable so tests can script the responses."""
-    llm = Llm(client, budget=Budget(limit_usd=limit_usd))
-    messages: list[MessageParam] = [{"role": "user", "content": task}]
+def run(task: str, sdk: object | None = None, *, limit_usd: float = MAX_USD_PER_RUN) -> str:
+    """Drive the loop for one task. `sdk` is injectable so tests can script the replies."""
+    llm = Llm(sdk=sdk, budget=Budget(limit_usd=limit_usd))
+    messages: list[Msg] = [{"role": "user", "content": task}]
 
     for turn in range(1, MAX_TURNS + 1):
         request = Request(f"turn:{turn}", messages, MAX_TOKENS, system=SYSTEM, tools=ALL_TOOLS)
@@ -43,27 +40,27 @@ def run(
         print(f"turn {turn}: stop_reason={response.stop_reason}  {usage_line}")
 
         if response.stop_reason != "tool_use":
-            final_text = "".join(b.text for b in response.content if b.type == "text")
             print(f"\ntotal cost: ${llm.spent_usd:.5f}")
-            return final_text
+            return response.text
 
         # Echo the assistant turn back exactly, tool_use blocks included.
-        messages.append({"role": "assistant", "content": response.content})
+        messages.append({"role": "assistant", "content": response.blocks})
 
-        results: list[ToolResultBlockParam] = []
-        for block in response.content:
-            if block.type != "tool_use":
+        results: list[Block] = []
+        for block in response.blocks:
+            if block.get("type") != "tool_use":
                 continue
-            if not isinstance(block.input, dict):
+            if not isinstance(block.get("input"), dict):
                 content, is_error = "Error: tool input was not an object", True
             else:
-                content, is_error = execute_tool(block.name, block.input)
-            print(
-                f"   -> {block.name}({block.input}) = {content!r}{'  [error]' if is_error else ''}"
-            )
-            result: ToolResultBlockParam = {
+                content, is_error = execute_tool(
+                    cast(str, block["name"]), cast(dict[str, object], block["input"])
+                )
+            name, arguments = block["name"], block["input"]
+            print(f"   -> {name}({arguments}) = {content!r}{'  [error]' if is_error else ''}")
+            result: dict[str, object] = {
                 "type": "tool_result",
-                "tool_use_id": block.id,
+                "tool_use_id": block["id"],
                 "content": content,
             }
             if is_error:

@@ -19,12 +19,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from anthropic.types import MessageParam
 from pydantic import BaseModel, Field
 
 from entropic.config import MAX_TOKENS_QUESTION as MAX_TOKENS
 from entropic.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM
 from entropic.llm import Llm, Request
+from entropic.messages import Msg
 from entropic.pricing import Budget, estimate_eval_usd, usage_cost
 from entropic.retrieval.chunk import Chunk, Document, Inventory, by_sentence, squeeze
 from entropic.retrieval.corpus import MANIFEST, load_corpus
@@ -107,7 +107,7 @@ def sample_passages(inventory: Inventory, n: int) -> list[Chunk]:
     return [passages[round(i * step)] for i in range(n)]
 
 
-def prompt_for(chunk: Chunk, company: str) -> list[MessageParam]:
+def prompt_for(chunk: Chunk, company: str) -> list[Msg]:
     """The one user message: which company this is, and the passage itself."""
     return [{"role": "user", "content": f"company: {company}\n\npassage:\n{chunk.text}"}]
 
@@ -149,7 +149,7 @@ def generate(
         thinking=THINKING_EVAL_PARAM,
     )
     response = llm.parse(request, Question)
-    return response.parsed_output, usage_cost(model, response.usage)
+    return response.parsed, usage_cost(model, response.usage)
 
 
 def to_row(index: int, chunk: Chunk, question: Question) -> dict[str, object]:

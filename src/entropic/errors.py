@@ -13,5 +13,13 @@ class StepFailed(RuntimeError):
     """A call came back refused, truncated or unparseable. It was billed all the same."""
 
 
+class Unsupported(RuntimeError):
+    """A request asks for something the provider it is bound for cannot do."""
+
+
+class Unreadable(RuntimeError):
+    """A reply for a record that did not validate, raised before its usage was seen."""
+
+
 class TurnsExhausted(RuntimeError):
     """A tool-using conversation hit its turn cap with the model still asking for tools."""
