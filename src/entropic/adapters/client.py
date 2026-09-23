@@ -26,6 +26,10 @@ class Client:
     small_model: str
     base_url: str | None = None
     max_tokens: Mapping[str, int] = field(default_factory=dict)
+    # Arguments for the served model's chat template, sent with every request and used when
+    # counting, so both sides template alike. `{"enable_thinking": False}` is why this exists:
+    # a hybrid-thinking model spends its output cap on thought before it writes any answer.
+    template_kwargs: Mapping[str, object] = field(default_factory=dict)
 
 
 def model_of(request: Request, settings: Client) -> str:

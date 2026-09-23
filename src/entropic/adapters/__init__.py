@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from entropic.adapters.anthropic import Anthropic
 from entropic.adapters.cfg_anthropic import CLIENT as ANTHROPIC
-from entropic.adapters.cfg_local import CLIENT as LOCAL
+from entropic.adapters.cfg_local import CLIENTS as LOCAL_CLIENTS
 from entropic.adapters.client import Client
 from entropic.adapters.openai import OpenAI
 from entropic.messages import Msg, Parsed, Reply
@@ -81,7 +81,7 @@ WIRES: dict[str, Callable[[Client, object | None], Adapter]] = {
 
 # Client name → its settings, from the `cfg_<name>` module beside this one. Several clients may
 # share a wire; each names exactly one, so the client's name is enough to pick the adapter.
-CLIENTS: dict[str, Client] = {"anthropic": ANTHROPIC, "local": LOCAL}
+CLIENTS: dict[str, Client] = {"anthropic": ANTHROPIC, **LOCAL_CLIENTS}
 
 
 def spec(client: str) -> Client:

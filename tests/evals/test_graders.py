@@ -154,9 +154,15 @@ def test_judge_returns_the_verdict_and_bills_its_usage_to_the_score(make_judge: 
     assert score.model == JUDGE_MODEL, "the score names the judge's model, not the task's"
 
 
-def test_judge_defaults_to_the_judge_model_not_the_agents() -> None:
+def test_judge_defaults_to_the_judge_model_not_the_agents(make_judge: MakeJudge) -> None:
+    """A judge names no model of its own, so it grades with whatever its *client* grades with —
+    which is how pointing an eval at a local server moves the judge with it."""
     # Constructing a judge builds no client, so this costs nothing and needs no credentials.
-    assert LlmJudge(rubric="anything").model == JUDGE_MODEL
+    assert LlmJudge(rubric="anything").model is None, "None means: ask the client"
+
+    judge, _ = make_judge(Verdict(reasoning="it matches", passed=True))
+    score = judge(_case(headline="Infosys Q3 profit up 12%"), _out(answer="Infosys profit rose."))
+    assert score.model == JUDGE_MODEL, "resolved from the client, not from config.MODEL"
     assert JUDGE_MODEL != MODEL
 
 

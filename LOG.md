@@ -1004,3 +1004,58 @@
   `mx.get_peak_memory()` returns absolute peak active memory, not a delta since
   `reset_peak_memory()`, and intermediates released into the cache mid-call mean active can rise by
   less than the output array's size.
+- 09-23: **Track B part 2: Project 1 answered by a model on this laptop, and what it cost to find
+  out.** The `llm` layer is now provider-neutral: `messages.py` holds the types a request and a
+  reply are made of, `adapters/` holds one class per wire behind `Adapter`, `Streamed` and
+  `ToolSession` protocols, and a **client** — a named endpoint in its own `cfg_<name>.py` — maps to
+  exactly one of them. `llm` imports no SDK; invariant 8 now reads that only an adapter talks to a
+  model, and a test asserts the set of files that do is exactly `adapters/anthropic.py`. Six
+  clients: `anthropic`, and five served by one local `mlx_lm.server`.
+
+  **Five served models, one at a time** (the server keeps one resident), four questions each
+  through the real call path:
+
+  | client | median s | tok/s end to end | parsed | declined the unanswerable |
+  |---|---|---|---|---|
+  | Qwen3-4B 4-bit | 1.59 | 29.6 | 4/4 | yes |
+  | Qwen3-4B 6-bit | 2.04 | 23.8 | 4/4 | yes |
+  | Qwen3-4B 8-bit | 2.43 | 20.4 | 4/4 | yes |
+  | Qwen3-4B bf16 | 4.48 | 10.9 | 4/4 | yes |
+  | Qwen2.5-7B 4-bit | 1.87 | 20.3 | 4/4 | yes |
+
+  4-bit is **2.8x faster than bf16 end to end** for outputs indistinguishable on this probe, which
+  is the underhood quantization result holding on the serving path. The 7B at 4-bit is *faster*
+  than the 4B at 8-bit for about the same memory, so the bigger-but-quantized trade costs no
+  latency here. The 7B's one miss is the interesting one: on a question its own cited passage
+  answers, it set `answered=false` and returned nothing — **a false refusal, not a citation
+  failure**, and the opposite of the error a small model is supposed to make.
+
+  **The 54 questions, answered by Qwen3-4B 4-bit and judged by `claude-sonnet-5`** against the same
+  rubric and labels as the 09-19 Opus run. $0.2378 of a $0.4368 worst case, 11.6 minutes:
+
+  | | Opus 5 (09-19) | Qwen3-4B 4-bit |
+  |---|---|---|
+  | RAG `correct` | 42/54 | **37/54** |
+  | RAG `answered` | 43/54 | 40/54 |
+  | RAG `cites_relevant` | 37/54 | 36/54 |
+  | precision when it answers | 42/43 | 37/40 |
+  | closed-book `correct` | 5/54 | **0/54** |
+  | cost of answering | $1.342 | **$0.0053** of machine time |
+
+  **What got worse is five right answers out of 54**, and what did not is citation fidelity: 36 of
+  a 37 ceiling, since `cites_relevant` is bounded by the retriever's hit@5 and both models were
+  handed identical passages. The failures are ordinary rather than structural — `rq-005` answers
+  "10 countries" where the reference says 41, and contradicts itself by listing more than ten.
+  Closed-book inverts: Opus answers 10 of 54 from memory and gets 5 right, the 4B answers **none**,
+  which is not caution but ignorance, and is only useful as the floor that makes the RAG number
+  mean something. Answering is **250x cheaper**; the judging is what cost real money, and it costs
+  the same whoever answers.
+
+  **Two bugs a live call found that 823 green tests did not.** `Request.model` defaulted to
+  `config.MODEL` — the *configured* client's model — so `Llm("local")` asked `mlx_lm.server` for
+  `claude-opus-5`; the same leak sat in `answer_task` and `LlmJudge`, which pinned their models at
+  import. All three now resolve from the client they are given, which is what lets one run answer
+  on a local model and judge on a hosted one. And the OpenAI wire's token count read the length of
+  a transformers `BatchEncoding`: **2 for every prompt**, which would have waved anything past the
+  per-request ceiling. Both are regression-tested, the count one with a stub that answers in the
+  shape transformers actually does.

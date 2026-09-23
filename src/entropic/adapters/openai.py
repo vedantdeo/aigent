@@ -29,6 +29,8 @@ from entropic.errors import Unsupported
 from entropic.messages import Block, Parsed, Reply, Usage
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from transformers import PreTrainedTokenizerBase
 
     from entropic.adapters import Streamed, ToolSession
@@ -145,17 +147,27 @@ class OpenAI:
             )
         return sent
 
+    @property
+    def _extra_body(self) -> dict[str, object] | None:
+        """What the server needs beyond the OpenAI fields: how to template this model."""
+        kwargs = self.settings.template_kwargs
+        return {"chat_template_kwargs": dict(kwargs)} if kwargs else None
+
     def count(self, request: Request, schema: type[BaseModel] | None = None) -> int:
         """The input tokens this request would send, templated as the server will template them."""
         # return_dict=False or this hands back a BatchEncoding, whose length is its number of
         # fields — a count of 2 for any prompt, which every guard would wave through.
-        ids = self.tokenizer.apply_chat_template(
-            cast("list[dict[str, str]]", self.messages(request, schema)),
+        # Cast because the stub names `tools` and `documents` as parameters, which a client's
+        # own template arguments would be matched against.
+        template = cast("Callable[..., Sequence[int]]", self.tokenizer.apply_chat_template)
+        ids = template(
+            self.messages(request, schema),
             add_generation_prompt=True,
             tokenize=True,
             return_dict=False,
+            **self.settings.template_kwargs,
         )
-        return len(cast(Sequence[int], ids))
+        return len(ids)
 
     def send(self, request: Request) -> Reply:
         """One request, one reply."""
@@ -164,6 +176,7 @@ class OpenAI:
                 model=model_of(request, self.settings),
                 messages=self.messages(request),
                 max_completion_tokens=request.max_tokens,
+                extra_body=self._extra_body,
             )
         )
 
@@ -179,6 +192,7 @@ class OpenAI:
             model=model_of(request, self.settings),
             messages=self.messages(request, schema),
             max_completion_tokens=request.max_tokens,
+            extra_body=self._extra_body,
         )
         reply = reply_of(completion)
         return Parsed[Record](

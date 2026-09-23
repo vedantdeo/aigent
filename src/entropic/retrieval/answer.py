@@ -21,6 +21,7 @@ from typing import cast
 
 from pydantic import BaseModel, Field, JsonValue
 
+from entropic.adapters import spec
 from entropic.config import (
     CLIENT,
     JUDGE_MODEL,
@@ -117,11 +118,13 @@ def answer_task(
     k: int = TOP_K,
     client: str = CLIENT,
     sdk: object | None = None,
-    model: str = MODEL,
+    model: str | None = None,
 ) -> Task:
-    """Build the `Task` the runner calls once per case. `sdk` is injectable, so
-    tests are free."""
+    """Build the `Task` the runner calls once per case. `sdk` is injectable, so tests are free,
+    and `model` defaults to whatever this client serves rather than to the configured client's —
+    the two differ the moment an eval is pointed at a local server."""
     llm = Llm.for_eval(client, sdk=sdk)
+    model = model or spec(client).model
 
     def task(case: Case) -> Outcome:
         question = case.input.get("question")

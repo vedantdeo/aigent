@@ -7,6 +7,7 @@ either side is what is under test. A test that fetched a tokenizer would need th
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -184,6 +185,32 @@ def test_a_parsed_call_bills_its_usage_whether_or_not_a_record_came_back(
     assert parsed.usage.input_tokens == 100 and parsed.usage.output_tokens == 20
     assert llm.trace[-1].usd > 0, "a local call costs machine time, which is not nothing"
     assert wire.name == "openai"
+
+
+def test_a_clients_template_arguments_ride_along_with_every_request(
+    offline_tokenizer: None,
+) -> None:
+    """A hybrid-thinking model spends its output cap on thought unless told not to, and then no
+    record is reached. Qwen3's models are hybrid; Qwen2.5's are not, and the 16 rows a 7B lost to
+    unparseable output were a different failure — it ignored the schema and wrote prose. Two
+    causes, one symptom, and only this one is ours to prevent.
+    """
+    scripted = ScriptedClient("hi")
+    Llm("local-8b-4bit", sdk=cast(object, scripted)).text(REQUEST)
+
+    assert scripted.completions.sent[0]["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+
+
+def test_a_client_with_nothing_to_say_about_templating_sends_no_extra_body() -> None:
+    """Every local client happens to carry the thinking flag, so this builds one that does not:
+    an empty mapping must send nothing rather than an empty `chat_template_kwargs`."""
+    scripted = ScriptedClient("hi")
+    plain = replace(LOCAL, template_kwargs={})
+    OpenAI(plain, scripted).send(REQUEST)
+
+    assert scripted.completions.sent[0]["extra_body"] is None
 
 
 def test_cached_prompt_tokens_are_counted_as_read_not_as_fresh_input() -> None:

@@ -44,7 +44,10 @@ PRICES: dict[str, Price] = {
     "claude-haiku-4-5": Price(input=1.0, output=5.0),
     "claude-fable-5-1": Price(input=10.0, output=50.0),
     "mlx-community/Qwen3-4B-Instruct-2507-4bit": Price(input=0.04, output=0.42),
-    "mlx-community/Qwen2.5-7B-Instruct-4bit": Price(input=0.08, output=0.76),
+    "mlx-community/Qwen3-4B-Instruct-2507-6bit": Price(input=0.04, output=0.59),
+    "mlx-community/Qwen3-4B-Instruct-2507-8bit": Price(input=0.04, output=0.77),
+    "mlx-community/Qwen3-4B-Instruct-2507-bf16": Price(input=0.04, output=1.44),
+    "mlx-community/Qwen3-8B-4bit": Price(input=0.08, output=0.71),
 }
 
 # Billed per search, on top of the tokens its results add.
