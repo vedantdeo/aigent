@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from entropic.llm import Request
 
 
 @dataclass(frozen=True)
@@ -22,3 +26,8 @@ class Client:
     small_model: str
     base_url: str | None = None
     max_tokens: Mapping[str, int] = field(default_factory=dict)
+
+
+def model_of(request: Request, settings: Client) -> str:
+    """The model a request names, or — the usual case — the one its client serves."""
+    return request.model or settings.model

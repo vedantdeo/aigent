@@ -21,7 +21,8 @@ from typing import cast
 
 from pydantic import BaseModel
 
-from entropic.adapters import Streamed, ToolSession, build
+from entropic.adapters import Streamed, ToolSession, build, spec
+from entropic.adapters.client import model_of
 from entropic.config import (
     CLIENT,
     MAX_AGENT_TURNS,
@@ -29,7 +30,6 @@ from entropic.config import (
     MAX_USD_PER_REQUEST,
     MAX_USD_PER_TURN,
     MIN_TOKENS_FINAL_ANSWER,
-    MODEL,
 )
 from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted, Unreadable, Unsupported
 from entropic.messages import (
@@ -55,7 +55,9 @@ class Request:
     messages: Sequence[Msg]
     max_tokens: int
     system: str | Sequence[Block] | None = None
-    model: str = MODEL
+    # None means "whichever model the client I am sent on serves", filled in by `Llm`. Naming one
+    # here overrides that, which is how the routing workflow reaches for a smaller model.
+    model: str | None = None
     tools: Sequence[Tool] | None = None
     thinking: Thinking | None = None
     output_config: OutputConfig | None = None
@@ -69,7 +71,7 @@ class Request:
         prompt: str,
         max_tokens: int,
         *,
-        model: str = MODEL,
+        model: str | None = None,
         thinking: Thinking | None = None,
     ) -> Request:
         """A single-turn request: one system prompt, one user message."""
@@ -132,6 +134,7 @@ class Llm:
         rehearse: bool = False,
     ) -> None:
         self._client = client
+        self._spec = spec(client)
         self._adapter = build(client, sdk)
         self.budget = budget if budget is not None else Budget()
         self.trace: list[Call] = []
@@ -158,34 +161,44 @@ class Llm:
     def spent_usd(self) -> float:
         return self.budget.spent_usd
 
+    def _bound(self, request: Request) -> Request:
+        """The request as it will be sent: its model, or this client's if it named none."""
+        return request if request.model else replace(request, model=self._spec.model)
+
     def count(self, request: Request, schema: type[BaseModel] | None = None) -> int:
         """The input tokens `request` would send, schema included. Free: nothing is generated."""
+        request = self._bound(request)
         return self._adapter.count(request, schema)
 
     def create(self, request: Request) -> Reply:
         """Send one request; the whole reply, for callers that read its blocks."""
+        request = self._bound(request)
         with self._held([request]):
             return self._create(request)
 
     def text(self, request: Request) -> str:
         """Send one request; its text. Raises `StepFailed` on a refusal or a truncation."""
+        request = self._bound(request)
         with self._held([request]):
             return self._text(request)
 
     def parse[Record: BaseModel](self, request: Request, schema: type[Record]) -> Parsed[Record]:
         """Send one request for a `schema` record; the whole reply, whose `parsed` is None when the
         output did not validate."""
+        request = self._bound(request)
         with self._held([request], schema):
             return self._parse(request, schema)
 
     def record[Record: BaseModel](self, request: Request, schema: type[Record]) -> Record:
         """Send one request for a `schema` record. Raises `StepFailed` when there is none."""
+        request = self._bound(request)
         with self._held([request], schema):
             return self._record(request, schema)
 
     @contextmanager
     def stream(self, request: Request) -> Iterator[Streamed]:
         """Send one request as a stream; billed from the final reply once the stream closes."""
+        request = self._bound(request)
         self._require(request, "stream")
         with self._held([request]), self._adapter.streamed(request) as streaming:
             yield streaming
@@ -194,6 +207,7 @@ class Llm:
 
     def gather_text(self, requests: Sequence[Request]) -> list[str]:
         """`text` for every request concurrently, in request order, once all are admitted."""
+        requests = [self._bound(request) for request in requests]
         with self._held(requests):
             return self._fan_out(requests, self._text)
 
@@ -201,6 +215,7 @@ class Llm:
         self, requests: Sequence[Request], schema: type[Record]
     ) -> list[Record]:
         """`record` for every request concurrently, in request order, once all are admitted."""
+        requests = [self._bound(request) for request in requests]
         with self._held(requests, schema):
             return self._fan_out(requests, lambda request: self._record(request, schema))
 
@@ -218,6 +233,7 @@ class Llm:
         With `finish`, a conversation about to run out of turns or budget is sent one last turn with
         `finish` after its tool results, to answer from what it has, if enough output still fits.
         """
+        request = self._bound(request)
         if not request.tools:
             raise ValueError(f"{request.step}: run_tools needs at least one tool")
         self._require(request, "tools")
@@ -287,7 +303,7 @@ class Llm:
         left = self.budget.limit_usd - self.budget.spent_usd - self.budget.held_usd
         room = min(MAX_USD_PER_TURN, left)
         fits = affordable_output_tokens(
-            answer.model,
+            model_of(answer, self._spec),
             self.count(answer),
             room,
             cached=_writes_cache(answer),
@@ -339,7 +355,7 @@ class Llm:
             searches = _web_searches(request)
             tokens = self.count(request, schema)
             cost = assert_request_within_budget(
-                request.model,
+                model_of(request, self._spec),
                 tokens,
                 request.max_tokens,
                 limit_usd,
@@ -414,7 +430,7 @@ class Llm:
             text="",
             usage=usage,
             stop_reason="max_tokens",
-            model=request.model,
+            model=model_of(request, self._spec),
             parsed=None,
         )
 
@@ -425,9 +441,10 @@ class Llm:
         return parsed.parsed
 
     def _bill(self, request: Request, usage: Usage) -> None:
+        model = model_of(request, self._spec)
         with self._lock:
-            usd = self.budget.charge(request.model, usage)
-            self.trace.append(Call(request.step, request.model, usage, usd))
+            usd = self.budget.charge(model, usage)
+            self.trace.append(Call(request.step, model, usage, usd))
 
 
 def _asks_for(request: Request) -> set[str]:

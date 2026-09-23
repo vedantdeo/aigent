@@ -24,7 +24,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from pydantic import BaseModel, ValidationError
 
-from entropic.adapters.client import Client
+from entropic.adapters.client import Client, model_of
 from entropic.errors import Unsupported
 from entropic.messages import Block, Parsed, Reply, Usage
 
@@ -147,10 +147,13 @@ class OpenAI:
 
     def count(self, request: Request, schema: type[BaseModel] | None = None) -> int:
         """The input tokens this request would send, templated as the server will template them."""
+        # return_dict=False or this hands back a BatchEncoding, whose length is its number of
+        # fields — a count of 2 for any prompt, which every guard would wave through.
         ids = self.tokenizer.apply_chat_template(
             cast("list[dict[str, str]]", self.messages(request, schema)),
             add_generation_prompt=True,
             tokenize=True,
+            return_dict=False,
         )
         return len(cast(Sequence[int], ids))
 
@@ -158,7 +161,7 @@ class OpenAI:
         """One request, one reply."""
         return reply_of(
             self.client.chat.completions.create(
-                model=request.model,
+                model=model_of(request, self.settings),
                 messages=self.messages(request),
                 max_completion_tokens=request.max_tokens,
             )
@@ -173,7 +176,7 @@ class OpenAI:
         request that asked for it.
         """
         completion = self.client.chat.completions.create(
-            model=request.model,
+            model=model_of(request, self.settings),
             messages=self.messages(request, schema),
             max_completion_tokens=request.max_tokens,
         )

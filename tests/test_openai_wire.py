@@ -69,10 +69,20 @@ class ScriptedClient:
 
 
 class StubTokenizer:
-    """Stands in for the served model's tokenizer: a fixed count, and no download."""
+    """Stands in for the served model's tokenizer, including the shape it answers in.
 
-    def apply_chat_template(self, conversation: object, **kwargs: object) -> list[int]:
-        return list(range(42))
+    transformers v5 hands back a `BatchEncoding` unless `return_dict=False`, so this returns a
+    mapping too — a count taken from its length would be 2 for any prompt, which is the bug this
+    shape exists to catch.
+    """
+
+    def apply_chat_template(
+        self, conversation: object, **kwargs: object
+    ) -> list[int] | dict[str, list[int]]:
+        ids = list(range(42))
+        if kwargs.get("return_dict") is False:
+            return ids
+        return {"input_ids": ids, "attention_mask": [1] * len(ids)}
 
 
 @pytest.fixture
@@ -135,9 +145,32 @@ def test_a_record_is_read_out_of_whatever_the_model_wrapped_it_in(
 
 
 def test_the_count_is_the_templated_prompt_rather_than_an_estimate(offline_tokenizer: None) -> None:
-    """Counting is what the per-request guard reads, so it counts the ids the server will see."""
+    """Counting is what the per-request guard reads, so it counts the ids the server will see.
+
+    A live call found this returning 2 for every prompt: the tokenizer answers with a mapping of
+    two fields unless asked otherwise, and a token count that is always 2 waves everything past
+    the ceiling it is supposed to hold.
+    """
     wire, _ = _wire()
     assert wire.count(REQUEST) == 42
+
+
+def test_a_request_is_sent_to_the_model_its_own_client_serves(offline_tokenizer: None) -> None:
+    """A live call found `Llm("local")` sending the configured *other* client's model, because the
+    default came from `config.MODEL` rather than from the client being talked to."""
+    scripted = ScriptedClient("hi")
+    Llm("local", sdk=cast(object, scripted)).text(REQUEST)
+
+    assert scripted.completions.sent[0]["model"] == LOCAL.model
+
+
+def test_a_request_that_names_a_model_keeps_it(offline_tokenizer: None) -> None:
+    """Which is how the routing workflow reaches for a smaller model on the same client."""
+    scripted = ScriptedClient("hi")
+    asked = Request("step", [{"role": "user", "content": "x"}], 64, model=LOCAL.small_model)
+    Llm("local", sdk=cast(object, scripted)).text(asked)
+
+    assert scripted.completions.sent[0]["model"] == LOCAL.small_model
 
 
 def test_a_parsed_call_bills_its_usage_whether_or_not_a_record_came_back(

@@ -38,7 +38,7 @@ from anthropic.types.beta import (
 from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
 
-from entropic.adapters.client import Client
+from entropic.adapters.client import Client, model_of
 from entropic.errors import Unreadable
 from entropic.messages import Block, Msg, Parsed, Reply, Tool, Usage, is_client_tool
 
@@ -156,10 +156,12 @@ class ToolSession:
     def __init__(
         self,
         client: AnthropicClient,
+        settings: Client,
         request: Request,
         dispatch: Dispatch,
         max_turns: int,
     ) -> None:
+        self._settings = settings
         tools = request.tools or []
         runnable = [_runnable(tool, dispatch) for tool in tools if is_client_tool(tool)]
         server = [cast(BetaToolUnionParam, tool) for tool in tools if not is_client_tool(tool)]
@@ -167,7 +169,7 @@ class ToolSession:
         self._wire: list[BetaToolUnionParam] = [*(tool.to_dict() for tool in runnable), *server]
         self._client = client
         self._runner = client.beta.messages.tool_runner(
-            model=request.model,
+            model=model_of(request, settings),
             max_tokens=request.max_tokens,
             messages=cast(list[BetaMessageParam], request.messages),
             system=cast("str | list[BetaTextBlockParam] | Omit", system_param(request)),
@@ -193,7 +195,7 @@ class ToolSession:
         """A last turn sent as the runner sends one, bar the messages and the cap."""
         return reply_of(
             self._client.beta.messages.parse(
-                model=request.model,
+                model=model_of(request, self._settings),
                 max_tokens=request.max_tokens,
                 messages=cast(list[BetaMessageParam], request.messages),
                 system=cast("str | list[BetaTextBlockParam] | Omit", system_param(request)),
@@ -232,7 +234,7 @@ class Anthropic:
     def count(self, request: Request, schema: type[BaseModel] | None = None) -> int:
         """The input tokens this request would send, schema included. Free: nothing is generated."""
         return self.client.messages.count_tokens(
-            model=request.model,
+            model=model_of(request, self.settings),
             messages=cast(Sequence[MessageParam], request.messages),
             system=system_param(request),
             tools=cast("Sequence[ToolUnionParam] | Omit", or_omit(request.tools)),
@@ -246,7 +248,7 @@ class Anthropic:
         """One request, one reply."""
         return reply_of(
             self.client.messages.create(
-                model=request.model,
+                model=model_of(request, self.settings),
                 max_tokens=request.max_tokens,
                 messages=cast(Sequence[MessageParam], request.messages),
                 system=system_param(request),
@@ -269,7 +271,7 @@ class Anthropic:
         """
         try:
             message = self.client.messages.parse(
-                model=request.model,
+                model=model_of(request, self.settings),
                 max_tokens=request.max_tokens,
                 messages=cast(Sequence[MessageParam], request.messages),
                 system=system_param(request),
@@ -288,7 +290,7 @@ class Anthropic:
     def streamed(self, request: Request) -> Iterator[Streaming]:
         """One request as a stream; the caller reads it and `llm` bills its final reply."""
         with self.client.messages.stream(
-            model=request.model,
+            model=model_of(request, self.settings),
             max_tokens=request.max_tokens,
             messages=cast(Sequence[MessageParam], request.messages),
             system=system_param(request),
@@ -301,7 +303,7 @@ class Anthropic:
 
     def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession:
         """A tool-using conversation, which `llm` drives one admitted turn at a time."""
-        return ToolSession(self.client, request, dispatch, max_turns)
+        return ToolSession(self.client, self.settings, request, dispatch, max_turns)
 
 
 def has_credentials() -> bool:
