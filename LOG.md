@@ -986,3 +986,21 @@
   0.36 GB for q4) and nothing explains it yet. And part 2 of the roadmap item — `mlx_lm.server`
   behind Project 1 — is not started; it needs `llm.py` to speak to a local model, and the answer
   eval's judge is paid.
+- 09-23: **where the memory above the weights goes, chased and half-settled.** Free, local. Two
+  throwaway probes against the same four variants. First: peak memory is set **entirely during
+  prefill** — generating 32 more tokens moves it by nothing, in all twelve rows — and it scales
+  with prompt length at roughly 500–750 KB per prompt token. For bf16 that is close to the sum of
+  the two known terms: the vocab-projection logits at 128,256 × 2 bytes = **256 KB per token**,
+  which are computed at every prefill position and then discarded, plus the KV cache at 115 KB per
+  token. So `logits_to_keep` is not only 12% of prefill FLOPs, it is the largest single term in
+  prefill memory too. Second: quantized variants pay a **flat ~65 MB surcharge** visible already at
+  a 16-token prompt (+36 MB for bf16 against +101 to +105 MB for q8, q6 and q4). The hypothesis
+  that mlx materializes a dequantized weight matrix for prefill-shaped matmuls is **refuted**: one
+  3072×8192 layer at batch 512 allocates identically in bf16 and 4-bit, to the byte. What remains
+  is a whole-model or allocator effect — a quantized layer holds three arrays where a dense one
+  holds one — and it is being left there: 65 MB flat against savings of 2.4 to 4.4 GB changes no
+  decision. It also corrects yesterday's reading that the surcharge grows as the bits fall; the
+  q8/q6/q4 spread at longer prompts is not consistent enough to be a trend. One instrument note:
+  `mx.get_peak_memory()` returns absolute peak active memory, not a delta since
+  `reset_peak_memory()`, and intermediates released into the cache mid-call mean active can rise by
+  less than the output array's size.
