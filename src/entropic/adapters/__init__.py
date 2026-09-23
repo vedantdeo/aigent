@@ -21,7 +21,9 @@ from pydantic import BaseModel
 
 from entropic.adapters.anthropic import Anthropic
 from entropic.adapters.cfg_anthropic import CLIENT as ANTHROPIC
+from entropic.adapters.cfg_local import CLIENT as LOCAL
 from entropic.adapters.client import Client
+from entropic.adapters.openai import OpenAI
 from entropic.messages import Msg, Parsed, Reply
 
 if TYPE_CHECKING:
@@ -72,11 +74,14 @@ class Adapter(Protocol):
 
 
 # Wire name → the class that speaks it, in one canonical order.
-WIRES: dict[str, Callable[[Client, object | None], Adapter]] = {"anthropic": Anthropic}
+WIRES: dict[str, Callable[[Client, object | None], Adapter]] = {
+    "anthropic": Anthropic,
+    "openai": OpenAI,
+}
 
 # Client name → its settings, from the `cfg_<name>` module beside this one. Several clients may
 # share a wire; each names exactly one, so the client's name is enough to pick the adapter.
-CLIENTS: dict[str, Client] = {"anthropic": ANTHROPIC}
+CLIENTS: dict[str, Client] = {"anthropic": ANTHROPIC, "local": LOCAL}
 
 
 def spec(client: str) -> Client:

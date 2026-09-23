@@ -31,11 +31,20 @@ class Price:
         return self.input * 0.10
 
 
+# A local model is priced by what an hour of this machine costs, divided by the tokens an hour
+# buys: about $0.06/hour (~25 W of electricity, plus a 16 GB M4 amortised over three years) over
+# the throughput measured in the underhood quantization bench — 490 prefill and 50 decode tokens a
+# second for a 4-bit 3B, scaled by parameter count for these two. Output costs ~10x input because
+# decode is ~10x slower than prefill, which is the same asymmetry a hosted price carries.
+# Estimates, not measurements, for these two models; free is not a price, and $0.00 would make
+# every guard read a local run as costless.
 PRICES: dict[str, Price] = {
     "claude-opus-5": Price(input=5.0, output=25.0),
     "claude-sonnet-5": Price(input=2.0, output=10.0),
     "claude-haiku-4-5": Price(input=1.0, output=5.0),
     "claude-fable-5-1": Price(input=10.0, output=50.0),
+    "mlx-community/Qwen3-4B-Instruct-2507-4bit": Price(input=0.04, output=0.42),
+    "mlx-community/Qwen2.5-7B-Instruct-4bit": Price(input=0.08, output=0.76),
 }
 
 # Billed per search, on top of the tokens its results add.

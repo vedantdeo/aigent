@@ -31,7 +31,7 @@ from entropic.config import (
     MIN_TOKENS_FINAL_ANSWER,
     MODEL,
 )
-from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted, Unreadable
+from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted, Unreadable, Unsupported
 from entropic.messages import (
     Block,
     Cache,
@@ -186,6 +186,7 @@ class Llm:
     @contextmanager
     def stream(self, request: Request) -> Iterator[Streamed]:
         """Send one request as a stream; billed from the final reply once the stream closes."""
+        self._require(request, "stream")
         with self._held([request]), self._adapter.streamed(request) as streaming:
             yield streaming
             final = streaming.final()
@@ -219,6 +220,7 @@ class Llm:
         """
         if not request.tools:
             raise ValueError(f"{request.step}: run_tools needs at least one tool")
+        self._require(request, "tools")
         messages: list[Msg] = list(request.messages)
         first = replace(request, step=f"{request.step}:1", messages=messages)
         held = self._admit([first], limit_usd=MAX_USD_PER_TURN, scope="turn")
@@ -301,6 +303,20 @@ class Llm:
             raise stop
         return message
 
+    def _require(self, request: Request, *capabilities: str) -> None:
+        """Refuse, before anything is counted or sent, what this wire cannot do.
+
+        A wire that silently dropped a cache marker or a schema would answer — differently, and
+        for a different price — which is the one failure a budget guard cannot catch.
+        """
+        wanted = {*_asks_for(request), *capabilities}
+        missing = sorted(wanted - self._adapter.supports)
+        if missing:
+            raise Unsupported(
+                f"{request.step}: the {self._client} client's {self._adapter.name} wire does not "
+                f"support {', '.join(missing)}"
+            )
+
     def _admit(
         self,
         requests: Sequence[Request],
@@ -314,6 +330,7 @@ class Llm:
         # fit must not start.
         worst = 0.0
         for request in requests:
+            self._require(request, *(() if schema is None else ("schema",)))
             if any(marker.get("ttl") == "1h" for marker in _cache_markers(request)):
                 raise BudgetExceeded(
                     f"{request.step}: asks for the 1-hour cache, whose writes pricing does not "
@@ -411,6 +428,22 @@ class Llm:
         with self._lock:
             usd = self.budget.charge(request.model, usage)
             self.trace.append(Call(request.step, request.model, usage, usd))
+
+
+def _asks_for(request: Request) -> set[str]:
+    """Every capability a request needs of the wire it is bound for."""
+    wanted: set[str] = set()
+    if _cache_markers(request):
+        wanted.add("cache")
+    if request.thinking is not None and request.thinking["type"] != "disabled":
+        wanted.add("thinking")
+    if request.output_config is not None:
+        wanted.add("effort")
+    if request.tools:
+        wanted.add("tools")
+        if any(not is_client_tool(tool) for tool in request.tools):
+            wanted.add("web_search")
+    return wanted
 
 
 def _cache_markers(request: Request) -> list[Cache]:

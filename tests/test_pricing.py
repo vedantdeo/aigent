@@ -170,10 +170,15 @@ def test_every_model_any_client_names_is_priced() -> None:
 
 
 def test_no_client_lets_the_judge_grade_the_model_it_is() -> None:
-    # Not a style preference: a model asked to grade its own output favours it.
+    """Not a style preference: a model asked to grade its own output favours it.
+
+    This used to also assert the judge was the cheaper of the two, which held while every client
+    was hosted and the judge was the smaller model. It is false locally and rightly so: the local
+    judge is a 7B grading a 4B, and costs more per token *because* it is bigger and slower. Price
+    was never the rule; being a different model is.
+    """
     for client in CLIENTS.values():
         assert client.judge_model != client.model, client.name
-        assert PRICES[client.judge_model].output < PRICES[client.model].output, client.name
 
 
 def test_charge_records_the_trip_instead_of_raising() -> None:
