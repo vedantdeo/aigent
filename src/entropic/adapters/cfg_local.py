@@ -52,6 +52,9 @@ def served(
         judge_model=judge,
         small_model=model,
         base_url=BASE_URL,
+        # The first request after a model switch waits for the weights to load, and for a model
+        # not yet on this machine, to download.
+        timeout=1800.0,
         max_tokens=PROMPTED_RECORD,
         template_kwargs=template or {},
     )

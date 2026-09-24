@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import cast
+
+import openai
 import pytest
 
-from entropic.adapters import CLIENTS, build
+from entropic.adapters import CLIENTS, build, spec
 from entropic.config import CLIENT
 from entropic.llm import Llm
 
@@ -33,3 +36,16 @@ def test_an_llm_hands_its_vendor_client_on_so_two_can_share_one_connection() -> 
     llm = Llm(sdk=scripted)
     assert llm.sdk is scripted
     assert Llm.for_eval(llm.client, sdk=llm.sdk).sdk is scripted
+
+
+def test_a_client_hands_its_timeout_and_connection_reuse_to_the_sdk() -> None:
+    """The SDKs default to a 600-second read and minutes of connection reuse, which together let
+    one dead socket stall an overnight eval for three hours. Both are the client's to set: a
+    hosted API answers in seconds, a local server may be loading weights inside the first request.
+    """
+    # The protocol types `client` as `object`, since what a vendor client *is* differs per wire.
+    sdk = cast(openai.OpenAI, build("local").client)
+    assert sdk.timeout == spec("local").timeout
+    pool = sdk._client._transport._pool  # noqa: SLF001 - no public accessor for the pool
+    assert pool._keepalive_expiry == spec("local").keepalive_seconds  # noqa: SLF001
+    assert spec("local").timeout > spec("anthropic").timeout, "a local load is slower than an API"

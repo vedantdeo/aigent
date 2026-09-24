@@ -25,6 +25,17 @@ class Client:
     judge_model: str
     small_model: str
     base_url: str | None = None
+    # How long one request may take before it is abandoned. The SDKs default to a 600-second read
+    # with retries, so one stalled call costs half an hour and looks like nothing at all — which
+    # is what it did on 2026-09-24, stalling an eval for three hours on a socket with no traffic.
+    # A hosted API should answer in seconds; a local server may be loading or fetching weights
+    # inside the first request, which is minutes.
+    timeout: float = 180.0
+    # How long an idle connection may be reused before it is dropped and replaced. The default is
+    # minutes, and a call every few seconds keeps one alive far longer than a NAT or firewall on
+    # the path keeps its own state: the socket looks open, the request goes into a black hole and
+    # the read blocks. That is what stalled an eval for three hours on 2026-09-24.
+    keepalive_seconds: float = 30.0
     max_tokens: Mapping[str, int] = field(default_factory=dict)
     # Arguments for the served model's chat template, sent with every request and used when
     # counting, so both sides template alike. `{"enable_thinking": False}` is why this exists:

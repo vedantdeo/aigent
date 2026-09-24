@@ -117,14 +117,18 @@ def test_a_request_with_no_system_prompt_sends_no_system_message() -> None:
     ]
 
 
-def test_asking_for_a_record_appends_the_schema_to_the_system_prompt() -> None:
-    """This wire has no constrained decoding, so the schema travels as an instruction."""
+def test_asking_for_a_record_describes_the_fields_rather_than_sending_a_schema() -> None:
+    """This wire has no constrained decoding, so the shape travels as an instruction — as a list
+    of keys, never as a JSON Schema document. Handing Qwen3-8B a schema made it answer *with* the
+    schema: 0 of 12 replies parsed, against 12 of 12 for this wording.
+    """
     wire, _ = _wire()
     system = str(cast(dict[str, object], wire.messages(REQUEST, Verdict)[0])["content"])
 
     assert system.startswith("be brief")
-    assert "passed" in system and "reason" in system, "the schema's fields reach the model"
+    assert "passed (boolean)" in system and "reason (string)" in system, "the fields, in words"
     assert "nothing else" in system
+    assert '"type": "object"' not in system and '"properties"' not in system, "no schema document"
 
 
 @pytest.mark.parametrize(
@@ -133,6 +137,24 @@ def test_asking_for_a_record_appends_the_schema_to_the_system_prompt() -> None:
         pytest.param('{"passed": true, "reason": "it matches"}', True, id="bare JSON"),
         pytest.param(
             'Sure!\n```json\n{"passed": true, "reason": "it matches"}\n```', True, id="fenced"
+        ),
+        pytest.param(
+            '{"title": "Verdict", "type": "object", "properties": '
+            '{"passed": true, "reason": "it matches"}, "required": ["passed", "reason"]}',
+            True,
+            id="the schema echoed back with the values inside it",
+        ),
+        pytest.param(
+            '{"title": "Verdict", "description": "a verdict", "properties": '
+            '{"passed": true, "reason": "it matches"}, "required": ["passed", "reason"]}',
+            True,
+            id="the same echo with the type key dropped, which is what a model actually sends",
+        ),
+        pytest.param(
+            '{"title": "Verdict", "type": "object", "properties": '
+            '{"passed": {"type": "boolean"}, "reason": {"type": "string"}}}',
+            None,
+            id="the schema echoed back with no values in it at all",
         ),
         pytest.param("I could not say.", None, id="no JSON at all"),
         pytest.param('{"passed": "maybe"}', None, id="JSON the schema refuses"),

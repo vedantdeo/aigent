@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, cast
 
 import anthropic
+import httpx2
 from anthropic import Omit, omit
 from anthropic.lib.streaming import MessageStream
 from anthropic.lib.tools import BetaFunctionTool, ToolError, beta_tool
@@ -228,7 +229,7 @@ class Anthropic:
     def client(self) -> AnthropicClient:
         """Built on first use, so importing this module needs no credentials."""
         if self._client is None:
-            self._client = get_client(self.settings.base_url)
+            self._client = get_client(self.settings)
         return self._client
 
     def count(self, request: Request, schema: type[BaseModel] | None = None) -> int:
@@ -313,11 +314,14 @@ def has_credentials() -> bool:
     return (Path.home() / ".config" / "anthropic").exists()
 
 
-def get_client(base_url: str | None = None) -> AnthropicClient:
-    """Build the SDK client. Credentials are this wire's business, not `config`'s.
+def get_client(settings: Client | None = None) -> AnthropicClient:
+    """Build the SDK client, with this client's timeout and connection reuse.
 
     Set ANTHROPIC_WORKSPACE_ID only for an org-level key; the API refuses one without the header.
     """
+    settings = settings or Client(
+        name="anthropic", wire="anthropic", model="", judge_model="", small_model=""
+    )
     if not has_credentials():
         raise SystemExit(
             "No Anthropic credentials found.\n"
@@ -328,6 +332,15 @@ def get_client(base_url: str | None = None) -> AnthropicClient:
     workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     if workspace_id:
         headers["anthropic-workspace-id"] = workspace_id
-    if base_url is not None:
-        return anthropic.Anthropic(default_headers=headers, base_url=base_url)
-    return anthropic.Anthropic(default_headers=headers)
+    http = httpx2.Client(
+        limits=httpx2.Limits(keepalive_expiry=settings.keepalive_seconds),
+        timeout=settings.timeout,
+    )
+    if settings.base_url is not None:
+        return anthropic.Anthropic(
+            default_headers=headers,
+            base_url=settings.base_url,
+            timeout=settings.timeout,
+            http_client=http,
+        )
+    return anthropic.Anthropic(default_headers=headers, timeout=settings.timeout, http_client=http)
