@@ -1192,3 +1192,13 @@
   run and passed this one with their labels unchanged. The agent thinks adaptively and nothing fixes
   its sampling, so part of 15 → 23 is the same agent answering differently. One run per setting
   cannot separate the fixes from that spread; two or three would.
+- 09-28: **Project 2 with Opus 5 as the agent, judged by Sonnet 5: 20/25, $2.53478**
+  (`tasks-20260928-1324.md`, answers saved), $0.101 a task against Sonnet's 23/25 at $0.038.
+  **The stronger model followed the instructions less**: pt-001, 003 and 008 were answered right
+  with the arithmetic done in its head, where the system prompt asks for `calculate`. pt-020 missed
+  ITC's location count again, a retrieval miss both models have made. **pt-015 is the task
+  ceiling, not the agent**: at $0.145 spent its next turn was refused, and no last answer could be
+  sent either, because the answer turn keeps `web_search` on offer (changing the tools would break
+  the cache) and so is priced with three more searches at Opus rates, leaving under the 1,024
+  tokens a last answer needs within $0.50. At Opus prices `MAX_USD_PER_TASK` binds on web tasks.
+  Single runs again: the spread between runs seen on Sonnet applies here too.
