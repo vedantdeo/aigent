@@ -29,15 +29,15 @@ from anthropic.types.beta import BetaMessage, BetaToolUnionParam
 from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
 from pydantic import BaseModel
 
-from entropic.adapters import CLIENTS
-from entropic.adapters.cfg_anthropic import CLIENT as ANTHROPIC
-from entropic.adapters.client import Client
-from entropic.config import CLIENT, JUDGE_MODEL, MODEL
-from entropic.evals.judge import LlmJudge, Verdict
-from entropic.llm import Llm
-from entropic.pricing import Budget
-from entropic.retrieval.chunk import Chunk
-from entropic.retrieval.embed import Vectors
+from aigent.adapters import CLIENTS
+from aigent.adapters.cfg_anthropic import CLIENT as ANTHROPIC
+from aigent.adapters.client import Client
+from aigent.config import CLIENT, JUDGE_MODEL, MODEL
+from aigent.evals.judge import LlmJudge, Verdict
+from aigent.llm import Llm
+from aigent.pricing import Budget
+from aigent.retrieval.chunk import Chunk
+from aigent.retrieval.embed import Vectors
 
 JUDGE_USAGE = Usage(input_tokens=200, output_tokens=30)
 

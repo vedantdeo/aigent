@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from entropic.retrieval.chunk import Document, Inventory, by_sentence
-from entropic.retrieval.hits import rank_ids
-from entropic.retrieval.sparse import SparseIndex, tokenise
+from aigent.retrieval.chunk import Document, Inventory, by_sentence
+from aigent.retrieval.hits import rank_ids
+from aigent.retrieval.sparse import SparseIndex, tokenise
 
 SACE = (
     "The company raised green SACE Push facilities supported by the Italian Export Credit Agency "

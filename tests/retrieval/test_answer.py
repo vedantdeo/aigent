@@ -13,17 +13,17 @@ from typing import cast
 import pytest
 from anthropic.types import MessageTokensCount, Usage
 
-from entropic.config import CLIENT, MAX_TOKENS_ANSWER, MODEL, THINKING_EVAL_PARAM
-from entropic.evals.dataset import Case
-from entropic.evals.runner import Task
-from entropic.retrieval.answer import (
+from aigent.config import CLIENT, MAX_TOKENS_ANSWER, MODEL, THINKING_EVAL_PARAM
+from aigent.evals.dataset import Case
+from aigent.evals.runner import Task
+from aigent.retrieval.answer import (
     ARMS,
     Answer,
     answer_task,
     spread,
 )
-from entropic.retrieval.chunk import Document, Inventory, by_sentence, context_block
-from entropic.retrieval.dense import DenseIndex
+from aigent.retrieval.chunk import Document, Inventory, by_sentence, context_block
+from aigent.retrieval.dense import DenseIndex
 
 from ..conftest import CAPPED, BagOfWordsEmbedder, ParsedReply
 

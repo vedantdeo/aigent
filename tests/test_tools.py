@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from entropic.tools import calculate, execute_tool, read_file
-from entropic.tools_config import MAX_FILE_READ_CHARS
+from aigent.tools import calculate, execute_tool, read_file
+from aigent.tools_config import MAX_FILE_READ_CHARS
 
 
 @pytest.mark.parametrize(

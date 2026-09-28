@@ -12,15 +12,15 @@ from contextlib import AbstractContextManager, nullcontext
 
 import pytest
 
-from entropic.adapters.anthropic import usage_of
-from entropic.config import JUDGE_MODEL
-from entropic.errors import BudgetExceeded
-from entropic.evals.dataset import Case
-from entropic.evals.grade import Grader, Outcome, Score, exact_match
-from entropic.evals.judge import Verdict
-from entropic.evals.runner import EvalRun, Task, combine, run_eval
-from entropic.messages import Usage
-from entropic.pricing import usage_cost
+from aigent.adapters.anthropic import usage_of
+from aigent.config import JUDGE_MODEL
+from aigent.errors import BudgetExceeded
+from aigent.evals.dataset import Case
+from aigent.evals.grade import Grader, Outcome, Score, exact_match
+from aigent.evals.judge import Verdict
+from aigent.evals.runner import EvalRun, Task, combine, run_eval
+from aigent.messages import Usage
+from aigent.pricing import usage_cost
 
 from ..conftest import MakeJudge
 
@@ -169,7 +169,7 @@ def test_the_ceiling_stops_the_run_and_keeps_the_rows_it_paid_for() -> None:
     assert all(row.passed for row in run.rows), "what finished is still usable"
     assert run.spent_usd == pytest.approx(0.06), "the crossing row was billed"
     assert run.stopped_early is not None
-    assert "ENTROPIC_MAX_USD_PER_EVAL" in run.stopped_early, "name the right knob"
+    assert "AIGENT_MAX_USD_PER_EVAL" in run.stopped_early, "name the right knob"
 
 
 def test_a_run_needs_something_to_run_and_something_to_grade() -> None:
@@ -283,7 +283,7 @@ def test_combine_needs_something_to_combine() -> None:
         pytest.param(1.50, nullcontext(), 2, id="a run whose worst case fits goes ahead"),
         pytest.param(
             2.50,
-            pytest.raises(BudgetExceeded, match="ENTROPIC_MAX_USD_PER_EVAL"),
+            pytest.raises(BudgetExceeded, match="AIGENT_MAX_USD_PER_EVAL"),
             0,
             id="a run whose worst case does not is refused before its first row",
         ),

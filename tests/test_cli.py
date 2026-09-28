@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from entropic.cli import MODES, find_mode, main, menu_text
+from aigent.cli import MODES, find_mode, main, menu_text
 
 
 def test_five_modes_in_menu_order() -> None:

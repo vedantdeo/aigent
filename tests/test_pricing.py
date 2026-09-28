@@ -10,13 +10,13 @@ from contextlib import AbstractContextManager, nullcontext
 
 import pytest
 
-from entropic.adapters import CLIENTS
-from entropic.config import (
+from aigent.adapters import CLIENTS
+from aigent.config import (
     WEB_SEARCH_RESULT_TOKENS,
 )
-from entropic.errors import BudgetExceeded
-from entropic.messages import Usage
-from entropic.pricing import (
+from aigent.errors import BudgetExceeded
+from aigent.messages import Usage
+from aigent.pricing import (
     PRICES,
     Budget,
     affordable_output_tokens,
@@ -185,7 +185,7 @@ def test_charge_records_the_trip_instead_of_raising() -> None:
     """What a batch wants: stop cleanly, keep the rows already paid for, say why.
 
     The scope is what picks the message, so this also pins that an eval is told about
-    ENTROPIC_MAX_USD_PER_EVAL rather than about whichever knob happened to be first in the file.
+    AIGENT_MAX_USD_PER_EVAL rather than about whichever knob happened to be first in the file.
     """
     budget = Budget(limit_usd=0.05, scope="eval")
 
@@ -195,7 +195,7 @@ def test_charge_records_the_trip_instead_of_raising() -> None:
     assert budget.charge(OPUS, _usage(1000, 1000)) == pytest.approx(0.03)
     assert budget.spent_usd == pytest.approx(0.06)
     assert budget.tripped is not None
-    assert "ENTROPIC_MAX_USD_PER_EVAL" in budget.tripped
+    assert "AIGENT_MAX_USD_PER_EVAL" in budget.tripped
 
 
 def test_add_is_charge_plus_a_raise_so_the_two_cannot_drift() -> None:
@@ -218,7 +218,7 @@ def test_add_is_charge_plus_a_raise_so_the_two_cannot_drift() -> None:
         pytest.param(
             0.03,
             0.03,
-            pytest.raises(BudgetExceeded, match="ENTROPIC_MAX_USD_PER_EVAL"),
+            pytest.raises(BudgetExceeded, match="AIGENT_MAX_USD_PER_EVAL"),
             id="spent plus worst case lands over",
         ),
         pytest.param(0.0, 0.06, pytest.raises(BudgetExceeded), id="the call alone could cross it"),

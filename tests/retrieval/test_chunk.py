@@ -10,8 +10,8 @@ from collections.abc import Callable
 
 import pytest
 
-from entropic.config import CHUNK_MIN_CHARS
-from entropic.retrieval.chunk import (
+from aigent.config import CHUNK_MIN_CHARS
+from aigent.retrieval.chunk import (
     Document,
     Inventory,
     Splitter,

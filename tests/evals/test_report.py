@@ -6,9 +6,9 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from entropic.config import MAX_USD_PER_EVAL, MODEL
-from entropic.evals.dataset import Case
-from entropic.evals.grade import (
+from aigent.config import MAX_USD_PER_EVAL, MODEL
+from aigent.evals.dataset import Case
+from aigent.evals.grade import (
     Outcome,
     Score,
     exact_match,
@@ -16,9 +16,9 @@ from entropic.evals.grade import (
     recall_at_k,
     reciprocal_rank,
 )
-from entropic.evals.report import to_markdown, write_report
-from entropic.evals.runner import EvalRun, RowResult, Task, run_eval
-from entropic.messages import Usage
+from aigent.evals.report import to_markdown, write_report
+from aigent.evals.runner import EvalRun, RowResult, Task, run_eval
+from aigent.messages import Usage
 
 FIELDS = ("company", "quarter")
 

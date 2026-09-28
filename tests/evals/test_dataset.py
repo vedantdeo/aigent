@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from entropic.errors import DatasetError
-from entropic.evals.dataset import digest, load_jsonl
+from aigent.errors import DatasetError
+from aigent.evals.dataset import digest, load_jsonl
 
 
 def _write(tmp_path: Path, *lines: str) -> Path:

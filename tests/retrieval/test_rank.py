@@ -11,13 +11,13 @@ from collections.abc import Callable
 
 import pytest
 
-from entropic.config import FUSE_DEPTH, RERANK_CANDIDATES, SEARCH_METHOD
-from entropic.retrieval.chunk import Document, Inventory, by_sentence
-from entropic.retrieval.dense import DenseIndex
-from entropic.retrieval.embed import Embedder
-from entropic.retrieval.fuse import reciprocal_rank_fusion
-from entropic.retrieval.hits import Hit, rank_ids
-from entropic.retrieval.rank import (
+from aigent.config import FUSE_DEPTH, RERANK_CANDIDATES, SEARCH_METHOD
+from aigent.retrieval.chunk import Document, Inventory, by_sentence
+from aigent.retrieval.dense import DenseIndex
+from aigent.retrieval.embed import Embedder
+from aigent.retrieval.fuse import reciprocal_rank_fusion
+from aigent.retrieval.hits import Hit, rank_ids
+from aigent.retrieval.rank import (
     METHODS,
     HybridRanker,
     Indexes,
@@ -25,7 +25,7 @@ from entropic.retrieval.rank import (
     Reranked,
     build_ranker,
 )
-from entropic.retrieval.rerank import rerank
+from aigent.retrieval.rerank import rerank
 
 from ..conftest import BagOfWordsEmbedder, KeywordReranker
 

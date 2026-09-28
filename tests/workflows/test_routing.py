@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from entropic.config import MODEL, SMALL_MODEL
-from entropic.workflows.routing import DECLINED, Route, run
+from aigent.config import MODEL, SMALL_MODEL
+from aigent.workflows.routing import DECLINED, Route, run
 
 from ..conftest import FakeSearch, MakeLlm, Sent
 

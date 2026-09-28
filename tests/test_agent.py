@@ -24,12 +24,12 @@ from anthropic.types import (
     WebSearchToolResultBlock,
 )
 
-from entropic.agent import FINISH, run, show
-from entropic.config import MAX_AGENT_TURNS, MAX_TOKENS_TOOL_LOOP, MAX_USD_PER_TURN, MODEL
-from entropic.pricing import PRICES, worst_case_usd
-from entropic.retrieval.chunk import Chunk
-from entropic.tools import WEB_SEARCH_TOOL
-from entropic.tools_config import MAX_WEB_SEARCHES
+from aigent.agent import FINISH, run, show
+from aigent.config import MAX_AGENT_TURNS, MAX_TOKENS_TOOL_LOOP, MAX_USD_PER_TURN, MODEL
+from aigent.pricing import PRICES, worst_case_usd
+from aigent.retrieval.chunk import Chunk
+from aigent.tools import WEB_SEARCH_TOOL
+from aigent.tools_config import MAX_WEB_SEARCHES
 
 from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, Sent, tool_results, tool_turn, turns
 

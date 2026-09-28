@@ -7,14 +7,14 @@ from typing import get_args
 
 import pytest
 
-from entropic.workflows import (
+from aigent.workflows import (
     chaining,
     evaluator_optimizer,
     orchestrator_workers,
     parallelization,
     routing,
 )
-from entropic.workflows.reports import REPORTS, DocId
+from aigent.workflows.reports import REPORTS, DocId
 
 PATTERNS = (chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer)
 

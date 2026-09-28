@@ -6,8 +6,8 @@ from collections.abc import Sequence
 
 import pytest
 
-from entropic.config import JUDGE_MODEL, MAX_REFINE_ROUNDS, MODEL
-from entropic.workflows.evaluator_optimizer import Critique, run
+from aigent.config import JUDGE_MODEL, MAX_REFINE_ROUNDS, MODEL
+from aigent.workflows.evaluator_optimizer import Critique, run
 
 from ..conftest import FakeSearch, MakeLlm, Reply, Sent
 

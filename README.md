@@ -1,4 +1,4 @@
-# Entropic
+# aigent
 
 A personal AI agent, built one capability at a time over eight weeks. The plan is in
 `~/workspace/MLAI/ML/llm-engineer-roadmap.md`; this repo is the agent itself. Every script prints
@@ -10,13 +10,13 @@ what it cost.
 cp .env.example .env        # then paste your ANTHROPIC_API_KEY
 uv sync
 git config core.hooksPath .githooks   # one-time, per clone: enables the pre-commit hook
-uv run entropic             # menu of the five modes (needs a real terminal)
-uv run entropic chat        # or: call, stream, extract, loop "task"
+uv run aigent             # menu of the five modes (needs a real terminal)
+uv run aigent chat        # or: call, stream, extract, loop "task"
 ```
 
 Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK finds the profile itself.
 
-## The primitives Entropic is made of
+## The primitives aigent is made of
 
 | Mode | Module | What it shows |
 |------|--------|---------------|
@@ -26,11 +26,11 @@ Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK f
 | `loop` | `primitives/tool_loop.py` | the agent loop, by hand; takes a task |
 | `chat` | `primitives/chat.py` | multi-turn conversation with a cost meter |
 
-Every model call here, and everywhere else in the repo, goes through `src/entropic/llm.py`: counted
+Every model call here, and everywhere else in the repo, goes through `src/aigent/llm.py`: counted
 for free, checked against the per-request ceiling, admitted against the run's budget, then sent,
 billed and traced. A test fails on any other module that calls the SDK itself.
 
-Each module also runs on its own: `uv run python -m entropic.primitives.first_call`.
+Each module also runs on its own: `uv run python -m aigent.primitives.first_call`.
 
 ## Retrieval
 
@@ -55,7 +55,7 @@ repo. The pipeline runs end to end — chunk, embed, rank, grade, report — and
 
 ### Measured
 
-`uv run python -m entropic.retrieval.evaluate` — 54 quote-labelled questions over three Indian
+`uv run python -m aigent.retrieval.evaluate` — 54 quote-labelled questions over three Indian
 annual reports (1,148 pages), `bge-small-en-v1.5`, k=5, **$0.00**
 ([full report](evals/reports/retrieval-20260918-1345.md)):
 
@@ -75,7 +75,7 @@ boundaries, so no retriever could have found them, which is what the `resolvable
 ### The result worth reading first
 
 Six retrieval arms, run over **two question sets that differ only in wording** — same corpus, same
-chunks, same 54 quotes, same labels. `uv run python -m entropic.retrieval.evaluate --compare
+chunks, same 54 quotes, same labels. `uv run python -m aigent.retrieval.evaluate --compare
 retrieval`, hit@5, **$0.00**:
 
 | question style | `dense` | `dense+rr` | `bm25` | `bm25+rr` | `hybrid` | `hybrid+rr` |
@@ -107,7 +107,7 @@ The paraphrased set carries two caveats of its own, stated where it lives: its a
 hypothesis, and the absolute scores are confounded with the questions simply being vaguer. The
 *relative* inversion is the robust part, since both rankers faced identical questions.
 
-Retrieval is half the system. `uv run python -m entropic.retrieval.answer --yes` answers the same
+Retrieval is half the system. `uv run python -m aigent.retrieval.answer --yes` answers the same
 questions from those passages, on `claude-opus-5`, judged by `claude-sonnet-5` — **all 54 cases,
 $1.342** ([full report](evals/reports/retrieval-20260919-0821.md)):
 
@@ -168,7 +168,7 @@ being sunset, chunks that cannot cross a page boundary, and a `Document` with no
 absence scored 0.000 on everything without raising. Ten lines on what it abstracted and what it
 hid: [docs/framework-comparison.md](docs/framework-comparison.md).
 
-Anthropic ships no embedding model, so this is the one part of Entropic that runs on someone else's
+Anthropic ships no embedding model, so this is the one part of aigent that runs on someone else's
 weights — `bge-small-en-v1.5` through `sentence-transformers`, on the laptop's GPU. It costs nothing
 to run, which is the point: a retrieval number can be re-measured as often as the question is worth
 asking, and the eval harness already treats a task that spends nothing as a first-class one.
@@ -207,9 +207,9 @@ calls a model at set points; an agent lets the model choose the path.
 | evaluator-optimizer | `workflows/evaluator_optimizer.py` | Opus drafts, Sonnet grades against four criteria, redraft until it passes or three rounds are up |
 
 ```bash
-uv run python -m entropic.workflows.routing --cache            # dry run: counts the first call, sends nothing
-uv run python -m entropic.workflows.routing --cache --yes      # spends, capped at $0.25
-uv run python -m entropic.workflows.chaining "your question" --yes --limit 0.10
+uv run python -m aigent.workflows.routing --cache            # dry run: counts the first call, sends nothing
+uv run python -m aigent.workflows.routing --cache --yes      # spends, capped at $0.25
+uv run python -m aigent.workflows.chaining "your question" --yes --limit 0.10
 ```
 
 Every call goes through `llm.py`, which checks its worst case against the workflow's ceiling before
@@ -232,8 +232,8 @@ listed after the answer. `docs/tool-runner.md` is what the runner does and hides
 source.
 
 ```bash
-uv run python -m entropic.agent --cache                       # dry run: counts the first call, sends nothing
-uv run python -m entropic.agent "your question" --cache --yes # spends, capped at $1.00
+uv run python -m aigent.agent --cache                       # dry run: counts the first call, sends nothing
+uv run python -m aigent.agent "your question" --cache --yes # spends, capped at $1.00
 ```
 
 ## Budget guards
@@ -251,11 +251,11 @@ numbers in the message. Trim the input, lower `max_tokens`, or raise the ceiling
 
 ## Evals
 
-The harness is in `src/entropic/evals/`, the data and results in `evals/`. It runs a task over a
+The harness is in `src/aigent/evals/`, the data and results in `evals/`. It runs a task over a
 labelled JSONL dataset, grades each row, and writes a Markdown table.
 
 ```python
-from entropic.evals import digest, field_match, load_jsonl, run_eval, write_report
+from aigent.evals import digest, field_match, load_jsonl, run_eval, write_report
 
 cases = load_jsonl(path)
 run = run_eval(
@@ -273,7 +273,7 @@ the task reported about itself), the four that read a ranked list of chunk ids (
 `hit_at_k`, `recall_at_k`, `reciprocal_rank`), and `LlmJudge` — the only one that spends, billed to the same ceiling as the task. A task that raises becomes one error row rather than a lost run, and a
 run that hits the ceiling keeps what it already paid for.
 
-The judge runs on `ENTROPIC_JUDGE_MODEL` (`claude-sonnet-5`), not `ENTROPIC_MODEL` — a model asked
+The judge runs on `AIGENT_JUDGE_MODEL` (`claude-sonnet-5`), not `AIGENT_MODEL` — a model asked
 to grade its own output favours it, and applying a rubric is an easier job than the one being
 graded. Raise it when the rubric is hard; a judge weaker than the task cannot see the failures that
 matter. The report header records which model graded, read back from the run rather than from
@@ -324,20 +324,20 @@ caught before the graph goes stale.
 
 ## Layout
 
-- `src/entropic/cli.py`     the `entropic` command and its menu
-- `src/entropic/config.py`  every tunable constant bar the tool pair's: models, ceilings, caps
-- `src/entropic/pricing.py` token prices, cost arithmetic, the two budget guards
-- `src/entropic/llm.py`    the one door to a model: count, admit, send, bill, trace
-- `src/entropic/errors.py` every error the package defines, to reuse before adding one
-- `src/entropic/tools.py`   framework-free tools, reused by everything that calls a tool
-- `src/entropic/tools_config.py` their constants, so the pair lifts into any framework intact
-- `src/entropic/report_tools.py` tools that need the package, like search over the reports
-- `src/entropic/primitives/` the five modes
-- `src/entropic/retrieval/` chunking, local embeddings, the dense and sparse indexes, the rankers
-- `src/entropic/workflows/` the five workflow patterns, over the same reports
-- `src/entropic/agent.py`   the first agent: search as a tool, on the SDK's tool runner
-- `src/entropic/extraction/` Project 1a: headline extraction, graded by the harness
-- `src/entropic/evals/`     the eval harness: dataset, graders, runner, report
+- `src/aigent/cli.py`     the `aigent` command and its menu
+- `src/aigent/config.py`  every tunable constant bar the tool pair's: models, ceilings, caps
+- `src/aigent/pricing.py` token prices, cost arithmetic, the two budget guards
+- `src/aigent/llm.py`    the one door to a model: count, admit, send, bill, trace
+- `src/aigent/errors.py` every error the package defines, to reuse before adding one
+- `src/aigent/tools.py`   framework-free tools, reused by everything that calls a tool
+- `src/aigent/tools_config.py` their constants, so the pair lifts into any framework intact
+- `src/aigent/report_tools.py` tools that need the package, like search over the reports
+- `src/aigent/primitives/` the five modes
+- `src/aigent/retrieval/` chunking, local embeddings, the dense and sparse indexes, the rankers
+- `src/aigent/workflows/` the five workflow patterns, over the same reports
+- `src/aigent/agent.py`   the first agent: search as a tool, on the SDK's tool runner
+- `src/aigent/extraction/` Project 1a: headline extraction, graded by the harness
+- `src/aigent/evals/`     the eval harness: dataset, graders, runner, report
 - `evals/`                  eval datasets and the reports they produce
 - `tests/`                  unit tests plus a free API smoke test
 - `LOG.md`                  the log: what shipped, what broke, numbers

@@ -28,13 +28,13 @@ from anthropic.types import (
 )
 from pydantic import BaseModel, ValidationError
 
-import entropic
-from entropic.config import MAX_USD_PER_TURN, MODEL
-from entropic.errors import BudgetExceeded, StepFailed, TurnsExhausted
-from entropic.llm import Dispatch, Llm, Rehearsed, Request, describe
-from entropic.pricing import PRICES, affordable_output_tokens, worst_case_usd
-from entropic.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
-from entropic.tools_config import MAX_WEB_SEARCHES
+import aigent
+from aigent.config import MAX_USD_PER_TURN, MODEL
+from aigent.errors import BudgetExceeded, StepFailed, TurnsExhausted
+from aigent.llm import Dispatch, Llm, Rehearsed, Request, describe
+from aigent.pricing import PRICES, affordable_output_tokens, worst_case_usd
+from aigent.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
+from aigent.tools_config import MAX_WEB_SEARCHES
 
 from .conftest import FAKE_USAGE, FakeMessages, MakeLlm, Sent, tool_results, tool_turn, turns
 
@@ -517,7 +517,7 @@ def test_only_an_adapter_talks_to_the_model() -> None:
     admits and bills whatever they send. `llm` itself no longer names a provider, so the day a
     second wire arrives it is a new adapter and not a branch through this module.
     """
-    package = Path(entropic.__file__).parent
+    package = Path(aigent.__file__).parent
     talkers = {
         str(path.relative_to(package))
         for path in package.rglob("*.py")

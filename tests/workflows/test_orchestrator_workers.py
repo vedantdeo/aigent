@@ -11,18 +11,18 @@ from collections.abc import Callable
 
 import pytest
 
-from entropic.config import MAX_PLAN_TASKS
-from entropic.llm import Llm
-from entropic.workflows import orchestrator_workers
-from entropic.workflows.orchestrator_workers import SYNTHESISE, WORK, Orchestrated, Plan, Subtask
-from entropic.workflows.reports import Search
+from aigent.config import MAX_PLAN_TASKS
+from aigent.llm import Llm
+from aigent.workflows import orchestrator_workers
+from aigent.workflows.orchestrator_workers import SYNTHESISE, WORK, Orchestrated, Plan, Subtask
+from aigent.workflows.reports import Search
 
 from ..conftest import FakeSearch, MakeLlm, Sent
 
 Run = Callable[[Llm, Search, str], Orchestrated]
 
 try:
-    from entropic.workflows import orchestrator_workers_graph
+    from aigent.workflows import orchestrator_workers_graph
 
     AS_GRAPH = pytest.param(orchestrator_workers_graph.run, id="as a LangGraph graph")
 except ImportError:

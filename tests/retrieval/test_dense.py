@@ -13,10 +13,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from entropic.retrieval.chunk import Document, Inventory, by_sentence
-from entropic.retrieval.dense import DenseIndex, cache_file
-from entropic.retrieval.embed import Vectors
-from entropic.retrieval.hits import rank_ids
+from aigent.retrieval.chunk import Document, Inventory, by_sentence
+from aigent.retrieval.dense import DenseIndex, cache_file
+from aigent.retrieval.embed import Vectors
+from aigent.retrieval.hits import rank_ids
 
 from ..conftest import FAKE_DIMENSIONS, BagOfWordsEmbedder
 

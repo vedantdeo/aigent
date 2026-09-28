@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from entropic.config import PAGE_SEPARATOR
-from entropic.retrieval import corpus
-from entropic.retrieval.corpus import (
+from aigent.config import PAGE_SEPARATOR
+from aigent.retrieval import corpus
+from aigent.retrieval.corpus import (
     cache_file,
     load_corpus,
     load_pdf,

@@ -11,10 +11,10 @@ from collections.abc import Callable
 import pytest
 from pydantic import BaseModel, JsonValue
 
-from entropic.adapters.anthropic import usage_of
-from entropic.config import CLIENT, JUDGE_MODEL, MAX_TOKENS_JUDGE, MODEL
-from entropic.evals.dataset import Case
-from entropic.evals.grade import (
+from aigent.adapters.anthropic import usage_of
+from aigent.config import CLIENT, JUDGE_MODEL, MAX_TOKENS_JUDGE, MODEL
+from aigent.evals.dataset import Case
+from aigent.evals.grade import (
     Grader,
     Outcome,
     contains,
@@ -28,7 +28,7 @@ from entropic.evals.grade import (
     regex,
     resolvable,
 )
-from entropic.evals.judge import LlmJudge, Verdict
+from aigent.evals.judge import LlmJudge, Verdict
 
 from ..conftest import CAPPED, MakeJudge
 

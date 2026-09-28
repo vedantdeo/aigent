@@ -8,9 +8,9 @@ import httpx2
 import openai
 import pytest
 
-from entropic.adapters import CLIENTS, build, spec
-from entropic.config import CLIENT
-from entropic.llm import Llm
+from aigent.adapters import CLIENTS, build, spec
+from aigent.config import CLIENT
+from aigent.llm import Llm
 
 
 def test_every_client_builds_an_adapter_that_can_send() -> None:

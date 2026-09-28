@@ -12,8 +12,8 @@ from collections.abc import Sequence
 
 import pytest
 
-from entropic.retrieval.hits import Hit, rank_ids
-from entropic.retrieval.rerank import rerank
+from aigent.retrieval.hits import Hit, rank_ids
+from aigent.retrieval.rerank import rerank
 
 from ..conftest import KeywordReranker
 

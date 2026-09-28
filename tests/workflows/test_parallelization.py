@@ -7,8 +7,8 @@ import re
 
 import pytest
 
-from entropic.workflows.parallelization import REVIEWERS, Vote, run
-from entropic.workflows.reports import REPORTS
+from aigent.workflows.parallelization import REVIEWERS, Vote, run
+from aigent.workflows.reports import REPORTS
 
 from ..conftest import FakeSearch, MakeLlm, Sent
 

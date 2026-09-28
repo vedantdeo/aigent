@@ -1,7 +1,7 @@
 [project]
-name = "entropic"
+name = "aigent"
 version = "0.1.0"
-description = "Entropic: a personal AI agent, built one capability at a time."
+description = "aigent: a personal AI agent, built one capability at a time."
 readme = "README.md"
 authors = [
     { name = "vedantdeo", email = "vedantdeo1@gmail.com" }
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-entropic = "entropic.cli:main"
+aigent = "aigent.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.9,<0.13.0"]

@@ -1114,3 +1114,7 @@
   **`main` was red for four days.** CI's pyright step failed on `dd27b4f` over one line of a test
   that read a connection pool through a transport typed as its base class. The push went out as
   the session ended, and the failure sat unread. Fixed with a `cast` to the concrete transport.
+- 09-28: **the repo is `aigent` now, and lives in `projects/Entropic/` beside `underhood`.** The
+  package, the CLI, every import and the `ENTROPIC_*` settings became `aigent` and `AIGENT_*`;
+  GitHub redirects the old URL. Entropic stays the name of the plan the two repos carry out. The
+  entries above keep the commands as they were run, `entropic.*` included.

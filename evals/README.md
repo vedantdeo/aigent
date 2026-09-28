@@ -1,6 +1,6 @@
 # evals
 
-Data and results live here; the harness that reads them lives in `src/entropic/evals/`. The split is
+Data and results live here; the harness that reads them lives in `src/aigent/evals/`. The split is
 deliberate — the code ships inside the package, the datasets do not.
 
 - `datasets/*.jsonl` — one case per line, hand-labelled. These are the asset. Prompts change every
@@ -97,6 +97,6 @@ run = run_eval(
 print(write_report(run))
 ```
 
-The per-eval ceiling (`ENTROPIC_MAX_USD_PER_EVAL`, $2.00 by default) stops a run that overruns and
+The per-eval ceiling (`AIGENT_MAX_USD_PER_EVAL`, $2.00 by default) stops a run that overruns and
 keeps the rows it already paid for. Call `estimate_eval_usd` first if you want the worst case before
 spending anything.

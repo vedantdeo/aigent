@@ -17,11 +17,11 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.completion_usage import PromptTokensDetails
 from pydantic import BaseModel
 
-from entropic.adapters.cfg_local import CLIENT as LOCAL
-from entropic.adapters.openai import OpenAI, record_in, usage_of
-from entropic.errors import Unsupported
-from entropic.llm import Llm, Request
-from entropic.messages import Msg
+from aigent.adapters.cfg_local import CLIENT as LOCAL
+from aigent.adapters.openai import OpenAI, record_in, usage_of
+from aigent.errors import Unsupported
+from aigent.llm import Llm, Request
+from aigent.messages import Msg
 
 
 class Verdict(BaseModel):

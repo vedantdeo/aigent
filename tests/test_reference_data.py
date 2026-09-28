@@ -15,9 +15,9 @@ from typing import cast
 
 import pytest
 
-from entropic.extraction.headlines import DIRECTORY
-from entropic.retrieval.corpus import MANIFEST
-from entropic.retrieval.questions import DATASET
+from aigent.extraction.headlines import DIRECTORY
+from aigent.retrieval.corpus import MANIFEST
+from aigent.retrieval.questions import DATASET
 
 PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
 

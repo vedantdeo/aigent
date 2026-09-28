@@ -82,6 +82,6 @@ and as much output as still fits. That turn is sent directly with the runner's o
 by taking the runner's history over (item 10), and not with `tool_choice: none`, which would
 invalidate the cached conversation and re-write all of it at 1.25×.
 
-`entropic/agent.py` is the first agent built on it: the reports as a `search_reports` tool beside
+`aigent/agent.py` is the first agent built on it: the reports as a `search_reports` tool beside
 the calculator, thinking on, a $1.00 run ceiling, a $0.60 ceiling per turn, and a 25-turn backstop. Web search is its third tool, as a server tool
 the runner passes through untouched.

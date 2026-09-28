@@ -10,10 +10,10 @@ from collections.abc import Callable
 
 import pytest
 
-from entropic.adapters import spec
-from entropic.adapters.openai import record_in
-from entropic.config import SYNTHETIC_CLIENT, SYNTHETIC_HEADLINES, max_tokens
-from entropic.extraction.headlines import (
+from aigent.adapters import spec
+from aigent.adapters.openai import record_in
+from aigent.config import SYNTHETIC_CLIENT, SYNTHETIC_HEADLINES, max_tokens
+from aigent.extraction.headlines import (
     METRICS,
     VARIANTS,
     Extraction,
@@ -21,7 +21,7 @@ from entropic.extraction.headlines import (
     headline_request,
     word_runs,
 )
-from entropic.extraction.synthetic import (
+from aigent.extraction.synthetic import (
     TEMPLATES,
     Synthetic,
     generate,

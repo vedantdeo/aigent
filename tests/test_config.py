@@ -6,8 +6,8 @@ from dataclasses import replace
 
 import pytest
 
-from entropic import config
-from entropic.adapters.client import Client
+from aigent import config
+from aigent.adapters.client import Client
 
 
 def test_the_cap_table_and_the_constants_stay_in_step() -> None:

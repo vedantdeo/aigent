@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from entropic.retrieval.fuse import reciprocal_rank_fusion
-from entropic.retrieval.hits import rank_ids
+from aigent.retrieval.fuse import reciprocal_rank_fusion
+from aigent.retrieval.hits import rank_ids
 
 
 def test_a_chunk_both_rankers_found_beats_one_only_the_first_put_top() -> None:

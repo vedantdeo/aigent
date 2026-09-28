@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from entropic.workflows.chaining import Fact, Facts, gate, run
+from aigent.workflows.chaining import Fact, Facts, gate, run
 
 from ..conftest import PASSAGES, FakeSearch, MakeLlm, Sent
 

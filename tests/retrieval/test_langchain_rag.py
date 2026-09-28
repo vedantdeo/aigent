@@ -17,8 +17,8 @@ pytest.importorskip("langchain_core", reason="needs `uv sync --group compare`")
 
 from langchain_core.documents import Document as LcDocument  # noqa: E402
 
-from entropic.evals.dataset import Case  # noqa: E402
-from entropic.retrieval.langchain_rag import langchain_task, prepare  # noqa: E402
+from aigent.evals.dataset import Case  # noqa: E402
+from aigent.retrieval.langchain_rag import langchain_task, prepare  # noqa: E402
 
 
 class _Retriever:

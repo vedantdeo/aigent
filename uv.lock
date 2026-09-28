@@ -7,6 +7,59 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "aigent"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "anthropic" },
+    { name = "httpx2" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "pypdf" },
+    { name = "python-dotenv" },
+    { name = "sentence-transformers" },
+]
+
+[package.dev-dependencies]
+compare = [
+    { name = "langchain-community" },
+    { name = "langchain-huggingface" },
+    { name = "langchain-text-splitters" },
+]
+dev = [
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+graph = [
+    { name = "langgraph" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=1.4.0" },
+    { name = "httpx2", specifier = ">=2.12.0" },
+    { name = "openai", specifier = ">=3.19.0" },
+    { name = "pydantic", specifier = ">=2.13.5" },
+    { name = "pypdf", specifier = ">=6.18.1" },
+    { name = "python-dotenv", specifier = ">=1.2.3" },
+    { name = "sentence-transformers", specifier = ">=6.0.1" },
+]
+
+[package.metadata.requires-dev]
+compare = [
+    { name = "langchain-community", specifier = ">=0.4.2" },
+    { name = "langchain-huggingface", specifier = ">=1.2.2" },
+    { name = "langchain-text-splitters", specifier = ">=1.1.2" },
+]
+dev = [
+    { name = "pyright", specifier = ">=1.1.411" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.16.6" },
+]
+graph = [{ name = "langgraph", specifier = ">=1.2.12" }]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -445,59 +498,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/e0/4d/f332313098c1de1b2
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/5f/ed01f9a3cdffbd5a008556fc7b2a08ddb1cc6ace7effa7340604b1d16699/docstring_parser-0.18.0-py3-none-any.whl", hash = "sha256:b3fcbed555c47d8479be0796ef7e19c2670d428d72e96da63f3a40122860374b", size = 22484, upload-time = "2026-04-14T04:09:18.638Z" },
 ]
-
-[[package]]
-name = "entropic"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "anthropic" },
-    { name = "httpx2" },
-    { name = "openai" },
-    { name = "pydantic" },
-    { name = "pypdf" },
-    { name = "python-dotenv" },
-    { name = "sentence-transformers" },
-]
-
-[package.dev-dependencies]
-compare = [
-    { name = "langchain-community" },
-    { name = "langchain-huggingface" },
-    { name = "langchain-text-splitters" },
-]
-dev = [
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-graph = [
-    { name = "langgraph" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anthropic", specifier = ">=1.4.0" },
-    { name = "httpx2", specifier = ">=2.12.0" },
-    { name = "openai", specifier = ">=3.19.0" },
-    { name = "pydantic", specifier = ">=2.13.5" },
-    { name = "pypdf", specifier = ">=6.18.1" },
-    { name = "python-dotenv", specifier = ">=1.2.3" },
-    { name = "sentence-transformers", specifier = ">=6.0.1" },
-]
-
-[package.metadata.requires-dev]
-compare = [
-    { name = "langchain-community", specifier = ">=0.4.2" },
-    { name = "langchain-huggingface", specifier = ">=1.2.2" },
-    { name = "langchain-text-splitters", specifier = ">=1.1.2" },
-]
-dev = [
-    { name = "pyright", specifier = ">=1.1.411" },
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "ruff", specifier = ">=0.16.6" },
-]
-graph = [{ name = "langgraph", specifier = ">=1.2.12" }]
 
 [[package]]
 name = "filelock"

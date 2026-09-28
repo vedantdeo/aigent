@@ -24,10 +24,10 @@ from anthropic.types import (
     Usage,
 )
 
-from entropic.adapters.anthropic import has_credentials
-from entropic.config import MAX_AGENT_TURNS as MAX_TURNS
-from entropic.errors import BudgetExceeded
-from entropic.primitives.tool_loop import run
+from aigent.adapters.anthropic import has_credentials
+from aigent.config import MAX_AGENT_TURNS as MAX_TURNS
+from aigent.errors import BudgetExceeded
+from aigent.primitives.tool_loop import run
 
 DEMO_TASK = (
     "If I invest 250,000 rupees today at 11.5% compounded annually, what is it worth after "

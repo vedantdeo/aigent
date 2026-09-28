@@ -1,4 +1,4 @@
-# Entropic — notes for Claude
+# aigent — notes for Claude
 
 Eight project rules live here rather than in a session's private memory, so they travel with the
 repo and reach anyone who clones it.
@@ -75,7 +75,7 @@ this machine. Edit both, or neither.
 
 **In this repo**, concretely — the rule and both seams already have worked examples:
 
-- The one config module is `src/entropic/config.py`: models, spending ceilings, output caps
+- The one config module is `src/aigent/config.py`: models, spending ceilings, output caps
   (`MAX_TOKENS_CHAT` and friends), the agent turn cap, the report's failure cap.
 - *Split by concern:* `pricing.py` holds the `Price`/`Budget` classes and the cost arithmetic;
   `config.py` kept the settings they read. It happened when `config.py` got too big to read, not
@@ -221,7 +221,7 @@ of this machine. Edit both, or neither.
 
 **In this repo**, the machinery is already there and the rule is about respecting it:
 
-- Every paid entry point stops by default. `python -m entropic.extraction.headlines` (add `--cache`
+- Every paid entry point stops by default. `python -m aigent.extraction.headlines` (add `--cache`
   for the caching arms) prints the per-arm token counts and a worst case, then exits; `--yes` is
   what sends the calls. Run it without `--yes` and paste what it prints — that is the number to get
   approved, not an estimate written from memory.

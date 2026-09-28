@@ -3,7 +3,7 @@
 Week 2 asked for the retrieval pipeline once in LangChain, and ten lines on what it abstracted and
 what it hid. Both pipelines ran through the **same** harness — same three PDFs, same 54
 quote-labelled questions, same graders, same report — so the comparison is numbers rather than
-taste. `uv sync --group compare && uv run python -m entropic.retrieval.langchain_rag`.
+taste. `uv sync --group compare && uv run python -m aigent.retrieval.langchain_rag`.
 
 | | LangChain | ours (`fixed+overlap`) |
 |---|---|---|

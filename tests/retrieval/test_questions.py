@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from entropic.evals.dataset import Case, load_jsonl
-from entropic.retrieval.chunk import Chunk, Document, squeeze
-from entropic.retrieval.questions import (
+from aigent.evals.dataset import Case, load_jsonl
+from aigent.retrieval.chunk import Chunk, Document, squeeze
+from aigent.retrieval.questions import (
     DATASET,
     Question,
     eligible,
@@ -53,7 +53,7 @@ def test_only_passages_worth_asking_about_are_eligible(text: str, usable: bool) 
 
 
 def test_the_sample_is_spread_and_identical_between_runs() -> None:
-    from entropic.retrieval.chunk import Inventory
+    from aigent.retrieval.chunk import Inventory
 
     document = Document(doc_id="RIL-FY25", text=PROSE * 40)
     inventory = Inventory.build(
@@ -71,7 +71,7 @@ def test_the_sample_is_spread_and_identical_between_runs() -> None:
 
 
 def test_asking_for_more_passages_than_exist_returns_what_there_is() -> None:
-    from entropic.retrieval.chunk import Inventory
+    from aigent.retrieval.chunk import Inventory
 
     inventory = Inventory.build(
         "sentence",

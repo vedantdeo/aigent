@@ -15,10 +15,10 @@ import pytest
 from anthropic.types import MessageTokensCount, Usage
 from pydantic import JsonValue
 
-from entropic.config import CLIENT, MAX_TOKENS_HEADLINE, MODEL, THINKING_EVAL
-from entropic.evals.dataset import Case, load_jsonl
-from entropic.evals.runner import Task
-from entropic.extraction.headlines import (
+from aigent.config import CLIENT, MAX_TOKENS_HEADLINE, MODEL, THINKING_EVAL
+from aigent.evals.dataset import Case, load_jsonl
+from aigent.evals.runner import Task
+from aigent.extraction.headlines import (
     CACHE_VARIANTS,
     DATASET,
     FEW_SHOT,
