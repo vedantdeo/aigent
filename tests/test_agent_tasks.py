@@ -6,26 +6,32 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from anthropic.types import CitationsWebSearchResultLocation, TextBlock
 
 pytest.importorskip("langgraph")
 
 from aigent.agent import TOOLS  # noqa: E402
+from aigent.agent_graph import Traced  # noqa: E402
 from aigent.agent_tasks import (  # noqa: E402
     DATASET,
     agent_task,
     graders,
+    judged_text,
     load_rows,
+    main,
     recording,
     replayed,
     save_rows,
 )
 from aigent.evals.dataset import Case, load_jsonl  # noqa: E402
 from aigent.evals.grade import Outcome  # noqa: E402
+from aigent.pricing import estimate_eval_usd  # noqa: E402
 from aigent.tools_config import SANDBOX  # noqa: E402
 
 from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, tool_turn, turns  # noqa: E402
 
 CASES = load_jsonl(DATASET)
+PAGE = "https://rates.example/aud-inr"
 NAMES = {str(tool["name"]) for tool in TOOLS}
 MISSING_ON_PURPOSE = "tasks/board-minutes.txt"
 
@@ -137,10 +143,19 @@ def test_every_build_reports_the_same_run_the_same_way(
     """One scripted conversation through each build: the trajectory the graders read must not
     depend on which framework drove the loop."""
     pytest.importorskip("google.adk") if agent == "adk" else None
-    both = tool_turn(
+    asked = tool_turn(
         ("s1", "search_reports", {"query": "q", "report": "all"}),
         ("c1", "calculate", {"expression": "1 + 1"}),
     )
+    citation = CitationsWebSearchResultLocation(
+        type="web_search_result_location",
+        url=PAGE,
+        title="a page",
+        encrypted_index="x",
+        cited_text="about 58",
+    )
+    said = TextBlock(type="text", text="about 58", citations=[citation])
+    both = asked.model_copy(update={"content": [said, *asked.content]})
     llm, _ = make_llm(turns(both, "two"))
     case = Case.model_validate({"id": "pt-x", "input": {"task": "find it, then add"}})
 
@@ -148,4 +163,69 @@ def test_every_build_reports_the_same_run_the_same_way(
 
     assert outcome.error is None, outcome.error
     assert outcome.output["tools"] == ["search_reports", "calculate"]
-    assert outcome.output["finished"] is True and outcome.raw == "two"
+    assert outcome.output["finished"] is True
+    assert outcome.output["sources"] == [PAGE], "a page cited a turn before the answer"
+    assert outcome.raw == f"two\n\nWeb sources cited: {PAGE}", "the judge sees it"
+
+
+@pytest.mark.parametrize(
+    ("answer", "sources", "judged"),
+    [
+        pytest.param(None, [PAGE], "(no answer)", id="no answer, whatever was cited"),
+        pytest.param("58", [], "58", id="an answer citing nothing is read as written"),
+        pytest.param(
+            "58",
+            [PAGE, PAGE + "/2"],
+            f"58\n\nWeb sources cited: {PAGE}, {PAGE}/2",
+            id="cited pages follow the answer, in order",
+        ),
+    ],
+)
+def test_the_judge_reads_the_answer_and_the_pages_it_cited(
+    answer: str | None, sources: list[str], judged: str
+) -> None:
+    traced = Traced(answer, [], 1, None, [], sources)
+
+    assert judged_text(traced) == judged
+
+
+@pytest.mark.parametrize(
+    ("argv", "says"),
+    [
+        pytest.param(
+            ["--model", "claude-opus-5", "--judge-model", "claude-opus-5"],
+            "grade its own answers",
+            id="a model judging itself",
+        ),
+        pytest.param(
+            ["--judge-model", "claude-opus-5-5"],
+            "claude-opus-5-5 has no price",
+            id="a judge the dry run would price at nothing",
+        ),
+        pytest.param(
+            ["--model", "claude-nope", "--judge-model", "claude-sonnet-5"],
+            "claude-nope has no price",
+            id="an agent model with no price",
+        ),
+    ],
+)
+def test_a_run_that_cannot_be_priced_or_judged_fairly_is_refused_before_the_estimate(
+    argv: list[str], says: str
+) -> None:
+    with pytest.raises(SystemExit, match=says):
+        main(argv)
+
+
+def test_a_regrade_is_priced_for_the_answers_saved_not_the_whole_set(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A one-answer file once dry-ran at 25 judge calls' worst case."""
+    path = tmp_path / "one.rows.jsonl"
+    save_rows(
+        path, {CASES[0].id: Outcome(output={"answer": "x"}, raw="x", model="claude-sonnet-5")}
+    )
+    one = estimate_eval_usd("claude-opus-5", 1, 2_000, 512)
+
+    main(["--model", "claude-sonnet-5", "--judge-model", "claude-opus-5", "--regrade", str(path)])
+
+    assert f"worst case ${one:.2f}" in capsys.readouterr().out

@@ -8,7 +8,7 @@ tools, and loops on the SDK's tool runner through `llm`, which admits every turn
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -103,24 +103,31 @@ def run(llm: Llm, search: Search, question: str, model: str | None = None) -> An
     return Answered(answer, reports.searches, turns, ran.cut_short, _web_sources(ran.turns), tools)
 
 
+def cited(blocks: Iterable[Block]) -> list[str]:
+    """Every web page a turn's text cites through the API's structured citations, once each."""
+    urls: dict[str, None] = {}
+    for block in blocks:
+        if block.get("type") == "text":
+            for citation in cast(Sequence[Block], block.get("citations") or []):
+                if citation.get("type") == "web_search_result_location":
+                    urls[cast(str, citation["url"])] = None
+    return list(urls)
+
+
 def _web_sources(turns: Sequence[Reply]) -> WebSources:
     """Every page cited or returned in any turn, not just the last: a model answers after it
     searches, often turns later."""
-    cited: dict[str, None] = {}
+    pages = cited(block for message in turns for block in message.blocks)
     returned: dict[str, None] = {}
     for message in turns:
         for block in message.blocks:
-            if block.get("type") == "text":
-                for citation in cast(Sequence[Block], block.get("citations") or []):
-                    if citation.get("type") == "web_search_result_location":
-                        cited[cast(str, citation["url"])] = None
-            elif block.get("type") == "web_search_tool_result":
+            if block.get("type") == "web_search_tool_result":
                 results = block.get("content")
                 if isinstance(results, list):
                     found = cast(Sequence[Block], results)
                     returned.update(dict.fromkeys(cast(str, page["url"]) for page in found))
     searches = sum(message.usage.web_searches for message in turns)
-    return WebSources(list(cited), [url for url in returned if url not in cited], searches)
+    return WebSources(pages, [url for url in returned if url not in pages], searches)
 
 
 def show(result: Answered) -> str:

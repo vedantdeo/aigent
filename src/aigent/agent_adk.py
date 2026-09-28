@@ -30,7 +30,7 @@ from google.genai import types
 from pydantic import ConfigDict, PrivateAttr
 
 from aigent.adapters import spec
-from aigent.agent import FINISH, QUESTIONS, SYSTEM, called
+from aigent.agent import FINISH, QUESTIONS, SYSTEM, called, cited
 from aigent.agent_graph import Traced
 from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
@@ -208,6 +208,7 @@ def run(
         brain._turns,
         stopped or brain._stopped,
         reports.searches,
+        cited(block for turn in brain._sent for block in turn),
     )
 
 

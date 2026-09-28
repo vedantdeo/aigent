@@ -1253,3 +1253,17 @@
   one build alone ranged 15 to 23 between runs: the framework does not move the score or the bill.
   The judge sees an answer's text only, so a source cited through the API's structured citations
   rather than in prose is invisible to it — true of every build.
+- 09-28: **the judge now sees the pages an answer cited: no calls, $0.** Every build reports
+  `sources`, the URLs of the API's structured web citations over every turn, and the judge reads
+  them after the answer. Rows saved before today have no sources, so seeing whether this moves
+  015, 016 and 017 takes new runs, not a re-grade.
+- 09-28: **pt-015 on LangGraph after the citation fix: $0.06057, judge not run**
+  (`tasks-20260928-1527.md`). The judge was named `claude-opus-5-5`, an id `pricing.PRICES` does
+  not know, so `llm` refused its call before sending — the dry run had priced its judging at $0.00
+  rather than refusing. The agent's answer cites nothing: web search ran, yet `sources` is empty
+  and the prose names no source for its ₹67.2 rate, so the fix has nothing to show the judge here.
+- 09-28: **that pt-015 answer re-graded by `claude-opus-5`: fail, $0.01155** (`tasks-20260928-1540.md`).
+  Fairly, for the ₹67.2 rate credited to no source. Its second reason is not fair: it calls the
+  report's ₹53.81 per AUD at 31 March 2025 invented, judging from memory against the rubric, and
+  contradicts itself in the same sentence. Two dry-run gaps fixed first, both free: an unpriced
+  model priced at $0.00, and a one-answer re-grade priced as the whole set ($0.57, not $0.02).

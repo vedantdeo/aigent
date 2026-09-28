@@ -10,13 +10,13 @@ that the cap or the budget refuses becomes one last answer through `Llm.last_tur
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from aigent.agent import FINISH, QUESTIONS, SYSTEM, TOOLS, called
+from aigent.agent import FINISH, QUESTIONS, SYSTEM, TOOLS, called, cited
 from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
@@ -45,6 +45,7 @@ class Traced:
     turns: int
     stopped: str | None
     searches: list[Searched]
+    sources: list[str] = field(default_factory=list[str])  # web pages cited, over every turn
 
 
 def results(reply: Reply, dispatch: Dispatch) -> Msg:
@@ -163,7 +164,15 @@ def run(
     )
     reply = end["reply"]
     answer = reply.text if reply is not None else None
-    return Traced(answer, end["tools"], end["turns"], end["stopped"], reports.searches)
+    turns = [
+        block
+        for message in end["messages"]
+        if message["role"] == "assistant" and not isinstance(message["content"], str)
+        for block in message["content"]
+    ]
+    return Traced(
+        answer, end["tools"], end["turns"], end["stopped"], reports.searches, cited(turns)
+    )
 
 
 def show(result: Traced) -> str:

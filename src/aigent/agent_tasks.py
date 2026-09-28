@@ -29,7 +29,7 @@ from aigent.evals.report import write_report
 from aigent.evals.runner import Task, run_eval
 from aigent.llm import Llm
 from aigent.messages import Usage
-from aigent.pricing import Budget, estimate_eval_usd, usage_cost
+from aigent.pricing import PRICES, Budget, estimate_eval_usd, usage_cost
 from aigent.retrieval.answer import spread
 from aigent.workflows.demo import build_search
 from aigent.workflows.reports import Search
@@ -71,7 +71,12 @@ def sdk_run(llm: Llm, search: Search, question: str, model: str | None = None) -
 
     answered = run(llm, search, question, model=model)
     return Traced(
-        answered.answer, answered.tools, answered.turns, answered.stopped, answered.searches
+        answered.answer,
+        answered.tools,
+        answered.turns,
+        answered.stopped,
+        answered.searches,
+        answered.web.cited,
     )
 
 
@@ -117,13 +122,24 @@ def agent_task(
                 "finished": traced.answer is not None,
                 "cut_short": traced.stopped,
                 "turns": traced.turns,
+                "sources": list(traced.sources),
             },
-            raw=traced.answer if traced.answer is not None else "(no answer)",
+            raw=judged_text(traced),
             usage=total([call.usage for call in llm.trace]),
             model=answering,
         )
 
     return task
+
+
+def judged_text(traced: Traced) -> str:
+    """What the judge reads: the answer, then the pages it cited through the API's citations,
+    which live beside the text rather than in it."""
+    if traced.answer is None:
+        return "(no answer)"
+    if not traced.sources:
+        return traced.answer
+    return f"{traced.answer}\n\nWeb sources cited: {', '.join(traced.sources)}"
 
 
 def recording(task: Task, into: dict[str, Outcome]) -> Task:
@@ -239,13 +255,16 @@ def main(argv: list[str] | None = None) -> None:
     judge = args.judge_model or settings.judge_model
     if judge == model:
         raise SystemExit(f"{model} would grade its own answers; pass a different --judge-model")
+    if unpriced := [name for name in (model, judge) if name not in PRICES]:
+        # An unknown model estimates as free, so the dry run would print $0.00 for it.
+        raise SystemExit(f"{', '.join(unpriced)} has no price; add it to pricing.PRICES")
 
     # Each task is held to its own ceiling, so that bounds its cost; the judge is one call a task.
     judge_cap = max_tokens("JUDGE", settings)
-    judged = estimate_eval_usd(judge, len(cases), 2_000, judge_cap)
     if args.regrade is not None:
-        regrade(args, cases, judge, judged)
+        regrade(args, cases, judge, judge_cap)
         return
+    judged = estimate_eval_usd(judge, len(cases), 2_000, judge_cap)
     worst = len(cases) * MAX_USD_PER_TASK + judged
     print(f"{DATASET.name}: {len(cases)} tasks, {args.agent} agent on {model}, judged by {judge}")
     print(f"worst case ${worst:.2f}: ${MAX_USD_PER_TASK:.2f} a task at most, ${judged:.2f} judging")
@@ -279,10 +298,11 @@ def main(argv: list[str] | None = None) -> None:
     print(f"report: {report}\nanswers: {report.with_suffix('.rows.jsonl')}")
 
 
-def regrade(args: argparse.Namespace, cases: Sequence[Case], judge: str, judged: float) -> None:
+def regrade(args: argparse.Namespace, cases: Sequence[Case], judge: str, judge_cap: int) -> None:
     """Grade a saved run again: the free graders and the judge, and nothing sent to the agent."""
     saved = load_rows(args.regrade)
     cases = [case for case in cases if case.id in saved]
+    judged = estimate_eval_usd(judge, len(cases), 2_000, judge_cap)
     print(f"re-grading {len(cases)} saved answers from {args.regrade.name}, judged by {judge}")
     print(f"worst case ${judged:.2f}, all of it judging")
     if not args.yes:
