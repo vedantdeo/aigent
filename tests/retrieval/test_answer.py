@@ -13,7 +13,7 @@ from typing import cast
 import pytest
 from anthropic.types import MessageTokensCount, Usage
 
-from entropic.config import MAX_TOKENS_ANSWER, MODEL, THINKING_EVAL_PARAM
+from entropic.config import CLIENT, MAX_TOKENS_ANSWER, MODEL, THINKING_EVAL_PARAM
 from entropic.evals.dataset import Case
 from entropic.evals.runner import Task
 from entropic.retrieval.answer import (
@@ -25,7 +25,7 @@ from entropic.retrieval.answer import (
 from entropic.retrieval.chunk import Document, Inventory, by_sentence, context_block
 from entropic.retrieval.dense import DenseIndex
 
-from ..conftest import BagOfWordsEmbedder, ParsedReply
+from ..conftest import CAPPED, BagOfWordsEmbedder, ParsedReply
 
 REVENUE = "Revenue for the year rose seven per cent on stronger retail volumes across the country. "
 DIVIDEND = "The board recommended a final dividend of ten rupees per equity share for the year. "
@@ -40,6 +40,7 @@ class _Messages:
         self.sent: list[str] = []
         self.systems: list[object] = []
         self.thinking: list[object] = []
+        self.caps: list[int] = []
         self.counted = 0
 
     def count_tokens(self, **_: object) -> MessageTokensCount:
@@ -51,7 +52,7 @@ class _Messages:
         self.sent.append(messages[0]["content"])
         self.systems.append(kwargs["system"])
         self.thinking.append(kwargs["thinking"])
-        assert kwargs["max_tokens"] == MAX_TOKENS_ANSWER
+        self.caps.append(cast(int, kwargs["max_tokens"]))
         return ParsedReply(
             self._record,
             stop_reason="max_tokens" if self._record is None else "end_turn",
@@ -77,7 +78,7 @@ def _case(question: str = "What dividend did the board recommend?") -> Case:
 
 
 def _task_and_log(
-    arm_name: str = "rag", record: Answer | None = ANSWERED, k: int = 2
+    arm_name: str = "rag", record: Answer | None = ANSWERED, k: int = 2, client: str = CLIENT
 ) -> tuple[Task, _Messages]:
     inventory = _inventory()
     embedder = BagOfWordsEmbedder()
@@ -90,6 +91,7 @@ def _task_and_log(
         index,
         queries,
         k=k,
+        client=client,
         sdk=fake,
     )
     return task, fake.messages
@@ -169,6 +171,24 @@ def test_a_refusal_to_parse_is_an_error_row_that_still_bills() -> None:
     assert outcome.error is not None and "max_tokens" in outcome.error
     assert outcome.usage is not None, "it still cost money, so the runner must still see usage"
     assert outcome.output == {}
+
+
+@pytest.mark.usefixtures("capped")
+@pytest.mark.parametrize(
+    ("client", "cap"),
+    [
+        pytest.param(CLIENT, MAX_TOKENS_ANSWER, id="the configured client's own cap"),
+        pytest.param(CAPPED.name, CAPPED.max_tokens["ANSWER"], id="a client named for the run"),
+    ],
+)
+def test_an_answer_is_capped_by_the_client_that_gives_it(client: str, cap: int) -> None:
+    """`MAX_TOKENS_ANSWER` names the configured client's cap, so a run pointed at another client
+    has to ask for that client's own."""
+    task, log = _task_and_log(client=client)
+
+    task(_case())
+
+    assert log.caps == [cap], f"sent on {client}"
 
 
 def test_an_eval_run_turns_extended_thinking_off() -> None:

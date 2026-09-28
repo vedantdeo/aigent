@@ -7,6 +7,9 @@ Two arms over the same 54 questions: `closed_book` asks the model cold, `rag` ha
 chunks. The gap between them is what retrieval bought, and it is the number this module exists to
 produce. Retrieval was graded first and separately (`retrieval.evaluate`), so a wrong answer on a
 row where retrieval returned nothing is already known not to be the generator's fault.
+
+`--client` picks who answers and `--judge-client` who grades, so a model on this machine can be
+judged by a hosted one.
 """
 
 from __future__ import annotations
@@ -21,17 +24,8 @@ from typing import cast
 
 from pydantic import BaseModel, Field, JsonValue
 
-from entropic.adapters import spec
-from entropic.config import (
-    CLIENT,
-    JUDGE_MODEL,
-    MAX_TOKENS_JUDGE,
-    MAX_USD_PER_EVAL,
-    MODEL,
-    THINKING_EVAL_PARAM,
-    TOP_K,
-)
-from entropic.config import MAX_TOKENS_ANSWER as MAX_TOKENS
+from entropic.adapters import CLIENTS, spec
+from entropic.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, TOP_K, max_tokens
 from entropic.evals.dataset import Case, digest, load_jsonl
 from entropic.evals.grade import Grader, Outcome, flag, hit_at_k
 from entropic.evals.judge import JUDGE_SYSTEM, LlmJudge, Verdict
@@ -120,11 +114,13 @@ def answer_task(
     sdk: object | None = None,
     model: str | None = None,
 ) -> Task:
-    """Build the `Task` the runner calls once per case. `sdk` is injectable, so tests are free,
-    and `model` defaults to whatever this client serves rather than to the configured client's —
-    the two differ the moment an eval is pointed at a local server."""
+    """Build the `Task` the runner calls once per case. `sdk` is injectable, so tests are free.
+    `model` and the output cap are this client's own rather than the configured client's — the two
+    differ the moment an eval is pointed at a local server."""
     llm = Llm.for_eval(client, sdk=sdk)
-    model = model or spec(client).model
+    settings = spec(client)
+    model = model or settings.model
+    cap = max_tokens("ANSWER", settings)
 
     def task(case: Case) -> Outcome:
         question = case.input.get("question")
@@ -141,7 +137,7 @@ def answer_task(
         request = Request(
             case.id,
             prompt_for(question, chunks),
-            MAX_TOKENS,
+            cap,
             system=arm.system,
             model=model,
             thinking=THINKING_EVAL_PARAM,
@@ -229,7 +225,15 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--cache",
         action="store_true",
-        help="reuse extracted PDF text from corpus/.cache instead of re-reading the PDFs",
+        help="reuse PDF text and chunk vectors from corpus/.cache instead of recomputing them",
+    )
+    parser.add_argument(
+        "--client", default=CLIENT, choices=sorted(CLIENTS), help=f"who answers (default {CLIENT})"
+    )
+    parser.add_argument(
+        "--judge-client",
+        choices=sorted(CLIENTS),
+        help="who grades the answers (default: the client that answers)",
     )
     return parser.parse_args(list(argv))
 
@@ -245,30 +249,38 @@ def main(argv: list[str] | None = None) -> None:
     documents = load_corpus(cache=args.cache)
     embedder: Embedder = LocalEmbedder()
     inventory = Inventory.build(args.strategy, documents, STRATEGIES[args.strategy])
-    index = DenseIndex.build(inventory, embedder)
+    index = (DenseIndex.build_cached if args.cache else DenseIndex.build)(inventory, embedder)
     resolved = resolve(cases, inventory)
     queries = {case.id: embedder.embed_query(str(case.input["question"])) for case in cases}
+
+    # One `Llm` per client, so the tasks share a connection and the judge shares it or has its own.
+    answering = Llm.for_eval(args.client)
+    judging = (
+        answering if args.judge_client in (None, args.client) else Llm.for_eval(args.judge_client)
+    )
+    answerer, grader = spec(answering.client), spec(judging.client)
+    answer_cap, judge_cap = max_tokens("ANSWER", answerer), max_tokens("JUDGE", grader)
 
     sampled = f", sampled to {len(cases)}" if args.sample is not None else ""
     print(f"{DATASET.name}: {len(cases)} cases{sampled}")
     print(f"passages: {args.strategy}, {len(inventory):,} chunks, top {args.k} per question")
-    print(f"arms: {', '.join(ARMS)}  on {MODEL}; judged by {JUDGE_MODEL}")
+    print(f"arms: {', '.join(ARMS)}  answered by {answerer.model} ({answerer.name})")
+    print(f"judged by {grader.judge_model} ({grader.name})")
 
     def passages(case: Case) -> list[Chunk]:
         return [inventory.by_id[hit.chunk_id] for hit in index.search(queries[case.id], args.k)]
 
     # Counting is free, so price the real request rather than guessing at its size.
-    llm = Llm.for_eval()
     worst = 0.0
     for name, arm in ARMS.items():
         tokens = max(
-            llm.count(
+            answering.count(
                 Request(
                     case.id,
                     prompt_for(
                         str(case.input["question"]), passages(case) if arm.retrieves else []
                     ),
-                    MAX_TOKENS,
+                    answer_cap,
                     system=arm.system,
                     thinking=THINKING_EVAL_PARAM,
                 ),
@@ -276,21 +288,22 @@ def main(argv: list[str] | None = None) -> None:
             )
             for case in cases
         )
-        arm_usd = estimate_eval_usd(MODEL, len(cases), tokens, MAX_TOKENS)
+        arm_usd = estimate_eval_usd(answerer.model, len(cases), tokens, answer_cap)
         worst += arm_usd
         print(f"  {name}: {tokens} input tokens for the largest row, ${arm_usd:.2f} worst case")
 
     # The judge is half this eval's calls, so count its real prompt too rather than guessing.
-    judge = graders(args.k, client=llm.client, sdk=llm.sdk)["correct"]
+    judge = graders(args.k, client=judging.client, sdk=judging.sdk)["correct"]
     assert isinstance(judge, LlmJudge)
     longest = max(resolved, key=lambda case: len(str(case.expected.get("quote", ""))))
     prompt = judge.prompt_for(longest, _judged_shape())
-    judged_row = Request.ask("judge", JUDGE_SYSTEM, prompt, MAX_TOKENS_JUDGE, model=JUDGE_MODEL)
-    judge_tokens = llm.count(judged_row, Verdict)
-    judged = estimate_eval_usd(JUDGE_MODEL, len(cases), judge_tokens, MAX_TOKENS_JUDGE, len(ARMS))
+    judged_by = grader.judge_model
+    judged_row = Request.ask("judge", JUDGE_SYSTEM, prompt, judge_cap, model=judged_by)
+    judge_tokens = judging.count(judged_row, Verdict)
+    judged = estimate_eval_usd(judged_by, len(cases), judge_tokens, judge_cap, len(ARMS))
     worst += judged
     verdicts = len(cases) * len(ARMS)
-    print(f"  judge: {verdicts} verdicts on {JUDGE_MODEL}, {judge_tokens} in, ${judged:.2f} worst")
+    print(f"  judge: {verdicts} verdicts on {judged_by}, {judge_tokens} in, ${judged:.2f} worst")
     print(f"\nworst case ${worst:.2f} against a ${MAX_USD_PER_EVAL:.2f} ceiling")
 
     if not args.yes:
@@ -301,14 +314,14 @@ def main(argv: list[str] | None = None) -> None:
         resolved,
         {
             name: answer_task(
-                arm, inventory, index, queries, args.k, client=llm.client, sdk=llm.sdk
+                arm, inventory, index, queries, args.k, client=answering.client, sdk=answering.sdk
             )
             for name, arm in ARMS.items()
         },
-        graders(args.k, client=llm.client, sdk=llm.sdk),
+        graders(args.k, client=judging.client, sdk=judging.sdk),
         dataset=DATASET.name,
         digest=digest(DATASET),
-        model=MODEL,
+        model=answerer.model,
         worst_usd=worst,
     )
     print(f"\nreport: {write_report(run)}")

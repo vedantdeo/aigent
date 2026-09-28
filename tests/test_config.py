@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from entropic import config
@@ -32,6 +34,19 @@ def test_a_client_overrides_the_caps_it_names_and_inherits_the_rest(
 
     assert config.max_tokens("ANSWER") == 512, "the client's own number wins"
     assert config.max_tokens("JUDGE") == config.DEFAULT_MAX_TOKENS["JUDGE"], "the rest are shared"
+
+
+def test_a_client_named_at_the_call_site_outranks_the_active_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run can pick its client after import, when every `MAX_TOKENS_*` already names the
+    configured one, so a call sent elsewhere asks for its own client's cap."""
+    plain = Client(name="plain", wire="anthropic", model="m", judge_model="m", small_model="m")
+    local = replace(plain, name="local", wire="openai", max_tokens={"ANSWER": 512})
+    monkeypatch.setattr(config, "ACTIVE", plain)
+
+    assert config.max_tokens("ANSWER", local) == 512, "the named client's own number wins"
+    assert config.max_tokens("ANSWER") == config.DEFAULT_MAX_TOKENS["ANSWER"], "unnamed: active"
 
 
 def test_a_cap_no_client_and_no_default_names_is_a_mistake_not_a_zero() -> None:

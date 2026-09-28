@@ -48,11 +48,14 @@ class Indexes:
     sparse: SparseIndex
 
     @classmethod
-    def build(cls, inventory: Inventory, embedder: Embedder | None = None) -> Indexes:
-        """Embed and index `inventory`. Loads the local embedder unless handed one."""
+    def build(
+        cls, inventory: Inventory, embedder: Embedder | None = None, *, cache: bool = False
+    ) -> Indexes:
+        """Embed and index `inventory`. Loads the local embedder unless handed one; `cache` reuses
+        the vectors an earlier run stored for this exact inventory and embedder."""
         if embedder is None:
             embedder = LocalEmbedder()
-        dense = DenseIndex.build(inventory, embedder)
+        dense = (DenseIndex.build_cached if cache else DenseIndex.build)(inventory, embedder)
         return cls(inventory, embedder, dense, SparseIndex.build(inventory))
 
 

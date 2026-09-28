@@ -21,7 +21,7 @@ from entropic.workflows.reports import Search
 def build_search(cache: bool) -> Search:
     """Chunk, embed and index the corpus once; passages come back by `SEARCH_METHOD`."""
     inventory = Inventory.build("by_sentence", load_corpus(cache=cache), by_sentence())
-    ranker = build_ranker(SEARCH_METHOD, Indexes.build(inventory))
+    ranker = build_ranker(SEARCH_METHOD, Indexes.build(inventory, cache=cache))
 
     def search(query: str, /, *, doc_id: str | None = None) -> list[Chunk]:
         return [inventory.by_id[hit.chunk_id] for hit in ranker.rank(query, doc_id=doc_id)]
@@ -53,7 +53,9 @@ def run_demo[Result](
         default=limit_usd,
         help=f"hard ceiling in USD, checked before every call (default {limit_usd})",
     )
-    parser.add_argument("--cache", action="store_true", help="reuse PDF text from corpus/.cache")
+    parser.add_argument(
+        "--cache", action="store_true", help="reuse PDF text and chunk vectors from corpus/.cache"
+    )
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
     logging.getLogger("pypdf").setLevel(logging.ERROR)
 

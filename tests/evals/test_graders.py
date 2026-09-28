@@ -12,7 +12,7 @@ import pytest
 from pydantic import BaseModel, JsonValue
 
 from entropic.adapters.anthropic import usage_of
-from entropic.config import JUDGE_MODEL, MODEL
+from entropic.config import CLIENT, JUDGE_MODEL, MAX_TOKENS_JUDGE, MODEL
 from entropic.evals.dataset import Case
 from entropic.evals.grade import (
     Grader,
@@ -30,7 +30,7 @@ from entropic.evals.grade import (
 )
 from entropic.evals.judge import LlmJudge, Verdict
 
-from ..conftest import MakeJudge
+from ..conftest import CAPPED, MakeJudge
 
 Fields = dict[str, JsonValue]
 
@@ -164,6 +164,26 @@ def test_judge_defaults_to_the_judge_model_not_the_agents(make_judge: MakeJudge)
     score = judge(_case(headline="Infosys Q3 profit up 12%"), _out(answer="Infosys profit rose."))
     assert score.model == JUDGE_MODEL, "resolved from the client, not from config.MODEL"
     assert JUDGE_MODEL != MODEL
+
+
+@pytest.mark.usefixtures("capped")
+@pytest.mark.parametrize(
+    ("client", "cap"),
+    [
+        pytest.param(CLIENT, MAX_TOKENS_JUDGE, id="the configured client's own cap"),
+        pytest.param(CAPPED.name, CAPPED.max_tokens["JUDGE"], id="a client named for the run"),
+    ],
+)
+def test_a_verdict_is_capped_by_the_client_that_gives_it(
+    make_judge: MakeJudge, client: str, cap: int
+) -> None:
+    """`MAX_TOKENS_JUDGE` names the configured client's cap, so a judge on another client has to
+    ask for that client's own."""
+    judge, log = make_judge(Verdict(reasoning="fine", passed=True), client=client)
+
+    judge(_case(), _out(answer="whatever"))
+
+    assert log.caps == [cap], f"sent on {client}"
 
 
 def test_judge_prompt_keeps_the_parts_apart(make_judge: MakeJudge) -> None:

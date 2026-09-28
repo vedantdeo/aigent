@@ -13,6 +13,8 @@ import pytest
 
 from entropic.config import FUSE_DEPTH, RERANK_CANDIDATES, SEARCH_METHOD
 from entropic.retrieval.chunk import Document, Inventory, by_sentence
+from entropic.retrieval.dense import DenseIndex
+from entropic.retrieval.embed import Embedder
 from entropic.retrieval.fuse import reciprocal_rank_fusion
 from entropic.retrieval.hits import Hit, rank_ids
 from entropic.retrieval.rank import (
@@ -141,3 +143,27 @@ def test_an_unknown_method_is_refused(embedder: BagOfWordsEmbedder) -> None:
 
 def test_the_default_method_is_one_that_exists() -> None:
     assert SEARCH_METHOD in METHODS
+
+
+@pytest.mark.parametrize(
+    ("cache", "reused"),
+    [
+        pytest.param(False, False, id="not unless asked"),
+        pytest.param(True, True, id="when asked"),
+    ],
+)
+def test_indexes_reuse_stored_vectors_only_when_asked(
+    monkeypatch: pytest.MonkeyPatch, embedder: BagOfWordsEmbedder, cache: bool, reused: bool
+) -> None:
+    """Opt-in, as the corpus cache is: a stale hit is wrong quietly."""
+    asked: list[str] = []
+
+    def recorded(inventory: Inventory, embedder: Embedder) -> DenseIndex:
+        asked.append(inventory.name)
+        return DenseIndex.build(inventory, embedder)
+
+    monkeypatch.setattr(DenseIndex, "build_cached", recorded)
+
+    Indexes.build(Inventory.build("sentence", DOCUMENTS, by_sentence(80, 0)), embedder, cache=cache)
+
+    assert bool(asked) is reused

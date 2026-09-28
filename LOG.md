@@ -1090,3 +1090,27 @@
   output never reached the log, so whatever it spent on verdicts before the stall is billed and
   unrecorded here; the Console's usage for that window is the only record. Every run on this
   night came from a script in `scratch/`, which is what 09-28 moved into the repo.
+
+## Week 4 (2026-09-28 to 2026-10-04)
+
+- 09-28: **the local comparison moved into the repo.** `retrieval.answer` takes `--client` and
+  `--judge-client`, so answering on this laptop and judging on the API is
+  `python -m entropic.retrieval.answer --client local-8b-4bit --judge-client anthropic --cache`
+  rather than a script in `scratch/`. `--cache`, which already reused PDF text, now reuses chunk
+  vectors too, there and in `retrieval.evaluate` and the workflow demos: `DenseIndex.build_cached`
+  keeps them in `corpus/.cache/`. $0.00: dry runs only, whose one call to the API is the free
+  count. The index is **48.3s cold and 0.01s warm**, bit-identical to a fresh build with the same
+  top 5 on all 54 questions, and a dry run takes 23s where it took 76s.
+
+  **Two things the scratch harness got wrong, unnoticed.** It keyed its cache on chunk ids, which
+  are positional, so any change that kept them would have served the old vectors; the key now
+  hashes every chunk's text, the embedder, and the code that embeds a passage (invariant 25). And
+  every local run answered under Anthropic's 256-token cap rather than the local client's 512,
+  because `MAX_TOKENS_ANSWER` is resolved at import for the configured client. Harmless on the
+  night — all 45 failed rows ended on `stop`, none at the cap — but `cfg_local`'s caps were dead
+  for any client picked at run time. A call now takes the cap of the client it goes to (invariant
+  24). Its reports also recorded no dataset digest; the repo's path records one.
+
+  **`main` was red for four days.** CI's pyright step failed on `dd27b4f` over one line of a test
+  that read a connection pool through a transport typed as its base class. The push went out as
+  the session ended, and the failure sat unread. Fixed with a `cast` to the concrete transport.

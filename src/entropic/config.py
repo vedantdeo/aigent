@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 
 from entropic.adapters import spec
+from entropic.adapters.client import Client
 from entropic.messages import Thinking
 
 load_dotenv()
@@ -68,9 +69,14 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
 }
 
 
-def max_tokens(site: str) -> int:
-    """The cap for one call site: the active client's override, or the shared default."""
-    return ACTIVE.max_tokens.get(site, DEFAULT_MAX_TOKENS[site])
+def max_tokens(site: str, client: Client | None = None) -> int:
+    """The cap for one call site: the client's override, or the shared default.
+
+    The active client unless one is named — as it must be by a call sent to a client chosen at run
+    time, which the constants below cannot know.
+    """
+    settings = ACTIVE if client is None else client
+    return settings.max_tokens.get(site, DEFAULT_MAX_TOKENS[site])
 
 
 # Resolved once, so a call site imports a number as it always did. `tests.test_config` checks that

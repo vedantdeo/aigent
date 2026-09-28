@@ -1,7 +1,8 @@
 """LLM-as-judge: the one grader that spends.
 
-Runs on `config.JUDGE_MODEL`, deliberately not the model under test, and sends through `llm` like
-any other paid path. Its usage goes back in the `Score` so the runner bills it to the eval's budget.
+Runs on its client's `judge_model`, deliberately not the model under test, and sends through `llm`
+like any other paid path. Its usage goes back in the `Score` so the runner bills it to the eval's
+budget.
 """
 
 from __future__ import annotations
@@ -12,8 +13,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
 from entropic.adapters import spec
-from entropic.config import CLIENT
-from entropic.config import MAX_TOKENS_JUDGE as MAX_TOKENS
+from entropic.config import CLIENT, max_tokens
 from entropic.evals.dataset import Case
 from entropic.evals.grade import Outcome, Score
 from entropic.llm import Llm, Request
@@ -57,8 +57,10 @@ class LlmJudge:
             self._llm = Llm.for_eval(self.client, sdk=self.sdk)
 
         prompt = self.prompt_for(case, outcome)
-        grader = self.model or spec(self.client).judge_model
-        request = Request.ask("judge", JUDGE_SYSTEM, prompt, MAX_TOKENS, model=grader)
+        settings = spec(self.client)
+        grader = self.model or settings.judge_model
+        cap = max_tokens("JUDGE", settings)
+        request = Request.ask("judge", JUDGE_SYSTEM, prompt, cap, model=grader)
         response = self._llm.parse(request, Verdict)
         verdict = response.parsed
         if verdict is None:

@@ -164,7 +164,7 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--cache",
         action="store_true",
-        help="reuse extracted PDF text from corpus/.cache instead of re-reading the PDFs",
+        help="reuse PDF text and chunk vectors from corpus/.cache instead of recomputing them",
     )
     return parser.parse_args(list(argv))
 
@@ -176,6 +176,7 @@ def compare_chunking(
     k: int,
     dataset: Path = DATASET,
     candidates: int = RERANK_CANDIDATES,
+    cache: bool = False,
 ) -> EvalRun:
     """One run per strategy, merged. Separate runs because the *labels* differ per inventory:
     a chunk id names different text under each splitter, so one `run_eval` cannot serve them all.
@@ -188,7 +189,7 @@ def compare_chunking(
     runs = []
     for name, splitter in STRATEGIES.items():
         inventory = Inventory.build(name, documents, splitter)
-        index = DenseIndex.build(inventory, embedder)
+        index = (DenseIndex.build_cached if cache else DenseIndex.build)(inventory, embedder)
         resolved = resolve(cases, inventory)
         truncated = (
             embedder.count_truncated(inventory.texts())
@@ -218,6 +219,7 @@ def compare_retrieval(
     k: int,
     dataset: Path = DATASET,
     candidates: int = RERANK_CANDIDATES,
+    cache: bool = False,
 ) -> EvalRun:
     """Six methods over one inventory, so one run with six tasks and no merge.
 
@@ -226,7 +228,7 @@ def compare_retrieval(
     methods and nothing else.
     """
     inventory = Inventory.build(METHOD_STRATEGY, documents, STRATEGIES[METHOD_STRATEGY])
-    indexes = Indexes.build(inventory, embedder)
+    indexes = Indexes.build(inventory, embedder, cache=cache)
     reranker = LocalReranker()
     rankers = {
         method: build_ranker(method, indexes, reranker, candidates=candidates) for method in METHODS
@@ -261,7 +263,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"comparing: {args.compare}")
 
     compare = compare_chunking if args.compare == "chunking" else compare_retrieval
-    run = compare(cases, documents, embedder, args.k, args.dataset, args.candidates)
+    run = compare(cases, documents, embedder, args.k, args.dataset, args.candidates, args.cache)
 
     print(f"\n{len(run.rows)} rows in {time.perf_counter() - started:.1f}s, $0.00 spent\n")
     print(f"report: {write_report(run)}")

@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 import zlib
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 import anthropic
@@ -29,7 +29,10 @@ from anthropic.types.beta import BetaMessage, BetaToolUnionParam
 from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
 from pydantic import BaseModel
 
-from entropic.config import JUDGE_MODEL, MODEL
+from entropic.adapters import CLIENTS
+from entropic.adapters.cfg_anthropic import CLIENT as ANTHROPIC
+from entropic.adapters.client import Client
+from entropic.config import CLIENT, JUDGE_MODEL, MODEL
 from entropic.evals.judge import LlmJudge, Verdict
 from entropic.llm import Llm
 from entropic.pricing import Budget
@@ -72,6 +75,7 @@ class ScriptedMessages:
         self._fails_with = fails_with
         self.usage = JUDGE_USAGE
         self.prompts: list[str] = []
+        self.caps: list[int] = []
         self.counted = 0
 
     def count_tokens(self, **_: object) -> MessageTokensCount:
@@ -83,6 +87,7 @@ class ScriptedMessages:
     def parse(self, **kwargs: object) -> ParsedReply:
         messages = cast("list[dict[str, str]]", kwargs["messages"])
         self.prompts.append(messages[0]["content"])
+        self.caps.append(cast(int, kwargs["max_tokens"]))
         return ParsedReply(self._verdict, model=JUDGE_MODEL)
 
 
@@ -104,12 +109,24 @@ def make_judge() -> MakeJudge:
         rubric: str = RUBRIC,
         reference: str | None = None,
         fails_with: Exception | None = None,
+        client: str = CLIENT,
     ) -> tuple[LlmJudge, ScriptedMessages]:
         fake = _ScriptedClient(verdict, fails_with)
-        judge = LlmJudge(rubric=rubric, reference=reference, sdk=fake)
+        judge = LlmJudge(rubric=rubric, reference=reference, client=client, sdk=fake)
         return judge, fake.messages
 
     return build
+
+
+# The Anthropic client under another name, with caps that match no default, so a test can tell
+# which client's cap a call went out with. Registered only for a test that asks for `capped`.
+CAPPED = replace(ANTHROPIC, name="capped", max_tokens={"ANSWER": 300, "JUDGE": 200})
+
+
+@pytest.fixture
+def capped(monkeypatch: pytest.MonkeyPatch) -> Client:
+    monkeypatch.setitem(CLIENTS, CAPPED.name, CAPPED)
+    return CAPPED
 
 
 @dataclass(frozen=True)
