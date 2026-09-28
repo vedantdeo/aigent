@@ -78,7 +78,8 @@ def reply_of(message: Message | BetaMessage) -> Reply:
         usage=usage_of(message.usage),
         stop_reason=message.stop_reason,
         model=message.model,
-        blocks=tuple(cast(Block, block.model_dump()) for block in message.content),
+        # Unset fields dropped: echoed back as nulls, the API refuses `server_tool_use.caller`.
+        blocks=tuple(cast(Block, block.model_dump(exclude_none=True)) for block in message.content),
         raw=message,
     )
 

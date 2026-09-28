@@ -63,3 +63,17 @@ def test_a_task_reports_its_tools_answer_and_whole_cost(
     assert outcome.usage is not None
     assert outcome.usage.input_tokens == 2 * FAKE_USAGE.input_tokens, "both turns billed as one row"
     assert len(fake.sent) == 2
+
+
+def test_a_task_that_fails_midway_still_reports_what_it_spent(
+    make_llm: MakeLlm, search: FakeSearch
+) -> None:
+    """The first live run lost four rows' spending this way: billed by the API, absent from ours."""
+    first = tool_turn(("s1", "search_reports", {"query": "q", "report": "all"}))
+    llm, _ = make_llm(turns(first, RuntimeError("the second turn is refused")))
+    case = Case.model_validate({"id": "pt-x", "input": {"task": "find it"}})
+
+    outcome = agent_task(search, sdk=llm.sdk)(case)
+
+    assert outcome.error is not None and "refused" in outcome.error
+    assert outcome.usage is not None and outcome.usage.input_tokens == FAKE_USAGE.input_tokens

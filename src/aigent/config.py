@@ -55,7 +55,7 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
     "FACTS": 1024,  # chaining: up to six claims, each with a verbatim quote
     "FIRST_CALL": 1024,
     "HEADLINE": 128,  # a five-field record is ~45 tokens with THINKING_EVAL off
-    "JUDGE": 256,  # a verdict is one or two sentences plus a bool
+    "JUDGE": 512,  # a verdict is a bool and a sentence or two; Opus reasons at length first
     "NOTE": 384,
     "PLAN": 512,  # orchestrator-workers
     "QUESTION": 512,

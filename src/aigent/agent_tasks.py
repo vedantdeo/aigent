@@ -70,7 +70,12 @@ def agent_task(
         if not isinstance(question, str):
             return Outcome(error=f"case {case.id} has no task")
         llm = Llm(client, sdk=sdk, budget=Budget(limit_usd=limit_usd, scope="run"))
-        traced = run(llm, search, question, model=model)
+        try:
+            traced = run(llm, search, question, model=model)
+        except Exception as failed:
+            # The calls it made before failing were billed, so the row still carries them.
+            spent = total([call.usage for call in llm.trace])
+            return Outcome(error=f"{type(failed).__name__}: {failed}", usage=spent, model=answering)
         return Outcome(
             output={
                 "answer": traced.answer,

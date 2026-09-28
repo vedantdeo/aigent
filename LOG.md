@@ -1149,3 +1149,25 @@
   carries a ~570-token schema instruction, of which the loss sees the ~45-token answer. One caveat
   to state with the number: the templates' author had read the test set. The four-word guard stops
   copying, not knowing — the same caveat the paraphrased retrieval set carries.
+- 09-28: **Project 2's first live run: 5 of 25 tasks, all passed, $0.14999.** The LangGraph agent on
+  `claude-sonnet-5`, judged by `claude-opus-5` (a model never grades its own answers), `--sample 5`
+  against a $2.58 worst case (`tasks-20260928-1205.md`). Every task passed all four graders — right
+  tools, sane order, finished, correct — at $0.025 to $0.036 a task, $0.030 on average. The sample
+  was pt-001, 007, 013, 019 and 025: search-then-calculate, the clock and a sandbox file. It holds
+  no web task, no two-report comparison and no decline, so it says the loop works and nothing yet
+  about the hard families.
+- 09-28: **Project 2, all 25 tasks on `claude-sonnet-5`, judged by `claude-opus-5`: 16 passed, $0.69082
+  recorded** (`tasks-20260928-1218.md`), $0.028 a task. A first attempt was refused before any
+  spending: judged by Opus the worst case is $12.91, not the $12.66 the default judge prices, and
+  the ceiling had been set at $12.70. **The nine misses have three causes, and two are ours.**
+  - **Four errors were a bug in the LangGraph agent** (pt-015 to 018). A turn that ran a web
+    search came back with `server_tool_use.caller: null`, and echoing the block verbatim sent the
+    null back, which the API refuses with a 400. The SDK's runner never hit it; ours dumped every
+    field. `reply_of` now drops unset fields, for every path that echoes a turn. **Those four rows'
+    first turns were billed and are missing from the $0.69**: the error discarded the task's trace.
+    By the other rows' costs that is likely under $0.15. A failing task now reports what it spent.
+  - **Two were the judge, not the agent** (pt-020, 023): Opus reasoned past the 256-token verdict
+    cap and returned nothing. `JUDGE` is 512 now.
+  - **Three were the agent** (pt-003, 008, 014), right answers by the wrong route: 45 − 12 and a
+    date gap done in its head rather than with `calculate`, and today's date assumed rather than
+    read from `current_time`. The system prompt asks for the calculator; the labels hold it to that.

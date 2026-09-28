@@ -325,10 +325,10 @@ def tool_turn(*calls: tuple[str, str, dict[str, object]]) -> Message:
     )
 
 
-def turns(*replies: Message | str) -> Reply:
+def turns(*replies: Message | str | Exception) -> Reply:
     """The first request gets the first reply, the next the second: each turn adds two messages."""
 
-    def reply(sent: Sent) -> Message | str:
+    def reply(sent: Sent) -> Message | str | Exception:
         return replies[min((len(sent.messages) - 1) // 2, len(replies) - 1)]
 
     return reply

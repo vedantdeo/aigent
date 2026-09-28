@@ -52,3 +52,23 @@ def test_a_client_hands_its_timeout_and_connection_reuse_to_the_sdk() -> None:
     pool = transport._pool  # noqa: SLF001 - no public accessor for the pool
     assert pool._keepalive_expiry == spec("local").keepalive_seconds  # noqa: SLF001
     assert spec("local").timeout > spec("anthropic").timeout, "a local load is slower than an API"
+
+
+def test_a_reply_block_carries_no_unset_fields_to_echo_back() -> None:
+    """The API sends `caller: null` on a server tool call, and refuses it when echoed back."""
+    from anthropic.types import Message, ServerToolUseBlock, Usage
+
+    from aigent.adapters.anthropic import reply_of
+
+    message = Message(
+        id="m",
+        type="message",
+        role="assistant",
+        model="claude-sonnet-5",
+        content=[ServerToolUseBlock(type="server_tool_use", id="w1", name="web_search", input={})],
+        stop_reason="tool_use",
+        stop_sequence=None,
+        usage=Usage(input_tokens=1, output_tokens=1),
+    )
+    [block] = reply_of(message).blocks
+    assert None not in block.values(), block
