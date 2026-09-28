@@ -9,6 +9,8 @@ from anthropic.types import (
     Message,
     ServerToolUseBlock,
     TextBlock,
+    ThinkingBlock,
+    ToolUseBlock,
     WebSearchToolResultBlock,
 )
 
@@ -107,3 +109,39 @@ def test_every_turn_is_sent_as_the_other_agents_send_it(
         ]
         assert sent.thinking == {"type": "adaptive"}
         assert sent.cache_control == {"type": "ephemeral"}
+
+
+def test_a_turn_that_searched_goes_back_to_the_api_exactly_as_it_came(
+    make_llm: MakeLlm, search: FakeSearch
+) -> None:
+    """The live run's 400: ADK held the turn without its search blocks, and the API refuses a latest
+    turn whose thinking has moved. The next request carries the turn as it was sent."""
+    searched_then_asks = Message(
+        id="msg_1",
+        type="message",
+        role="assistant",
+        model=MODEL,
+        content=[
+            ThinkingBlock(type="thinking", thinking="need the rate", signature="sig"),
+            ServerToolUseBlock(
+                type="server_tool_use", id="w1", name="web_search", input={"query": "rate"}
+            ),
+            WebSearchToolResultBlock(type="web_search_tool_result", tool_use_id="w1", content=[]),
+            TextBlock(type="text", text="about 58", citations=None),
+            ToolUseBlock(
+                type="tool_use", id="c1", name="calculate", input={"expression": "2.86*58"}
+            ),
+        ],
+        stop_reason="tool_use",
+        stop_sequence=None,
+        usage=FAKE_USAGE,
+    )
+    llm, fake = make_llm(turns(searched_then_asks, "Rs 16.6 crore"))
+
+    traced = run(llm, search, "A$2.86m in rupees?")
+
+    assert traced.answer == "Rs 16.6 crore"
+    assert traced.tools == ["web_search", "calculate"]
+    sent_back = cast(list[dict[str, object]], fake.sent[1].messages[1]["content"])
+    kinds = [block["type"] for block in sent_back]
+    assert kinds == ["thinking", "server_tool_use", "web_search_tool_result", "text", "tool_use"]

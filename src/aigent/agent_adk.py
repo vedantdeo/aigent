@@ -54,6 +54,7 @@ class ThroughLlm(BaseLlm):
     _tools: list[str] = PrivateAttr(default_factory=list[str])
     _turns: int = PrivateAttr(default=0)
     _stopped: str | None = PrivateAttr(default=None)
+    _latest: Reply | None = PrivateAttr(default=None)
 
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
@@ -64,6 +65,7 @@ class ThroughLlm(BaseLlm):
             for message in (content_to_message_param(c) for c in llm_request.contents or [])
             if message["content"]
         ]
+        messages = self._as_sent(messages)
         configured = llm_request.config.tools if llm_request.config else None
         declared = [
             fd
@@ -77,6 +79,18 @@ class ThroughLlm(BaseLlm):
         ]
         reply = await asyncio.to_thread(self._answer, messages, tools)
         yield message_to_generate_content_response(_carryable(reply))
+
+    def _as_sent(self, messages: list[Msg]) -> list[Msg]:
+        """ADK's history with its latest assistant turn put back exactly as the API sent it: ADK
+        held it without its search blocks, and the API refuses a latest turn whose thinking is
+        not where it was."""
+        if self._latest is None:
+            return messages
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i]["role"] == "assistant":
+                original: Msg = {"role": "assistant", "content": self._latest.blocks}
+                return [*messages[:i], original, *messages[i + 1 :]]
+        return messages
 
     def _request(self, messages: Sequence[Msg], tools: Sequence[Tool]) -> Request:
         return Request(
@@ -117,6 +131,7 @@ class ThroughLlm(BaseLlm):
         return reply
 
     def _took(self, reply: Reply) -> None:
+        self._latest = reply
         self._turns += 1
         self._tools.extend(called(reply))
 

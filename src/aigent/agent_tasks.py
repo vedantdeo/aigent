@@ -188,6 +188,7 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         "--yes", action="store_true", help="send the calls; without it, estimate only"
     )
     parser.add_argument("--sample", type=int, metavar="N", help="N tasks spread across the set")
+    parser.add_argument("--only", help="comma-separated task ids, such as pt-015,pt-016")
     parser.add_argument("--model", help="the agent's model (default: the client's own)")
     parser.add_argument("--judge-model", help="the judge's model; never the agent's own")
     parser.add_argument("--client", default=CLIENT, choices=sorted(CLIENTS), help="who answers")
@@ -207,6 +208,11 @@ def main(argv: list[str] | None = None) -> None:
     cases = load_jsonl(DATASET)
     if args.sample is not None:
         cases = spread(cases, args.sample)
+    if args.only:
+        wanted = set(args.only.split(","))
+        cases = [case for case in cases if case.id in wanted]
+        if unknown := wanted - {case.id for case in cases}:
+            raise SystemExit(f"no task with id {', '.join(sorted(unknown))}")
     settings = spec(args.client)
     model = args.model or settings.model
     judge = args.judge_model or settings.judge_model

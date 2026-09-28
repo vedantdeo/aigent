@@ -1202,3 +1202,17 @@
   the cache) and so is priced with three more searches at Opus rates, leaving under the 1,024
   tokens a last answer needs within $0.50. At Opus prices `MAX_USD_PER_TASK` binds on web tasks.
   Single runs again: the spread between runs seen on Sonnet applies here too.
+- 09-28: **Project 2 on Google's ADK, 5-task trial: 5/5, $0.14625** (`tasks-20260928-1407.md`,
+  answers saved), Sonnet agent, Opus judge, $0.029 a task against LangGraph's $0.030 on the same
+  five. The same sample as LangGraph's first trial, so it holds no web, comparison or decline task.
+  **CrewAI was not tried**: every release pins `openai<3`, `pydantic<2.13` and `anthropic~=0.73`,
+  all below this repo's, so it cannot install beside it; a separate environment is the only way in.
+- 09-28: **Project 2 on ADK, all 25: 20/25, $0.91382** (`tasks-20260928-1427.md`, answers saved),
+  $0.037 a task against LangGraph's 23/25 at $0.038. **Two errors were our workaround** (pt-015,
+  016): ADK's converter cannot hold server-side search blocks, so the agent handed ADK each turn
+  without them — and when ADK rebuilt the next request from that trimmed turn, the API refused it,
+  because the latest assistant turn's thinking must go back exactly as it came. Tasks that searched
+  and answered in one turn (017, 018) never met it. `ThroughLlm` now sends the latest turn back as
+  the API produced it, and a test reproduces the shape. Their spending is in the $0.91: the fix from
+  the first LangGraph run held. The other misses are the agent's, as on LangGraph: 005 and 014
+  skipped a tool, 020 missed ITC's location count.
