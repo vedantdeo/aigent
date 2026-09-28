@@ -691,6 +691,72 @@ def test_an_answer_turn_that_asks_for_tools_again_ends_the_run(make_llm: MakeLlm
     assert len(fake.sent) == len(llm.trace) == 2, "the answer turn was sent, and billed"
 
 
+def test_a_turn_the_caller_drives_is_held_to_the_same_ceiling(make_llm: MakeLlm) -> None:
+    """A framework's agent node sends its turns one at a time: refused as a single call, admitted
+    as a turn, exactly as `run_tools` admits its own."""
+    llm, fake = make_llm(lambda sent: "done")
+    fake.input_tokens = 40_000
+
+    with pytest.raises(BudgetExceeded, match="per-request ceiling"):
+        llm.create(LONG)
+    reply = llm.turn(LONG)
+
+    assert reply.text == "done" and len(fake.sent) == 1
+    assert llm.budget.held_usd == 0.0, "the hold ends with the turn"
+
+
+# A conversation one tool turn in, its results the last message: what a caller's loop holds.
+AFTER_A_TOOL = replace(
+    LONG,
+    step="agent:2",
+    messages=[
+        *LONG.messages,
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "t1", "name": "current_time", "input": {}}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "noon"}],
+        },
+    ],
+)
+
+
+def test_a_caller_out_of_room_gets_the_last_answer_run_tools_would_send(make_llm: MakeLlm) -> None:
+    llm, fake = make_llm(lambda sent: "all I found")
+    fake.input_tokens = GROWN_PAST
+
+    reply = llm.last_turn(AFTER_A_TOOL, FINISH, BudgetExceeded("out of room"))
+
+    [told] = fake.sent
+    assert cast(list[object], told.messages[-1]["content"])[-1] == {"type": "text", "text": FINISH}
+    assert told.max_tokens == affordable_output_tokens(
+        MODEL, GROWN_PAST, MAX_USD_PER_TURN, cached=True
+    )
+    assert reply.text == "all I found"
+    assert [call.step for call in llm.trace] == ["agent:2 answer"]
+
+
+@pytest.mark.parametrize(
+    ("tokens", "reply", "sent"),
+    [
+        pytest.param(_context_costing(MAX_USD_PER_TURN) + 1_000, "unused", 0, id="no room at all"),
+        pytest.param(100, tool_turn(("t1", "current_time", {})), 1, id="it asks for tools again"),
+    ],
+)
+def test_a_last_answer_that_cannot_be_had_raises_the_stop_it_was_given(
+    make_llm: MakeLlm, tokens: int, reply: Message | str, sent: int
+) -> None:
+    llm, fake = make_llm(lambda _: reply)
+    fake.input_tokens = tokens
+    stop = BudgetExceeded("the refusal that ended the loop")
+
+    with pytest.raises(BudgetExceeded, match="ended the loop"):
+        llm.last_turn(AFTER_A_TOOL, FINISH, stop)
+    assert len(fake.sent) == sent
+
+
 def test_server_tools_reach_the_wire_as_written_after_ours(make_llm: MakeLlm) -> None:
     """The runner wraps only the tools we run; one the API runs goes through untouched, last — on
     the last answer too, which must send the tools exactly as the runner did or miss the cache."""

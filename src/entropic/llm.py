@@ -279,6 +279,26 @@ class Llm:
         finally:
             self._release(held)
 
+    def turn(self, request: Request) -> Reply:
+        """One turn of a tool conversation the caller drives itself, as a framework's agent node
+        does: held to the per-turn ceiling like a turn of `run_tools`, then sent and billed."""
+        request = self._bound(request)
+        if not request.tools:
+            raise ValueError(f"{request.step}: a turn needs at least one tool")
+        self._require(request, "tools")
+        with self._held([request], limit_usd=MAX_USD_PER_TURN, scope="turn"):
+            return self._create(request)
+
+    def last_turn(self, upcoming: Request, finish: str, stop: Exception) -> Reply:
+        """`upcoming`, whose last message holds tool results, sent as a last answer instead: the
+        same sizing and refusals as `run_tools`' own, for a caller driving its own loop."""
+        answer = self._answer_request(self._bound(upcoming), finish, stop)
+        with self._held([answer], limit_usd=MAX_USD_PER_TURN, scope="turn"):
+            message = self._create(answer)
+        if message.stop_reason == "tool_use":
+            raise stop
+        return message
+
     def _admit_turn(self, upcoming: Request) -> float | BudgetExceeded:
         """Admit `upcoming` as the next tool turn and return what it holds, or the refusal."""
         try:
@@ -293,9 +313,18 @@ class Llm:
         finish: str,
         stop: Exception,
     ) -> Reply:
-        """Send `upcoming` as a last answer instead: `finish` after its tool results, and as much
-        output as the per-turn ceiling and the budget allow. Raises `stop` if that is too little,
-        or if the model asks for tools anyway."""
+        """Send `upcoming` as a last answer instead, through the runner's session."""
+        answer = self._answer_request(upcoming, finish, stop)
+        with self._held([answer], limit_usd=MAX_USD_PER_TURN, scope="turn"):
+            message = session.answer(answer)
+        self._bill(answer, message.usage)
+        if message.stop_reason == "tool_use":
+            raise stop
+        return message
+
+    def _answer_request(self, upcoming: Request, finish: str, stop: Exception) -> Request:
+        """`finish` after `upcoming`'s tool results, with as much output as the per-turn ceiling
+        and the budget allow. Raises `stop` if that is less than a last answer needs."""
         *history, results = upcoming.messages
         blocks = [*cast(Sequence[Block], results["content"]), {"type": "text", "text": finish}]
         told = Msg(role="user", content=cast(Sequence[Block], blocks))
@@ -312,12 +341,7 @@ class Llm:
         answer = replace(answer, max_tokens=min(answer.max_tokens, fits))
         if answer.max_tokens < MIN_TOKENS_FINAL_ANSWER:
             raise stop
-        with self._held([answer], limit_usd=MAX_USD_PER_TURN, scope="turn"):
-            message = session.answer(answer)
-        self._bill(answer, message.usage)
-        if message.stop_reason == "tool_use":
-            raise stop
-        return message
+        return answer
 
     def _require(self, request: Request, *capabilities: str) -> None:
         """Refuse, before anything is counted or sent, what this wire cannot do.
