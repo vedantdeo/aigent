@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -9,8 +10,16 @@ import pytest
 pytest.importorskip("langgraph")
 
 from aigent.agent import TOOLS  # noqa: E402
-from aigent.agent_tasks import DATASET, agent_task  # noqa: E402
+from aigent.agent_tasks import (  # noqa: E402
+    DATASET,
+    agent_task,
+    load_rows,
+    recording,
+    replayed,
+    save_rows,
+)
 from aigent.evals.dataset import Case, load_jsonl  # noqa: E402
+from aigent.evals.grade import Outcome  # noqa: E402
 from aigent.tools_config import SANDBOX  # noqa: E402
 
 from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, tool_turn, turns  # noqa: E402
@@ -77,3 +86,26 @@ def test_a_task_that_fails_midway_still_reports_what_it_spent(
 
     assert outcome.error is not None and "refused" in outcome.error
     assert outcome.usage is not None and outcome.usage.input_tokens == FAKE_USAGE.input_tokens
+
+
+def test_a_saved_run_replays_its_answers_without_billing_them_again(
+    tmp_path: Path, make_llm: MakeLlm, search: FakeSearch
+) -> None:
+    """Re-grading reads the answers back, and only the judge may spend."""
+    llm, _ = make_llm(
+        turns(tool_turn(("s1", "search_reports", {"query": "q", "report": "all"})), "done")
+    )
+    case = Case.model_validate({"id": "pt-x", "input": {"task": "find it"}})
+    outcomes: dict[str, Outcome] = {}
+    recording(agent_task(search, sdk=llm.sdk), outcomes)(case)
+    path = tmp_path / "run.rows.jsonl"
+
+    save_rows(path, outcomes)
+    saved = load_rows(path)
+    replay = replayed(saved)(case)
+
+    assert replay.output == outcomes["pt-x"].output and replay.raw == "done"
+    assert replay.usage is None, "the agent was billed once, when it ran"
+    assert saved["pt-x"][1] == outcomes["pt-x"].usage, "its usage kept for the record"
+    missing = replayed(saved)(Case.model_validate({"id": "pt-y", "input": {"task": "?"}}))
+    assert missing.error is not None and "pt-y" in missing.error

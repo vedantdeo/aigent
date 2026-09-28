@@ -1184,3 +1184,11 @@
   memory — the references now check the method, and the rubric forbids judging a web figure
   against memory; and pt-017's judge again ran out of room, because `LlmJudge` never turned
   thinking off, against invariant 15. It does now, for every eval.
+- 09-28: **Project 2 on the fixed labels and judge: 23/25, $0.95957** (`tasks-20260928-1254.md`),
+  $0.038 a task, every answer saved beside the report (`.rows.jsonl`) so a later label or rubric
+  fix is a re-grade (`--regrade`, judge only) rather than a new run. The two misses are the agent's:
+  pt-014 assumed today's date instead of reading `current_time`, and pt-018 searched the web for a
+  figure the reports hold. **Read the jump from 15 with care**: pt-003, 008, 012 and 020 failed last
+  run and passed this one with their labels unchanged. The agent thinks adaptively and nothing fixes
+  its sampling, so part of 15 → 23 is the same agent answering differently. One run per setting
+  cannot separate the fixes from that spread; two or three would.
