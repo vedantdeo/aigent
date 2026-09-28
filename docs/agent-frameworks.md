@@ -55,3 +55,11 @@ sharing state — it is the framework that leaves the message list in our hands,
 adopt behind `llm`. ADK earns its place when the model is Gemini or the team wants its hosted
 sessions, and it costs a translation layer that must be tested against the live API. CrewAI's team
 metaphor was not tested; its dependency pins ended the experiment before the first call.
+
+**After the comparison.** Web answers in every build lost marks for naming no source: the API's
+structured citations sit beside the text, where the judge never saw them. Two fixes followed, both
+build-independent. The judge now reads the cited pages after the answer, and the shared prompt asks
+for the site and date beside every web figure. The prompt is the one that moved results: on
+LangGraph's three web tasks, 2 of 3 answers now name their source in the text, and those two pass
+(LOG, 2026-09-28). The scores above predate both, so they are comparable with each other, not with
+a run after.

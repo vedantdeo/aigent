@@ -33,7 +33,9 @@ SYSTEM = (
     "Find what you need with search_reports: search as often as the question needs, rephrase when "
     "the passages miss, and search one report when the question names a company. Cite passage ids "
     "in square brackets, and say what the reports do not cover. Use calculate for arithmetic. Use "
-    "web_search only for what the reports cannot hold, such as events and prices after them."
+    "web_search only for what the reports cannot hold, such as events and prices after them. "
+    "Name the site and date of every figure you take from the web in the answer itself, beside "
+    "the figure."
 )
 
 FINISH = (

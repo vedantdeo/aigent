@@ -1267,3 +1267,13 @@
   report's ₹53.81 per AUD at 31 March 2025 invented, judging from memory against the rubric, and
   contradicts itself in the same sentence. Two dry-run gaps fixed first, both free: an unpriced
   model priced at $0.00, and a one-answer re-grade priced as the whole set ($0.57, not $0.02).
+- 09-28: **the prompt asks for the site and date beside every web figure; the three web tasks on
+  LangGraph: 2/3, $0.24149** (`tasks-20260928-1553.md`), Sonnet agent, Opus judge. pt-016 names
+  Trading Economics and the date for its USD/INR rate and passes; pt-017 names Focus2move and
+  others and passes. pt-015 still credits its ₹67.20 rate to "today's spot exchange rate" only and
+  fails, and the judge again calls the report's own ₹53.81 per AUD invented. No answer carried a
+  structured citation (`sources` empty on all three), so the judge saw sources only because the
+  prose now names them.
+  **Asking for the source in the prompt improved citation on web answers**: 2 of the 3 now name
+  the site and date beside the figure, where none of the same answers did before, and it cost
+  nothing per task to add.
