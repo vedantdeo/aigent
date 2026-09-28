@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
+import httpx2
 import openai
 import pytest
 
@@ -46,6 +47,8 @@ def test_a_client_hands_its_timeout_and_connection_reuse_to_the_sdk() -> None:
     # The protocol types `client` as `object`, since what a vendor client *is* differs per wire.
     sdk = cast(openai.OpenAI, build("local").client)
     assert sdk.timeout == spec("local").timeout
-    pool = sdk._client._transport._pool  # noqa: SLF001 - no public accessor for the pool
+    # Typed as the base transport; the pool lives on the concrete one.
+    transport = cast(httpx2.HTTPTransport, sdk._client._transport)  # noqa: SLF001
+    pool = transport._pool  # noqa: SLF001 - no public accessor for the pool
     assert pool._keepalive_expiry == spec("local").keepalive_seconds  # noqa: SLF001
     assert spec("local").timeout > spec("anthropic").timeout, "a local load is slower than an API"
