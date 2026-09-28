@@ -1059,3 +1059,34 @@
   a transformers `BatchEncoding`: **2 for every prompt**, which would have waved anything past the
   per-request ceiling. Both are regression-tested, the count one with a stub that answers in the
   shape transformers actually does.
+- 09-24: **the rest of that night's runs, which this log missed until 09-28.** Nine more after
+  the one above, each answered locally and judged by `claude-sonnet-5`, for **$2.05475** by the
+  reports they wrote. The first four sent the record's JSON Schema; the last five describe its keys:
+
+  | report (UTC) | answered by | record asked for as | RAG `correct` | errors | spent |
+  |---|---|---|---|---|---|
+  | 09-23 16:49 | Qwen3-4B 8-bit | schema | 38/54 | 0 | $0.23804 |
+  | 09-23 17:04 | Qwen3-4B bf16 | schema | 39/54 | 0 | $0.24148 |
+  | 09-23 17:23 | Qwen2.5-7B 4-bit | schema | 34/38 | 16 | $0.20401 |
+  | 09-23 18:14 | Qwen3-8B 4-bit | schema | 25/27 | 27 | $0.18098 |
+  | 09-23 19:03 | Qwen3-4B 4-bit | keys | 37/54 | 0 | $0.23876 |
+  | 09-23 19:55 | Qwen3-4B 6-bit | keys | 37/54 | 0 | $0.23686 |
+  | 09-23 20:08 | Qwen3-4B 8-bit | keys | 35/53 | 1 | $0.23783 |
+  | 09-24 00:57 | Qwen3-4B bf16 | keys | 36/53 | 1 | $0.24017 |
+  | 09-24 01:17 | **Qwen3-8B 4-bit** | keys | **40/54** | 0 | $0.23662 |
+
+  **An 8B at 4-bit answers two behind Opus 5's 42/54**, for $0.005 of machine time against $1.342.
+  **The quantization ladder did not survive the prompt change**: 37/38/39 for 4-bit/8-bit/bf16
+  under the schema, 37/37/35/36 for 4/6/8-bit/bf16 under the keys. The prompt moved the 4B more than
+  its precision did, so quantization's effect is below what 54 questions resolve, and the first
+  ladder was over-read. **A model handed a JSON Schema answers with the schema**: Qwen3-8B parsed
+  0 of 12 replies that way and 12 of 12 with the keys described, and the 18:14 run lost 27 rows to
+  it. Qwen2.5-7B lost 16 to prose and was dropped. The two errors under the keys are both `rq-009`,
+  a reply that ended on `stop` and did not parse.
+
+  **One run is missing from the table.** A first bf16 attempt under the keys stalled at 21:27 UTC
+  on a dead pooled socket to the API and sat there until it was killed at 00:48: the SDK's
+  600-second read and minutes of keepalive, now 180s and 30s for the API (`dd27b4f`). Its buffered
+  output never reached the log, so whatever it spent on verdicts before the stall is billed and
+  unrecorded here; the Console's usage for that window is the only record. Every run on this
+  night came from a script in `scratch/`, which is what 09-28 moved into the repo.
