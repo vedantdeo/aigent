@@ -1118,3 +1118,34 @@
   package, the CLI, every import and the `ENTROPIC_*` settings became `aigent` and `AIGENT_*`;
   GitHub redirects the old URL. Entropic stays the name of the plan the two repos carry out. The
   entries above keep the commands as they were run, `entropic.*` included.
+- 09-28: **the toy fine-tune: Qwen3-1.7B from 11/50 to 41/50 on the real headlines, trained on
+  templates alone.** $0.00, all local. 180 template rows from `aigent.extraction.synthetic`; LoRA at
+  rank 8 and scale 2 on the last 16 layers, 200 steps of batch 4, loss on the answer only
+  (`underhood-toy-lora`). Graded by Project 1a's own graders over the 50 hand-labelled headlines,
+  with the prompt the rows were rendered from (`headlines-20260928-0926.md` and `-0928.md`):
+
+  | Qwen3-1.7B 4-bit | whole record | `change_pct` | `quarter` | `metric` |
+  |---|---|---|---|---|
+  | base, zero-shot | 11/50 | 19/50 | 40/50 | 37/50 |
+  | **tuned, zero-shot** | **41/50** | 48/50 | 49/50 | 44/50 |
+  | base, few-shot | 16/50 | 27/50 | 44/50 | 37/50 |
+  | tuned, few-shot | 27/50 | 36/50 | 48/50 | 43/50 |
+
+  Opus 5 reads 48 or 49 of 50 on this set (09-12). Every reply parsed in all four arms: the base
+  model's failures were content, mostly a signed or zero `change_pct` where the label is null.
+
+  **What the templates taught transferred; what they left out did not.** Per tag, zero-shot, base
+  to tuned: no stated percentage 1 → 12 of 16, month-named quarters 0 → 4, aliases 1 → 5, no
+  period 0 → 4. Never templated: subsidiaries stayed 0 of 2, narrowed metrics 0 of 2, and
+  off-vocabulary metrics went only 0 → 2 of 7. Decoy numbers, not a template of their own, went
+  0 → 7 of 10: format discipline carries over. **One regression is overfitting in miniature**:
+  every no-metric template had an unknown quarter, and `hl-042` ("… Q2 results next week") lost
+  its Q2. **Tuning and prompting did not add up**: the tuned model does worse on the few-shot prompt
+  (27) than on the one it was trained with (41), since a second prompt is off its distribution.
+
+  **200 steps were about 170 too many.** Train loss 0.66 at step 10 and 0.03 at step 40; validation
+  1.81 at the start, 0.020 at step 50, 0.000 at step 200. The run took about half an hour at
+  10.2 GB peak, slowing from 0.135 to 0.086 steps a second as the fanless machine heated: each row
+  carries a ~570-token schema instruction, of which the loss sees the ~45-token answer. One caveat
+  to state with the number: the templates' author had read the test set. The four-word guard stops
+  copying, not knowing — the same caveat the paraphrased retrieval set carries.
