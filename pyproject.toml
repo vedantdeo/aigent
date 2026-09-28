@@ -25,6 +25,9 @@ requires = ["uv_build>=0.12.9,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
+adk = [
+    "google-adk>=2.10.0",
+]
 compare = [
     "langchain-community>=0.4.2",
     "langchain-huggingface>=1.2.2",

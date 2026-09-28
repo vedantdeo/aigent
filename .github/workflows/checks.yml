@@ -32,11 +32,11 @@ jobs:
 
       # --locked fails if uv.lock has drifted from pyproject.toml, which is a
       # bug worth catching on its own. The `compare` group carries LangChain for
-      # the framework comparison, and `graph` carries LangGraph for the rebuild of
-      # orchestrator-workers: neither is a runtime dependency, but their modules
+      # the framework comparison, `graph` carries LangGraph, and `adk` Google's ADK,
+      # for Project 2's builds: none is a runtime dependency, but their modules
       # live in src/ and a file nobody typechecks is a file that rots.
       - name: Install the locked environment
-        run: uv sync --locked --group compare --group graph
+        run: uv sync --locked --group compare --group graph --group adk
 
       # Each check reports its own status rather than hiding behind the first
       # failure, so one red run tells you everything that is wrong.

@@ -14,12 +14,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
 
 from aigent.adapters import CLIENTS, spec
-from aigent.agent_graph import run
+from aigent.agent_graph import Traced
 from aigent.config import CLIENT, MAX_USD_PER_EVAL, MAX_USD_PER_TASK, max_tokens
 from aigent.evals.dataset import Case, digest, load_jsonl
 from aigent.evals.grade import Grader, Outcome, flag, right_tools, tool_order
@@ -61,12 +61,27 @@ def total(usages: Sequence[Usage]) -> Usage:
     )
 
 
+AgentRun = Callable[..., Traced]
+
+
+def agent_run(name: str) -> AgentRun:
+    """The agent to run, imported only when chosen: each framework is an optional group."""
+    if name == "adk":
+        from aigent.agent_adk import run as adk
+
+        return adk
+    from aigent.agent_graph import run as graph
+
+    return graph
+
+
 def agent_task(
     search: Search,
     client: str = CLIENT,
     model: str | None = None,
     sdk: object | None = None,
     limit_usd: float = MAX_USD_PER_TASK,
+    agent: str = "langgraph",
 ) -> Task:
     """Each case in a fresh `Llm` with its own ceiling, sharing one connection."""
     answering = model or spec(client).model
@@ -77,7 +92,7 @@ def agent_task(
             return Outcome(error=f"case {case.id} has no task")
         llm = Llm(client, sdk=sdk, budget=Budget(limit_usd=limit_usd, scope="run"))
         try:
-            traced = run(llm, search, question, model=model)
+            traced = agent_run(agent)(llm, search, question, model=model)
         except Exception as failed:
             # The calls it made before failing were billed, so the row still carries them.
             spent = total([call.usage for call in llm.trace])
@@ -180,6 +195,9 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         "--limit", type=float, default=MAX_USD_PER_EVAL, help="the whole run's ceiling in USD"
     )
     parser.add_argument("--cache", action="store_true", help="reuse PDF text and chunk vectors")
+    parser.add_argument(
+        "--agent", default="langgraph", choices=("langgraph", "adk"), help="which build answers"
+    )
     parser.add_argument("--regrade", type=Path, help="grade a saved run's answers, not a new run")
     return parser.parse_args(list(argv))
 
@@ -202,7 +220,7 @@ def main(argv: list[str] | None = None) -> None:
         regrade(args, cases, judge, judged)
         return
     worst = len(cases) * MAX_USD_PER_TASK + judged
-    print(f"{DATASET.name}: {len(cases)} tasks, agent on {model}, judged by {judge}")
+    print(f"{DATASET.name}: {len(cases)} tasks, {args.agent} agent on {model}, judged by {judge}")
     print(f"worst case ${worst:.2f}: ${MAX_USD_PER_TASK:.2f} a task at most, ${judged:.2f} judging")
     print(f"run ceiling ${args.limit:.2f}")
     if not args.yes:
@@ -214,10 +232,10 @@ def main(argv: list[str] | None = None) -> None:
     shared = Llm.for_eval(args.client)
     search = build_search(args.cache)
     outcomes: dict[str, Outcome] = {}
-    task = agent_task(search, args.client, args.model, shared.sdk)
+    task = agent_task(search, args.client, args.model, shared.sdk, agent=args.agent)
     result = run_eval(
         cases,
-        {"langgraph": recording(task, outcomes)},
+        {args.agent: recording(task, outcomes)},
         graders(args.client, shared.sdk, judge),
         dataset=DATASET.name,
         digest=digest(DATASET),
@@ -247,7 +265,7 @@ def regrade(args: argparse.Namespace, cases: Sequence[Case], judge: str, judged:
     model = next((o.model for o, _ in saved.values() if o.model), "unknown")
     result = run_eval(
         cases,
-        {"langgraph": replayed(saved)},
+        {args.agent: replayed(saved)},
         graders(args.client, shared.sdk, judge),
         dataset=DATASET.name,
         digest=digest(DATASET),
