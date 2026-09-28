@@ -191,6 +191,11 @@ def write_report(run: EvalRun, directory: Path = REPORTS_DIR) -> Path:
     """Write the report next to its siblings and return the path. One file per run, dated."""
     directory.mkdir(parents=True, exist_ok=True)
     stem = run.dataset.replace("/", "-").removesuffix(".jsonl")
-    path = directory / f"{stem}-{run.started_at:%Y%m%d-%H%M}.md"
+    base = f"{stem}-{run.started_at:%Y%m%d-%H%M}"
+    path = directory / f"{base}.md"
+    taken = 1
+    while path.exists():  # two runs in one minute keep both reports
+        taken += 1
+        path = directory / f"{base}-{taken}.md"
     path.write_text(to_markdown(run), encoding="utf-8")
     return path

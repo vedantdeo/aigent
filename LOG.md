@@ -1237,3 +1237,10 @@
   sources" and names none — and half not: Opus called the agent's "today (September 28, 2026)" an
   invented date and its ₹67.20 an implausible rate. The judge does not know today's date, so a
   current figure reads to it as a wrong one, the rubric's warning notwithstanding.
+- 09-28: **the judge is told today's date, and the saved web answers re-graded: $0.06046, no agent
+  calls.** The rubric now ends with the run's date. Re-judged by Opus: LangGraph's pt-015, 016 and
+  017 still pass, ADK's 017 passes, ADK's 016 still fails for its unsourced rate, and ADK's 015
+  still fails but now for a fair reason — its answer contradicts itself about the report's own
+  ₹20.43 crore figure — instead of for an "invented" date that was simply today's. The re-grades
+  finished within one minute, and `write_report` named by the minute: two of their reports were
+  overwritten by the third. Reports in one minute now take a numbered suffix.

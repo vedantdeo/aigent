@@ -16,6 +16,7 @@ import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 
 from aigent.adapters import CLIENTS, spec
@@ -169,15 +170,20 @@ def replayed(saved: Mapping[str, tuple[Outcome, Usage | None]]) -> Task:
 
 
 def graders(
-    client: str = CLIENT, sdk: object | None = None, judge_model: str | None = None
+    client: str = CLIENT,
+    sdk: object | None = None,
+    judge_model: str | None = None,
+    today: date | None = None,
 ) -> dict[str, Grader]:
-    """Trajectory first, then the answer: the three free graders before the paid one."""
+    """Trajectory first, then the answer: the three free graders before the paid one. The judge
+    is told today's date, which it cannot know and a web answer states."""
+    dated = f"{RUBRIC}\n\nToday's date is {(today or date.today()).isoformat()}."
     return {
         "right_tools": right_tools(),
         "tool_order": tool_order(),
         "finished": flag("finished"),
         "correct": LlmJudge(
-            rubric=RUBRIC, reference="reference", model=judge_model, client=client, sdk=sdk
+            rubric=dated, reference="reference", model=judge_model, client=client, sdk=sdk
         ),
     }
 

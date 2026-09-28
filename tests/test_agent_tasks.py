@@ -13,6 +13,7 @@ from aigent.agent import TOOLS  # noqa: E402
 from aigent.agent_tasks import (  # noqa: E402
     DATASET,
     agent_task,
+    graders,
     load_rows,
     recording,
     replayed,
@@ -109,3 +110,14 @@ def test_a_saved_run_replays_its_answers_without_billing_them_again(
     assert saved["pt-x"][1] == outcomes["pt-x"].usage, "its usage kept for the record"
     missing = replayed(saved)(Case.model_validate({"id": "pt-y", "input": {"task": "?"}}))
     assert missing.error is not None and "pt-y" in missing.error
+
+
+def test_the_judge_is_told_todays_date() -> None:
+    """Without it, a judge trained earlier reads a web answer's current figures as invented."""
+    from datetime import date
+
+    from aigent.evals.judge import LlmJudge
+
+    judge = graders(today=date(2026, 9, 28))["correct"]
+
+    assert isinstance(judge, LlmJudge) and judge.rubric.endswith("Today's date is 2026-09-28.")

@@ -215,3 +215,13 @@ def test_the_pass_rate_and_the_mean_answer_different_questions_about_the_same_gr
 
 def test_a_run_whose_graders_report_no_numbers_prints_no_metrics_table() -> None:
     assert "## Metrics" not in to_markdown(_run())
+
+
+def test_two_runs_in_one_minute_keep_both_reports(tmp_path: Path) -> None:
+    """Three re-grades finished in one minute and the first two reports were overwritten."""
+    run = _run()
+
+    first, second = write_report(run, tmp_path), write_report(run, tmp_path)
+
+    assert first != second and first.exists() and second.exists()
+    assert second.name == first.name.replace(".md", "-2.md")
