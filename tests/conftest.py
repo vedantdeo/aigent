@@ -120,7 +120,9 @@ def make_judge() -> MakeJudge:
 
 # The Anthropic client under another name, with caps that match no default, so a test can tell
 # which client's cap a call went out with. Registered only for a test that asks for `capped`.
-CAPPED = replace(ANTHROPIC, name="capped", max_tokens={"ANSWER": 300, "JUDGE": 200})
+CAPPED = replace(
+    ANTHROPIC, name="capped", max_tokens={"ANSWER": 300, "HEADLINE": 100, "JUDGE": 200}
+)
 
 
 @pytest.fixture

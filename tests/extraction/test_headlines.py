@@ -15,7 +15,7 @@ import pytest
 from anthropic.types import MessageTokensCount, Usage
 from pydantic import JsonValue
 
-from entropic.config import MAX_TOKENS_HEADLINE, MODEL, THINKING_EVAL
+from entropic.config import CLIENT, MAX_TOKENS_HEADLINE, MODEL, THINKING_EVAL
 from entropic.evals.dataset import Case, load_jsonl
 from entropic.evals.runner import Task
 from entropic.extraction.headlines import (
@@ -34,9 +34,10 @@ from entropic.extraction.headlines import (
     extraction_task,
     load_directory,
     spread,
+    word_runs,
 )
 
-from ..conftest import ParsedReply
+from ..conftest import CAPPED, ParsedReply
 
 DIRECTORY = load_directory()
 
@@ -68,12 +69,6 @@ def forms(ticker: str) -> list[str]:
     return [ticker, entry["name"], *entry["aliases"]]
 
 
-def _grams(text: str, n: int = 4) -> set[tuple[str, ...]]:
-    """Every run of `n` alphanumeric words, lowercased. Punctuation and case are not the point."""
-    words = re.findall(r"[a-z0-9]+", text.casefold())
-    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
-
-
 CASES = load_jsonl(DATASET)
 LABELLED = [case for case in CASES if case.expected]
 # A headline naming no single company has no ticker, so the company checks skip it.
@@ -100,6 +95,7 @@ class _Messages:
         self._record = record
         self.systems: list[object] = []
         self.thinking: list[object] = []
+        self.caps: list[int] = []
         self.counted = 0
 
     def count_tokens(self, **_: object) -> MessageTokensCount:
@@ -109,7 +105,7 @@ class _Messages:
     def parse(self, **kwargs: object) -> ParsedReply:
         self.systems.append(kwargs["system"])
         self.thinking.append(kwargs["thinking"])
-        assert kwargs["max_tokens"] == MAX_TOKENS_HEADLINE
+        self.caps.append(cast(int, kwargs["max_tokens"]))
         return ParsedReply(
             self._record,
             stop_reason="max_tokens" if self._record is None else "end_turn",
@@ -126,9 +122,10 @@ def _task_and_log(
     record: Extraction | None = RECORD,
     variant: Variant = PLAIN,
     resolver: Resolver | None = None,
+    client: str = CLIENT,
 ) -> tuple[Task, _Messages]:
     fake = _Client(record)
-    task = extraction_task(variant, resolver, sdk=fake)
+    task = extraction_task(variant, resolver, client=client, sdk=fake)
     return task, fake.messages
 
 
@@ -147,6 +144,24 @@ def test_a_parsed_record_becomes_a_gradeable_outcome() -> None:
     assert set(FIELDS) <= set(outcome.output), "everything field_match grades is present"
     assert outcome.usage is not None and outcome.model == MODEL, "the row can be billed"
     assert log.counted == 1, "the paid call was counted first"
+
+
+@pytest.mark.usefixtures("capped")
+@pytest.mark.parametrize(
+    ("client", "cap"),
+    [
+        pytest.param(CLIENT, MAX_TOKENS_HEADLINE, id="the configured client's own cap"),
+        pytest.param(CAPPED.name, CAPPED.max_tokens["HEADLINE"], id="a client named for the run"),
+    ],
+)
+def test_a_record_is_capped_by_the_client_that_gives_it(client: str, cap: int) -> None:
+    """`MAX_TOKENS_HEADLINE` names the configured client's cap, so a run pointed at another client
+    has to ask for that client's own."""
+    task, log = _task_and_log(client=client)
+
+    task(_case())
+
+    assert log.caps == [cap], f"sent on {client}"
 
 
 def test_a_refusal_to_parse_is_an_error_row_that_still_bills() -> None:
@@ -394,8 +409,9 @@ def test_no_illustration_in_the_prompt_is_a_row_of_the_dataset() -> None:
     financial boilerplate like "Q1 revenue up", which two headlines can share innocently.
     """
     prompt = FEW_SHOT + " ".join(f.description or "" for f in Extraction.model_fields.values())
+    quoted = word_runs(prompt)
     shared = {
-        case.id: sorted(" ".join(g) for g in _grams(str(case.input["headline"])) & _grams(prompt))
+        case.id: sorted(" ".join(g) for g in word_runs(str(case.input["headline"])) & quoted)
         for case in LABELLED
     }
     leaked = {case_id: overlap for case_id, overlap in shared.items() if overlap}

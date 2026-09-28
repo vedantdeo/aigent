@@ -16,9 +16,17 @@ and the machine gets hot. Every model here needs a row in `pricing.PRICES`.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 from entropic.adapters.client import Client
 
 BASE_URL = "http://127.0.0.1:8080/v1"
+
+# Where underhood's toy fine-tune writes its adapter; the two repos sit side by side.
+TOY_ADAPTER = (
+    Path(__file__).resolve().parents[4] / "underhood" / "data" / "toy-headlines" / "adapter"
+)
 
 # A 4B judging its own answers is not a second opinion, so a bigger model grades. It is a Qwen3
 # rather than the Qwen2.5-7B this used to be: a verdict is structured output, and that model lost
@@ -27,7 +35,7 @@ JUDGE = "mlx-community/Qwen3-8B-4bit"
 
 # No constrained decoding here: a record is prompted for and parsed, so leave room for the JSON
 # and for the stray line of preamble the parser strips.
-PROMPTED_RECORD = {"ANSWER": 512, "JUDGE": 512}
+PROMPTED_RECORD = {"ANSWER": 512, "HEADLINE": 256, "JUDGE": 512}
 
 
 # Qwen3's own models think before answering unless told not to, and thought is billed against the
@@ -68,12 +76,18 @@ QWEN3_4B_BF16 = served("local-4b-bf16", "mlx-community/Qwen3-4B-Instruct-2507-bf
 # the others, and the 4B grades it back — nothing here marks its own paper.
 QWEN3_8B_4BIT = served("local-8b-4bit", "mlx-community/Qwen3-8B-4bit", judge=QWEN3_4B_4BIT.model)
 
+# The toy fine-tune's base, and the same model with underhood's adapter on it.
+QWEN3_1_7B_4BIT = served("local-1.7b", "mlx-community/Qwen3-1.7B-4bit")
+QWEN3_1_7B_TOY = replace(QWEN3_1_7B_4BIT, name="local-1.7b-toy", adapter=str(TOY_ADAPTER))
+
 CLIENT = QWEN3_4B_4BIT
 
 # Client name → settings, in one canonical order.
 CLIENTS = {
     client.name: client
     for client in (
+        QWEN3_1_7B_4BIT,
+        QWEN3_1_7B_TOY,
         QWEN3_4B_4BIT,
         QWEN3_4B_6BIT,
         QWEN3_4B_8BIT,

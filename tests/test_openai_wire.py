@@ -99,6 +99,25 @@ def _wire(text: str = "hello") -> tuple[OpenAI, ScriptedCompletions]:
 REQUEST = Request("step", [{"role": "user", "content": "the question"}], 64, system="be brief")
 
 
+@pytest.mark.parametrize(
+    ("adapter", "sent"),
+    [
+        pytest.param(None, None, id="a client with no adapter sends none"),
+        pytest.param("/adapters/toy", "/adapters/toy", id="a client's adapter rides with the call"),
+    ],
+)
+def test_the_server_is_told_which_adapter_to_apply(adapter: str | None, sent: str | None) -> None:
+    """mlx_lm.server reads `adapters` from each request, so one server answers as both models."""
+    scripted = ScriptedClient('{"passed": true, "reason": "fine"}')
+    wire = OpenAI(replace(LOCAL, adapter=adapter), scripted)
+
+    wire.parse(REQUEST, Verdict)
+
+    body = cast(dict[str, object], scripted.completions.sent[0]["extra_body"])
+    assert body.get("adapters") == sent
+    assert body["chat_template_kwargs"] == dict(LOCAL.template_kwargs), "templating still rides"
+
+
 def test_the_system_prompt_becomes_the_first_message_and_blocks_are_flattened() -> None:
     blocks: list[Msg] = [{"role": "user", "content": [{"type": "text", "text": "a passage"}]}]
     wire, _ = _wire()

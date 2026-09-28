@@ -41,6 +41,8 @@ class Client:
     # counting, so both sides template alike. `{"enable_thinking": False}` is why this exists:
     # a hybrid-thinking model spends its output cap on thought before it writes any answer.
     template_kwargs: Mapping[str, object] = field(default_factory=dict)
+    # A LoRA adapter the server applies to `model` for every request from this client.
+    adapter: str | None = None
 
 
 def model_of(request: Request, settings: Client) -> str:

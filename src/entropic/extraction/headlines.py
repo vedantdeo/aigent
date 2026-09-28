@@ -21,8 +21,8 @@ from typing import TypedDict, cast
 
 from pydantic import BaseModel, Field
 
-from entropic.config import CLIENT, MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM
-from entropic.config import MAX_TOKENS_HEADLINE as MAX_TOKENS
+from entropic.adapters import CLIENTS, spec
+from entropic.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, max_tokens
 from entropic.evals.dataset import Case, digest, load_jsonl
 from entropic.evals.grade import Outcome, field_match, pydantic_valid
 from entropic.evals.report import write_report
@@ -103,6 +103,13 @@ def load_directory(path: Path = DIRECTORY) -> dict[str, Company]:
     """Read the ticker directory: symbol -> registered name plus the aliases headlines use."""
     raw = json.loads(path.read_text(encoding="utf-8"))
     return cast(dict[str, Company], raw["companies"])
+
+
+def word_runs(text: str, n: int = 4) -> set[tuple[str, ...]]:
+    """Every run of `n` alphanumeric words, lowercased: what two texts must not share for one not
+    to quote the other. Four catches a copied headline; three fires on "Q1 revenue up"."""
+    words = re.findall(r"[a-z0-9]+", text.casefold())
+    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
 
 
 def _key(mention: str) -> str:
@@ -193,28 +200,36 @@ VARIANTS = {"zero_shot": Variant(ZERO_SHOT), "few_shot": Variant(FEW_SHOT)}
 CACHE_VARIANTS = {"few_shot": Variant(FEW_SHOT), "few_shot_cached": Variant(FEW_SHOT, cache=True)}
 
 
+def headline_request(
+    step: str, headline: str, variant: Variant, cap: int, model: str | None = None
+) -> Request:
+    """One headline exactly as the task sends it. Counting and the synthetic training rows are
+    built from this too, so all three see the same request."""
+    messages: list[Msg] = [{"role": "user", "content": f"headline: {headline}"}]
+    return Request(step, messages, cap, system=variant.as_sent(), model=model, thinking=THINKING)
+
+
 def extraction_task(
     variant: Variant,
     resolve: Resolver | None = None,
     client: str = CLIENT,
     sdk: object | None = None,
-    model: str = MODEL,
+    model: str | None = None,
 ) -> Task:
-    """Build the `Task` the runner calls once per case. `sdk` is injectable, so
-    tests are free."""
+    """Build the `Task` the runner calls once per case. `sdk` is injectable, so tests are free.
+    `model` and the output cap are this client's own, never the configured client's."""
     llm = Llm.for_eval(client, sdk=sdk)
+    settings = spec(client)
+    model = model or settings.model
+    cap = max_tokens("HEADLINE", settings)
     resolver = resolve if resolve is not None else Resolver()
-    system = variant.as_sent()
 
     def task(case: Case) -> Outcome:
         headline = case.input.get("headline")
         if not isinstance(headline, str):
             return Outcome(error=f"case {case.id} has no headline")
 
-        messages: list[Msg] = [{"role": "user", "content": f"headline: {headline}"}]
-        request = Request(
-            case.id, messages, MAX_TOKENS, system=system, model=model, thinking=THINKING
-        )
+        request = headline_request(case.id, headline, variant, cap, model)
         response = llm.parse(request, Extraction)
 
         record = response.parsed
@@ -240,18 +255,18 @@ class Shape:
     cached: int
 
 
-def measure(llm: Llm, variant: Variant, headline: str, model: str = MODEL) -> Shape:
-    """Count the tokens one variant's request really sends, through the free endpoint.
+def measure(llm: Llm, variant: Variant, headline: str) -> Shape:
+    """Count the tokens one variant's request really sends, on `llm`'s own client, for free.
 
     Counting the real request rather than estimating it: the schema alone is over a thousand tokens.
     """
-    probe: list[Msg] = [{"role": "user", "content": f"headline: {headline}"}]
-    whole = Request("measure", probe, MAX_TOKENS, system=variant.as_sent(), model=model)
+    cap = max_tokens("HEADLINE", spec(llm.client))
+    whole = headline_request("measure", headline, variant, cap)
     total = llm.count(whole, Extraction)
     if not variant.cache:
         return Shape(total, cached=0)
     # Everything ahead of the breakpoint is cached; only the headline is resent.
-    tail = llm.count(Request("measure", probe, MAX_TOKENS, model=model))
+    tail = llm.count(Request("measure", whole.messages, cap))
     return Shape(total, cached=total - tail)
 
 
@@ -281,6 +296,9 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="swap the prompt ablation for the caching one: one prompt, breakpoint off then on",
     )
+    parser.add_argument(
+        "--client", default=CLIENT, choices=sorted(CLIENTS), help=f"who answers (default {CLIENT})"
+    )
     return parser.parse_args(list(argv))
 
 
@@ -293,21 +311,23 @@ def main(argv: list[str] | None = None) -> None:
         labelled = spread(labelled, args.sample)
 
     variants = CACHE_VARIANTS if args.cache else VARIANTS
+    llm = Llm.for_eval(args.client)
+    settings = spec(llm.client)
+    cap = max_tokens("HEADLINE", settings)
     sampled = f", sampled to {len(labelled)}" if args.sample is not None else ""
     print(
         f"{DATASET.name}: {len(labelled)} labelled cases{sampled}, {skipped} unlabelled and skipped"
     )
-    print(f"variants: {', '.join(variants)}  on {MODEL}")
+    print(f"variants: {', '.join(variants)}  on {settings.model} ({settings.name})")
     print(f"directory: {len(load_directory())} companies")
 
     # Counting is free, so price each arm off the real request rather than a guess at it.
-    llm = Llm.for_eval()
     longest = max((str(case.input["headline"]) for case in labelled), key=len, default="")
     worst = 0.0
     for name, variant in variants.items():
         shape = measure(llm, variant, longest)
         worst += estimate_eval_usd(
-            MODEL, len(labelled), shape.total, MAX_TOKENS, cached_tokens=shape.cached
+            settings.model, len(labelled), shape.total, cap, cached_tokens=shape.cached
         )
         cached = f", {shape.cached} of them cached" if shape.cached else ""
         print(f"  {name}: {shape.total} input tokens per row{cached}")
@@ -327,7 +347,7 @@ def main(argv: list[str] | None = None) -> None:
         {"valid": pydantic_valid(Extraction), "fields": field_match(FIELDS)},
         dataset=DATASET.name,
         digest=digest(DATASET),
-        model=MODEL,
+        model=settings.model,
         worst_usd=worst,
     )
     print(f"\nreport: {write_report(run)}")

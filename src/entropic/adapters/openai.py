@@ -197,9 +197,14 @@ class OpenAI:
 
     @property
     def _extra_body(self) -> dict[str, object] | None:
-        """What the server needs beyond the OpenAI fields: how to template this model."""
-        kwargs = self.settings.template_kwargs
-        return {"chat_template_kwargs": dict(kwargs)} if kwargs else None
+        """What the server needs beyond the OpenAI fields: how to template this model, and the
+        adapter to apply to it."""
+        body: dict[str, object] = {}
+        if self.settings.template_kwargs:
+            body["chat_template_kwargs"] = dict(self.settings.template_kwargs)
+        if self.settings.adapter is not None:
+            body["adapters"] = self.settings.adapter
+        return body or None
 
     def count(self, request: Request, schema: type[BaseModel] | None = None) -> int:
         """The input tokens this request would send, templated as the server will template them."""

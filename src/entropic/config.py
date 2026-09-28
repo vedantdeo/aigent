@@ -189,3 +189,12 @@ FURNITURE_RATIO = 0.2
 
 # What joins two pages into one document text. Read as a paragraph break by every splitter.
 PAGE_SEPARATOR = "\n\n"
+
+
+# --- Toy fine-tune ---------------------------------------------------------------------------
+# Template headlines that train underhood's toy LoRA: how many, the share kept back to validate on,
+# the seed that makes a set repeatable, and the client whose wire the rows are rendered for.
+SYNTHETIC_HEADLINES = 200
+SYNTHETIC_VALID_FRACTION = 0.1
+SYNTHETIC_SEED = 0
+SYNTHETIC_CLIENT = "local-1.7b"
