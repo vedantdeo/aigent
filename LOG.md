@@ -1244,3 +1244,12 @@
   ₹20.43 crore figure — instead of for an "invented" date that was simply today's. The re-grades
   finished within one minute, and `write_report` named by the minute: two of their reports were
   overwritten by the third. Reports in one minute now take a numbered suffix.
+- 09-28: **Project 2 on the SDK's tool runner (`agent.py`), all 25: 16/25, $0.98619**
+  (`tasks-20260928-1509.md`, answers saved), $0.039 a task, Sonnet agent and Opus judge as for the
+  others. Its misses are the behaviours every build has shown: calculator or clock skipped (008,
+  010, 014, 018), web search where the reports answer (020), web figures credited to "recent market
+  data" rather than a named source (015, 016, 017), and figures invented inside a right refusal
+  (021). **Across the three builds the scores are 16, 20 and 23 at $0.037 to $0.039 a task**, and
+  one build alone ranged 15 to 23 between runs: the framework does not move the score or the bill.
+  The judge sees an answer's text only, so a source cited through the API's structured citations
+  rather than in prose is invisible to it — true of every build.

@@ -30,8 +30,8 @@ from google.genai import types
 from pydantic import ConfigDict, PrivateAttr
 
 from aigent.adapters import spec
-from aigent.agent import FINISH, QUESTIONS, SYSTEM
-from aigent.agent_graph import Traced, called
+from aigent.agent import FINISH, QUESTIONS, SYSTEM, called
+from aigent.agent_graph import Traced
 from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted

@@ -42,6 +42,12 @@ FINISH = (
 )
 
 TOOLS = [SEARCH_TOOL, *ALL_TOOLS, WEB_SEARCH_TOOL]
+CALLS = ("tool_use", "server_tool_use")
+
+
+def called(reply: Reply) -> list[str]:
+    """The tools a turn asked for, ours and the server's, in the order it asked."""
+    return [str(block["name"]) for block in reply.blocks if block.get("type") in CALLS]
 
 
 @dataclass(frozen=True)
@@ -64,9 +70,10 @@ class Answered:
     turns: int
     stopped: str | None = None
     web: WebSources = field(default_factory=WebSources)
+    tools: list[str] = field(default_factory=list[str])  # every tool called, in order
 
 
-def run(llm: Llm, search: Search, question: str) -> Answered:
+def run(llm: Llm, search: Search, question: str, model: str | None = None) -> Answered:
     reports = ReportSearch(search)
 
     def dispatch(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
@@ -79,6 +86,7 @@ def run(llm: Llm, search: Search, question: str) -> Answered:
         [{"role": "user", "content": question}],
         MAX_TOKENS,
         system=SYSTEM,
+        model=model,
         tools=TOOLS,
         thinking={"type": "adaptive"},
         cache_control={"type": "ephemeral"},
@@ -91,7 +99,8 @@ def run(llm: Llm, search: Search, question: str) -> Answered:
         return Answered(None, reports.searches, len(llm.trace) - before, stopped=str(stop))
     answer = ran.message.text
     turns = len(llm.trace) - before
-    return Answered(answer, reports.searches, turns, ran.cut_short, _web_sources(ran.turns))
+    tools = [name for turn in ran.turns for name in called(turn)]
+    return Answered(answer, reports.searches, turns, ran.cut_short, _web_sources(ran.turns), tools)
 
 
 def _web_sources(turns: Sequence[Reply]) -> WebSources:

@@ -7,7 +7,7 @@ not be installed. Measured 2026-09-28; the runs and their costs are in `LOG.md`.
 
 | | SDK tool runner | LangGraph | Google ADK | CrewAI |
 |---|---|---|---|---|
-| 25 tasks, Sonnet agent, Opus judge | not run | **23/25**, $0.038 a task | 20/25, $0.037 a task | — |
+| 25 tasks, Sonnet agent, Opus judge | 16/25, $0.039 a task | 23/25, $0.038 a task | 20/25, $0.037 a task | — |
 | Lines of agent code | 149 | 198 | 236 | — |
 | Installs beside this repo | yes | yes (graph group) | yes, +24 packages | **no** |
 | Calls go through our `llm` | yes (`run_tools`) | yes (we drive each turn) | yes, via `BaseLlm` | impossible |
@@ -16,10 +16,14 @@ not be installed. Measured 2026-09-28; the runs and their costs are in `LOG.md`.
 | Tool errors marked `is_error` | yes | yes | **no**, plain text | — |
 | Workarounds found by live runs | — | 1 (`reply_of` nulls) | 3 (history replay) | — |
 
-Read the scores with their spread: the same LangGraph agent scored 15 and 23 on consecutive runs
-with four tasks flipping and nothing changed, so a three-task gap is inside one run's noise. The
-cost per task is the same everywhere because every build sends the same requests through `llm`;
-the framework adds orchestration, not tokens.
+**For this agent the frameworks add nothing we did not already have.** The scores, 16 to 23, sit
+inside the spread of one build on its own — the same LangGraph agent scored 15 and 23 on
+consecutive runs — so the framework does not move accuracy, and the cost per task is the same
+everywhere because every build sends the same requests through `llm`. Everything hard (admission,
+ceilings, the last answer, caching, the ledger) was ours already and had to be routed *through*
+each framework, not replaced by it. That flips only when the work needs what we have not built:
+resuming a long task after a pause (LangGraph's checkpoints), several agents sharing state and
+handing off, or hosted sessions and memory (ADK).
 
 **Control.** The SDK runner hides the loop and gives no turn cap or budget by default; `llm` wraps
 it (`docs/tool-runner.md`). LangGraph makes you draw the loop — a model node, a tools node, the
@@ -44,8 +48,10 @@ every release — so using it means a second environment and a process boundary.
 cleanly but is built Gemini-first: Claude's own features pass through it lossily. LangGraph asks
 the least of the model layer and so leaves the most in our hands.
 
-**The answer.** For a Claude agent that must keep its own rules and its own ledger, LangGraph:
-the loop is visible, the history is ours, and nothing between us and the API rewrites a message.
-ADK earns its place when the model is Gemini or the team wants its runner and session machinery,
-and it costs a translation layer that has to be tested against the live API. CrewAI's team
-metaphor was not tested here; its dependency pins ended the experiment before the first call.
+**The answer.** For this agent, our own loop: `llm.run_tools` on the SDK's runner is the least
+code, scored inside the others' spread, and keeps every rule without a translation layer. Reach for
+LangGraph when the work needs checkpoints to resume, human approval mid-run, or several agents
+sharing state — it is the framework that leaves the message list in our hands, so it costs least to
+adopt behind `llm`. ADK earns its place when the model is Gemini or the team wants its hosted
+sessions, and it costs a translation layer that must be tested against the live API. CrewAI's team
+metaphor was not tested; its dependency pins ended the experiment before the first call.

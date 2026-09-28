@@ -121,3 +121,31 @@ def test_the_judge_is_told_todays_date() -> None:
     judge = graders(today=date(2026, 9, 28))["correct"]
 
     assert isinstance(judge, LlmJudge) and judge.rubric.endswith("Today's date is 2026-09-28.")
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [
+        pytest.param("sdk", id="the SDK's tool runner"),
+        pytest.param("langgraph", id="LangGraph"),
+        pytest.param("adk", id="Google's ADK"),
+    ],
+)
+def test_every_build_reports_the_same_run_the_same_way(
+    make_llm: MakeLlm, search: FakeSearch, agent: str
+) -> None:
+    """One scripted conversation through each build: the trajectory the graders read must not
+    depend on which framework drove the loop."""
+    pytest.importorskip("google.adk") if agent == "adk" else None
+    both = tool_turn(
+        ("s1", "search_reports", {"query": "q", "report": "all"}),
+        ("c1", "calculate", {"expression": "1 + 1"}),
+    )
+    llm, _ = make_llm(turns(both, "two"))
+    case = Case.model_validate({"id": "pt-x", "input": {"task": "find it, then add"}})
+
+    outcome = agent_task(search, sdk=llm.sdk, agent=agent)(case)
+
+    assert outcome.error is None, outcome.error
+    assert outcome.output["tools"] == ["search_reports", "calculate"]
+    assert outcome.output["finished"] is True and outcome.raw == "two"

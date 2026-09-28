@@ -65,12 +65,24 @@ def total(usages: Sequence[Usage]) -> Usage:
 AgentRun = Callable[..., Traced]
 
 
+def sdk_run(llm: Llm, search: Search, question: str, model: str | None = None) -> Traced:
+    """The SDK tool-runner agent, its answer read as the other builds report theirs."""
+    from aigent.agent import run
+
+    answered = run(llm, search, question, model=model)
+    return Traced(
+        answered.answer, answered.tools, answered.turns, answered.stopped, answered.searches
+    )
+
+
 def agent_run(name: str) -> AgentRun:
     """The agent to run, imported only when chosen: each framework is an optional group."""
     if name == "adk":
         from aigent.agent_adk import run as adk
 
         return adk
+    if name == "sdk":
+        return sdk_run
     from aigent.agent_graph import run as graph
 
     return graph
@@ -203,7 +215,10 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--cache", action="store_true", help="reuse PDF text and chunk vectors")
     parser.add_argument(
-        "--agent", default="langgraph", choices=("langgraph", "adk"), help="which build answers"
+        "--agent",
+        default="langgraph",
+        choices=("langgraph", "adk", "sdk"),
+        help="which build answers",
     )
     parser.add_argument("--regrade", type=Path, help="grade a saved run's answers, not a new run")
     return parser.parse_args(list(argv))

@@ -16,7 +16,7 @@ from typing import TypedDict, cast
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from aigent.agent import FINISH, QUESTIONS, SYSTEM, TOOLS
+from aigent.agent import FINISH, QUESTIONS, SYSTEM, TOOLS, called
 from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
@@ -26,8 +26,6 @@ from aigent.report_tools import SEARCH_TOOL, ReportSearch, Searched
 from aigent.tools import execute_tool
 from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import Search
-
-CALLS = ("tool_use", "server_tool_use")
 
 
 class State(TypedDict):
@@ -47,11 +45,6 @@ class Traced:
     turns: int
     stopped: str | None
     searches: list[Searched]
-
-
-def called(reply: Reply) -> list[str]:
-    """The tools a turn asked for, ours and the server's, in the order it asked."""
-    return [str(block["name"]) for block in reply.blocks if block.get("type") in CALLS]
 
 
 def results(reply: Reply, dispatch: Dispatch) -> Msg:
