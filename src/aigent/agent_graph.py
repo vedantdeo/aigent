@@ -75,9 +75,10 @@ def results(reply: Reply, dispatch: Dispatch) -> Msg:
 
 
 def build(
-    llm: Llm, dispatch: Dispatch, max_turns: int = MAX_AGENT_TURNS
+    llm: Llm, dispatch: Dispatch, max_turns: int = MAX_AGENT_TURNS, model: str | None = None
 ) -> CompiledStateGraph[State, None, State, State]:
-    """The graph, compiled. Invoke it with a question's first user message."""
+    """The graph, compiled. Invoke it with a question's first user message. `model` overrides the
+    one the client serves."""
 
     def upcoming(state: State) -> Request:
         return Request(
@@ -85,6 +86,7 @@ def build(
             state["messages"],
             MAX_TOKENS,
             system=SYSTEM,
+            model=model,
             tools=TOOLS,
             thinking={"type": "adaptive"},
             cache_control={"type": "ephemeral"},
@@ -105,7 +107,7 @@ def build(
         except (BudgetExceeded, TurnsExhausted) as refused:
             return {"reply": None, "stopped": str(refused)}
 
-    def model(state: State) -> dict[str, object]:
+    def think(state: State) -> dict[str, object]:
         after_tools = state["turns"] > 0
         if after_tools and state["turns"] + 1 == max_turns:
             return last(
@@ -131,7 +133,7 @@ def build(
         return "model" if reply.stop_reason == "pause_turn" else END
 
     graph = StateGraph(State)
-    graph.add_node("model", model)
+    graph.add_node("model", think)
     graph.add_node("tools", tools)
     graph.add_edge(START, "model")
     graph.add_conditional_edges("model", route, ["tools", "model", END])
@@ -139,7 +141,13 @@ def build(
     return graph.compile()
 
 
-def run(llm: Llm, search: Search, question: str, max_turns: int = MAX_AGENT_TURNS) -> Traced:
+def run(
+    llm: Llm,
+    search: Search,
+    question: str,
+    max_turns: int = MAX_AGENT_TURNS,
+    model: str | None = None,
+) -> Traced:
     reports = ReportSearch(search)
 
     def dispatch(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
@@ -156,7 +164,9 @@ def run(llm: Llm, search: Search, question: str, max_turns: int = MAX_AGENT_TURN
     }
     end = cast(
         State,
-        build(llm, dispatch, max_turns).invoke(start, {"recursion_limit": 2 * max_turns + 4}),
+        build(llm, dispatch, max_turns, model).invoke(
+            start, {"recursion_limit": 2 * max_turns + 4}
+        ),
     )
     reply = end["reply"]
     answer = reply.text if reply is not None else None

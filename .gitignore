@@ -22,6 +22,8 @@ corpus/**
 # Temporary files
 sandbox/**
 !sandbox/README.md
+!sandbox/tasks/
+!sandbox/tasks/**
 
 # macOS
 .DS_Store

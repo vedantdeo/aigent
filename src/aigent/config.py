@@ -27,14 +27,15 @@ SMALL_MODEL: str = os.environ.get("AIGENT_SMALL_MODEL", ACTIVE.small_model)
 
 
 # --- Budget ceilings -------------------------------------------------------------------------
-# Five scales: one request, one turn of an agent, one interactive run, one workflow, one eval over
-# a dataset. `pricing` enforces them.
+# Six scales: one request, one turn of an agent, one interactive run, one workflow, one agent task
+# in Project 2, and one eval over a dataset. `pricing` enforces them.
 
 MAX_USD_PER_REQUEST: float = float(os.environ.get("AIGENT_MAX_USD_PER_REQUEST", "0.25"))
 MAX_USD_PER_TURN: float = float(os.environ.get("AIGENT_MAX_USD_PER_TURN", "0.60"))
 MAX_USD_PER_RUN: float = float(os.environ.get("AIGENT_MAX_USD_PER_RUN", "1.00"))
 MAX_USD_PER_WORKFLOW: float = float(os.environ.get("AIGENT_MAX_USD_PER_WORKFLOW", "0.25"))
 MAX_USD_PER_EVAL: float = float(os.environ.get("AIGENT_MAX_USD_PER_EVAL", "2.00"))
+MAX_USD_PER_TASK: float = float(os.environ.get("AIGENT_MAX_USD_PER_TASK", "0.50"))
 # Assumed per web search: the API adds results mid-call, where the free count cannot see them.
 WEB_SEARCH_RESULT_TOKENS = 10_000
 

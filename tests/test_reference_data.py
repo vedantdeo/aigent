@@ -20,6 +20,7 @@ from aigent.retrieval.corpus import MANIFEST
 from aigent.retrieval.questions import DATASET
 
 PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
+TASKS = DATASET.parent / "tasks.jsonl"
 
 Pairs = list[tuple[str, object]]
 
@@ -42,11 +43,15 @@ def json_keys(*into: str) -> Callable[[Path], list[str]]:
 
 
 def jsonl_ids(field: str) -> Callable[[Path], list[str]]:
-    """Read one field from every line of a JSONL file, in file order."""
+    """Read one field from every row of a JSONL file, in file order; `//` lines are comments."""
 
     def read(path: Path) -> list[str]:
         lines = path.read_text(encoding="utf-8").splitlines()
-        return [str(json.loads(line)[field]) for line in lines if line.strip()]
+        return [
+            str(json.loads(line)[field])
+            for line in lines
+            if line.strip() and not line.startswith("//")
+        ]
 
     return read
 
@@ -68,6 +73,7 @@ ORDERED_FILES = [
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(DATASET, key="id", load=jsonl_ids("id")),
     Ordered(PARAPHRASED, key="id", load=jsonl_ids("id")),
+    Ordered(TASKS, key="id", load=jsonl_ids("id")),
 ]
 
 
