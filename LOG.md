@@ -1277,3 +1277,14 @@
   **Asking for the source in the prompt improved citation on web answers**: 2 of the 3 now name
   the site and date beside the figure, where none of the same answers did before, and it cost
   nothing per task to add.
+- 09-28: **the prompt names a conversion's rate as a web figure; pt-015 on LangGraph passes, $0.06872**
+  (`tasks-20260928-1612.md`), Sonnet agent, Opus judge. The answer now credits ₹67.20 per AUD to
+  xe.com and lists the other sites it saw, where three earlier runs gave the rate unsourced. One
+  run, so it shows the rule can work, not that it always will. Still no structured citations.
+- 09-28: **pt-015 with Opus as the agent: pass, 4 structured citations, $0.18528**
+  (`tasks-20260928-1623.md`), Sonnet judging, same prompt and build as the Sonnet run at 16:12.
+  Opus's answer carries citations to travelex, Bloomberg, xe and OFX, and the judge read them;
+  Sonnet's carried none, on this prompt and on every earlier one. **Empty `sources` is the model,
+  not the prompt or our plumbing**: the answer names its sources in prose and is still cited.
+  One oddity: the prose credits the rate to currencyrate.today, which is not among the pages cited,
+  so a source named in the text is not checked against what the search returned.

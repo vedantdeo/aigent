@@ -35,7 +35,7 @@ SYSTEM = (
     "in square brackets, and say what the reports do not cover. Use calculate for arithmetic. Use "
     "web_search only for what the reports cannot hold, such as events and prices after them. "
     "Name the site and date of every figure you take from the web in the answer itself, beside "
-    "the figure."
+    "the figure. A conversion at today's rate is a web figure too: name where the rate came from."
 )
 
 FINISH = (
