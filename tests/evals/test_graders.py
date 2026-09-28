@@ -27,6 +27,8 @@ from aigent.evals.grade import (
     reciprocal_rank,
     regex,
     resolvable,
+    right_tools,
+    tool_order,
 )
 from aigent.evals.judge import LlmJudge, Verdict
 
@@ -415,3 +417,55 @@ def test_resolvable_carries_a_number_where_the_other_two_carry_none() -> None:
     assert resolvable()(case, outcome).value == 0.0
     assert recall_at_k(5)(case, outcome).value is None
     assert reciprocal_rank()(case, outcome).value is None
+
+
+SEARCH, CALC, WEB = "search_reports", "calculate", "web_search"
+
+
+@pytest.mark.parametrize(
+    ("used", "expected", "passed", "says"),
+    [
+        pytest.param([SEARCH, CALC], {"tools": [SEARCH, CALC]}, True, "", id="every required tool"),
+        pytest.param(
+            [SEARCH, SEARCH, CALC], {"tools": [SEARCH, CALC]}, True, "", id="repeats are fine"
+        ),
+        pytest.param(
+            [SEARCH], {"tools": [SEARCH, CALC]}, False, "never called calculate", id="one missing"
+        ),
+        pytest.param(
+            [SEARCH, WEB, CALC],
+            {"tools": [SEARCH, CALC], "forbid": [WEB]},
+            False,
+            "called web_search",
+            id="a forbidden tool, however right the rest",
+        ),
+        pytest.param([], {"tools": []}, True, "", id="a task that needs no tool"),
+        pytest.param(
+            "search", {"tools": [SEARCH]}, False, "no list", id="output not a list of names"
+        ),
+    ],
+)
+def test_right_tools(used: JsonValue, expected: Fields, passed: bool, says: str) -> None:
+    score = right_tools()(_case(expected), _out(tools=used))
+    assert score.passed is passed, score.detail
+    assert says in score.detail
+
+
+@pytest.mark.parametrize(
+    ("used", "order", "passed"),
+    [
+        pytest.param([SEARCH, CALC], [[SEARCH, CALC]], True, id="facts before arithmetic"),
+        pytest.param(
+            [CALC, SEARCH, CALC], [[SEARCH, CALC]], False, id="arithmetic before any facts"
+        ),
+        pytest.param([SEARCH], [[SEARCH, CALC]], True, id="the later tool never ran"),
+        pytest.param([WEB, SEARCH], [[SEARCH, WEB]], False, id="the web before the reports"),
+        pytest.param(
+            [SEARCH, WEB, CALC], [[SEARCH, CALC], [WEB, CALC]], True, id="two pairs, both kept"
+        ),
+        pytest.param([SEARCH], [], True, id="no order labelled"),
+    ],
+)
+def test_tool_order(used: JsonValue, order: JsonValue, passed: bool) -> None:
+    score = tool_order()(_case({"order": order}), _out(tools=used))
+    assert score.passed is passed, score.detail

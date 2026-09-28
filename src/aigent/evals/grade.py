@@ -212,6 +212,65 @@ def flag(name: str) -> Grader:
     return grade
 
 
+def _names(value: JsonValue) -> list[str] | None:
+    """A list of tool names, in the order called. None if it is not that shape."""
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        return None
+    return [item for item in value if isinstance(item, str)]
+
+
+def right_tools(called: str = "tools") -> Grader:
+    """Every tool the label requires was called, and none it forbids.
+
+    Reads `expected["tools"]` and an optional `expected["forbid"]` against the task's own record of
+    the tools it called, in order, under `called`.
+    """
+
+    def grade(case: Case, outcome: Outcome) -> Score:
+        used = _names(outcome.output.get(called))
+        required = _names(case.expected.get("tools", []))
+        forbidden = _names(case.expected.get("forbid", []))
+        if used is None:
+            return Score(False, f"output has no list of tool names under {called!r}")
+        if required is None or forbidden is None:
+            return Score(False, "expected 'tools' and 'forbid' must be lists of tool names")
+        missing = [tool for tool in required if tool not in used]
+        banned = [tool for tool in forbidden if tool in used]
+        parts = {
+            **{t: t not in missing for t in required},
+            **{f"no {t}": t not in banned for t in forbidden},
+        }
+        problems = [f"never called {', '.join(missing)}"] if missing else []
+        problems += [f"called {', '.join(banned)}"] if banned else []
+        return Score(not problems, "; ".join(problems), parts=parts)
+
+    return grade
+
+
+def tool_order(called: str = "tools") -> Grader:
+    """Each labelled `[before, after]` pair: the first `after` call comes once `before` has been
+    called. A pair whose `after` never ran is `right_tools`' business, not this grader's."""
+
+    def grade(case: Case, outcome: Outcome) -> Score:
+        used = _names(outcome.output.get(called))
+        if used is None:
+            return Score(False, f"output has no list of tool names under {called!r}")
+        pairs = case.expected.get("order", [])
+        if not isinstance(pairs, list):
+            return Score(False, "expected 'order' must be a list of [before, after] pairs")
+        wrong: list[str] = []
+        for pair in pairs:
+            names = _names(pair)
+            if names is None or len(names) != 2:
+                return Score(False, f"order pair {json_ish(pair)} is not [before, after]")
+            before, after = names
+            if after in used and before not in used[: used.index(after)]:
+                wrong.append(f"{after} before {before}")
+        return Score(not wrong, "; ".join(wrong))
+
+    return grade
+
+
 def _id_list(value: JsonValue) -> list[str] | None:
     """A list of chunk ids, order kept and repeats dropped. None if it is not that shape.
 
