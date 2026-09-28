@@ -1288,3 +1288,18 @@
   not the prompt or our plumbing**: the answer names its sources in prose and is still cited.
   One oddity: the prose credits the rate to currencyrate.today, which is not among the pages cited,
   so a source named in the text is not checked against what the search returned.
+- 09-28: **closed, not pursued:** checking a source named in the prose against the pages the search
+  returned, and running the SDK and ADK builds on the new prompt. The prompt's named sources are
+  what the judge reads, and the frameworks memo already settled the builds.
+- 09-28: **Project 2's final run: Opus 5 agent on LangGraph, all 25, judged by Sonnet 5: 19/25,
+  $2.91179** (`tasks-20260928-1634.md`, answers saved), $0.116 a task, on the current prompt and
+  judge; a $12.73 worst case. 55% of the agent's input read from cache, saving 31% of its spend.
+  **Four misses are instruction-following, answered right by the wrong route**: pt-005, 008 and 018
+  did the arithmetic without `calculate`, and pt-014 searched the web after reading the clock.
+  **Two are the per-task ceiling**: pt-015 was refused its next turn at $0.149 and had no room for
+  a last answer, exactly as in the 13:24 Opus run, and pt-020 was cut at $0.110 after six report
+  searches that never found ITC's location count. 3 of 25 answers carried structured citations.
+  Against 20/25 on the old prompt and judge, the score is inside one run's spread.
+- 09-28: **pt-015 on Opus recorded as a known limitation, not fixed**: the last-answer turn is
+  priced with web search still on offer, so at Opus prices no last answer fits under
+  `MAX_USD_PER_TASK`. Fixing it would change the final run's conditions; `docs/v0.2-agent.md` says so.

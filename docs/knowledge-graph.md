@@ -3,7 +3,7 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `182ec69` plus the prompt naming a conversion's rate source, landing in this commit
+**Verified against commit `dea47f2` plus the `v0.2-agent` write-up draft, landing in this commit
 (2026-09-28). 956 tests pass, 1 live test deselected. The
 suite is fully green, and so is pyright again: `dd27b4f` left one error in a test, CI reported it
 on the push, and `main` stayed red for four days because nobody read the result.**
@@ -583,6 +583,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `docs/tool-runner.md` | repo root | The SDK tool runner read from source (`anthropic` 1.4.0): its loop, a table against invariants 3–6 (three kept, the cap not by default), ten things it hides, and what `llm.run_tools` does about each. |
 | `docs/langgraph.md` | repo root | The LangGraph executor read from source (`langgraph` 1.2.12): its superstep loop, the roadmap's six features as they actually run, a table against our loop rules, and six things it hides, each *measured* with a graph that makes no model calls. The ones that matter here: a default step limit of 10,007, a node that reruns from its first line when an interrupt resumes, unbounded parallel tasks that bypass `llm`'s batch admission, and finished parallel tasks that are not rerun on resume. |
 | `docs/agent-frameworks.md` | repo root | **The Week 4 comparison memo** (2026-09-28): Project 2's agent on the SDK runner, LangGraph and ADK, with CrewAI's failed install, judged on control, debuggability, cost visibility and lock-in, with the 25-task numbers for all three: 16, 23 and 20, inside one build's own spread. For a single-agent loop behind `llm` the frameworks add nothing. Its finding: who owns the conversation decides the rest — LangGraph leaves the message list to us, ADK converts it both ways and loses Claude's server-side search. |
+| `docs/v0.2-agent.md` | repo root | **Milestone 2's write-up, draft** (2026-09-28): Project 2's task set and graders, the final run (Opus on LangGraph, 19/25, $0.116 a task) above the four earlier full runs, each with cost a task, the pt-015 ceiling as a known limitation, and what caching saved, whose fault each miss was, the judge's three fixes, and the frameworks verdict. The GPU section waits for Week 5; the tag and README section come with the milestone on Fri 2026-10-09. |
 | `docs/context-management.md` | repo root | Week 3's context management, from measured runs: what each part of the agent's context costs in tokens, what goes in the system prompt, the tools, the tool results and a one-turn instruction, how a run's context grows with and without caching, and **why the agent does not summarize yet** — the budget ends runs far below the window, a summary drops the citations, and compaction resets the cache. |
 | `LOG.md` | repo root | Weekly log: what shipped, what broke, real token counts and dollar figures. Append here after live runs. |
 | `README.md` | repo root | The five modes, the budget table, the check commands. |
