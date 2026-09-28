@@ -37,8 +37,10 @@ computed from them, or that the right answer is to decline.
 
 Pass if the answer states the same figures and the same computed result, within ordinary rounding. \
 Where the reference allows a range, or asks for a figure from a web source, pass an answer inside \
-that range that attributes its figure to a source. Where the reference says to decline, pass only \
-an answer that declines or corrects the premise and invents nothing.
+that range that attributes its figure to a source. A figure from the web is judged by whether it \
+is attributed and used correctly, never against what you remember: the web is newer than you are. \
+Where the reference says to decline, pass only an answer that declines or corrects the premise and \
+invents nothing.
 
 Fail an answer that gives a different figure, invents one, or declines where the reference has an \
 answer."""

@@ -12,7 +12,7 @@ import pytest
 from pydantic import BaseModel, JsonValue
 
 from aigent.adapters.anthropic import usage_of
-from aigent.config import CLIENT, JUDGE_MODEL, MAX_TOKENS_JUDGE, MODEL
+from aigent.config import CLIENT, JUDGE_MODEL, MAX_TOKENS_JUDGE, MODEL, THINKING_EVAL_PARAM
 from aigent.evals.dataset import Case
 from aigent.evals.grade import (
     Grader,
@@ -469,3 +469,13 @@ def test_right_tools(used: JsonValue, expected: Fields, passed: bool, says: str)
 def test_tool_order(used: JsonValue, order: JsonValue, passed: bool) -> None:
     score = tool_order()(_case({"order": order}), _out(tools=used))
     assert score.passed is passed, score.detail
+
+
+def test_the_judge_grades_with_thinking_off(make_judge: MakeJudge) -> None:
+    """An eval is a measurement (invariant 15), and a judge thinking on its own budget ran out of
+    room before the verdict."""
+    judge, log = make_judge(Verdict(reasoning="fine", passed=True))
+
+    judge(_case(), _out(answer="whatever"))
+
+    assert log.thinking == [THINKING_EVAL_PARAM]

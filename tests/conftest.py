@@ -75,6 +75,7 @@ class ScriptedMessages:
         self._fails_with = fails_with
         self.usage = JUDGE_USAGE
         self.prompts: list[str] = []
+        self.thinking: list[object] = []
         self.caps: list[int] = []
         self.counted = 0
 
@@ -87,6 +88,7 @@ class ScriptedMessages:
     def parse(self, **kwargs: object) -> ParsedReply:
         messages = cast("list[dict[str, str]]", kwargs["messages"])
         self.prompts.append(messages[0]["content"])
+        self.thinking.append(kwargs.get("thinking"))
         self.caps.append(cast(int, kwargs["max_tokens"]))
         return ParsedReply(self._verdict, model=JUDGE_MODEL)
 

@@ -1171,3 +1171,16 @@
   - **Three were the agent** (pt-003, 008, 014), right answers by the wrong route: 45 − 12 and a
     date gap done in its head rather than with `calculate`, and today's date assumed rather than
     read from `current_time`. The system prompt asks for the calculator; the labels hold it to that.
+- 09-28: **Project 2 re-run with the fixes: 15/25, $1.05552** (`tasks-20260928-1232.md`), $0.042 a
+  task now that the web tasks run. A launch before it was refused at $0.00: the judge's larger cap
+  raised the worst case to $13.07, over the $13.00 ceiling, and the dry run had not been re-read.
+  **Six misses are the agent's**: easy arithmetic and a date done without the tools (pt-003, 008,
+  014), web search where the reports hold the answer (pt-012, 018), and pt-020 saying ITC gives no
+  location count when it does, a retrieval miss. **Four were ours, and are fixed after the run, so
+  the 15 stands as measured**: pt-006 and 009 were labelled with Tata Motors' 3,59,899 PSUs when
+  the financial statements also give 2,99,918 — the agent found the second, and either now passes
+  when attributed; pt-015 and 016 fixed rupee ranges from exchange rates the label's author
+  guessed, and the Opus judge called the agent's web-sourced rates implausible from its own older
+  memory — the references now check the method, and the rubric forbids judging a web figure
+  against memory; and pt-017's judge again ran out of room, because `LlmJudge` never turned
+  thinking off, against invariant 15. It does now, for every eval.

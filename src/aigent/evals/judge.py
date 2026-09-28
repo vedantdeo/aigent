@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
 from aigent.adapters import spec
-from aigent.config import CLIENT, max_tokens
+from aigent.config import CLIENT, THINKING_EVAL_PARAM, max_tokens
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Outcome, Score
 from aigent.llm import Llm, Request
@@ -60,7 +60,9 @@ class LlmJudge:
         settings = spec(self.client)
         grader = self.model or settings.judge_model
         cap = max_tokens("JUDGE", settings)
-        request = Request.ask("judge", JUDGE_SYSTEM, prompt, cap, model=grader)
+        request = Request.ask(
+            "judge", JUDGE_SYSTEM, prompt, cap, model=grader, thinking=THINKING_EVAL_PARAM
+        )
         response = self._llm.parse(request, Verdict)
         verdict = response.parsed
         if verdict is None:
