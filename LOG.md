@@ -1216,3 +1216,24 @@
   the API produced it, and a test reproduces the shape. Their spending is in the $0.91: the fix from
   the first LangGraph run held. The other misses are the agent's, as on LangGraph: 005 and 014
   skipped a tool, 020 missed ITC's location count.
+- 09-28: **ADK's two web tasks re-run on the fix: $0.11705, 0/2** (`tasks-20260928-1440.md`).
+  pt-016 now runs to its answer and fails fairly: it gives ₹95.87 a dollar with no source for the
+  rate, which the rubric requires (LangGraph's agent did the same once). **pt-015 found a second
+  shape of the same fault**: a search the API paused mid-turn ends in a reply that opens with the
+  search's result, and the fix sent back only that last reply, so the result had no call before it
+  and the API refused it. `ThroughLlm` now keeps every reply of a paused turn and sends them back
+  together, in order; ADK is handed the merged turn too, and a test reproduces the pause.
+- 09-28: **pt-015 on ADK again: still refused, $0.04328; then a diagnostic, $0.04421, that found
+  the real cause.** The paused-search theory above was wrong. The diagnostic, a scratch script
+  printing each request's block types and nothing else, showed turn 1 asking for a report search
+  *and* a web search, and the web result arriving at the start of turn 2 — a search's call and
+  result can span turns. ADK had rebuilt turn 1 without its `server_tool_use` (and with its thinking
+  turned into `redacted_thinking`), so restoring only the latest turn left turn 2's result with no
+  call anywhere before it. `ThroughLlm` now puts **every** assistant turn back as the API sent it,
+  in order, and a test replays the recorded shape. Guessing cost two runs; measuring cost one.
+- 09-28: **pt-015 on ADK with every turn restored: it runs end to end, $0.06365**
+  (`tasks-20260928-1448.md`). Reports, web, calculator, finished, no API error: the ADK build
+  now carries web search. The judge failed it, half fairly — the agent gives a rate "across
+  sources" and names none — and half not: Opus called the agent's "today (September 28, 2026)" an
+  invented date and its ₹67.20 an implausible rate. The judge does not know today's date, so a
+  current figure reads to it as a wrong one, the rubric's warning notwithstanding.

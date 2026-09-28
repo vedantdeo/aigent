@@ -36,7 +36,7 @@ from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm import Llm, Request
-from aigent.messages import Msg, Reply, Tool
+from aigent.messages import Block, Msg, Reply, Tool
 from aigent.report_tools import ReportSearch
 from aigent.tools import WEB_SEARCH_TOOL, execute_tool
 from aigent.workflows.demo import run_demo
@@ -54,7 +54,7 @@ class ThroughLlm(BaseLlm):
     _tools: list[str] = PrivateAttr(default_factory=list[str])
     _turns: int = PrivateAttr(default=0)
     _stopped: str | None = PrivateAttr(default=None)
-    _latest: Reply | None = PrivateAttr(default=None)
+    _sent: list[tuple[Block, ...]] = PrivateAttr(default_factory=list[tuple[Block, ...]])
 
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
@@ -77,20 +77,26 @@ class ThroughLlm(BaseLlm):
             *(cast(Tool, function_declaration_to_tool_param(fd)) for fd in declared),
             cast(Tool, WEB_SEARCH_TOOL),
         ]
-        reply = await asyncio.to_thread(self._answer, messages, tools)
-        yield message_to_generate_content_response(_carryable(reply))
+        replies = await asyncio.to_thread(self._answer, messages, tools)
+        self._sent.append(tuple(block for reply in replies for block in reply.blocks))
+        yield message_to_generate_content_response(_carryable(replies))
 
     def _as_sent(self, messages: list[Msg]) -> list[Msg]:
-        """ADK's history with its latest assistant turn put back exactly as the API sent it: ADK
-        held it without its search blocks, and the API refuses a latest turn whose thinking is
-        not where it was."""
-        if self._latest is None:
-            return messages
-        for i in range(len(messages) - 1, -1, -1):
-            if messages[i]["role"] == "assistant":
-                original: Msg = {"role": "assistant", "content": self._latest.blocks}
-                return [*messages[:i], original, *messages[i + 1 :]]
-        return messages
+        """ADK's history with every assistant turn put back exactly as the API sent it, in order.
+
+        ADK holds each turn without its search blocks and rewrites its thinking, and a search's
+        result can arrive a turn after its call, so every turn is restored, not just the latest.
+        """
+        turns = iter(
+            self._sent[-sum(m["role"] == "assistant" for m in messages) :] if self._sent else []
+        )
+        restored: list[Msg] = []
+        for message in messages:
+            original = next(turns, None) if message["role"] == "assistant" else None
+            restored.append(
+                message if original is None else Msg(role="assistant", content=original)
+            )
+        return restored
 
     def _request(self, messages: Sequence[Msg], tools: Sequence[Tool]) -> Request:
         return Request(
@@ -104,25 +110,27 @@ class ThroughLlm(BaseLlm):
             cache_control={"type": "ephemeral"},
         )
 
-    def _answer(self, messages: list[Msg], tools: list[Tool]) -> Reply:
-        """One turn, following a paused server-side search to its end; the last turn under the
-        cap, or one the budget refuses, is sent as a last answer instead."""
+    def _answer(self, messages: list[Msg], tools: list[Tool]) -> list[Reply]:
+        """One turn's replies, a paused server-side search followed to its end; the last turn
+        under the cap, or one the budget refuses, is sent as a last answer instead."""
         after_tools = self._turns > 0
         upcoming = self._request(messages, tools)
         if after_tools and self._turns + 1 >= self.max_turns:
-            return self._last(upcoming, TurnsExhausted(f"the last of {self.max_turns} turns"))
+            return [self._last(upcoming, TurnsExhausted(f"the last of {self.max_turns} turns"))]
         try:
             reply = self.llm.turn(upcoming)
         except BudgetExceeded as refused:
             if not after_tools:
                 raise
-            return self._last(upcoming, refused)
+            return [self._last(upcoming, refused)]
         self._took(reply)
+        replies = [reply]
         while reply.stop_reason == "pause_turn":
             messages = [*messages, {"role": "assistant", "content": reply.blocks}]
             reply = self.llm.turn(self._request(messages, tools))
             self._took(reply)
-        return reply
+            replies.append(reply)
+        return replies
 
     def _last(self, upcoming: Request, stop: Exception) -> Reply:
         self._stopped = str(stop)
@@ -131,16 +139,16 @@ class ThroughLlm(BaseLlm):
         return reply
 
     def _took(self, reply: Reply) -> None:
-        self._latest = reply
         self._turns += 1
         self._tools.extend(called(reply))
 
 
-def _carryable(reply: Reply) -> Message:
-    """The reply with only the blocks ADK's converter accepts; server-side search is dropped."""
-    message = cast(Message, reply.raw)
-    kept = [block for block in message.content if block.type in KEPT]
-    return message.model_copy(update={"content": kept})
+def _carryable(replies: Sequence[Reply]) -> Message:
+    """One turn's replies as one message, keeping only the blocks ADK's converter accepts: a
+    paused search's continuation belongs to the same turn, and search blocks are dropped."""
+    messages = [cast(Message, reply.raw) for reply in replies]
+    kept = [block for message in messages for block in message.content if block.type in KEPT]
+    return messages[-1].model_copy(update={"content": kept})
 
 
 def tools_for(search: Search) -> tuple[list[FunctionTool], ReportSearch]:

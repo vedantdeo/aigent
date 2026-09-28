@@ -145,3 +145,109 @@ def test_a_turn_that_searched_goes_back_to_the_api_exactly_as_it_came(
     sent_back = cast(list[dict[str, object]], fake.sent[1].messages[1]["content"])
     kinds = [block["type"] for block in sent_back]
     assert kinds == ["thinking", "server_tool_use", "web_search_tool_result", "text", "tool_use"]
+
+
+def test_a_paused_search_goes_back_as_one_turn_with_its_start(
+    make_llm: MakeLlm, search: FakeSearch
+) -> None:
+    """The second live 400: a search paused mid-turn ends in a reply that opens with its result, and
+    sent back alone that result has no call before it. Both replies go back, in order."""
+
+    def message(content: list[object], stop: str) -> Message:
+        return Message.model_validate(
+            {
+                "id": "m",
+                "type": "message",
+                "role": "assistant",
+                "model": MODEL,
+                "content": content,
+                "stop_reason": stop,
+                "stop_sequence": None,
+                "usage": FAKE_USAGE.model_dump(),
+            }
+        )
+
+    started = message(
+        [{"type": "server_tool_use", "id": "w1", "name": "web_search", "input": {"query": "rate"}}],
+        "pause_turn",
+    )
+    finished = message(
+        [
+            {"type": "web_search_tool_result", "tool_use_id": "w1", "content": []},
+            {"type": "tool_use", "id": "c1", "name": "calculate", "input": {"expression": "1+1"}},
+        ],
+        "tool_use",
+    )
+    script = iter([started, finished, "done"])
+    llm, fake = make_llm(lambda sent: next(script))
+
+    traced = run(llm, search, "the rate, doubled?")
+
+    assert traced.answer == "done" and traced.tools == ["web_search", "calculate"]
+    turn = cast(list[dict[str, object]], fake.sent[2].messages[1]["content"])
+    assert [block["type"] for block in turn] == [
+        "server_tool_use",
+        "web_search_tool_result",
+        "tool_use",
+    ]
+
+
+def test_a_search_answered_a_turn_later_keeps_its_call_in_the_turn_before(
+    make_llm: MakeLlm, search: FakeSearch
+) -> None:
+    """The shape the diagnostic recorded on pt-015: turn 1 asks for a report search and a web
+    search, and the web result opens turn 2. Every earlier turn goes back as the API sent it."""
+
+    def message(content: list[object]) -> Message:
+        return Message.model_validate(
+            {
+                "id": "m",
+                "type": "message",
+                "role": "assistant",
+                "model": MODEL,
+                "content": content,
+                "stop_reason": "tool_use",
+                "stop_sequence": None,
+                "usage": FAKE_USAGE.model_dump(),
+            }
+        )
+
+    first = message(
+        [
+            {"type": "thinking", "thinking": "both", "signature": "sig"},
+            {
+                "type": "tool_use",
+                "id": "s1",
+                "name": "search_reports",
+                "input": {"query": "Technico", "report": "ITC-FY25"},
+            },
+            {
+                "type": "server_tool_use",
+                "id": "w1",
+                "name": "web_search",
+                "input": {"query": "AUD INR"},
+            },
+        ]
+    )
+    second = message(
+        [
+            {"type": "web_search_tool_result", "tool_use_id": "w1", "content": []},
+            {
+                "type": "tool_use",
+                "id": "c1",
+                "name": "calculate",
+                "input": {"expression": "2.86*58"},
+            },
+        ]
+    )
+    script = iter([first, second, "Rs 16.6 crore"])
+    llm, fake = make_llm(lambda sent: next(script))
+
+    traced = run(llm, search, "Technico in rupees?")
+
+    assert traced.answer == "Rs 16.6 crore"
+    third = fake.sent[2].messages
+    turn_one = [b["type"] for b in cast(list[dict[str, object]], third[1]["content"])]
+    assert turn_one == ["thinking", "tool_use", "server_tool_use"], "restored, thinking unredacted"
+    turn_two = [b["type"] for b in cast(list[dict[str, object]], third[3]["content"])]
+    assert turn_two[0] == "web_search_tool_result"
