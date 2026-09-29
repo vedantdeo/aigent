@@ -1377,3 +1377,26 @@
   right, declining 15. Closed-book it knows less of these reports than Opus does: 5 answered, 1
   right. One run each: Sarvam against the 4B is one row and inside the noise; Opus's four-row lead
   is the only gap here worth reading as real.
+- 09-29: **The toy adapter retrained on apply_lora's layers: 37/50 zero-shot, against 41/50 for
+  the one it replaced.** $0.00, all local (`headlines-20260929-0949.md` base, `-0950.md` tuned).
+  The new adapter is LoRA at rank 8 and scale 2 on `q_proj` and `v_proj` in all 28 blocks, 1.6M
+  trainable parameters and dropout 0.05, where the old one wrapped all seven projections in the last
+  16 blocks, 5.0M and no dropout; same 180 rows, 200 steps and seed. The base model scored exactly
+  what it did on 09-28 (11/50 and 16/50), so the server decodes deterministically and the two
+  adapters differ in what they learned, not in how they were read:
+
+  | Qwen3-1.7B 4-bit | whole record | `change_pct` | `quarter` | `metric` |
+  |---|---|---|---|---|
+  | base, zero-shot | 11/50 | 19/50 | 40/50 | 37/50 |
+  | old adapter (7 proj., last 16), zero-shot | 41/50 | 48/50 | 49/50 | 44/50 |
+  | **new adapter (q, v, all 28), zero-shot** | **37/50** | 47/50 | 49/50 | 43/50 |
+  | old adapter, few-shot | 27/50 | 36/50 | 48/50 | 43/50 |
+  | new adapter, few-shot | 25/50 | 38/50 | 45/50 | 42/50 |
+
+  **A third of the parameters kept most of the gain**: 26 of the old adapter's 30 extra rows. The
+  four it lost are not one field; `ticker` and `direction` slipped as much as `change_pct`, which
+  fits an adapter without the MLP projections that store more of what a model knows. Validation
+  loss bottomed at 0.003 by step 150 and ended at 0.004. One training run each, so the four rows
+  are a direction, not a measurement. Training ran 34 minutes at 12.7 GB peak, against 10.2 GB for
+  the old adapter, because backpropagation now reaches all 28 blocks; the old adapter and its log
+  are kept in `underhood/data/toy-headlines/previous-0928/`.
