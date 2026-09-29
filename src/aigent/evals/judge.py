@@ -46,7 +46,7 @@ class LlmJudge:
     name: str = "answer"
     reference: str | None = None
     model: str | None = None  # None means "the model this client grades with"
-    client: str = CLIENT
+    client: str = CLIENT  # the client the judge runs on, not the one that answered
     sdk: object | None = None
     _llm: Llm | None = field(default=None, init=False, repr=False)
 

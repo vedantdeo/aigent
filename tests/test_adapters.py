@@ -8,7 +8,7 @@ import httpx2
 import openai
 import pytest
 
-from aigent.adapters import CLIENTS, build, spec
+from aigent.adapters import CLIENTS, build, judge_of, spec
 from aigent.config import CLIENT
 from aigent.llm import Llm
 
@@ -18,6 +18,27 @@ def test_every_client_builds_an_adapter_that_can_send() -> None:
     not asked to answer to the client's name, only to support something."""
     for name in CLIENTS:
         assert build(name).supports, f"{name}'s adapter supports nothing, so it cannot send"
+
+
+def test_a_judge_client_is_a_real_client_whose_adapter_differs_from_the_answerers() -> None:
+    for client in CLIENTS.values():
+        if client.judge_client is not None:
+            assert client.judge_client in CLIENTS, client.name
+            assert client.judge_client != client.name, client.name
+
+
+@pytest.mark.parametrize(
+    ("client", "judge", "wire"),
+    [
+        pytest.param("sarvam", "anthropic", "anthropic", id="a client's settings name its judge"),
+        pytest.param("local", "local", "openai", id="a client naming none judges itself"),
+    ],
+)
+def test_a_clients_judge_is_a_client_with_its_own_adapter(
+    client: str, judge: str, wire: str
+) -> None:
+    assert judge_of(client) == judge
+    assert build(judge_of(client)).name == wire
 
 
 def test_an_unknown_client_is_refused_rather_than_defaulted() -> None:

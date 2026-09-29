@@ -41,6 +41,11 @@ OPUS = "claude-opus-5"
             cost_usd(OPUS, 0, 0, cache_read_tokens=10**6), 0.5, id="a cache read is 0.1x input"
         ),
         pytest.param(
+            cost_usd("sarvam-105b", 0, 0, cache_read_tokens=10**6),
+            0.12,
+            id="a provider's own cache-read price wins over the ratio",
+        ),
+        pytest.param(
             cost_usd("claude-does-not-exist", 10, 10), 0.0, id="an unknown model is free, not fatal"
         ),
         pytest.param(

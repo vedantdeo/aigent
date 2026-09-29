@@ -21,6 +21,7 @@ class Price:
 
     input: float
     output: float
+    cached_input: float | None = None  # a provider's own cache-read price, where it sets one
 
     @property
     def cache_write(self) -> float:
@@ -28,27 +29,24 @@ class Price:
 
     @property
     def cache_read(self) -> float:
-        return self.input * 0.10
+        return self.input * 0.10 if self.cached_input is None else self.cached_input
 
 
-# A local model is priced by what an hour of this machine costs, divided by the tokens an hour
-# buys: about $0.06/hour (~25 W of electricity, plus a 16 GB M4 amortised over three years) over
-# the throughput measured in the underhood quantization bench — 490 prefill and 50 decode tokens a
-# second for a 4-bit 3B, scaled by parameter count for the others. Output costs ~10x input because
-# decode is ~10x slower than prefill, which is the same asymmetry a hosted price carries.
-# Estimates, not measurements, for these models; free is not a price, and $0.00 would make
-# every guard read a local run as costless.
+# A local model costs the electricity an hour of decoding draws (~25 W at ₹8/kWh, $0.0021/hour)
+# over the tokens that hour buys; the machine is owned either way. Estimates, and never $0.00.
 PRICES: dict[str, Price] = {
     "claude-opus-5": Price(input=5.0, output=25.0),
     "claude-sonnet-5": Price(input=2.0, output=10.0),
     "claude-haiku-4-5": Price(input=1.0, output=5.0),
     "claude-fable-5-1": Price(input=10.0, output=50.0),
-    "mlx-community/Qwen3-1.7B-4bit": Price(input=0.02, output=0.19),
-    "mlx-community/Qwen3-4B-Instruct-2507-4bit": Price(input=0.04, output=0.42),
-    "mlx-community/Qwen3-4B-Instruct-2507-6bit": Price(input=0.04, output=0.59),
-    "mlx-community/Qwen3-4B-Instruct-2507-8bit": Price(input=0.04, output=0.77),
-    "mlx-community/Qwen3-4B-Instruct-2507-bf16": Price(input=0.04, output=1.44),
-    "mlx-community/Qwen3-8B-4bit": Price(input=0.08, output=0.71),
+    "mlx-community/Qwen3-1.7B-4bit": Price(input=0.0007, output=0.0067),
+    "mlx-community/Qwen3-4B-Instruct-2507-4bit": Price(input=0.0014, output=0.015),
+    "mlx-community/Qwen3-4B-Instruct-2507-6bit": Price(input=0.0014, output=0.021),
+    "mlx-community/Qwen3-4B-Instruct-2507-8bit": Price(input=0.0014, output=0.027),
+    "mlx-community/Qwen3-4B-Instruct-2507-bf16": Price(input=0.0014, output=0.050),
+    "mlx-community/Qwen3-8B-4bit": Price(input=0.0028, output=0.025),
+    # Sarvam lists ₹29.28 / ₹10.98 / ₹73.20 per million, converted at ₹95.5 and rounded up.
+    "sarvam-105b": Price(input=0.31, output=0.77, cached_input=0.12),
 }
 
 # Billed per search, on top of the tokens its results add.

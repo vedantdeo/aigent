@@ -14,6 +14,7 @@ actually counted.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -42,7 +43,7 @@ if TYPE_CHECKING:
 # a record, not because the wire constrains one.
 SUPPORTS = frozenset({"schema"})
 
-# Local servers want no credential; a real OpenAI endpoint reads OPENAI_API_KEY from the env.
+# Local servers want no credential; a hosted endpoint names the variable holding its key.
 LOCAL_API_KEY = "not-needed"
 
 # The first {...} in a reply, which is where a prompted record lives when the model wrapped it in
@@ -63,6 +64,10 @@ def usage_of(usage: CompletionUsage | None) -> Usage:
     )
 
 
+# The OpenAI finish reasons `llm` acts on, under the names it checks; the rest pass through.
+STOP_REASONS = {"content_filter": "refusal", "length": "max_tokens", "tool_calls": "tool_use"}
+
+
 def reply_of(completion: ChatCompletion) -> Reply:
     """One completion as ours. One choice is asked for, so one is read."""
     choice = completion.choices[0]
@@ -70,7 +75,7 @@ def reply_of(completion: ChatCompletion) -> Reply:
     return Reply(
         text=text,
         usage=usage_of(completion.usage),
-        stop_reason=choice.finish_reason,
+        stop_reason=STOP_REASONS.get(choice.finish_reason, choice.finish_reason),
         model=completion.model,
         blocks=({"type": "text", "text": text},),
         raw=completion,
@@ -149,12 +154,11 @@ class OpenAI:
 
     @property
     def client(self) -> openai.OpenAI:
-        """Built on first use. A local server takes any key, so one is supplied rather than
-        demanded of the environment."""
+        """Built on first use, with the key its client names; a local server takes any key."""
         if self._client is None:
             self._client = openai.OpenAI(
                 base_url=self.settings.base_url,
-                api_key=LOCAL_API_KEY,
+                api_key=self._api_key(),
                 max_retries=0,
                 timeout=self.settings.timeout,
                 http_client=httpx2.Client(
@@ -164,14 +168,26 @@ class OpenAI:
             )
         return self._client
 
+    def _api_key(self) -> str:
+        """The key from the environment variable this client names. Raises if it is unset."""
+        variable = self.settings.api_key_env
+        if variable is None:
+            return LOCAL_API_KEY
+        key = os.environ.get(variable)
+        if not key:
+            raise RuntimeError(f"{self.settings.name} needs {variable} set; add it to .env")
+        return key
+
     @property
     def tokenizer(self) -> PreTrainedTokenizerBase:
         """The served model's own tokenizer, so a count is the number the server will see."""
         if self._tokenizer is None:
             from transformers import AutoTokenizer  # heavy, and only a count needs it
 
+            repo = self.settings.tokenizer or self.settings.model
             self._tokenizer = cast(
-                "PreTrainedTokenizerBase", AutoTokenizer.from_pretrained(self.settings.model)
+                "PreTrainedTokenizerBase",
+                AutoTokenizer.from_pretrained(repo, trust_remote_code=False),
             )
         return self._tokenizer
 
@@ -199,7 +215,7 @@ class OpenAI:
     def _extra_body(self) -> dict[str, object] | None:
         """What the server needs beyond the OpenAI fields: how to template this model, and the
         adapter to apply to it."""
-        body: dict[str, object] = {}
+        body: dict[str, object] = dict(self.settings.extra_body)
         if self.settings.template_kwargs:
             body["chat_template_kwargs"] = dict(self.settings.template_kwargs)
         if self.settings.adapter is not None:
@@ -228,7 +244,7 @@ class OpenAI:
             self.client.chat.completions.create(
                 model=model_of(request, self.settings),
                 messages=self.messages(request),
-                max_completion_tokens=request.max_tokens,
+                max_tokens=request.max_tokens,
                 extra_body=self._extra_body,
             )
         )
@@ -244,7 +260,7 @@ class OpenAI:
         completion = self.client.chat.completions.create(
             model=model_of(request, self.settings),
             messages=self.messages(request, schema),
-            max_completion_tokens=request.max_tokens,
+            max_tokens=request.max_tokens,
             extra_body=self._extra_body,
         )
         reply = reply_of(completion)

@@ -8,7 +8,7 @@ either side is what is under test. A test that fetched a tokenizer would need th
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 from openai.types import CompletionUsage
@@ -18,10 +18,14 @@ from openai.types.completion_usage import PromptTokensDetails
 from pydantic import BaseModel
 
 from aigent.adapters.cfg_local import CLIENT as LOCAL
-from aigent.adapters.openai import OpenAI, record_in, usage_of
-from aigent.errors import Unsupported
+from aigent.adapters.cfg_sarvam import CLIENT as SARVAM
+from aigent.adapters.client import Client
+from aigent.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
+from aigent.errors import StepFailed, Unsupported
 from aigent.llm import Llm, Request
 from aigent.messages import Msg
+
+Finish = Literal["stop", "length", "tool_calls", "content_filter"]
 
 
 class Verdict(BaseModel):
@@ -29,7 +33,9 @@ class Verdict(BaseModel):
     reason: str
 
 
-def _completion(text: str, *, prompt: int = 100, completion: int = 20) -> ChatCompletion:
+def _completion(
+    text: str, *, prompt: int = 100, completion: int = 20, finish: Finish = "stop"
+) -> ChatCompletion:
     return ChatCompletion(
         id="cmpl_fake",
         object="chat.completion",
@@ -38,7 +44,7 @@ def _completion(text: str, *, prompt: int = 100, completion: int = 20) -> ChatCo
         choices=[
             Choice(
                 index=0,
-                finish_reason="stop",
+                finish_reason=finish,
                 message=ChatCompletionMessage(role="assistant", content=text),
             )
         ],
@@ -51,11 +57,12 @@ def _completion(text: str, *, prompt: int = 100, completion: int = 20) -> ChatCo
 class ScriptedCompletions:
     def __init__(self, text: str) -> None:
         self._text = text
+        self.finish: Finish = "stop"
         self.sent: list[dict[str, object]] = []
 
     def create(self, **kwargs: object) -> ChatCompletion:
         self.sent.append(kwargs)
-        return _completion(self._text)
+        return _completion(self._text, finish=self.finish)
 
 
 class ScriptedClient:
@@ -252,6 +259,98 @@ def test_a_client_with_nothing_to_say_about_templating_sends_no_extra_body() -> 
     OpenAI(plain, scripted).send(REQUEST)
 
     assert scripted.completions.sent[0]["extra_body"] is None
+
+
+def test_a_hosted_clients_own_fields_ride_beside_the_servers() -> None:
+    scripted = ScriptedClient("hi")
+    OpenAI(replace(SARVAM, template_kwargs={"enable_thinking": False}), scripted).send(REQUEST)
+
+    assert scripted.completions.sent[0]["extra_body"] == {
+        "reasoning_effort": None,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+
+
+def test_the_output_cap_is_sent_under_the_name_every_server_here_reads() -> None:
+    """Sarvam documents `max_tokens` only; mlx_lm.server reads either name."""
+    scripted = ScriptedClient("hi")
+    OpenAI(LOCAL, scripted).send(REQUEST)
+
+    assert scripted.completions.sent[0]["max_tokens"] == REQUEST.max_tokens
+    assert "max_completion_tokens" not in scripted.completions.sent[0]
+
+
+@pytest.mark.parametrize(
+    ("client", "environment", "key"),
+    [
+        pytest.param(LOCAL, {}, LOCAL_API_KEY, id="a local server takes a placeholder"),
+        pytest.param(SARVAM, {"SARVAM_API_KEY": "sk_real"}, "sk_real", id="a hosted key is read"),
+    ],
+)
+def test_the_key_comes_from_the_variable_the_client_names(
+    monkeypatch: pytest.MonkeyPatch, client: Client, environment: dict[str, str], key: str
+) -> None:
+    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    assert OpenAI(client).client.api_key == key
+
+
+def test_a_hosted_client_without_its_key_is_refused_before_anything_is_sent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="SARVAM_API_KEY"):
+        _ = OpenAI(SARVAM).client
+
+
+@pytest.mark.parametrize(
+    ("client", "repo"),
+    [
+        pytest.param(LOCAL, LOCAL.model, id="a local model is its own tokenizer's repo"),
+        pytest.param(SARVAM, "sarvamai/sarvam-105b", id="a hosted id names the repo apart"),
+    ],
+)
+def test_counting_loads_the_tokenizer_the_client_names_without_remote_code(
+    monkeypatch: pytest.MonkeyPatch, client: Client, repo: str
+) -> None:
+    import transformers
+
+    loaded: list[tuple[str, dict[str, object]]] = []
+
+    def load(name: str, **kwargs: object) -> StubTokenizer:
+        loaded.append((name, kwargs))
+        return StubTokenizer()
+
+    monkeypatch.setattr(transformers.AutoTokenizer, "from_pretrained", load)
+    OpenAI(client).count(REQUEST)
+
+    assert loaded == [(repo, {"trust_remote_code": False})]
+
+
+@pytest.mark.parametrize(
+    ("finish", "stop"),
+    [
+        pytest.param("length", "max_tokens", id="a cap that cut the reply off"),
+        pytest.param("content_filter", "refusal", id="a filtered reply"),
+        pytest.param("tool_calls", "tool_use", id="a turn that asked for tools"),
+        pytest.param("stop", "stop", id="a finished reply passes through"),
+    ],
+)
+def test_a_finish_reason_arrives_under_the_name_llm_checks(finish: Finish, stop: str) -> None:
+    assert reply_of(_completion("", finish=finish)).stop_reason == stop
+
+
+def test_a_reply_cut_off_by_its_cap_fails_rather_than_reading_as_an_empty_answer() -> None:
+    """Sarvam's first call reasoned through its whole cap and wrote nothing; it printed as ''."""
+    scripted = ScriptedClient("")
+    scripted.completions.finish = "length"
+    llm = Llm("local", sdk=cast(object, scripted))
+
+    with pytest.raises(StepFailed, match="max_tokens"):
+        llm.text(REQUEST)
+
+    assert llm.spent_usd > 0, "the truncated reply is still billed"
 
 
 def test_cached_prompt_tokens_are_counted_as_read_not_as_fresh_input() -> None:

@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from aigent.adapters.anthropic import Anthropic
 from aigent.adapters.cfg_anthropic import CLIENT as ANTHROPIC
 from aigent.adapters.cfg_local import CLIENTS as LOCAL_CLIENTS
+from aigent.adapters.cfg_sarvam import CLIENT as SARVAM
 from aigent.adapters.client import Client
 from aigent.adapters.openai import OpenAI
 from aigent.messages import Msg, Parsed, Reply
@@ -81,7 +82,7 @@ WIRES: dict[str, Callable[[Client, object | None], Adapter]] = {
 
 # Client name → its settings, from the `cfg_<name>` module beside this one. Several clients may
 # share a wire; each names exactly one, so the client's name is enough to pick the adapter.
-CLIENTS: dict[str, Client] = {"anthropic": ANTHROPIC, **LOCAL_CLIENTS}
+CLIENTS: dict[str, Client] = {"anthropic": ANTHROPIC, **LOCAL_CLIENTS, "sarvam": SARVAM}
 
 
 def spec(client: str) -> Client:
@@ -91,6 +92,11 @@ def spec(client: str) -> Client:
     except KeyError:
         known = ", ".join(sorted(CLIENTS))
         raise ValueError(f"no client named {client!r}; there is {known}") from None
+
+
+def judge_of(client: str) -> str:
+    """The client that grades the named client's answers: the one its settings name, else itself."""
+    return spec(client).judge_client or client
 
 
 def build(client: str, sdk: object | None = None) -> Adapter:

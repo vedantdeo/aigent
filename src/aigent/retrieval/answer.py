@@ -24,7 +24,7 @@ from typing import cast
 
 from pydantic import BaseModel, Field, JsonValue
 
-from aigent.adapters import CLIENTS, spec
+from aigent.adapters import CLIENTS, judge_of, spec
 from aigent.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, TOP_K, max_tokens
 from aigent.evals.dataset import Case, digest, load_jsonl
 from aigent.evals.grade import Grader, Outcome, flag, hit_at_k
@@ -233,7 +233,7 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--judge-client",
         choices=sorted(CLIENTS),
-        help="who grades the answers (default: the client that answers)",
+        help="who grades the answers (default: the one the answering client names, else itself)",
     )
     return parser.parse_args(list(argv))
 
@@ -254,10 +254,9 @@ def main(argv: list[str] | None = None) -> None:
     queries = {case.id: embedder.embed_query(str(case.input["question"])) for case in cases}
 
     # One `Llm` per client, so the tasks share a connection and the judge shares it or has its own.
+    judge_client = args.judge_client or judge_of(args.client)
     answering = Llm.for_eval(args.client)
-    judging = (
-        answering if args.judge_client in (None, args.client) else Llm.for_eval(args.judge_client)
-    )
+    judging = answering if judge_client == args.client else Llm.for_eval(judge_client)
     answerer, grader = spec(answering.client), spec(judging.client)
     answer_cap, judge_cap = max_tokens("ANSWER", answerer), max_tokens("JUDGE", grader)
 

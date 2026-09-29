@@ -1303,3 +1303,39 @@
 - 09-28: **pt-015 on Opus recorded as a known limitation, not fixed**: the last-answer turn is
   priced with web search still on offer, so at Opus prices no last answer fits under
   `MAX_USD_PER_TASK`. Fixing it would change the final run's conditions; `docs/v0.2-agent.md` says so.
+- 09-29: **A `sarvam` client**, Sarvam AI's hosted `sarvam-105b` over the OpenAI wire, to measure an
+  Indian model on the Indian reports in Project 1's evals. Not yet called. The wire gained what a
+  hosted OpenAI-compatible endpoint needs: a key read from the variable a client names
+  (`SARVAM_API_KEY`), a tokenizer repo apart from the served id (Sarvam's loads without its remote
+  code, so counting stays free and exact), provider fields per client (`reasoning_effort`), and
+  the cap sent as `max_tokens`, the only name Sarvam documents and one `mlx_lm.server` also reads.
+  Priced from Sarvam's ₹29.28 / ₹10.98 cached / ₹73.20 per million at ₹95.5 to the dollar ($0.31 /
+  $0.12 / $0.77); `Price` gained `cached_input`, since Sarvam's cache read is 0.375x input, not 0.1x.
+  Third-party trackers listed $0.04 / $0.17, about 8x too low. The judge default is the deprecated
+  `sarvam-30b`, unpriced upstream and billed at the 105B's rate; runs should pass
+  `--judge-client anthropic`. **Not in the agent eval**: the OpenAI wire still runs no tools.
+- 09-29: **First Sarvam call: an empty answer for $0.00159.** One question through `Llm("sarvam")`
+  with `reasoning_effort: low` spent the whole 2048-token cap reasoning and wrote no answer.
+  Sarvam's docs say an explicit null turns reasoning off (omitting it means `medium`), so the client
+  now sends `reasoning_effort: null`.
+- 09-29: **A truncated reply on the OpenAI wire read as an answer.** `reply_of` passed the
+  server's `finish_reason` through, and `llm` checks Anthropic's names, so `length` never tripped
+  `StepFailed` and Sarvam's empty reply printed as ''. Local models had the same gap. The wire now
+  maps `length`, `content_filter` and `tool_calls` to `max_tokens`, `refusal` and `tool_use`.
+- 09-29: **Second Sarvam call, reasoning off: a correct one-sentence answer for $0.00003**, against
+  $0.00159 for the empty one. `sarvam-105b` works through `llm` end to end.
+- 09-29: **Local models re-priced at their electricity alone, about 29x lower.** They had been
+  priced at $0.06 an hour, nearly all of it the M4 amortised over three years, which put a 4-bit
+  4B's output at $0.42 per million, dearer than Sarvam's hosted 105B at $0.77 for a bf16 4B. The
+  machine is owned whether or not a model runs on it, so the cost a local call adds is its power:
+  ~25 W at ₹8/kWh, $0.0021 an hour, over the same estimated throughputs (490 prefill and 50 decode
+  tokens a second for a 4-bit 3B, scaled by parameters and by bits for decode). A 4-bit 4B is now
+  $0.0014 / $0.015. Still estimates, and still never $0.00, so every guard keeps working. Earlier
+  entries' local costs were at the old prices.
+- 09-29: **`sarvam-30b` dropped; Sonnet 5 grades Sarvam's answers by default.** 30B is deprecated
+  upstream and was only there to be a judge that is not the model. A client now names its judge's
+  client (`judge_client`, read by `adapters.judge_of`), and `sarvam` names `anthropic`. `Llm`
+  stays one client and knows nothing of judging: code that grades builds its own `Llm` on the
+  judge's client, whose cfg supplies the model, the caps and the adapter. So Sarvam's answers go
+  out over the OpenAI wire and Sonnet's verdicts over the Anthropic wire. The small model is the
+  105B too.

@@ -43,6 +43,14 @@ class Client:
     template_kwargs: Mapping[str, object] = field(default_factory=dict)
     # A LoRA adapter the server applies to `model` for every request from this client.
     adapter: str | None = None
+    # The client `judge_model` is served by, where it is not this one.
+    judge_client: str | None = None
+    # The environment variable holding a hosted endpoint's key; None for a server wanting none.
+    api_key_env: str | None = None
+    # The Hugging Face repo whose tokenizer counts for `model`, where the served id is not one.
+    tokenizer: str | None = None
+    # Provider-specific request fields sent with every call, such as `reasoning_effort`.
+    extra_body: Mapping[str, object] = field(default_factory=dict)
 
 
 def model_of(request: Request, settings: Client) -> str:
