@@ -49,6 +49,8 @@ class Client:
     api_key_env: str | None = None
     # The Hugging Face repo whose tokenizer counts for `model`, where the served id is not one.
     tokenizer: str | None = None
+    # Whether the server enforces a record's JSON Schema (`response_format`), not just prompts it.
+    constrains_schema: bool = False
     # Provider-specific request fields sent with every call, such as `reasoning_effort`.
     extra_body: Mapping[str, object] = field(default_factory=dict)
 

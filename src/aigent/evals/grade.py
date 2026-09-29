@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from aigent.config import UNPARSED_PREVIEW_CHARS
 from aigent.evals.dataset import Case
 from aigent.messages import Usage
 
@@ -48,6 +49,11 @@ class Score:
 
 
 Grader = Callable[[Case, Outcome], Score]
+
+
+def unparsed(stop_reason: str | None, text: str) -> str:
+    """The error for a reply no record could be read from, carrying the reply's opening."""
+    return f"no parsed output; stop_reason={stop_reason}; reply: {text[:UNPARSED_PREVIEW_CHARS]!r}"
 
 
 def _comparable(value: JsonValue) -> str:

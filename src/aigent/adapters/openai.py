@@ -22,8 +22,10 @@ from typing import TYPE_CHECKING, cast, get_args, get_origin
 
 import httpx2
 import openai
+from openai import Omit, omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+from openai.types.shared_params import ResponseFormatJSONSchema
 from pydantic import BaseModel, ValidationError
 
 from aigent.adapters.client import Client, model_of
@@ -222,6 +224,15 @@ class OpenAI:
             body["adapters"] = self.settings.adapter
         return body or None
 
+    def _response_format(self, schema: type[BaseModel]) -> ResponseFormatJSONSchema | Omit:
+        """The schema for the server to enforce, or nothing where it only follows the prompt."""
+        if not self.settings.constrains_schema:
+            return omit
+        return {
+            "type": "json_schema",
+            "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()},
+        }
+
     def count(self, request: Request, schema: type[BaseModel] | None = None) -> int:
         """The input tokens this request would send, templated as the server will template them."""
         # return_dict=False or this hands back a BatchEncoding, whose length is its number of
@@ -252,7 +263,8 @@ class OpenAI:
     def parse[Record: BaseModel](
         self, request: Request, schema: type[Record], cache_body: dict[str, object] | None = None
     ) -> Parsed[Record]:
-        """One request for a record, prompted rather than constrained, and read from the text.
+        """One request for a record, prompted, and constrained too where the client's server
+        enforces a schema; read from the text either way.
 
         `cache_body` is ignored: this wire has no prompt caching, and `llm` has already refused any
         request that asked for it.
@@ -261,6 +273,7 @@ class OpenAI:
             model=model_of(request, self.settings),
             messages=self.messages(request, schema),
             max_tokens=request.max_tokens,
+            response_format=self._response_format(schema),
             extra_body=self._extra_body,
         )
         reply = reply_of(completion)

@@ -11,6 +11,7 @@ from dataclasses import replace
 from typing import Literal, cast
 
 import pytest
+from openai import omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
@@ -269,6 +270,24 @@ def test_a_hosted_clients_own_fields_ride_beside_the_servers() -> None:
         "reasoning_effort": None,
         "chat_template_kwargs": {"enable_thinking": False},
     }
+
+
+def test_a_client_whose_server_enforces_schemas_is_sent_the_records() -> None:
+    scripted = ScriptedClient('{"passed": true, "reason": "fine"}')
+    OpenAI(SARVAM, scripted).parse(REQUEST, Verdict)
+
+    assert scripted.completions.sent[0]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "Verdict", "schema": Verdict.model_json_schema()},
+    }
+
+
+def test_a_server_that_only_follows_the_prompt_is_sent_no_schema_to_enforce() -> None:
+    """mlx_lm.server takes no `response_format`; a local record stays prompted."""
+    scripted = ScriptedClient('{"passed": true, "reason": "fine"}')
+    OpenAI(LOCAL, scripted).parse(REQUEST, Verdict)
+
+    assert scripted.completions.sent[0]["response_format"] is omit
 
 
 def test_the_output_cap_is_sent_under_the_name_every_server_here_reads() -> None:

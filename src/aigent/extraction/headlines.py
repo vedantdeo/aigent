@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from aigent.adapters import CLIENTS, spec
 from aigent.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, max_tokens
 from aigent.evals.dataset import Case, digest, load_jsonl
-from aigent.evals.grade import Outcome, field_match, pydantic_valid
+from aigent.evals.grade import Outcome, field_match, pydantic_valid, unparsed
 from aigent.evals.report import write_report
 from aigent.evals.runner import Task, run_eval
 from aigent.llm import Llm, Request
@@ -237,7 +237,7 @@ def extraction_task(
             return Outcome(
                 usage=response.usage,
                 model=model,
-                error=f"no parsed output; stop_reason={response.stop_reason}",
+                error=unparsed(response.stop_reason, response.text),
             )
         # The mention travels too, so `pydantic_valid` sees the model's own shape.
         output = record.model_dump()

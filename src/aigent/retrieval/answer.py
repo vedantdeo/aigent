@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field, JsonValue
 from aigent.adapters import CLIENTS, judge_of, spec
 from aigent.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, TOP_K, max_tokens
 from aigent.evals.dataset import Case, digest, load_jsonl
-from aigent.evals.grade import Grader, Outcome, flag, hit_at_k
+from aigent.evals.grade import Grader, Outcome, flag, hit_at_k, unparsed
 from aigent.evals.judge import JUDGE_SYSTEM, LlmJudge, Verdict
 from aigent.evals.report import write_report
 from aigent.evals.runner import Task, run_eval
@@ -148,7 +148,7 @@ def answer_task(
             return Outcome(
                 usage=response.usage,
                 model=model,
-                error=f"no parsed output; stop_reason={response.stop_reason}",
+                error=unparsed(response.stop_reason, response.text),
             )
         return Outcome(
             output={

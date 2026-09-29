@@ -19,6 +19,7 @@ CLIENT = Client(
     api_key_env="SARVAM_API_KEY",
     tokenizer="sarvamai/sarvam-105b",
     max_tokens=REASONED,
+    constrains_schema=True,
     # An explicit null turns reasoning off; omitting it means "medium", and "low" filled 2048.
     extra_body={"reasoning_effort": None},
 )

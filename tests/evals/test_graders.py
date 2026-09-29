@@ -12,7 +12,14 @@ import pytest
 from pydantic import BaseModel, JsonValue
 
 from aigent.adapters.anthropic import usage_of
-from aigent.config import CLIENT, JUDGE_MODEL, MAX_TOKENS_JUDGE, MODEL, THINKING_EVAL_PARAM
+from aigent.config import (
+    CLIENT,
+    JUDGE_MODEL,
+    MAX_TOKENS_JUDGE,
+    MODEL,
+    THINKING_EVAL_PARAM,
+    UNPARSED_PREVIEW_CHARS,
+)
 from aigent.evals.dataset import Case
 from aigent.evals.grade import (
     Grader,
@@ -29,6 +36,7 @@ from aigent.evals.grade import (
     resolvable,
     right_tools,
     tool_order,
+    unparsed,
 )
 from aigent.evals.judge import LlmJudge, Verdict
 
@@ -479,3 +487,15 @@ def test_the_judge_grades_with_thinking_off(make_judge: MakeJudge) -> None:
     judge(_case(), _out(answer="whatever"))
 
     assert log.thinking == [THINKING_EVAL_PARAM]
+
+
+@pytest.mark.parametrize(
+    ("text", "kept"),
+    [
+        pytest.param("Sure! Here it is", "'Sure! Here it is'", id="a short reply is kept whole"),
+        pytest.param("x" * 500, repr("x" * UNPARSED_PREVIEW_CHARS), id="a long one is cut short"),
+    ],
+)
+def test_an_unparsed_reply_keeps_its_opening_in_the_error(text: str, kept: str) -> None:
+    error = unparsed("stop", text)
+    assert error == f"no parsed output; stop_reason=stop; reply: {kept}", error

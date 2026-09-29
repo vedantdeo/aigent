@@ -158,6 +158,9 @@ HEADING_MIN_CAPITAL_RATIO = 0.6
 # How many chunks a retriever returns, and therefore how many an answer can cite.
 TOP_K = 5
 
+# How much of an unparseable reply an eval's error row keeps, so the report shows what came back.
+UNPARSED_PREVIEW_CHARS = 200
+
 # BM25's two shape parameters, at the values the literature settled on. `K1` is where term
 # frequency saturates; `B` is how hard a long chunk is penalised (0 not at all, 1 fully).
 BM25_K1 = 1.5

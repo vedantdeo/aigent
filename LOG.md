@@ -1339,3 +1339,41 @@
   judge's client, whose cfg supplies the model, the caps and the adapter. So Sarvam's answers go
   out over the OpenAI wire and Sonnet's verdicts over the Anthropic wire. The small model is the
   105B too.
+- 09-29: **Sarvam's first eval sample: 0/10, $0.01410** (`retrieval-20260929-0807.md`), 5 cases,
+  Sonnet 5 judging on the `anthropic` client, against a $0.09 worst case. **All five RAG rows
+  errored**: `no parsed output`, `stop_reason=stop`, so Sarvam wrote something no `Answer` could be
+  read from, and the row kept no trace of what. The five closed-book rows declined, which is not a
+  setup fault: Opus declined 44 of 54 closed-book and Qwen3-4B all 54. An unparseable reply's error
+  now carries its first 200 characters (`evals.grade.unparsed`), in both evals that parse a record.
+- 09-29: **The sample again, with the reply kept: 0/10, $0.01316** (`retrieval-20260929-0810.md`).
+  **Sarvam answers right and ignores the JSON instruction**: the five RAG replies state the fact
+  and cite the right chunks, each in a format of its own — `Cited: ITC-FY25#1447` after a prose
+  answer, `<answer>…</answer><cited…`, and `<json id="0">` wrapping bare `"answered": true`
+  lines — echoing the tags the passages arrive in. Sarvam's API enforces a JSON Schema through
+  `response_format`, so a client now says whether its server does (`constrains_schema`), and the
+  OpenAI wire sends the record's schema to one that does. `sarvam` does; `mlx_lm.server` takes no
+  `response_format`, so local records stay prompted and their measured results stand.
+- 09-29: **The sample with the schema enforced: RAG 4/5 correct, closed-book 0/5, $0.02342**
+  (`retrieval-20260929-0815.md`). Every reply parsed. Both RAG misses sit on retrieval, not the
+  wire: rq-001 declined with none of its one relevant chunk in the top 5 (the previous run had
+  answered it from #1447, a chunk the label does not mark), and rq-054 answered right while its
+  relevant chunk was outside the top 5, so `cites_relevant` fails by construction. Setup done;
+  the three samples cost $0.05068.
+- 09-29: **Project 1's 54 questions answered by `sarvam-105b`, judged by `claude-sonnet-5`: RAG
+  38/54 correct, $0.26110** of a $0.94 worst case (`retrieval-20260929-0818.md`), no errors. Most
+  of the spend is Sonnet's 108 verdicts; Sarvam's own answers are cents. Beside the earlier runs on
+  the same questions, passages and rubric:
+
+  | | Opus 5 (09-19) | Qwen3-4B 4-bit | Sarvam 105B |
+  |---|---|---|---|
+  | RAG `correct` | 42/54 | 37/54 | **38/54** |
+  | RAG `answered` | 43/54 | 40/54 | 39/54 |
+  | RAG `cites_relevant` | 37/54 | 36/54 | 34/54 |
+  | precision when it answers | 42/43 | 37/40 | **38/39** |
+  | closed-book `answered` / `correct` | 10 / 5 | 0 / 0 | 5 / 1 |
+
+  **An Indian 105B on Indian reports lands with the local 4B, not with Opus**: one more right
+  answer than the 4B, four fewer than Opus, and the most careful of the three — 38 of 39 answers
+  right, declining 15. Closed-book it knows less of these reports than Opus does: 5 answered, 1
+  right. One run each: Sarvam against the 4B is one row and inside the noise; Opus's four-row lead
+  is the only gap here worth reading as real.
