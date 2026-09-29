@@ -23,10 +23,9 @@ from aigent.adapters.client import Client
 
 BASE_URL = "http://127.0.0.1:8080/v1"
 
-# Where underhood's toy fine-tune writes its adapter; the two repos sit side by side.
-TOY_ADAPTER = (
-    Path(__file__).resolve().parents[4] / "underhood" / "data" / "toy-headlines" / "adapter"
-)
+# Where underhood's toy fine-tune writes its adapters, one per projection set; the repos sit
+# side by side.
+TOY_DIR = Path(__file__).resolve().parents[4] / "underhood" / "data" / "toy-headlines"
 
 # A 4B judging its own answers is not a second opinion, so a bigger model grades. It is a Qwen3
 # rather than the Qwen2.5-7B this used to be: a verdict is structured output, and that model lost
@@ -76,9 +75,15 @@ QWEN3_4B_BF16 = served("local-4b-bf16", "mlx-community/Qwen3-4B-Instruct-2507-bf
 # the others, and the 4B grades it back — nothing here marks its own paper.
 QWEN3_8B_4BIT = served("local-8b-4bit", "mlx-community/Qwen3-8B-4bit", judge=QWEN3_4B_4BIT.model)
 
-# The toy fine-tune's base, and the same model with underhood's adapter on it.
+# The toy fine-tune's base, and the same model with each of underhood's adapters on it: q and v
+# only, and all seven projections.
 QWEN3_1_7B_4BIT = served("local-1.7b", "mlx-community/Qwen3-1.7B-4bit")
-QWEN3_1_7B_TOY = replace(QWEN3_1_7B_4BIT, name="local-1.7b-toy", adapter=str(TOY_ADAPTER))
+QWEN3_1_7B_TOY = replace(
+    QWEN3_1_7B_4BIT, name="local-1.7b-toy", adapter=str(TOY_DIR / "adapter-qv")
+)
+QWEN3_1_7B_TOY_ALL = replace(
+    QWEN3_1_7B_4BIT, name="local-1.7b-toy-all", adapter=str(TOY_DIR / "adapter-all")
+)
 
 CLIENT = QWEN3_4B_4BIT
 
@@ -88,6 +93,7 @@ CLIENTS = {
     for client in (
         QWEN3_1_7B_4BIT,
         QWEN3_1_7B_TOY,
+        QWEN3_1_7B_TOY_ALL,
         QWEN3_4B_4BIT,
         QWEN3_4B_6BIT,
         QWEN3_4B_8BIT,

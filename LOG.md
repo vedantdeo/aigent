@@ -1400,3 +1400,27 @@
   are a direction, not a measurement. Training ran 34 minutes at 12.7 GB peak, against 10.2 GB for
   the old adapter, because backpropagation now reaches all 28 blocks; the old adapter and its log
   are kept in `underhood/data/toy-headlines/previous-0928/`.
+- 09-29: **All seven projections in all 28 blocks: 40/50 zero-shot and 34/50 few-shot, the
+  adapter least thrown by the second prompt.** $0.00, all local (`headlines-20260929-1300.md`,
+  client `local-1.7b-toy-all`). Same rank, scale, dropout 0.05, 180 rows, 200 steps and seed as
+  the q-and-v adapter above; 8.7M trainable parameters. It changes one thing against each earlier
+  adapter, so the three together separate what the first two changed at once:
+
+  | Qwen3-1.7B 4-bit | trainable | zero-shot | few-shot | `change_pct` | `quarter` | `metric` |
+  |---|---|---|---|---|---|---|
+  | 7 proj., last 16, no dropout (09-28) | 5.0M | 41/50 | 27/50 | 48/50 | 49/50 | 44/50 |
+  | q, v, all 28, dropout | 1.6M | 37/50 | 25/50 | 47/50 | 49/50 | 43/50 |
+  | **7 proj., all 28, dropout** | 8.7M | **40/50** | **34/50** | 49/50 | 48/50 | 42/50 |
+
+  **The MLP projections bought back three of the four records** q and v had lost (37 → 40);
+  adding all 28 blocks and dropout to the 09-28 adapter moved zero-shot by one, which is noise.
+  **The few-shot prompt is where the settings showed:** the adapters lose 14, 12 and 6 records to
+  it, and the one that loses least is the only one with both the MLP projections and dropout.
+  Zero-shot, the prompt they were trained on, barely separates them. Validation loss did not
+  either: 0.010 at step 50, 0.002 at 150 and 0.000 at 200, as templated as the training rows.
+  One training run each. The first attempt ran out of GPU memory on its first backward pass;
+  gradient checkpointing (`TOY_GRAD_CHECKPOINT`, now on for every toy run) recomputes activations
+  instead of keeping them, and brought the peak to 5.3 GB against 12.7 GB for q and v without it,
+  at 0.073 steps a second, about 45 minutes. `underhood-toy-lora --targets qv|all` now picks the
+  set, each writing `adapter-<set>/`; the q-and-v adapter moved to `adapter-qv/`. The write-up's
+  toy fine-tune section (`docs/v0.2-agent.md`) carries the three rows.

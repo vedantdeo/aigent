@@ -236,6 +236,30 @@ uv run python -m aigent.agent --cache                       # dry run: counts th
 uv run python -m aigent.agent "your question" --cache --yes # spends, capped at $1.00
 ```
 
+### Project 2: graded on how it got there
+
+`agent_tasks.py` runs the agent over 25 hand-written multi-step tasks and grades each run four
+ways: the right tools, in a sane order, a finished answer (all three free, read off the trajectory),
+and a correct one by an LLM judge that is never the agent's own model. A task passes when all four
+do.
+
+| Build | Agent | Passed | Cost a task | Input read from cache |
+|---|---|---|---|---|
+| **LangGraph, final** | **Opus 5** | **19/25** | **$0.116** | **55%** |
+| LangGraph | Sonnet 5 | 23/25 | $0.038 | 58% |
+| Google ADK | Sonnet 5 | 20/25 | $0.037 | 56% |
+| SDK tool runner | Sonnet 5 | 16/25 | $0.039 | 54% |
+
+Each row is one run, and one build scored 15 then 23 on consecutive runs, so read them as a range.
+The write-up, with what failed and why, is `docs/v0.2-agent.md`; the framework memo is
+`docs/agent-frameworks.md`.
+
+```bash
+uv run --group graph python -m aigent.agent_tasks --model claude-sonnet-5    # worst case only
+uv run --group graph python -m aigent.agent_tasks --model claude-sonnet-5 --cache --yes
+uv run --group graph python -m aigent.agent_tasks --model claude-sonnet-5 --agent adk # or sdk
+```
+
 ## Budget guards
 
 Five ceilings in USD, each overridable in `.env`. A tripped guard raises `BudgetExceeded` with the
@@ -336,6 +360,8 @@ caught before the graph goes stale.
 - `src/aigent/retrieval/` chunking, local embeddings, the dense and sparse indexes, the rankers
 - `src/aigent/workflows/` the five workflow patterns, over the same reports
 - `src/aigent/agent.py`   the first agent: search as a tool, on the SDK's tool runner
+- `src/aigent/agent_graph.py` Project 2's agent as a LangGraph graph; `agent_adk.py`, on Google's ADK
+- `src/aigent/agent_tasks.py` Project 2's eval: 25 tasks, four graders, a pass rate and a cost a task
 - `src/aigent/extraction/` Project 1a: headline extraction, graded by the harness
 - `src/aigent/evals/`     the eval harness: dataset, graders, runner, report
 - `evals/`                  eval datasets and the reports they produce
@@ -346,6 +372,8 @@ caught before the graph goes stale.
 - `docs/tool-runner.md`    the SDK tool runner, read from source against our own loop
 - `docs/context-management.md` what goes in the agent's context, what it costs, when to summarize
 - `docs/langgraph.md`      the LangGraph executor read from source, and orchestrator-workers rebuilt in it
+- `docs/agent-frameworks.md` one agent in three frameworks, and which to use when
+- `docs/v0.2-agent.md`     milestone `v0.2-agent`: Project 2's numbers, failures and frameworks
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind
 - `scripts/`                the rule that hook and CI share
 - `.github/workflows/`      CI: the checks above, and the graph rule for anyone who skipped the hook
