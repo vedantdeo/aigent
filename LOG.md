@@ -1424,3 +1424,15 @@
   at 0.073 steps a second, about 45 minutes. `underhood-toy-lora --targets qv|all` now picks the
   set, each writing `adapter-<set>/`; the q-and-v adapter moved to `adapter-qv/`. The write-up's
   toy fine-tune section (`docs/v0.2-agent.md`) carries the three rows.
+- 09-30: **Project 1a's classical baseline: TF-IDF + logistic regression gets `direction` right on
+  38/50 headlines when trained on the toy fine-tune's 180 templates, and 30/50 leave-one-out on
+  the real set, against 26/50 for always saying "up".** $0.00, scikit-learn, seconds
+  (`headlines-20260930-0603.md`, `python -m aigent.extraction.baseline`). The same templates
+  took the LoRA adapter to 49/50 on `direction`; the base Qwen gets 44/50 and Opus 49–50/50.
+  Word 1–2-grams, sublinear TF, C cross-validated over 0.01–1000 on each training set alone. **At
+  sklearn's default C=1 the leave-one-out model answered "up" to all 50** (26/50) and the template
+  one got 32/50: with 49 rows the default regularisation leaves nothing but the prior. That first
+  run was discarded, not reported; choosing C by the test score instead would have been tuning on
+  the test set. The template model's strongest terms are the templates' own verbs (down: "slides",
+  "loss widens", "cuts"; flat: "unchanged at"), which is why it misses real phrasings. The write-up
+  now also calls the toy fine-tune QLoRA, since it is LoRA on a frozen 4-bit base.

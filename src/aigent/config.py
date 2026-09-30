@@ -202,3 +202,12 @@ SYNTHETIC_HEADLINES = 200
 SYNTHETIC_VALID_FRACTION = 0.1
 SYNTHETIC_SEED = 0
 SYNTHETIC_CLIENT = "local-1.7b"
+
+# --- Classical baseline ----------------------------------------------------------------------
+# Project 1a's TF-IDF + logistic regression on `direction`: word n-grams, and the C grid that
+# cross-validation on each training set picks from.
+BASELINE_NGRAMS = (1, 2)
+BASELINE_CS = (0.01, 0.1, 1.0, 10.0, 100.0, 1000.0)
+BASELINE_CV_FOLDS = 5
+BASELINE_MAX_ITER = 1000
+BASELINE_TOP_TERMS = 5
