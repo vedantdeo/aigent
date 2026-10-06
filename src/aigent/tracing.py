@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
+from aigent import guardrails
 from aigent.config import TRACE_ENVIRONMENT, TRACING
 from aigent.messages import Usage
 
@@ -140,7 +141,9 @@ class LangfuseTracer:
     def __init__(self, client: Langfuse | None = None) -> None:
         from langfuse import Langfuse
 
-        self._client = client if client is not None else Langfuse(environment=TRACE_ENVIRONMENT)
+        self._client = (
+            client if client is not None else Langfuse(environment=TRACE_ENVIRONMENT, mask=masked)
+        )
 
     @contextmanager
     def observe(
@@ -177,6 +180,11 @@ class LangfuseTracer:
 
     def flush(self) -> None:
         self._client.flush()
+
+
+def masked(*, data: object, **_: object) -> object:
+    """Langfuse's mask: what any observation sends, with credentials redacted before it leaves."""
+    return guardrails.redact(data)
 
 
 _active: Tracer | None = None

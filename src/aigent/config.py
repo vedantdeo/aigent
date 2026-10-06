@@ -138,6 +138,13 @@ TRACING: str = os.environ.get("AIGENT_TRACING", "auto")  # `off`, or on whenever
 TRACE_ENVIRONMENT: str = os.environ.get("AIGENT_TRACE_ENVIRONMENT", "development")
 
 
+# --- Guardrails ------------------------------------------------------------------------------
+# The longest task the agent takes, and the longest answer it may show, in characters.
+
+MAX_TASK_CHARS = 4000
+MAX_ANSWER_CHARS = 8000
+
+
 # --- Retrieval -------------------------------------------------------------------------------
 # Week 2's knobs. The embedding model runs locally, so none of these spends anything.
 

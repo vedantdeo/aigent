@@ -23,3 +23,7 @@ class Unreadable(RuntimeError):
 
 class TurnsExhausted(RuntimeError):
     """A tool-using conversation hit its turn cap with the model still asking for tools."""
+
+
+class GuardrailTripped(ValueError):
+    """Input a guardrail refused before anything was sent."""

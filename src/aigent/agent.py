@@ -12,7 +12,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
-from aigent import tracing
+from aigent import guardrails, tracing
 from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
@@ -36,7 +36,8 @@ SYSTEM = (
     "in square brackets, and say what the reports do not cover. Use calculate for arithmetic. Use "
     "web_search only for what the reports cannot hold, such as events and prices after them. "
     "Name the site and date of every figure you take from the web in the answer itself, beside "
-    "the figure. A conversion at today's rate is a web figure too: name where the rate came from."
+    "the figure. A conversion at today's rate is a web figure too: name where the rate came from. "
+    f"{guardrails.UNTRUSTED_NOTE}"
 )
 
 FINISH = (

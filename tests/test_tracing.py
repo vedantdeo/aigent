@@ -73,6 +73,7 @@ def exported(
         secret_key="sk-lf-test",
         base_url="http://127.0.0.1:9",
         span_exporter=exporter,
+        mask=tracing.masked,  # as `LangfuseTracer` builds it
     )
     yield tracing.LangfuseTracer(client), exporter
     client.shutdown()
@@ -126,6 +127,21 @@ def test_the_real_sdk_marks_an_observation_that_raised_and_lets_it_raise(
     attributes = _attributes(span)
     assert attributes["langfuse.observation.level"] == "ERROR", attributes
     assert attributes["langfuse.observation.status_message"] == "RuntimeError: the index is down"
+
+
+def test_a_credential_never_leaves_in_a_trace(
+    exported: tuple[tracing.LangfuseTracer, InMemorySpanExporter],
+) -> None:
+    langfuse, exporter = exported
+    key = "sk-ant-api03-abcdefghijklmnop"
+
+    with langfuse.observe("read_file", "tool", inputs={"path": "notes"}) as seen:
+        seen.finish(f"the key is {key}", metadata={"echo": key})
+    langfuse.flush()
+
+    [span] = exporter.get_finished_spans()
+    sent = json.dumps(_attributes(span), default=str)
+    assert key not in sent and "redacted credential" in sent, sent
 
 
 @pytest.mark.parametrize(

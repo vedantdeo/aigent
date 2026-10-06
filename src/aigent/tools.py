@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import operator
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -140,11 +141,27 @@ READ_FILE_TOOL: ToolParam = {
 ALL_TOOLS: list[ToolParam] = [CALCULATOR_TOOL, TIME_TOOL, READ_FILE_TOOL]
 
 
-def execute_tool(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
-    """Dispatch by name, returning `(content, is_error)`. Never raises.
+# Tools whose output is text someone else wrote; a model only ever sees it fenced.
+UNTRUSTED_TOOLS = frozenset({"read_file"})
+_FENCE_TAG = re.compile(r"<(/?)untrusted", re.IGNORECASE)
 
-    The model can recover from an error message; it cannot recover from a traceback.
-    """
+
+def fence(source: str, content: str) -> str:
+    """`content` inside an `<untrusted>` element no tag in it can close."""
+    escaped = _FENCE_TAG.sub(lambda tag: f"&lt;{tag[1]}untrusted", content)
+    return f'<untrusted source="{source}">\n{escaped}\n</untrusted>'
+
+
+def execute_tool(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
+    """Dispatch by name, returning `(content, is_error)`, with an `UNTRUSTED_TOOLS` result fenced.
+    Never raises: the model can recover from an error message, not from a traceback."""
+    content, is_error = _dispatch(name, tool_input)
+    if name in UNTRUSTED_TOOLS and not is_error:
+        return fence(name, content), is_error
+    return content, is_error
+
+
+def _dispatch(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
     try:
         if name == "calculate":
             expression = tool_input.get("expression")

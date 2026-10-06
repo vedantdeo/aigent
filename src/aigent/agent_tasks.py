@@ -15,16 +15,17 @@ import argparse
 import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date
 from pathlib import Path
 
-from aigent import tracing
+from aigent import guardrails, tracing
 from aigent.adapters import CLIENTS, spec
 from aigent.agent_graph import Traced
 from aigent.config import CLIENT, MAX_USD_PER_EVAL, MAX_USD_PER_TASK, max_tokens
+from aigent.errors import GuardrailTripped
 from aigent.evals.dataset import Case, digest, load_jsonl
-from aigent.evals.grade import Grader, Outcome, flag, right_tools, tool_order
+from aigent.evals.grade import Grader, Outcome, excludes, flag, right_tools, tool_order
 from aigent.evals.judge import LlmJudge
 from aigent.evals.report import write_report
 from aigent.evals.runner import Task, run_eval
@@ -37,6 +38,8 @@ from aigent.workflows.reports import Search
 
 REPO = Path(__file__).resolve().parents[2]
 DATASET = REPO / "evals" / "datasets" / "tasks.jsonl"
+INJECTIONS = REPO / "evals" / "datasets" / "injections.jsonl"
+SETS = {"injections": INJECTIONS, "tasks": DATASET}
 
 RUBRIC = """The reference says what a right answer holds: the figures from the reports, any result \
 computed from them, or that the right answer is to decline.
@@ -109,6 +112,10 @@ def agent_task(
         question = case.input.get("task")
         if not isinstance(question, str):
             return Outcome(error=f"case {case.id} has no task")
+        try:
+            question = guardrails.check_task(question)
+        except GuardrailTripped as refused:
+            return Outcome(error=f"refused before sending: {refused}")
         llm = Llm(client, sdk=sdk, budget=Budget(limit_usd=limit_usd, scope="run"))
         try:
             with tracing.tracer().observe(
@@ -127,6 +134,15 @@ def agent_task(
             # The calls it made before failing were billed, so the row still carries them.
             spent = total([call.usage for call in llm.trace])
             return Outcome(error=f"{type(failed).__name__}: {failed}", usage=spent, model=answering)
+        violations = (
+            []
+            if traced.answer is None
+            else guardrails.check_answer(
+                traced.answer, [found for search in traced.searches for found in search.found]
+            )
+        )
+        if traced.answer is not None:
+            traced = replace(traced, answer=guardrails.shown(traced.answer, violations))
         return Outcome(
             output={
                 "answer": traced.answer,
@@ -135,6 +151,8 @@ def agent_task(
                 "cut_short": traced.stopped,
                 "turns": traced.turns,
                 "sources": list(traced.sources),
+                "guard": list(violations),
+                "guarded": not violations,
             },
             raw=judged_text(traced),
             usage=total([call.usage for call in llm.trace]),
@@ -228,6 +246,21 @@ def graders(
     }
 
 
+def injection_graders() -> dict[str, Grader]:
+    """Free graders only: no forbidden tool, no planted phrase, a clean guard, an answer."""
+    return {
+        "right_tools": right_tools(),
+        "excludes": excludes(),
+        "guarded": flag("guarded"),
+        "finished": flag("finished"),
+    }
+
+
+def _graders(args: argparse.Namespace, sdk: object, judge: str) -> dict[str, Grader]:
+    """The set's graders: the judge only where a set has references to judge against."""
+    return injection_graders() if args.set == "injections" else graders(args.client, sdk, judge)
+
+
 def _parse(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="aigent.agent_tasks", description=__doc__)
     parser.add_argument(
@@ -249,12 +282,16 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         help="which build answers",
     )
     parser.add_argument("--regrade", type=Path, help="grade a saved run's answers, not a new run")
+    parser.add_argument(
+        "--set", default="tasks", choices=sorted(SETS), help="the 25 tasks, or the injection set"
+    )
     return parser.parse_args(list(argv))
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
-    cases = load_jsonl(DATASET)
+    dataset = SETS[args.set]
+    cases = load_jsonl(dataset)
     if args.sample is not None:
         cases = spread(cases, args.sample)
     if args.only:
@@ -265,7 +302,7 @@ def main(argv: list[str] | None = None) -> None:
     settings = spec(args.client)
     model = args.model or settings.model
     judge = args.judge_model or settings.judge_model
-    if judge == model:
+    if judge == model and args.set == "tasks":
         raise SystemExit(f"{model} would grade its own answers; pass a different --judge-model")
     if unpriced := [name for name in (model, judge) if name not in PRICES]:
         # An unknown model estimates as free, so the dry run would print $0.00 for it.
@@ -276,9 +313,10 @@ def main(argv: list[str] | None = None) -> None:
     if args.regrade is not None:
         regrade(args, cases, judge, judge_cap)
         return
-    judged = estimate_eval_usd(judge, len(cases), 2_000, judge_cap)
+    judged = estimate_eval_usd(judge, len(cases), 2_000, judge_cap) if args.set == "tasks" else 0.0
     worst = len(cases) * MAX_USD_PER_TASK + judged
-    print(f"{DATASET.name}: {len(cases)} tasks, {args.agent} agent on {model}, judged by {judge}")
+    grading = f"judged by {judge}" if args.set == "tasks" else "graded free"
+    print(f"{dataset.name}: {len(cases)} tasks, {args.agent} agent on {model}, {grading}")
     print(f"worst case ${worst:.2f}: ${MAX_USD_PER_TASK:.2f} a task at most, ${judged:.2f} judging")
     print(f"run ceiling ${args.limit:.2f}")
     if not args.yes:
@@ -294,9 +332,9 @@ def main(argv: list[str] | None = None) -> None:
     result = run_eval(
         cases,
         {args.agent: recording(task, outcomes)},
-        graders(args.client, shared.sdk, judge),
-        dataset=DATASET.name,
-        digest=digest(DATASET),
+        _graders(args, shared.sdk, judge),
+        dataset=dataset.name,
+        digest=digest(dataset),
         model=model,
         limit_usd=args.limit,
         worst_usd=worst,
@@ -325,9 +363,9 @@ def regrade(args: argparse.Namespace, cases: Sequence[Case], judge: str, judge_c
     result = run_eval(
         cases,
         {args.agent: replayed(saved)},
-        graders(args.client, shared.sdk, judge),
-        dataset=DATASET.name,
-        digest=digest(DATASET),
+        _graders(args, shared.sdk, judge),
+        dataset=SETS[args.set].name,
+        digest=digest(SETS[args.set]),
         model=model,
         limit_usd=args.limit,
         worst_usd=judged,
