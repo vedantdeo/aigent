@@ -20,7 +20,6 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, cast, get_args, get_origin
 
-import httpx2
 import openai
 from openai import Omit, omit
 from openai.types import CompletionUsage
@@ -29,6 +28,7 @@ from openai.types.shared_params import ResponseFormatJSONSchema
 from pydantic import BaseModel, ValidationError
 
 from aigent.adapters.client import Client, model_of
+from aigent.adapters.retry import http_client
 from aigent.errors import Unsupported
 from aigent.messages import Block, Parsed, Reply, Usage
 
@@ -163,9 +163,12 @@ class OpenAI:
                 api_key=self._api_key(),
                 max_retries=0,
                 timeout=self.settings.timeout,
-                http_client=httpx2.Client(
-                    limits=httpx2.Limits(keepalive_expiry=self.settings.keepalive_seconds),
-                    timeout=self.settings.timeout,
+                http_client=http_client(
+                    self.settings.timeout,
+                    self.settings.keepalive_seconds,
+                    self.settings.retries,
+                    self.settings.retry_base_seconds,
+                    self.settings.retry_max_seconds,
                 ),
             )
         return self._client

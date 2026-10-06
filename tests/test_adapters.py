@@ -9,6 +9,7 @@ import openai
 import pytest
 
 from aigent.adapters import CLIENTS, build, judge_of, spec
+from aigent.adapters.retry import RetryingTransport
 from aigent.config import CLIENT
 from aigent.llm import Llm
 
@@ -68,8 +69,10 @@ def test_a_client_hands_its_timeout_and_connection_reuse_to_the_sdk() -> None:
     # The protocol types `client` as `object`, since what a vendor client *is* differs per wire.
     sdk = cast(openai.OpenAI, build("local").client)
     assert sdk.timeout == spec("local").timeout
-    # Typed as the base transport; the pool lives on the concrete one.
-    transport = cast(httpx2.HTTPTransport, sdk._client._transport)  # noqa: SLF001
+    # Typed as the base transport; retries wrap the concrete one, where the pool lives.
+    retrying = cast(RetryingTransport, sdk._client._transport)  # noqa: SLF001
+    assert isinstance(retrying, RetryingTransport) and sdk.max_retries == 0, "ours is the one layer"
+    transport = cast(httpx2.HTTPTransport, retrying._inner)  # noqa: SLF001
     pool = transport._pool  # noqa: SLF001 - no public accessor for the pool
     assert pool._keepalive_expiry == spec("local").keepalive_seconds  # noqa: SLF001
     assert spec("local").timeout > spec("anthropic").timeout, "a local load is slower than an API"

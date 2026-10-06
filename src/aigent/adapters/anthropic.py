@@ -11,7 +11,6 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, cast
 
 import anthropic
-import httpx2
 from anthropic import Omit, omit
 from anthropic.lib.streaming import MessageStream
 from anthropic.lib.tools import BetaFunctionTool, ToolError, beta_tool
@@ -40,6 +39,7 @@ from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
 
 from aigent.adapters.client import Client, model_of
+from aigent.adapters.retry import http_client
 from aigent.errors import Unreadable
 from aigent.messages import Block, Msg, Parsed, Reply, Tool, Usage, is_client_tool
 
@@ -333,15 +333,21 @@ def get_client(settings: Client | None = None) -> AnthropicClient:
     workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     if workspace_id:
         headers["anthropic-workspace-id"] = workspace_id
-    http = httpx2.Client(
-        limits=httpx2.Limits(keepalive_expiry=settings.keepalive_seconds),
-        timeout=settings.timeout,
+    http = http_client(
+        settings.timeout,
+        settings.keepalive_seconds,
+        settings.retries,
+        settings.retry_base_seconds,
+        settings.retry_max_seconds,
     )
     if settings.base_url is not None:
         return anthropic.Anthropic(
             default_headers=headers,
             base_url=settings.base_url,
             timeout=settings.timeout,
+            max_retries=0,
             http_client=http,
         )
-    return anthropic.Anthropic(default_headers=headers, timeout=settings.timeout, http_client=http)
+    return anthropic.Anthropic(
+        default_headers=headers, timeout=settings.timeout, max_retries=0, http_client=http
+    )

@@ -36,6 +36,10 @@ class Client:
     # the path keeps its own state: the socket looks open, the request goes into a black hole and
     # the read blocks. That is what stalled an eval for three hours on 2026-09-24.
     keepalive_seconds: float = 30.0
+    # Further attempts after a refusal or a failed connection, and the backoff between them.
+    retries: int = 3
+    retry_base_seconds: float = 1.0
+    retry_max_seconds: float = 30.0
     max_tokens: Mapping[str, int] = field(default_factory=dict)
     # Arguments for the served model's chat template, sent with every request and used when
     # counting, so both sides template alike. `{"enable_thinking": False}` is why this exists:
