@@ -28,7 +28,7 @@ from aigent.evals.grade import Outcome  # noqa: E402
 from aigent.pricing import estimate_eval_usd  # noqa: E402
 from aigent.tools_config import SANDBOX  # noqa: E402
 
-from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, tool_turn, turns  # noqa: E402
+from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, Recorder, tool_turn, turns  # noqa: E402
 
 CASES = load_jsonl(DATASET)
 PAGE = "https://rates.example/aud-inr"
@@ -166,6 +166,36 @@ def test_every_build_reports_the_same_run_the_same_way(
     assert outcome.output["finished"] is True
     assert outcome.output["sources"] == [PAGE], "a page cited a turn before the answer"
     assert outcome.raw == f"two\n\nWeb sources cited: {PAGE}", "the judge sees it"
+
+
+@pytest.mark.parametrize("agent", ["sdk", "langgraph"])
+def test_both_builds_trace_the_same_tree(
+    make_llm: MakeLlm, search: FakeSearch, traces: Recorder, agent: str
+) -> None:
+    """An agent observation holding each turn's generation, with the tools it asked for between
+    them: Langfuse's shape for an agent loop, whichever framework drove it."""
+    asked = tool_turn(
+        ("s1", "search_reports", {"query": "q", "report": "all"}),
+        ("c1", "calculate", {"expression": "1 + 1"}),
+    )
+    llm, _ = make_llm(turns(asked, "two"))
+    case = Case.model_validate({"id": "pt-x", "input": {"task": "find it, then add"}})
+
+    agent_task(search, sdk=llm.sdk, agent=agent)(case)
+
+    [run] = traces.roots
+    assert (run.name, run.kind, run.inputs, run.output) == (
+        "answer-task",
+        "agent",
+        "find it, then add",
+        "two",
+    )
+    assert [(seen.name, seen.kind) for seen in run.children] == [
+        ("agent", "generation"),
+        ("search_reports", "retriever"),
+        ("calculate", "tool"),
+        ("agent", "generation"),
+    ]
 
 
 @pytest.mark.parametrize(

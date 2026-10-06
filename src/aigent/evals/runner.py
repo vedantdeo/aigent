@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from aigent import tracing
 from aigent.config import MAX_USD_PER_EVAL, MODEL
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Grader, Outcome, Score
@@ -101,11 +102,19 @@ def run_eval(
 
     total = len(cases) * len(variants)
     done = 0
+    session = f"{dataset}-{run.started_at:%Y%m%d-%H%M%S}"
 
     for case in cases:
         for name, task in variants.items():
             done += 1
-            row = _run_one(case, name, task, graders, budget, model)
+            with tracing.tracer().observe(
+                dataset,
+                inputs=case.input,
+                metadata={"case": case.id, "variant": name, "expected": case.expected},
+                tags=(dataset, name, model, *case.tags),
+                session=session,
+            ) as seen:
+                row = _run_one(case, name, task, graders, budget, model, seen)
             run.rows.append(row)
             if progress:
                 print(f"[{done}/{total}] {_describe(row)}")
@@ -116,6 +125,7 @@ def run_eval(
             break
 
     run.spent_usd = budget.spent_usd
+    tracing.tracer().flush()
     if progress:
         print(f"\n{len(run.rows)} rows, ${run.spent_usd:.5f} of a ${limit_usd:.2f} ceiling")
         if run.stopped_early:
@@ -172,26 +182,34 @@ def _run_one(
     graders: Mapping[str, Grader],
     budget: Budget,
     model: str,
+    seen: tracing.Observation,
 ) -> RowResult:
-    """One case, one variant: run it, bill it, grade it. Never raises."""
+    """One case, one variant: run it, bill it, grade it, under the row's trace. Never raises."""
     try:
         outcome = task(case)
     except Exception as exc:  # noqa: BLE001 - a broken task is a row, not the end of the run
-        return RowResult(case.id, variant, scores={}, error=f"{type(exc).__name__}: {exc}")
+        error = f"{type(exc).__name__}: {exc}"
+        seen.finish(error=error)
+        return RowResult(case.id, variant, scores={}, error=error)
 
     cost = _bill(budget, outcome.usage, outcome.model or model)
     if outcome.error is not None:
+        seen.finish(outcome.output, error=outcome.error, metadata={"cost_usd": cost})
         return RowResult(case.id, variant, scores={}, cost_usd=cost, error=outcome.error)
 
     scores: dict[str, Score] = {}
     for grader_name, grader in graders.items():
-        try:
-            score = grader(case, outcome)
-        except Exception as exc:  # noqa: BLE001 - the judge can fail on the network like anything
-            score = Score(False, f"grader raised {type(exc).__name__}: {exc}")
+        with tracing.tracer().observe(grader_name, "evaluator") as graded:
+            try:
+                score = grader(case, outcome)
+            except Exception as exc:  # noqa: BLE001 - the judge can fail on the network like anything
+                score = Score(False, f"grader raised {type(exc).__name__}: {exc}")
+            graded.finish({"passed": score.passed, "detail": score.detail})
         scores[grader_name] = score
+        seen.score(grader_name, score.passed, score.detail)
         cost += _bill(budget, score.usage, score.model or model)
 
+    seen.finish(outcome.output, metadata={"cost_usd": cost})
     return RowResult(case.id, variant, scores=scores, cost_usd=cost)
 
 

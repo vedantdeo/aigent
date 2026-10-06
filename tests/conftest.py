@@ -6,10 +6,12 @@ than one module needs each, and two copies of a fake drift.
 
 from __future__ import annotations
 
+import contextvars
 import threading
 import zlib
-from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from typing import cast
 
 import anthropic
@@ -29,12 +31,14 @@ from anthropic.types.beta import BetaMessage, BetaToolUnionParam
 from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
 from pydantic import BaseModel
 
+from aigent import tracing
 from aigent.adapters import CLIENTS
 from aigent.adapters.cfg_anthropic import CLIENT as ANTHROPIC
 from aigent.adapters.client import Client
 from aigent.config import CLIENT, JUDGE_MODEL, MODEL
 from aigent.evals.judge import LlmJudge, Verdict
 from aigent.llm import Llm
+from aigent.messages import Usage as NeutralUsage
 from aigent.pricing import Budget
 from aigent.retrieval.chunk import Chunk
 from aigent.retrieval.embed import Vectors
@@ -453,3 +457,92 @@ class BagOfWordsEmbedder:
 @pytest.fixture
 def embedder() -> BagOfWordsEmbedder:
     return BagOfWordsEmbedder()
+
+
+@dataclass
+class Observed:
+    """One node a `Recorder` saw opened: what it was given, how it finished, and what it held."""
+
+    name: str
+    kind: tracing.Kind
+    inputs: object = None
+    metadata: dict[str, object] = field(default_factory=dict[str, object])
+    tags: tuple[str, ...] = ()
+    session: str | None = None
+    output: object = None
+    error: str | None = None
+    billed: tuple[str, NeutralUsage, float] | None = None
+    scores: dict[str, tuple[bool, str]] = field(default_factory=dict[str, tuple[bool, str]])
+    children: list[Observed] = field(default_factory=list["Observed"])
+
+    def finish(
+        self,
+        output: object = None,
+        *,
+        error: str | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        self.output, self.error = output, error
+        self.metadata.update(metadata or {})
+
+    def bill(self, model: str, usage: NeutralUsage, usd: float) -> None:
+        self.billed = (model, usage, usd)
+
+    def score(self, name: str, passed: bool, comment: str = "") -> None:
+        self.scores[name] = (passed, comment)
+
+    def walk(self) -> Iterator[Observed]:
+        yield self
+        for child in self.children:
+            yield from child.walk()
+
+
+class Recorder:
+    """A tracer that keeps the tree in memory, nesting through context as Langfuse's does."""
+
+    def __init__(self) -> None:
+        self.roots: list[Observed] = []
+        self._open: contextvars.ContextVar[Observed | None] = contextvars.ContextVar(
+            "open", default=None
+        )
+        self._lock = threading.Lock()
+
+    @contextmanager
+    def observe(
+        self,
+        name: str,
+        kind: tracing.Kind = "span",
+        *,
+        inputs: object = None,
+        metadata: Mapping[str, object] | None = None,
+        tags: Sequence[str] = (),
+        session: str | None = None,
+    ) -> Iterator[tracing.Observation]:
+        node = Observed(name, kind, inputs, dict(metadata or {}), tuple(tags), session)
+        parent = self._open.get()
+        with self._lock:
+            (self.roots if parent is None else parent.children).append(node)
+        token = self._open.set(node)
+        try:
+            yield node
+        except Exception as exc:
+            node.error = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            self._open.reset(token)
+
+    def flush(self) -> None:
+        pass
+
+    def every(self) -> list[Observed]:
+        """Every node, depth first, roots in the order they opened."""
+        return [node for root in self.roots for node in root.walk()]
+
+
+@pytest.fixture(autouse=True)
+def traces() -> Iterator[Recorder]:
+    """Every test traces into memory, so none can reach Langfuse even with keys in `.env`."""
+    recorder = Recorder()
+    tracing.use(recorder)
+    yield recorder
+    tracing.use(None)

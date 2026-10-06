@@ -11,6 +11,8 @@ guess. They move the day a second wire supports them.
 
 from __future__ import annotations
 
+import contextvars
+import itertools
 import math
 import threading
 from collections.abc import Callable, Iterator, Sequence
@@ -21,6 +23,7 @@ from typing import cast
 
 from pydantic import BaseModel
 
+from aigent import tracing
 from aigent.adapters import Streamed, ToolSession, build, spec
 from aigent.adapters.client import model_of
 from aigent.config import (
@@ -200,10 +203,12 @@ class Llm:
         """Send one request as a stream; billed from the final reply once the stream closes."""
         request = self._bound(request)
         self._require(request, "stream")
-        with self._held([request]), self._adapter.streamed(request) as streaming:
-            yield streaming
-            final = streaming.final()
-        self._bill(request, final.usage)
+        with self._traced(request) as seen:
+            with self._held([request]), self._adapter.streamed(request) as streaming:
+                yield streaming
+                final = streaming.final()
+            self._bill(request, final.usage, seen)
+            seen.finish(_shown(final))
 
     def gather_text(self, requests: Sequence[Request]) -> list[str]:
         """`text` for every request concurrently, in request order, once all are admitted."""
@@ -242,9 +247,16 @@ class Llm:
         held = self._admit([first], limit_usd=MAX_USD_PER_TURN, scope="turn")
         try:
             session = self._adapter.tools(first, dispatch, max_turns)
+            replies = iter(session)
+            sending = first
             turns: list[Reply] = []
-            for turn, message in enumerate(session, start=1):
-                self._bill(replace(request, step=f"{request.step}:{turn}"), message.usage)
+            for turn in itertools.count(1):
+                with self._traced(sending) as seen:
+                    message = next(replies, None)
+                    if message is None:
+                        break
+                    self._bill(sending, message.usage, seen)
+                    seen.finish(_shown(message))
                 self._release(held)
                 held = 0.0
                 turns.append(message)
@@ -269,6 +281,7 @@ class Llm:
                     admitted = self._admit_turn(upcoming)
                     if not isinstance(admitted, BudgetExceeded):
                         held = admitted
+                        sending = upcoming
                         continue
                     stop = admitted
                 if finish is None or message.stop_reason != "tool_use":
@@ -315,9 +328,11 @@ class Llm:
     ) -> Reply:
         """Send `upcoming` as a last answer instead, through the runner's session."""
         answer = self._answer_request(upcoming, finish, stop)
-        with self._held([answer], limit_usd=MAX_USD_PER_TURN, scope="turn"):
-            message = session.answer(answer)
-        self._bill(answer, message.usage)
+        with self._traced(answer) as seen:
+            with self._held([answer], limit_usd=MAX_USD_PER_TURN, scope="turn"):
+                message = session.answer(answer)
+            self._bill(answer, message.usage, seen)
+            seen.finish(_shown(message))
         if message.stop_reason == "tool_use":
             raise stop
         return message
@@ -418,11 +433,15 @@ class Llm:
         self, requests: Sequence[Request], send: Callable[[Request], Result]
     ) -> list[Result]:
         with ThreadPoolExecutor(max_workers=MAX_PARALLEL_CALLS) as pool:
-            return list(pool.map(send, requests))
+            # Each call runs in a copy of this context, so its trace nests where the batch was sent.
+            sent = [pool.submit(contextvars.copy_context().run, send, r) for r in requests]
+            return [future.result() for future in sent]
 
     def _create(self, request: Request) -> Reply:
-        reply = self._adapter.send(request)
-        self._bill(request, reply.usage)
+        with self._traced(request) as seen:
+            reply = self._adapter.send(request)
+            self._bill(request, reply.usage, seen)
+            seen.finish(_shown(reply))
         return reply
 
     def _text(self, request: Request) -> str:
@@ -432,11 +451,13 @@ class Llm:
         return reply.text
 
     def _parse[Record: BaseModel](self, request: Request, schema: type[Record]) -> Parsed[Record]:
-        try:
-            parsed = self._adapter.parse(request, schema, _cache_body(request))
-        except Unreadable:
-            parsed = self._unreadable(request, schema)
-        self._bill(request, parsed.usage)
+        with self._traced(request) as seen:
+            try:
+                parsed = self._adapter.parse(request, schema, _cache_body(request))
+            except Unreadable:
+                parsed = self._unreadable(request, schema)
+            self._bill(request, parsed.usage, seen)
+            seen.finish(_shown(parsed), error=None if parsed.parsed else "no record parsed")
         return parsed
 
     def _unreadable[Record: BaseModel](
@@ -464,11 +485,27 @@ class Llm:
             raise StepFailed(f"{request.step}: nothing parsed, stop_reason={parsed.stop_reason}")
         return parsed.parsed
 
-    def _bill(self, request: Request, usage: Usage) -> None:
+    def _bill(
+        self, request: Request, usage: Usage, seen: tracing.Observation | None = None
+    ) -> None:
         model = model_of(request, self._spec)
         with self._lock:
             usd = self.budget.charge(model, usage)
             self.trace.append(Call(request.step, model, usage, usd))
+        if seen is not None:
+            seen.bill(model, usage, usd)
+
+    @contextmanager
+    def _traced(self, request: Request) -> Iterator[tracing.Observation]:
+        """One `generation` around sending `request`, named by its step without the detail."""
+        head, _, detail = request.step.partition(":")
+        name = f"{head}-answer" if detail.endswith(" answer") else head
+        system: list[Msg] = [] if request.system is None else [_system_message(request.system)]
+        metadata = {"step": request.step, "client": self._client, "max_tokens": request.max_tokens}
+        with tracing.tracer().observe(
+            name, "generation", inputs=[*system, *request.messages], metadata=metadata
+        ) as seen:
+            yield seen
 
 
 def _asks_for(request: Request) -> set[str]:
@@ -527,6 +564,16 @@ def _web_searches(request: Request) -> int:
             )
         searches += uses
     return searches
+
+
+def _system_message(system: str | Sequence[Block]) -> Msg:
+    """The system prompt as the first message of a trace's input, where Langfuse shows it."""
+    return cast(Msg, {"role": "system", "content": system})
+
+
+def _shown(reply: Reply) -> dict[str, object]:
+    """A reply as a trace's output: every block, thinking and tool calls included."""
+    return {"role": "assistant", "content": list(reply.blocks), "stop_reason": reply.stop_reason}
 
 
 def describe(trace: Sequence[Call]) -> str:

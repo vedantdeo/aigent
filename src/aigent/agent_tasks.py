@@ -19,6 +19,7 @@ from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
+from aigent import tracing
 from aigent.adapters import CLIENTS, spec
 from aigent.agent_graph import Traced
 from aigent.config import CLIENT, MAX_USD_PER_EVAL, MAX_USD_PER_TASK, max_tokens
@@ -110,7 +111,18 @@ def agent_task(
             return Outcome(error=f"case {case.id} has no task")
         llm = Llm(client, sdk=sdk, budget=Budget(limit_usd=limit_usd, scope="run"))
         try:
-            traced = agent_run(agent)(llm, search, question, model=model)
+            with tracing.tracer().observe(
+                "answer-task", "agent", inputs=question, metadata={"agent": agent}
+            ) as seen:
+                traced = agent_run(agent)(llm, search, question, model=model)
+                seen.finish(
+                    traced.answer,
+                    metadata={
+                        "tools": list(traced.tools),
+                        "turns": traced.turns,
+                        "cut_short": traced.stopped,
+                    },
+                )
         except Exception as failed:
             # The calls it made before failing were billed, so the row still carries them.
             spent = total([call.usage for call in llm.trace])

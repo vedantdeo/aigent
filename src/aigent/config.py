@@ -131,6 +131,13 @@ MAX_GRAPH_STEPS = 10  # LangGraph's own default is 10,007 supersteps
 MAX_FAILURES_SHOWN = 10
 
 
+# --- Tracing ---------------------------------------------------------------------------------
+# Langfuse reads its own keys and host from the environment; these say whether and as what to send.
+
+TRACING: str = os.environ.get("AIGENT_TRACING", "auto")  # `off`, or on whenever both keys are set
+TRACE_ENVIRONMENT: str = os.environ.get("AIGENT_TRACE_ENVIRONMENT", "development")
+
+
 # --- Retrieval -------------------------------------------------------------------------------
 # Week 2's knobs. The embedding model runs locally, so none of these spends anything.
 

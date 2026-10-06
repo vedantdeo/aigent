@@ -12,12 +12,13 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
+from aigent import tracing
 from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm import Llm, Request
 from aigent.messages import Block, Reply
-from aigent.report_tools import SEARCH_TOOL, ReportSearch, Searched
+from aigent.report_tools import SEARCH_TOOL, TOOL_KINDS, ReportSearch, Searched
 from aigent.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
 from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import CATALOGUE, Search
@@ -95,7 +96,8 @@ def run(llm: Llm, search: Search, question: str, model: str | None = None) -> An
     )
     before = len(llm.trace)
     try:
-        ran = llm.run_tools(request, dispatch, max_turns=MAX_AGENT_TURNS, finish=FINISH)
+        traced = tracing.traced_tools(dispatch, TOOL_KINDS)
+        ran = llm.run_tools(request, traced, max_turns=MAX_AGENT_TURNS, finish=FINISH)
     except (BudgetExceeded, TurnsExhausted) as stop:
         # No room even to answer: what was searched so far is all there is to show for it.
         return Answered(None, reports.searches, len(llm.trace) - before, stopped=str(stop))

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from anthropic.types import ToolParam
 
+from aigent import tracing
 from aigent.retrieval.chunk import context_block
 from aigent.workflows.reports import REPORTS, Search
 
@@ -34,6 +35,9 @@ SEARCH_TOOL: ToolParam = {
     },
     "strict": True,
 }
+
+# How a trace types each tool: a search only looks passages up, which Langfuse calls a retriever.
+TOOL_KINDS: dict[str, tracing.Kind] = {"search_reports": "retriever"}
 
 
 @dataclass(frozen=True)

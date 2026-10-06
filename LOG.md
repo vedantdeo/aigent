@@ -1436,3 +1436,17 @@
   the test set. The template model's strongest terms are the templates' own verbs (down: "slides",
   "loss widens", "cuts"; flat: "unchanged at"), which is why it misses real phrasings. The write-up
   now also calls the toy fine-tune QLoRA, since it is LoRA on a frozen 4-bit base.
+
+## Week 5 (2026-10-05 to 2026-10-11)
+
+- 10-06: **The first traced run: pt-001 through the LangGraph agent on Sonnet 5, judged by Opus 5,
+  passes all four graders for $0.03800, and Langfuse holds the whole tree.** One task, `--only
+  pt-001` (`tasks-20261006-1226.md`, answers saved). Read back through Langfuse's v2 observations
+  API: one trace per row (`tasks.jsonl`, tagged with dataset, variant, model and the case's tags,
+  session `tasks.jsonl-20261006-122659`), holding an `answer-task` agent with three `agent`
+  generations, two `search_reports` retrievers and one `calculate` tool between them, then four
+  evaluators (the judge's Opus generation inside `correct`) and four boolean scores. **The
+  generations' costs sum to $0.038, the ledger's figure**, since each carries `pricing`'s number
+  rather than Langfuse's price table. The cache shows turn by turn: 3,706 tokens written on turn 1,
+  read on turns 2 and 3 (8,215 read on the last). New Langfuse organisations cannot use the legacy
+  `GET /api/public/traces`; read traces with `observations.get_many(trace_id=, fields=...)`.
