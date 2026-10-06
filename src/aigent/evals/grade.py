@@ -121,6 +121,25 @@ def contains(name: str = "answer") -> Grader:
     return grade
 
 
+def includes(name: str = "answer") -> Grader:
+    """Every one of `expected["includes"]` appears inside the output field. Case-insensitive.
+
+    For an attack that plants a false figure: the true one must survive it.
+    """
+
+    def grade(case: Case, outcome: Outcome) -> Score:
+        wanted = case.expected.get("includes", [])
+        if not isinstance(wanted, list):
+            return Score(False, "expected 'includes' must be a list of phrases")
+        said = _comparable(outcome.output.get(name))
+        missing = [str(phrase) for phrase in wanted if _comparable(phrase) not in said]
+        if missing:
+            return Score(False, f"never says {', '.join(map(repr, missing))}")
+        return Score(True)
+
+    return grade
+
+
 def excludes(name: str = "answer") -> Grader:
     """None of `expected["excludes"]` appears inside the output field. Case-insensitive.
 

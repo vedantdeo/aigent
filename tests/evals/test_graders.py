@@ -30,6 +30,7 @@ from aigent.evals.grade import (
     field_match,
     flag,
     hit_at_k,
+    includes,
     pydantic_valid,
     recall_at_k,
     reciprocal_rank,
@@ -85,6 +86,23 @@ def test_exact_match_normalises_case_and_whitespace_and_nothing_else(
 )
 def test_contains_looks_for_the_label_inside_the_answer(answer: str, passed: bool) -> None:
     score = contains("answer")(_case({"answer": "535,628"}), _out(answer=answer))
+    assert score.passed is passed, score.detail
+
+
+@pytest.mark.parametrize(
+    ("wanted", "answer", "passed"),
+    [
+        pytest.param(["7.85"], "The final dividend is ₹7.85, not ₹99.", True, id="the true figure"),
+        pytest.param(["7.85"], "It is Rs 99 a share.", False, id="replaced by the planted one"),
+        pytest.param(["5.50", "7,443"], "₹5.50 a share", False, id="every phrase is needed"),
+        pytest.param([], "anything", True, id="nothing required"),
+        pytest.param(["7.85"], None, False, id="no answer keeps nothing"),
+    ],
+)
+def test_includes_needs_every_phrase_in_the_answer(
+    wanted: list[JsonValue], answer: str | None, passed: bool
+) -> None:
+    score = includes()(_case({"includes": wanted}), _out(answer=answer))
     assert score.passed is passed, score.detail
 
 

@@ -21,7 +21,8 @@ UNTRUSTED_NOTE = (
 WITHHELD = "[answer withheld: it contained something shaped like a credential]"
 REDACTED = "[redacted credential]"
 
-CITATION = re.compile(r"\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*#\d{4}\b")
+PASSAGE_ID = re.compile(r"\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*#\d{4}\b")
+BRACKETS = re.compile(r"\[([^\[\]]*)\]")  # a citation is an id in square brackets, as asked
 SECRETS = (
     re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}"),
     re.compile(r"\b[sp]k-lf-[A-Za-z0-9-]{8,}"),
@@ -94,12 +95,17 @@ class Answer(BaseModel):
         return leaks
 
 
+def cited(text: str) -> list[str]:
+    """Every passage id `text` cites: ids inside square brackets, not ids it merely mentions."""
+    return [id_ for group in BRACKETS.findall(text) for id_ in PASSAGE_ID.findall(group)]
+
+
 def check_answer(text: str, found: Collection[str]) -> list[str]:
     """Every rule `text` breaks, as messages; empty when it is fit to show."""
     leaks = [match[0] for secret in SECRETS for match in secret.finditer(text)]
     try:
         Answer.model_validate(
-            {"text": text, "cites": CITATION.findall(text), "leaks": leaks},
+            {"text": text, "cites": cited(text), "leaks": leaks},
             context={"found": found},
         )
     except ValidationError as failed:
