@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -57,7 +57,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
     { name = "sentence-transformers", specifier = ">=6.0.1" },
-    { name = "underhood", git = "https://github.com/vedantdeo/underhood?tag=stable" },
+    { name = "underhood", git = "https://github.com/vedantdeo/underhood?branch=snap-2026-10-08" },
 ]
 
 [package.metadata.requires-dev]
@@ -3319,7 +3319,7 @@ wheels = [
 [[package]]
 name = "underhood"
 version = "0.1.0"
-source = { git = "https://github.com/vedantdeo/underhood?tag=stable#1023e31192dc1acc6058f75e61da61449117f500" }
+source = { git = "https://github.com/vedantdeo/underhood?branch=snap-2026-10-08#1023e31192dc1acc6058f75e61da61449117f500" }
 
 [[package]]
 name = "urllib3"
