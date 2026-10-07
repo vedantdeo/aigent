@@ -1566,3 +1566,12 @@
   there, a token that can start aigent's workflows and nothing else. Found by underhood renaming
   `GPU_USD_PER_HOUR` into a table of offers (Jarvis spot by default, GST included): aigent's
   `tests/test_underhood.py` now prices through that table, and `main` re-locked to it.
+- 10-07: **The reports' search is an MCP server: one tool, free.** `aigent.mcp_server` serves
+  `search_reports` over stdio on the `mcp` SDK 2.3 (`MCPServer`; `FastMCP` was renamed in 2.x). Only
+  the search, deliberately: `read_file`, `calculate` and `current_time` duplicate what any MCP client
+  has, so serving them would add nothing. The tool reuses `ReportSearch`, so a client reads what the
+  agent reads, and runs the query through the agent's input guard. Found on the way: in this SDK,
+  only a `ToolError`'s message reaches the client, and any other exception reads as "Error executing
+  tool", so guard refusals are raised as `ToolError`. A live stdio run listed the one tool and found
+  ITC's dividend passage (`ITC-FY25#0970`, p.232) in 19 s, nearly all of it the first model load.
+  Next for MCP, in Week 6: the client side, the agent using other servers' tools.

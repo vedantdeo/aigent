@@ -147,6 +147,11 @@ MAX_TASK_CHARS = 4000
 MAX_ANSWER_CHARS = 8000
 
 
+# --- MCP server ------------------------------------------------------------------------------
+
+MCP_SERVER_NAME = "aigent-reports"  # what an MCP client lists the server as
+
+
 # --- Retrieval -------------------------------------------------------------------------------
 # Week 2's knobs. The embedding model runs locally, so none of these spends anything.
 

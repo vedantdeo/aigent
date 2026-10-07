@@ -243,6 +243,19 @@ uv run --group graph python -m aigent.agent_tasks --model claude-sonnet-5 --cach
 uv run --group graph python -m aigent.agent_tasks --model claude-sonnet-5 --agent adk # or sdk
 ```
 
+## MCP server
+
+The reports' search, served to other MCP clients: one tool, `search_reports`, the same search and
+the same passage text the agent gets, its query through the agent's input guard. It runs over stdio
+and loads its models on the first search (about 20 s), free like all search here.
+
+```bash
+claude mcp add aigent-reports -- uv --directory /path/to/aigent run python -m aigent.mcp_server
+```
+
+Then ask Claude Code something like "what did ITC say about its dividend?". The reverse direction,
+aigent's agent using other MCP servers' tools, is planned for Week 6.
+
 ## Budget guards
 
 Five ceilings in USD, each overridable in `.env`. A tripped guard raises `BudgetExceeded` with the
