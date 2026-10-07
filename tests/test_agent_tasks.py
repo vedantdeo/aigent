@@ -33,6 +33,7 @@ from aigent.config import MAX_USD_PER_TURN, MODEL  # noqa: E402
 from aigent.evals.dataset import Case, load_jsonl  # noqa: E402
 from aigent.evals.grade import Grader, Outcome  # noqa: E402
 from aigent.evals.runner import EvalRun  # noqa: E402
+from aigent.messages import Usage as NeutralUsage  # noqa: E402
 from aigent.pricing import estimate_eval_usd, worst_case_usd  # noqa: E402
 from aigent.retrieval.chunk import Chunk  # noqa: E402
 from aigent.tools_config import MAX_WEB_SEARCHES, SANDBOX  # noqa: E402
@@ -568,3 +569,14 @@ def test_a_batch_id_is_printed_as_it_is_submitted(
     main([*JUDGED, *[str(saved) if arg == "{saved}" else arg for arg in argv], "--yes"])
 
     assert ("batch msgbatch_7 submitted: 1 requests" in capsys.readouterr().out) is shown
+
+
+def test_a_task_is_billed_for_every_kind_of_token_its_calls_used() -> None:
+    calls = [
+        NeutralUsage(10, 5, cache_write_tokens=30, cache_write_1h_tokens=20, web_searches=1),
+        NeutralUsage(1, 2, cache_read_tokens=30),
+    ]
+
+    assert agent_tasks.total(calls) == NeutralUsage(
+        11, 7, cache_write_tokens=30, cache_write_1h_tokens=20, cache_read_tokens=30, web_searches=1
+    )

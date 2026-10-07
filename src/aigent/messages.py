@@ -32,11 +32,15 @@ class Msg(TypedDict):
     content: str | Sequence[Block]
 
 
+# How long a cache entry lives: five minutes, renewed by each hit, or an hour at a dearer write.
+CacheTtl = Literal["5m", "1h"]
+
+
 class Cache(TypedDict):
     """A marker asking the provider to cache everything up to this point."""
 
     type: Literal["ephemeral"]
-    ttl: NotRequired[str]
+    ttl: NotRequired[CacheTtl]
 
 
 class Thinking(TypedDict):
@@ -65,6 +69,7 @@ class Usage:
     input_tokens: int
     output_tokens: int
     cache_write_tokens: int = 0
+    cache_write_1h_tokens: int = 0  # the share of cache_write_tokens written at the 1-hour price
     cache_read_tokens: int = 0
     web_searches: int = 0
     batched: bool = False  # sent through the Message Batches API, which bills tokens at half price

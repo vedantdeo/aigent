@@ -17,7 +17,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from aigent import tracing
 from aigent.agent import FINISH, SYSTEM, TOOLS, called, cited
-from aigent.config import MAX_AGENT_TURNS
+from aigent.config import CACHE_PARAM, MAX_AGENT_TURNS
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm import Dispatch, Llm, Request
@@ -82,7 +82,7 @@ def build(
             model=model,
             tools=TOOLS,
             thinking={"type": "adaptive"},
-            cache_control={"type": "ephemeral"},
+            cache_control=CACHE_PARAM,
         )
 
     def took(state: State, reply: Reply, stopped: str | None = None) -> dict[str, object]:

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from aigent import guardrails, tracing
-from aigent.config import MAX_AGENT_TURNS
+from aigent.config import CACHE_PARAM, MAX_AGENT_TURNS
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm import Llm, Request
@@ -86,7 +86,7 @@ def run(llm: Llm, search: Search, question: str, model: str | None = None) -> An
         model=model,
         tools=TOOLS,
         thinking={"type": "adaptive"},
-        cache_control={"type": "ephemeral"},
+        cache_control=CACHE_PARAM,
     )
     before = len(llm.trace)
     try:

@@ -1515,3 +1515,14 @@
   batch-vs-live test**: the rubric ends with today's date, so the two judges read different
   prompts. The batch id was only logged at INFO, which no main configured; `--batch-judge` now
   prints it as it is submitted, so an interrupted run can be collected.
+- 10-07: **The 1-hour cache is supported, and 5 minutes stays the default**, free.
+  `config.CACHE_TTL = "5m"` builds `CACHE_PARAM`, the marker all four caching call sites now send;
+  at five minutes it carries no `ttl`, so nothing on the wire changed. `pricing` prices a 1-hour
+  write at 2× input (`Price.cache_write_1h`), `Usage.cache_write_1h_tokens` carries the share of
+  writes the API reports at that price, and `llm` admits a 1-hour request at its own worst case
+  instead of refusing it, a request mixing lifetimes at the dearer one. Why not switch: our runs
+  send a cached prefix seconds apart, so each hit renews the 5-minute entry and the dearer write
+  buys nothing; the hour pays once a shared prefix is spread past five minutes, as a big batch's
+  is, and one prevented re-write covers it (0.75× extra once against 1.15× saved). Every new guard
+  mutation-checked; the one first missed, a tool loop's last answer sized at the 1-hour write, now
+  has a row whose context is big enough that the cap cannot hide it.

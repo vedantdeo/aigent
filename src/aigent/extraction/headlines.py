@@ -22,7 +22,7 @@ from typing import TypedDict, cast
 from pydantic import BaseModel, Field
 
 from aigent.adapters import CLIENTS, spec
-from aigent.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, max_tokens
+from aigent.config import CACHE_PARAM, CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, max_tokens
 from aigent.evals.dataset import Case, digest, load_jsonl
 from aigent.evals.grade import Outcome, field_match, pydantic_valid, unparsed
 from aigent.evals.report import write_report
@@ -189,7 +189,7 @@ class Variant:
         """What goes on the wire. A breakpoint needs the block form; a plain prompt does not."""
         if not self.cache:
             return self.system
-        return [{"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}}]
+        return [{"type": "text", "text": self.system, "cache_control": CACHE_PARAM}]
 
 
 # Each arm adds exactly one thing to the last, so the per-field table reads as an ablation.

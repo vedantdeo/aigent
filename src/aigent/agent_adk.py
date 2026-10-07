@@ -32,7 +32,7 @@ from pydantic import ConfigDict, PrivateAttr
 from aigent.adapters import spec
 from aigent.agent import FINISH, SYSTEM, called, cited
 from aigent.agent_graph import Traced
-from aigent.config import MAX_AGENT_TURNS
+from aigent.config import CACHE_PARAM, MAX_AGENT_TURNS
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm import Llm, Request
@@ -106,7 +106,7 @@ class ThroughLlm(BaseLlm):
             model=self.model,
             tools=tools,
             thinking={"type": "adaptive"},
-            cache_control={"type": "ephemeral"},
+            cache_control=CACHE_PARAM,
         )
 
     def _answer(self, messages: list[Msg], tools: list[Tool]) -> list[Reply]:

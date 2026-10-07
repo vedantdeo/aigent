@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from aigent.adapters import spec
 from aigent.adapters.client import Client
-from aigent.messages import Thinking
+from aigent.messages import Cache, CacheTtl, Thinking
 
 load_dotenv()
 
@@ -101,6 +101,12 @@ THINKING_EVAL = False
 # whether thinking is on; turning it on means raising the output cap at every site that sends it.
 THINKING_EVAL_PARAM: Thinking = (
     {"type": "enabled", "budget_tokens": 1024} if THINKING_EVAL else {"type": "disabled"}
+)
+
+# How long a cache entry lives; the 1-hour one writes at 2x input, not 1.25x.
+CACHE_TTL: CacheTtl = "5m"
+CACHE_PARAM: Cache = (
+    {"type": "ephemeral"} if CACHE_TTL == "5m" else {"type": "ephemeral", "ttl": "1h"}
 )
 
 # How many times the agent may go round before giving up.

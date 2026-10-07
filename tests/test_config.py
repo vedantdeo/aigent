@@ -52,3 +52,9 @@ def test_a_client_named_at_the_call_site_outranks_the_active_one(
 def test_a_cap_no_client_and_no_default_names_is_a_mistake_not_a_zero() -> None:
     with pytest.raises(KeyError):
         config.max_tokens("NO_SUCH_CALL_SITE")
+
+
+def test_the_cache_defaults_to_five_minutes_sent_as_it_always_was() -> None:
+    """The 1-hour cache waits for datasets big enough to outlive five minutes."""
+    assert config.CACHE_TTL == "5m"
+    assert config.CACHE_PARAM == {"type": "ephemeral"}, "no ttl on the wire for the default"

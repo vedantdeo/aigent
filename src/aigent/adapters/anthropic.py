@@ -85,6 +85,9 @@ def usage_of(usage: WireUsage | BetaUsage) -> Usage:
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         cache_write_tokens=usage.cache_creation_input_tokens or 0,
+        cache_write_1h_tokens=usage.cache_creation.ephemeral_1h_input_tokens
+        if usage.cache_creation
+        else 0,
         cache_read_tokens=usage.cache_read_input_tokens or 0,
         web_searches=searches,
     )

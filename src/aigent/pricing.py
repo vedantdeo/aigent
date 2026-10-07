@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from aigent.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN, WEB_SEARCH_RESULT_TOKENS
 from aigent.errors import BudgetExceeded
-from aigent.messages import Usage
+from aigent.messages import CacheTtl, Usage
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,10 @@ class Price:
     @property
     def cache_write(self) -> float:
         return self.input * 1.25
+
+    @property
+    def cache_write_1h(self) -> float:
+        return self.input * 2.0
 
     @property
     def cache_read(self) -> float:
@@ -66,8 +70,10 @@ def cost_usd(
     web_searches: int = 0,
     *,
     batched: bool = False,
+    cache_write_1h_tokens: int = 0,
 ) -> float:
-    """Dollar cost of one request. Unknown models cost nothing rather than crashing the script."""
+    """Dollar cost of one request. Unknown models cost nothing rather than crashing the script.
+    `cache_write_1h_tokens` is the share of `cache_write_tokens` written at the 1-hour price."""
     price = PRICES.get(model)
     if price is None:
         return 0.0
@@ -75,7 +81,8 @@ def cost_usd(
     return web_searches * PRICE_PER_WEB_SEARCH + per_token * (
         input_tokens * price.input
         + output_tokens * price.output
-        + cache_write_tokens * price.cache_write
+        + (cache_write_tokens - cache_write_1h_tokens) * price.cache_write
+        + cache_write_1h_tokens * price.cache_write_1h
         + cache_read_tokens * price.cache_read
     )
 
@@ -89,6 +96,7 @@ def usage_cost(model: str, usage: Usage) -> float:
         cache_read_tokens=usage.cache_read_tokens,
         web_searches=usage.web_searches,
         batched=usage.batched,
+        cache_write_1h_tokens=usage.cache_write_1h_tokens,
     )
 
 
@@ -97,7 +105,8 @@ def describe_usage(model: str, usage: Usage) -> str:
     return (
         f"[{model}] in={usage.input_tokens} out={usage.output_tokens} "
         f"cache_write={usage.cache_write_tokens} "
-        f"cache_read={usage.cache_read_tokens} "
+        + (f"cache_write_1h={usage.cache_write_1h_tokens} " if usage.cache_write_1h_tokens else "")
+        + f"cache_read={usage.cache_read_tokens} "
         + (f"web_searches={usage.web_searches} " if usage.web_searches else "")
         + ("batched " if usage.batched else "")
         + f"cost=${usage_cost(model, usage):.5f}"
@@ -112,10 +121,11 @@ def worst_case_usd(
     cached: bool = False,
     web_searches: int = 0,
     batched: bool = False,
+    cache_ttl: CacheTtl = "5m",
 ) -> float:
     """The most one request can cost: the full output cap, and all input at the input price — or at
-    the cache-write price if `cached`, since a miss writes the whole prefix. Each web search adds
-    its fee and `WEB_SEARCH_RESULT_TOKENS` of results: the one part estimated, not bounded."""
+    the `cache_ttl` write price if `cached`, since a miss writes the whole prefix. Each web search
+    adds its fee and `WEB_SEARCH_RESULT_TOKENS` of results: the one part estimated, not bounded."""
     input_tokens += web_searches * WEB_SEARCH_RESULT_TOKENS
     if cached:
         return cost_usd(
@@ -125,19 +135,26 @@ def worst_case_usd(
             cache_write_tokens=input_tokens,
             web_searches=web_searches,
             batched=batched,
+            cache_write_1h_tokens=input_tokens if cache_ttl == "1h" else 0,
         )
     return cost_usd(model, input_tokens, max_tokens, web_searches=web_searches, batched=batched)
 
 
 def affordable_output_tokens(
-    model: str, input_tokens: int, limit_usd: float, *, cached: bool = False, web_searches: int = 0
+    model: str,
+    input_tokens: int,
+    limit_usd: float,
+    *,
+    cached: bool = False,
+    web_searches: int = 0,
+    cache_ttl: CacheTtl = "5m",
 ) -> int:
     """The largest `max_tokens` whose worst case, with this input, stays within `limit_usd`."""
     price = PRICES.get(model)
     if price is None:
         return 0
     spare = limit_usd - worst_case_usd(
-        model, input_tokens, 0, cached=cached, web_searches=web_searches
+        model, input_tokens, 0, cached=cached, web_searches=web_searches, cache_ttl=cache_ttl
     )
     # One token short of the exact figure, so float rounding cannot carry it over the limit.
     return max(0, math.floor(spare / (price.output * 1e-6)) - 1)
@@ -152,6 +169,7 @@ def estimate_eval_usd(
     cached_tokens: int = 0,
     *,
     batched: bool = False,
+    cache_ttl: CacheTtl = "5m",
 ) -> float:
     """Worst case for a whole run: cases x calls-per-case x `worst_case_usd`.
 
@@ -162,7 +180,15 @@ def estimate_eval_usd(
     if not calls:
         return 0.0
     fresh = max(input_tokens_per_case - cached_tokens, 0)
-    first = cost_usd(model, fresh, max_tokens, cache_write_tokens=cached_tokens, batched=batched)
+    long = cached_tokens if cache_ttl == "1h" else 0
+    first = cost_usd(
+        model,
+        fresh,
+        max_tokens,
+        cache_write_tokens=cached_tokens,
+        batched=batched,
+        cache_write_1h_tokens=long,
+    )
     rest = cost_usd(model, fresh, max_tokens, cache_read_tokens=cached_tokens, batched=batched)
     return first + (calls - 1) * rest
 
@@ -177,6 +203,7 @@ def assert_request_within_budget(
     scope: str = "request",
     web_searches: int = 0,
     batched: bool = False,
+    cache_ttl: CacheTtl = "5m",
 ) -> float:
     """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded.
 
@@ -188,10 +215,17 @@ def assert_request_within_budget(
             "billed as free. Add it to pricing.PRICES."
         )
     worst = worst_case_usd(
-        model, input_tokens, max_tokens, cached=cached, web_searches=web_searches, batched=batched
+        model,
+        input_tokens,
+        max_tokens,
+        cached=cached,
+        web_searches=web_searches,
+        batched=batched,
+        cache_ttl=cache_ttl,
     )
     if worst > limit_usd:
-        written = " written to cache" if cached else ""
+        to = " written to the 1-hour cache" if cache_ttl == "1h" else " written to cache"
+        written = to if cached else ""
         written += f", {web_searches} web searches" if web_searches else ""
         written += ", batched" if batched else ""
         raise BudgetExceeded(

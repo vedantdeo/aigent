@@ -70,6 +70,7 @@ def total(usages: Sequence[Usage]) -> Usage:
         input_tokens=sum(u.input_tokens for u in usages),
         output_tokens=sum(u.output_tokens for u in usages),
         cache_write_tokens=sum(u.cache_write_tokens for u in usages),
+        cache_write_1h_tokens=sum(u.cache_write_1h_tokens for u in usages),
         cache_read_tokens=sum(u.cache_read_tokens for u in usages),
         web_searches=sum(u.web_searches for u in usages),
     )

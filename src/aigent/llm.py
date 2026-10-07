@@ -49,6 +49,7 @@ from aigent.errors import (
 from aigent.messages import (
     Block,
     Cache,
+    CacheTtl,
     Failed,
     Msg,
     OutputConfig,
@@ -429,6 +430,7 @@ class Llm:
             room,
             cached=_writes_cache(answer),
             web_searches=_web_searches(answer),
+            cache_ttl=_cache_ttl(answer),
         )
         answer = replace(answer, max_tokens=min(answer.max_tokens, fits))
         if answer.max_tokens < MIN_TOKENS_FINAL_ANSWER:
@@ -466,11 +468,6 @@ class Llm:
         for request in requests:
             needs = () if schema is None else ("schema",)
             self._require(request, *needs, *(() if capability is None else (capability,)))
-            if any(marker.get("ttl") == "1h" for marker in _cache_markers(request)):
-                raise BudgetExceeded(
-                    f"{request.step}: asks for the 1-hour cache, whose writes pricing does not "
-                    "model, so no ceiling can hold it. Use the 5-minute default."
-                )
             searches = _web_searches(request)
             tokens = self.count(request, schema)
             cost = assert_request_within_budget(
@@ -482,6 +479,7 @@ class Llm:
                 scope=scope,
                 web_searches=searches,
                 batched=batched,
+                cache_ttl=_cache_ttl(request),
             )
             if self.rehearse:
                 raise Rehearsed(request, tokens, cost)
@@ -547,8 +545,9 @@ class Llm:
         """A reply no adapter could read, as an empty one billed at the call's worst case: exact
         for a record cut off at `max_tokens`, which is what makes one unreadable."""
         tokens = self.count(request, schema)
+        long = tokens if _cache_ttl(request) == "1h" else 0
         usage = (
-            Usage(input_tokens=0, cache_write_tokens=tokens, output_tokens=request.max_tokens)
+            Usage(0, request.max_tokens, cache_write_tokens=tokens, cache_write_1h_tokens=long)
             if _writes_cache(request)
             else Usage(input_tokens=tokens, output_tokens=request.max_tokens)
         )
@@ -619,6 +618,11 @@ def _cache_markers(request: Request) -> list[Cache]:
 def _writes_cache(request: Request) -> bool:
     """Whether a request can write to the cache: automatic caching, or a marked system block."""
     return bool(_cache_markers(request))
+
+
+def _cache_ttl(request: Request) -> CacheTtl:
+    """The dearest lifetime any of a request's markers asks for: its writes are priced at that."""
+    return "1h" if any(marker.get("ttl") == "1h" for marker in _cache_markers(request)) else "5m"
 
 
 def _cache_body(request: Request) -> dict[str, object] | None:

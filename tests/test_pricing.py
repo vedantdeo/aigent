@@ -15,7 +15,7 @@ from aigent.config import (
     WEB_SEARCH_RESULT_TOKENS,
 )
 from aigent.errors import BudgetExceeded
-from aigent.messages import Usage
+from aigent.messages import CacheTtl, Usage
 from aigent.pricing import (
     PRICES,
     Budget,
@@ -105,6 +105,41 @@ OPUS = "claude-opus-5"
             10 * (0.005 + 0.1024) / 2,
             id="a batched eval is estimated at half price",
         ),
+        pytest.param(
+            cost_usd(OPUS, 0, 0, 10**6, cache_write_1h_tokens=10**6),
+            10.0,
+            id="a 1-hour cache write is 2x input",
+        ),
+        pytest.param(
+            cost_usd(OPUS, 0, 0, 2 * 10**6, cache_write_1h_tokens=10**6),
+            6.25 + 10.0,
+            id="writes split between the two lifetimes are priced apart",
+        ),
+        pytest.param(
+            cost_usd(OPUS, 0, 0, 10**6, cache_write_1h_tokens=10**6, batched=True),
+            5.0,
+            id="a batched 1-hour write is halved like the rest",
+        ),
+        pytest.param(
+            usage_cost(OPUS, Usage(0, 0, cache_write_tokens=10**6, cache_write_1h_tokens=10**6)),
+            10.0,
+            id="a usage's 1-hour writes bill at the 1-hour price",
+        ),
+        pytest.param(
+            worst_case_usd(OPUS, 1000, 4096, cached=True, cache_ttl="1h"),
+            0.01 + 0.1024,
+            id="a call on the 1-hour cache writes all its input at 2x at worst",
+        ),
+        pytest.param(
+            worst_case_usd(OPUS, 1000, 4096, cache_ttl="1h"),
+            0.005 + 0.1024,
+            id="a lifetime means nothing to a call that caches nothing",
+        ),
+        pytest.param(
+            estimate_eval_usd(OPUS, 3, 1000, 0, cached_tokens=1000, cache_ttl="1h"),
+            0.01 + 2 * 0.0005,
+            id="an eval on the 1-hour cache writes once at 2x, then reads",
+        ),
     ],
 )
 def test_the_price_list(charged: float, expected: float) -> None:
@@ -121,11 +156,16 @@ def test_the_price_list(charged: float, expected: float) -> None:
         pytest.param(100_000, False, 0, id="none when the input alone is over the limit"),
     ],
 )
-def test_the_output_a_limit_affords(input_tokens: int, cached: bool, expected: int) -> None:
-    affords = affordable_output_tokens(OPUS, input_tokens, 0.40, cached=cached)
+@pytest.mark.parametrize("ttl", ["5m", "1h"])
+def test_the_output_a_limit_affords(
+    input_tokens: int, cached: bool, expected: int, ttl: CacheTtl
+) -> None:
+    affords = affordable_output_tokens(OPUS, input_tokens, 0.40, cached=cached, cache_ttl=ttl)
 
+    if ttl == "1h" and cached:
+        expected -= 1_500  # $0.0375 more for 10k tokens written at 2x, at $25 a million out
     assert affords == expected
-    worst = worst_case_usd(OPUS, input_tokens, affords, cached=cached)
+    worst = worst_case_usd(OPUS, input_tokens, affords, cached=cached, cache_ttl=ttl)
     assert affords == 0 or worst <= 0.40, worst
 
 
@@ -148,6 +188,19 @@ def test_request_guard_admits_at_the_batch_price_what_it_refuses_at_full() -> No
         assert_request_within_budget(OPUS, 1000, 8192, 0.06, batched=True)
     with pytest.raises(BudgetExceeded):
         assert_request_within_budget(OPUS, 1000, 4096, 0.06)
+
+
+def test_request_guard_admits_at_five_minutes_what_it_refuses_at_an_hour() -> None:
+    assert_request_within_budget(OPUS, 10_000, 1000, 0.10, cached=True)
+    with pytest.raises(BudgetExceeded, match="1-hour cache"):
+        assert_request_within_budget(OPUS, 10_000, 1000, 0.10, cached=True, cache_ttl="1h")
+
+
+def test_a_usage_with_1_hour_writes_says_so_on_its_log_line() -> None:
+    usage = Usage(0, 0, cache_write_tokens=30, cache_write_1h_tokens=20)
+
+    assert "cache_write=30 cache_write_1h=20" in describe_usage(OPUS, usage)
+    assert "cache_write_1h" not in describe_usage(OPUS, _usage(10, 5))
 
 
 def test_a_batched_usage_says_so_on_its_log_line() -> None:

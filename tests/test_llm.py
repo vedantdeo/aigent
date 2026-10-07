@@ -19,6 +19,7 @@ import anthropic
 import httpx2
 import pytest
 from anthropic.types import (
+    CacheCreation,
     Message,
     ServerToolUsage,
     TextBlock,
@@ -29,10 +30,12 @@ from anthropic.types import (
 from pydantic import BaseModel, ValidationError
 
 import aigent
+from aigent.adapters.anthropic import usage_of
 from aigent.config import MAX_USD_PER_TURN, MODEL
 from aigent.errors import BudgetExceeded, StepFailed, TurnsExhausted
 from aigent.llm import Dispatch, Llm, Rehearsed, Request, describe
-from aigent.pricing import affordable_output_tokens, worst_case_usd
+from aigent.messages import Cache, CacheTtl
+from aigent.pricing import PRICES, affordable_output_tokens, worst_case_usd
 from aigent.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
 from aigent.tools_config import MAX_WEB_SEARCHES
 
@@ -51,6 +54,7 @@ from .conftest import (
 # Worst case on the fake: 100 input tokens at $5/M plus 64 output at $25/M, $0.0021.
 REQUEST = Request.ask("greet", "be brief", "hello", 64)
 CACHED = replace(REQUEST, cache_control={"type": "ephemeral"})
+ONE_HOUR: Cache = {"type": "ephemeral", "ttl": "1h"}
 MARKED = replace(
     REQUEST, system=[{"type": "text", "text": "be brief", "cache_control": {"type": "ephemeral"}}]
 )
@@ -165,14 +169,20 @@ def _cut_off() -> ValidationError:
 
 
 @pytest.mark.parametrize(
-    ("asked", "cached"),
+    ("asked", "cached", "ttl"),
     [
-        pytest.param(REQUEST, False, id="an uncached call"),
-        pytest.param(CACHED, True, id="a cached call, billed as a full cache write"),
+        pytest.param(REQUEST, False, "5m", id="an uncached call"),
+        pytest.param(CACHED, True, "5m", id="a cached call, billed as a full cache write"),
+        pytest.param(
+            replace(REQUEST, cache_control=ONE_HOUR),
+            True,
+            "1h",
+            id="a call on the 1-hour cache, billed as a full 1-hour write",
+        ),
     ],
 )
 def test_a_reply_the_sdk_cannot_read_is_billed_at_its_worst_case(
-    make_llm: MakeLlm, asked: Request, cached: bool
+    make_llm: MakeLlm, asked: Request, cached: bool, ttl: CacheTtl
 ) -> None:
     """The SDK validates a structured reply as it reads it, so a record cut off at `max_tokens`
     raises before its usage is returned — and a call raised past is a call nobody billed. It comes
@@ -184,7 +194,7 @@ def test_a_reply_the_sdk_cannot_read_is_billed_at_its_worst_case(
     assert response.parsed is None and response.stop_reason == "max_tokens"
     [call] = llm.trace
     assert call.usage.output_tokens == asked.max_tokens
-    worst = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64, cached=cached)
+    worst = worst_case_usd(MODEL, FAKE_USAGE.input_tokens, 64, cached=cached, cache_ttl=ttl)
     assert call.usd == pytest.approx(worst), call.usage
     with pytest.raises(StepFailed, match="nothing parsed"):
         llm.record(asked, Greeting)
@@ -392,6 +402,34 @@ def test_the_trace_counts_cached_input_as_input_and_shows_web_searches(make_llm:
     assert line.split()[2:6] == ["100", "70", "5", "2"], line
 
 
+@pytest.mark.parametrize(
+    ("creation", "long"),
+    [
+        pytest.param(None, 0, id="a reply that does not split its writes"),
+        pytest.param(
+            CacheCreation(ephemeral_5m_input_tokens=20, ephemeral_1h_input_tokens=0),
+            0,
+            id="all of it on the 5-minute cache",
+        ),
+        pytest.param(
+            CacheCreation(ephemeral_5m_input_tokens=5, ephemeral_1h_input_tokens=15),
+            15,
+            id="most of it on the 1-hour cache",
+        ),
+    ],
+)
+def test_a_reply_says_how_much_it_wrote_to_the_1_hour_cache(
+    creation: CacheCreation | None, long: int
+) -> None:
+    wire = Usage(
+        input_tokens=10, output_tokens=5, cache_creation_input_tokens=20, cache_creation=creation
+    )
+
+    usage = usage_of(wire)
+
+    assert (usage.cache_write_tokens, usage.cache_write_1h_tokens) == (20, long)
+
+
 def test_the_trace_prints_a_line_per_call_and_the_total(make_llm: MakeLlm) -> None:
     llm, _ = make_llm(echo)
     llm.text(REQUEST)
@@ -462,29 +500,6 @@ def test_what_only_the_api_can_reject_is_rejected_at_the_free_count(
             "pricing does not model",
             id="a server tool pricing does not model",
         ),
-        pytest.param(
-            replace(REQUEST, cache_control={"type": "ephemeral", "ttl": "1h"}),
-            100,
-            0.0,
-            "1-hour cache",
-            id="the 1-hour cache, whose writes are not priced",
-        ),
-        pytest.param(
-            replace(
-                REQUEST,
-                system=[
-                    {
-                        "type": "text",
-                        "text": "be brief",
-                        "cache_control": {"type": "ephemeral", "ttl": "1h"},
-                    }
-                ],
-            ),
-            100,
-            0.0,
-            "1-hour cache",
-            id="the 1-hour cache on a system block",
-        ),
     ],
 )
 def test_what_our_own_guards_refuse_is_never_sent(
@@ -497,6 +512,36 @@ def test_what_our_own_guards_refuse_is_never_sent(
     with pytest.raises(BudgetExceeded, match=says):
         llm.text(call)
     assert fake.sent == []
+
+
+@pytest.mark.parametrize(
+    ("call", "ttl"),
+    [
+        pytest.param(
+            replace(REQUEST, cache_control={"type": "ephemeral"}), "5m", id="the 5-minute default"
+        ),
+        pytest.param(replace(REQUEST, cache_control=ONE_HOUR), "1h", id="the 1-hour cache"),
+        pytest.param(
+            replace(
+                REQUEST,
+                system=[{"type": "text", "text": "be brief", "cache_control": ONE_HOUR}],
+                cache_control={"type": "ephemeral"},
+            ),
+            "1h",
+            id="a request mixing both is priced at the dearer write",
+        ),
+    ],
+)
+def test_a_cached_request_is_admitted_at_its_lifetimes_write_price(
+    make_llm: MakeLlm, call: Request, ttl: CacheTtl
+) -> None:
+    llm, fake = make_llm(echo, rehearse=True)
+
+    with pytest.raises(Rehearsed) as caught:
+        llm.text(call)
+
+    expected = worst_case_usd(MODEL, fake.input_tokens, call.max_tokens, cached=True, cache_ttl=ttl)
+    assert caught.value.worst_usd == pytest.approx(expected)
 
 
 def test_a_request_has_no_field_for_what_the_api_rejects() -> None:
@@ -724,16 +769,34 @@ AFTER_A_TOOL = replace(
 )
 
 
-def test_a_caller_out_of_room_gets_the_last_answer_run_tools_would_send(make_llm: MakeLlm) -> None:
-    llm, fake = make_llm(lambda sent: "all I found")
-    fake.input_tokens = GROWN_PAST
+# Written at the 1-hour price, a context that leaves $0.06 of the turn for an answer.
+HOUR_LONG_PAST = int((MAX_USD_PER_TURN - 0.06) / (PRICES[MODEL].cache_write_1h * 1e-6))
 
-    reply = llm.last_turn(AFTER_A_TOOL, FINISH, BudgetExceeded("out of room"))
+
+@pytest.mark.parametrize(
+    ("upcoming", "tokens", "ttl"),
+    [
+        pytest.param(AFTER_A_TOOL, GROWN_PAST, "5m", id="on the 5-minute cache"),
+        pytest.param(
+            replace(AFTER_A_TOOL, cache_control=ONE_HOUR),
+            HOUR_LONG_PAST,
+            "1h",
+            id="on the 1-hour cache, whose dearer write leaves less room",
+        ),
+    ],
+)
+def test_a_caller_out_of_room_gets_the_last_answer_run_tools_would_send(
+    make_llm: MakeLlm, upcoming: Request, tokens: int, ttl: CacheTtl
+) -> None:
+    llm, fake = make_llm(lambda sent: "all I found")
+    fake.input_tokens = tokens
+
+    reply = llm.last_turn(upcoming, FINISH, BudgetExceeded("out of room"))
 
     [told] = fake.sent
     assert cast(list[object], told.messages[-1]["content"])[-1] == {"type": "text", "text": FINISH}
     assert told.max_tokens == affordable_output_tokens(
-        MODEL, GROWN_PAST, MAX_USD_PER_TURN, cached=True
+        MODEL, tokens, MAX_USD_PER_TURN, cached=True, cache_ttl=ttl
     )
     assert reply.text == "all I found"
     assert [call.step for call in llm.trace] == ["agent:2 answer"]
