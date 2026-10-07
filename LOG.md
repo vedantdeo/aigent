@@ -1554,3 +1554,7 @@
   `main` now points at underhood's snap branch during the window and at its `stable` tag otherwise,
   so on Mondays and Thursdays day-to-day work runs against what is about to roll. If underhood
   skips a roll, `stable` has not moved, so going back to it is going back to the last roll.
+- 10-07: **aigent's `main` follows underhood's latest snap, full stop.** Only a snap re-points it,
+  Sun and Wed nights; a roll only tags (`roll-…` and `stable` are tags on snap branches). The cost:
+  if underhood's roll is skipped, `main` stays on that unrolled snap until the next one. Also fixed
+  before the first run: both release scripts had gone in without the execute bit.

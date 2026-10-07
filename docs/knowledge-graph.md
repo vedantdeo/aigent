@@ -12,10 +12,10 @@ commit (2026-10-07). 1225 tests pass; pyright and ruff are clean.**
 >
 > **Snap and roll, twice a week** (2026-10-07): `release.yml` in both repos. A snap branches `main`
 > as `snap-YYYY-MM-DD` (the last eight kept); a roll tags the snap's head `roll-YYYY-MM-DD` and
-> moves a `stable` tag to it, only if CI passed. aigent's `main` points at underhood's snap branch
-> during the window and at underhood's `stable` tag otherwise, so the pair is tested together and
-> day-to-day work runs on rolled underhood. The bot's commits to `main` rewrite only the underhood
-> source line and `uv.lock`; the graph does not move for them.
+> moves a `stable` tag to it, only if CI passed. aigent's `main` points at underhood's latest snap
+> branch, re-pointed only by a snap (Sun and Wed nights), so the pair is tested together; aigent
+> rolls only if underhood rolled the commit it pins. The bot's commits to `main` rewrite only the
+> underhood source line and `uv.lock`; the graph does not move for them.
 >
 > **underhood is a dependency** (2026-10-07), for its GPU pricing: a git source on `main`, pinned by
 > `uv.lock`. underhood declares no dependencies, its model stack being in dependency groups only its
@@ -790,10 +790,10 @@ AIGENT_MAX_USD_PER_RUN       —configures→ config.MAX_USD_PER_RUN
 AIGENT_MAX_USD_PER_EVAL      —configures→ config.MAX_USD_PER_EVAL
 ANTHROPIC_API_KEY | ANTHROPIC_AUTH_TOKEN | ~/.config/anthropic —authenticates→ llm.adapters.anthropic.get_client
 ANTHROPIC_WORKSPACE_ID         —adds-header→ llm.adapters.anthropic.get_client   (org-level keys only)
-underhood (git, its snap branch in the window, else its stable tag; pinned by uv.lock) —provides→ underhood.config, underhood.gpu.pricing   (no dependencies of its own; never torch)
+underhood (git, its latest snap branch, pinned by uv.lock) —provides→ underhood.config, underhood.gpu.pricing   (no dependencies of its own; never torch)
 UNDERHOOD_TOKEN (CI secret)    —lets-clone→ underhood, a private repo, in .github/workflows/checks.yml and release.yml
 release.yml (Sun, Wed 18:30 UTC) —snaps→ main re-pinned to underhood's snap-DATE branch, then branched as snap-DATE (last 8 kept)
-release.yml (Mon, Thu 18:30 UTC) —rolls→ main back on underhood's stable tag; the snap tagged roll-DATE and stable if CI passed and underhood rolled the pinned commit
+release.yml (Mon, Thu 18:30 UTC) —rolls→ the snap tagged roll-DATE and stable, if CI passed and underhood rolled the pinned commit
 ```
 
 Every `AIGENT_*` value is read **at import time** into module-level constants. Setting them

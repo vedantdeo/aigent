@@ -340,10 +340,11 @@ Twice a week both repos branch `main` and promote the branch a day later, all ti
 
 - **Snap** points `main` at underhood's `snap-YYYY-MM-DD` branch, then branches `main` as aigent's
   own `snap-YYYY-MM-DD`, so the pair is tested together. Each repo keeps its last eight snaps.
-- **Roll** points `main` back at underhood's `stable` tag, then, if CI passed on the snap's head and
-  underhood rolled the commit it pins, tags it `roll-YYYY-MM-DD` and moves aigent's `stable` tag
-  to it. Otherwise nothing of aigent's rolls and the run goes red.
-- So `main` runs against underhood's snap on Mondays and Thursdays, and its last roll otherwise.
+- **Roll** tags the snap's head `roll-YYYY-MM-DD` and moves aigent's `stable` tag to it, if CI
+  passed there and underhood rolled the commit it pins. Otherwise nothing rolls and the run goes
+  red. `roll-…` and `stable` are tags on snap branches, not branches of their own.
+- So `main` always runs against underhood's latest snap, re-pointed only by a snap, Sun and Wed
+  nights.
 - **A fix during the window** lands on `main` first, then is cherry-picked onto the snap branch
   (`git checkout snap-YYYY-MM-DD && git cherry-pick <sha> && git push`). After an underhood fix,
   run the `repin` step so `main` and the snap pick it up.

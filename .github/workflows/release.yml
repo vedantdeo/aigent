@@ -1,6 +1,6 @@
 # Snap and roll in step with underhood, twice a week, in IST. A snap points main at underhood's
-# snap-DATE branch and branches main as snap-DATE; a roll points main back at underhood's `stable`
-# tag and, if CI passed and underhood rolled the commit pinned, tags the snap roll-DATE and stable.
+# snap-DATE branch and branches main as snap-DATE; a roll, if CI passed and underhood rolled the
+# commit pinned, tags the snap roll-DATE and stable. Only a snap moves main's underhood pin.
 name: snap and roll
 
 on:
@@ -102,20 +102,10 @@ jobs:
           SNAP: ${{ steps.plan.outputs.latest }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          under=$(.github/release/wait-for-ref.sh "refs/tags/roll-$DATE") || under=""
-          git checkout -B main origin/main
-          .github/release/pin-underhood.sh 'tag = "stable"' > /dev/null
-          if git diff --quiet; then
-            echo "main already runs on underhood's stable"
-          else
-            git commit -am "Point underhood back at its stable tag"
-            git push "$AIGENT" main
-            gh workflow run checks.yml --ref main
-          fi
-          if [ -z "$under" ]; then
-            echo "::error::underhood did not roll, so aigent does not; main is back on underhood's last roll"
+          under=$(.github/release/wait-for-ref.sh "refs/tags/roll-$DATE") || {
+            echo "::error::underhood did not roll, so aigent does not"
             exit 1
-          fi
+          }
           sha=$(git ls-remote "$AIGENT" "refs/heads/$SNAP" | cut -f1)
           ci=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs" --jq \
             '[.check_runs[] | select(.name == "lint · types · tests")]
