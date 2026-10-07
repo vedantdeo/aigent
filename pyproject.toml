@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "scikit-learn>=1.9.1",
     "sentence-transformers>=6.0.1",
+    "underhood",
 ]
 
 [build-system]
@@ -59,3 +60,7 @@ venv = ".venv"
 testpaths = ["tests"]
 markers = ["live: spends real API credits; run explicitly with `uv run pytest -m live`"]
 addopts = "-m 'not live'"
+
+[tool.uv.sources]
+# The from-scratch repo, for its torch-free GPU pricing; uv.lock pins the commit.
+underhood = { git = "https://github.com/vedantdeo/underhood", branch = "main" }

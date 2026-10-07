@@ -1532,3 +1532,10 @@
   `config` imports `adapters` while `core` imports `config`. `config`, `errors` and `tracing` stay
   top-level. The same 1,224 tests pass. The batch-id test now logs through `llm.core`'s own logger,
   so it checks that the door's lines still reach the handler `agent_tasks` puts on `aigent.llm`.
+- 10-07: **underhood is a dependency, for its GPU pricing**, free. A git source on underhood's
+  `main`, pinned by `uv.lock` at `58d2422`, the commit where underhood stopped declaring
+  dependencies: its model stack moved to dependency groups that only its own `uv sync` installs, so
+  aigent installs underhood alone and prices an A100 run (`underhood.gpu.pricing`, about $0.42 of
+  compute for the 30M model) without torch. A test prices one in a fresh interpreter and fails if
+  torch, transformers or mlx come with it. underhood is private: CI clones it through the
+  `UNDERHOOD_TOKEN` secret, a read-only token, and fails at install until that secret exists.

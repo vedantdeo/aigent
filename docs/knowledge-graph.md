@@ -3,12 +3,17 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `5e2cfc4` plus the move into `llm/`, landing in this commit (2026-10-07).
-1224 tests pass; pyright and ruff are clean.**
+**Verified against commit `af7405c` plus underhood as a dependency, landing in this commit
+(2026-10-07). 1225 tests pass; pyright and ruff are clean.**
 
 > **The package is organised by capability, not by week.** `week01/` became `extraction/`
 > (Project 1a) and `week02/` became `retrieval/`; the test tree mirrors it. Roadmap weeks still
 > appear in §5, where they are dates rather than module names.
+>
+> **underhood is a dependency** (2026-10-07), for its GPU pricing: a git source on `main`, pinned by
+> `uv.lock`. underhood declares no dependencies, its model stack being in dependency groups only its
+> own `uv sync` installs, so aigent gets `config` and `gpu/` and never torch through it. It is the
+> seam for starting a GPU session for a local model from aigent.
 >
 > **Everything that talks to a model lives in `llm/`** (2026-10-07): `core` (the door, which was
 > `llm.py`), `messages`, `pricing` and `adapters/`, moved whole with history. `llm/__init__.py`
@@ -542,6 +547,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `tests.extraction.test_synthetic` | `tests/extraction/test_synthetic.py` | The toy set, 22 tests, free and offline (2026-09-28): the size and every template present; **no headline quoting a real one**; every label in its vocabulary; the company copied from the headline and resolving to a ticker; an eleven-row table of each template labelling by its rule (a margin level states no change, slower growth is still up, a share price is no metric, a narrowing loss is profit going up, …); the two-metric preference order; a seed that repeats; a split that shares no row; and **a training row that is exactly the request the eval sends, then the label**. Checked by mutation: skipping the leak guard, rendering with the few-shot prompt, labelling slowing growth down and ignoring which metric states a change each broke the suite. | free |
 | `tests.extraction.test_baseline` | `tests/extraction/test_baseline.py` | The classical baseline, 11 tests, free and offline (2026-09-30): the template arm trains on exactly the fine-tune's 180-row split; a four-row table of rules the templates teach (a rise is up, unchanged is flat, no metric is unknown); **leave-one-out never trains on the case it answers**, checked by spying on `fit`; a two-row majority table; a missing headline is an error row on both fitted arms; `top_terms` names every label. | free |
 | `tests.extraction.test_headlines` | `tests/extraction/test_headlines.py` | Project 1a both ways. A record is capped by the client that gives it, two rows (2026-09-28). The task against a scripted client: a parsed record becomes a gradeable `Outcome`, a `None` parse becomes an error row that still bills, a case with no headline never calls. Then the **dataset as an asset** — 50 parametrized rows assert every label validates against `Extraction`, sits in the field's vocabulary, and (for `ticker`) matches the shape `[A-Z0-9&-]+` or is `null`; that `change_pct` labels are floats (`str(12) != str(12.0)` and `field_match` compares text); and that no field is so lopsided a constant answer would score well. The company-shaped checks run over `NAMED`, the 48 rows that name one: each headline spells its company in a form the directory lists, the composed property holds — copy the spelling the headline writes, resolve it, land on the label — and every labelled ticker is in the directory at all. A 12-row table pins the resolver's normalisation (case, punctuation, `Ltd`, and the misses), a row per directory entry checks it resolves to itself, and a row per case checks the `name-contains-name` tag against the containment actually computed from the directory — in both directions, so a missing tag and a stale one each fail. One test guards the prompt rather than the code: no four-word run of any dataset headline may appear in `FEW_SHOT` or in a field description, because an illustration that is also a test case stops that row measuring anything. | free |
+| `tests.test_underhood` | `tests/test_underhood.py` | aigent prices a 30M-parameter A100 run through the installed `underhood.gpu.pricing` and `underhood.config` (2026-10-07), in a fresh interpreter, and fails if that loads torch, transformers or mlx — aigent's environment has torch, so only a fresh interpreter can tell. underhood's own `tests/gpu/test_boundary.py` holds the same line from its side. | free |
 | `tests.test_reference_data` | `tests/test_reference_data.py` | The registry of hand-edited reference files and the two properties the rule asks of all of them: sorted by the key they are looked up by, and no key repeated. `ORDERED_FILES` is the opt-in list — four rows now (the ticker directory, the corpus manifest, and both retrieval question sets), each a file a person edits by hand and code reads back. `jsonl_ids` is the JSONL reader beside `json_keys`; the question set joined on 2026-09-18, which makes a repeated `rq-` id a failure rather than a row that quietly scores twice. `json_keys` parses through `object_pairs_hook=list` so duplicates survive to be seen; a plain `json.loads` keeps the last of a repeated key and drops the rest, which would make the duplicate check vacuous. A sequence whose order carries meaning (`extraction.METRICS`) is deliberately *not* in the registry. `errors.py` joined on 2026-10-07, read by `class_names`. | free |
 | `tests.evals.test_report` | `tests/evals/test_report.py` | Report arithmetic: pass rates, per-field columns, error rows out of the denominator, the partial-run banner, and the `graded by` line appearing only when a grader spent. Then the metrics table over a retrieval run, including the case that justifies having both numbers: a `weak` variant that finds the right chunk **every** time and never at rank 1 reads 0/4 in the summary and 0.500 in the metrics, and a report with only the first number would say it found nothing. Deliberately not tabled — each test reads a different section of the same run. | free |
 
@@ -777,6 +783,8 @@ AIGENT_MAX_USD_PER_RUN       —configures→ config.MAX_USD_PER_RUN
 AIGENT_MAX_USD_PER_EVAL      —configures→ config.MAX_USD_PER_EVAL
 ANTHROPIC_API_KEY | ANTHROPIC_AUTH_TOKEN | ~/.config/anthropic —authenticates→ llm.adapters.anthropic.get_client
 ANTHROPIC_WORKSPACE_ID         —adds-header→ llm.adapters.anthropic.get_client   (org-level keys only)
+underhood (git, main, pinned by uv.lock) —provides→ underhood.config, underhood.gpu.pricing   (no dependencies of its own; never torch)
+UNDERHOOD_TOKEN (CI secret)    —lets-clone→ underhood, a private repo, in .github/workflows/checks.yml
 ```
 
 Every `AIGENT_*` value is read **at import time** into module-level constants. Setting them

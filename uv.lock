@@ -22,6 +22,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "scikit-learn" },
     { name = "sentence-transformers" },
+    { name = "underhood" },
 ]
 
 [package.dev-dependencies]
@@ -54,6 +55,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
     { name = "sentence-transformers", specifier = ">=6.0.1" },
+    { name = "underhood", git = "https://github.com/vedantdeo/underhood?branch=main" },
 ]
 
 [package.metadata.requires-dev]
@@ -3227,6 +3229,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/a3/26/b09b8010994eccc3c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/67/81/4add07e5172b7ac40d8ed5ff580409a7801a4fe26d529bdd915401dabfbe/typing_inspection-0.4.4-py3-none-any.whl", hash = "sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147", size = 14750, upload-time = "2026-08-12T12:37:24.648Z" },
 ]
+
+[[package]]
+name = "underhood"
+version = "0.1.0"
+source = { git = "https://github.com/vedantdeo/underhood?branch=main#58d24225b51bd5260d2f251f05b141fe0743eaab" }
 
 [[package]]
 name = "urllib3"

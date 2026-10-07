@@ -30,6 +30,14 @@ jobs:
         with:
           enable-cache: true
 
+      # underhood is a private repo that uv clones for its GPU pricing. UNDERHOOD_TOKEN is a
+      # fine-grained token with read-only Contents access to it, stored as a repo secret.
+      - name: Let git reach underhood
+        run: >-
+          git config --global
+          url."https://x-access-token:${{ secrets.UNDERHOOD_TOKEN }}@github.com/vedantdeo/underhood".insteadOf
+          "https://github.com/vedantdeo/underhood"
+
       # --locked fails if uv.lock has drifted from pyproject.toml, which is a
       # bug worth catching on its own. The `compare` group carries LangChain for
       # the framework comparison, `graph` carries LangGraph, and `adk` Google's ADK,

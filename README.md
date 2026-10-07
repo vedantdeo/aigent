@@ -12,6 +12,10 @@ uv sync
 git config core.hooksPath .githooks   # one-time, per clone: enables the pre-commit hook
 ```
 
+`uv sync` also clones [underhood](https://github.com/vedantdeo/underhood), a private repo, for its
+torch-free GPU pricing, so git needs read access to it; CI gets that from the `UNDERHOOD_TOKEN`
+secret.
+
 Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK finds the profile itself.
 
 ## One door to a model
