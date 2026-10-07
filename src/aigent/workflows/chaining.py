@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from aigent.config import MAX_TOKENS_FACTS, MAX_TOKENS_NOTE
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
-from aigent.llm import Llm, Request
+from aigent.llm.core import Llm, Request
 from aigent.retrieval.chunk import Chunk, context_block, squeeze
 from aigent.workflows.reports import Search
 

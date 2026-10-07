@@ -7,7 +7,7 @@ what changes with the endpoint.
 
 from __future__ import annotations
 
-from aigent.adapters.client import Client
+from aigent.llm.adapters.client import Client
 
 # MODEL is what aigent thinks with; judge_model grades an eval, and is deliberately not model.
 # small_model is where the routing workflow sends the questions that do not need model.

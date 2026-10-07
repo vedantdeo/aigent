@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from aigent.config import JUDGE_MODEL, MAX_REFINE_ROUNDS, MAX_TOKENS_CRITIQUE, MAX_TOKENS_DRAFT
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
-from aigent.llm import Llm, Request
+from aigent.llm.core import Llm, Request
 from aigent.retrieval.chunk import context_block
 from aigent.workflows.reports import Search
 

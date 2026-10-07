@@ -15,7 +15,7 @@ import anthropic
 import httpx2
 import pytest
 
-from aigent.adapters.retry import Retry, RetryingTransport, wait_for
+from aigent.llm.adapters.retry import Retry, RetryingTransport, wait_for
 
 URL = "https://api.example/v1/messages"
 Answer = int | tuple[int, dict[str, str]] | Exception

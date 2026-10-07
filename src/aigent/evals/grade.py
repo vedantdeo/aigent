@@ -16,7 +16,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from aigent.config import UNPARSED_PREVIEW_CHARS
 from aigent.evals.dataset import Case
-from aigent.messages import Usage
+from aigent.llm.messages import Usage
 
 
 @dataclass(frozen=True)

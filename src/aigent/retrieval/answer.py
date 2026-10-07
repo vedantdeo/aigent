@@ -24,16 +24,16 @@ from typing import cast
 
 from pydantic import BaseModel, Field, JsonValue
 
-from aigent.adapters import CLIENTS, judge_of, spec
 from aigent.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, TOP_K, max_tokens
 from aigent.evals.dataset import Case, digest, load_jsonl
 from aigent.evals.grade import Grader, Outcome, flag, hit_at_k, unparsed
 from aigent.evals.judge import JUDGE_SYSTEM, LlmJudge, Verdict
 from aigent.evals.report import write_report
 from aigent.evals.runner import Task, run_eval
-from aigent.llm import Llm, Request
-from aigent.messages import Msg
-from aigent.pricing import estimate_eval_usd
+from aigent.llm.adapters import CLIENTS, judge_of, spec
+from aigent.llm.core import Llm, Request
+from aigent.llm.messages import Msg
+from aigent.llm.pricing import estimate_eval_usd
 from aigent.retrieval.chunk import Chunk, Inventory, context_block
 from aigent.retrieval.corpus import load_corpus
 from aigent.retrieval.dense import DenseIndex

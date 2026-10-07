@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aigent.llm import Request
+    from aigent.llm.core import Request
 
 
 @dataclass(frozen=True)

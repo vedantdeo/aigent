@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aigent.adapters.client import Client
+from aigent.llm.adapters.client import Client
 
 # Room for an answer if reasoning ever comes back on; reasoning is billed as output.
 REASONED = {"ANSWER": 2048, "HEADLINE": 2048}

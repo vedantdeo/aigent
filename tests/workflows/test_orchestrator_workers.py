@@ -12,7 +12,7 @@ from collections.abc import Callable
 import pytest
 
 from aigent.config import MAX_PLAN_TASKS
-from aigent.llm import Llm
+from aigent.llm.core import Llm
 from aigent.workflows import orchestrator_workers
 from aigent.workflows.orchestrator_workers import SYNTHESISE, WORK, Orchestrated, Plan, Subtask
 from aigent.workflows.reports import Search

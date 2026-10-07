@@ -19,8 +19,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from aigent.adapters import build, spec
-from aigent.adapters.openai import OpenAI
 from aigent.config import (
     SYNTHETIC_CLIENT,
     SYNTHETIC_HEADLINES,
@@ -38,6 +36,8 @@ from aigent.extraction.headlines import (
     load_directory,
     word_runs,
 )
+from aigent.llm.adapters import build, spec
+from aigent.llm.adapters.openai import OpenAI
 
 
 @dataclass(frozen=True)

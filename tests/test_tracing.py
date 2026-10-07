@@ -19,8 +19,8 @@ from aigent import tracing
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Outcome, Score, exact_match
 from aigent.evals.runner import Task, run_eval
-from aigent.llm import Request
-from aigent.messages import Usage
+from aigent.llm.core import Request
+from aigent.llm.messages import Usage
 
 from .conftest import MakeLlm, Recorder, tool_turn, turns
 

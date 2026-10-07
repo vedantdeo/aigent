@@ -30,16 +30,16 @@ from anthropic.types import (
 from pydantic import BaseModel, ValidationError
 
 import aigent
-from aigent.adapters.anthropic import usage_of
 from aigent.config import MAX_USD_PER_TURN, MODEL
 from aigent.errors import BudgetExceeded, StepFailed, TurnsExhausted
-from aigent.llm import Dispatch, Llm, Rehearsed, Request, describe
-from aigent.messages import Cache, CacheTtl
-from aigent.pricing import PRICES, affordable_output_tokens, worst_case_usd
+from aigent.llm.adapters.anthropic import usage_of
+from aigent.llm.core import Dispatch, Llm, Rehearsed, Request, describe
+from aigent.llm.messages import Cache, CacheTtl
+from aigent.llm.pricing import PRICES, affordable_output_tokens, worst_case_usd
 from aigent.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
 from aigent.tools_config import MAX_WEB_SEARCHES
 
-from .conftest import (
+from ..conftest import (
     FAKE_USAGE,
     GROWN_PAST,
     FakeMessages,
@@ -578,7 +578,7 @@ def test_only_an_adapter_talks_to_the_model() -> None:
         for path in package.rglob("*.py")
         if _talks_to_the_model(path)
     }
-    assert talkers == {"adapters/anthropic.py"}
+    assert talkers == {"llm/adapters/anthropic.py"}
 
 
 AGENT = Request(

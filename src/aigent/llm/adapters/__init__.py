@@ -19,16 +19,16 @@ from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel
 
-from aigent.adapters.anthropic import Anthropic
-from aigent.adapters.cfg_anthropic import CLIENT as ANTHROPIC
-from aigent.adapters.cfg_local import CLIENTS as LOCAL_CLIENTS
-from aigent.adapters.cfg_sarvam import CLIENT as SARVAM
-from aigent.adapters.client import Client
-from aigent.adapters.openai import OpenAI
-from aigent.messages import BatchStatus, Failed, Msg, Parsed, Reply
+from aigent.llm.adapters.anthropic import Anthropic
+from aigent.llm.adapters.cfg_anthropic import CLIENT as ANTHROPIC
+from aigent.llm.adapters.cfg_local import CLIENTS as LOCAL_CLIENTS
+from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
+from aigent.llm.adapters.client import Client
+from aigent.llm.adapters.openai import OpenAI
+from aigent.llm.messages import BatchStatus, Failed, Msg, Parsed, Reply
 
 if TYPE_CHECKING:
-    from aigent.llm import Dispatch, Request
+    from aigent.llm.core import Dispatch, Request
 
 
 class Streamed(Protocol):

@@ -1526,3 +1526,9 @@
   is, and one prevented re-write covers it (0.75× extra once against 1.15× saved). Every new guard
   mutation-checked; the one first missed, a tool loop's last answer sized at the 1-hour write, now
   has a row whose context is big enough that the cap cannot hide it.
+- 10-07: **Everything that talks to a model moved into `llm/`**, free and behaviour-neutral: `llm.py`
+  became `llm/core.py`, beside `messages.py`, `pricing.py` and `adapters/`, each moved with `git mv`
+  so history follows; their tests moved to `tests/llm/`. `llm/__init__.py` imports nothing, because
+  `config` imports `adapters` while `core` imports `config`. `config`, `errors` and `tracing` stay
+  top-level. The same 1,224 tests pass. The batch-id test now logs through `llm.core`'s own logger,
+  so it checks that the door's lines still reach the handler `agent_tasks` puts on `aigent.llm`.

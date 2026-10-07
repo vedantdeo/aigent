@@ -33,8 +33,9 @@ from aigent.config import MAX_USD_PER_TURN, MODEL  # noqa: E402
 from aigent.evals.dataset import Case, load_jsonl  # noqa: E402
 from aigent.evals.grade import Grader, Outcome  # noqa: E402
 from aigent.evals.runner import EvalRun  # noqa: E402
-from aigent.messages import Usage as NeutralUsage  # noqa: E402
-from aigent.pricing import estimate_eval_usd, worst_case_usd  # noqa: E402
+from aigent.llm import core as llm_core  # noqa: E402
+from aigent.llm.messages import Usage as NeutralUsage  # noqa: E402
+from aigent.llm.pricing import estimate_eval_usd, worst_case_usd  # noqa: E402
 from aigent.retrieval.chunk import Chunk  # noqa: E402
 from aigent.tools_config import MAX_WEB_SEARCHES, SANDBOX  # noqa: E402
 
@@ -557,7 +558,7 @@ def test_a_batch_id_is_printed_as_it_is_submitted(
     def runner(
         cases: list[Case], variants: dict[str, object], graders: dict[str, Grader], **kw: Any
     ) -> EvalRun:
-        logger.info("batch %s submitted: %d requests", "msgbatch_7", len(cases))
+        llm_core.log.info("batch %s submitted: %d requests", "msgbatch_7", len(cases))
         return EvalRun("d", "", "m", tuple(variants), tuple(graders))
 
     monkeypatch.setattr(agent_tasks, "run_eval", runner)

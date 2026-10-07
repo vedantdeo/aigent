@@ -16,8 +16,8 @@ from aigent import guardrails, tracing
 from aigent.config import CACHE_PARAM, MAX_AGENT_TURNS
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
-from aigent.llm import Llm, Request
-from aigent.messages import Block, Reply
+from aigent.llm.core import Llm, Request
+from aigent.llm.messages import Block, Reply
 from aigent.report_tools import SEARCH_TOOL, TOOL_KINDS, ReportSearch, Searched
 from aigent.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
 from aigent.workflows.reports import CATALOGUE, Search

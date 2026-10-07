@@ -10,13 +10,13 @@ from contextlib import AbstractContextManager, nullcontext
 
 import pytest
 
-from aigent.adapters import CLIENTS
 from aigent.config import (
     WEB_SEARCH_RESULT_TOKENS,
 )
 from aigent.errors import BudgetExceeded
-from aigent.messages import CacheTtl, Usage
-from aigent.pricing import (
+from aigent.llm.adapters import CLIENTS
+from aigent.llm.messages import CacheTtl, Usage
+from aigent.llm.pricing import (
     PRICES,
     Budget,
     affordable_output_tokens,

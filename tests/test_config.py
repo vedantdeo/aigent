@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 
 from aigent import config
-from aigent.adapters.client import Client
+from aigent.llm.adapters.client import Client
 
 
 def test_the_cap_table_and_the_constants_stay_in_step() -> None:

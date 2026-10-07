@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from aigent import guardrails
 from aigent.config import TRACE_ENVIRONMENT, TRACING
-from aigent.messages import Usage
+from aigent.llm.messages import Usage
 
 if TYPE_CHECKING:
     from langfuse import Langfuse

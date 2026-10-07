@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from aigent.adapters.anthropic import get_client, has_credentials
 from aigent.config import MODEL
+from aigent.llm.adapters.anthropic import get_client, has_credentials
 
 pytestmark = pytest.mark.skipif(not has_credentials(), reason="no Anthropic credentials configured")
 

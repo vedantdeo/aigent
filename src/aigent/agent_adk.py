@@ -29,14 +29,14 @@ from google.adk.tools import FunctionTool
 from google.genai import types
 from pydantic import ConfigDict, PrivateAttr
 
-from aigent.adapters import spec
 from aigent.agent import FINISH, SYSTEM, called, cited
 from aigent.agent_graph import Traced
 from aigent.config import CACHE_PARAM, MAX_AGENT_TURNS
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
-from aigent.llm import Llm, Request
-from aigent.messages import Block, Msg, Reply, Tool
+from aigent.llm.adapters import spec
+from aigent.llm.core import Llm, Request
+from aigent.llm.messages import Block, Msg, Reply, Tool
 from aigent.report_tools import ReportSearch
 from aigent.tools import WEB_SEARCH_TOOL, execute_tool
 from aigent.workflows.reports import Search

@@ -22,7 +22,7 @@ from aigent.config import (
     MAX_TOKENS_WORKER,
 )
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
-from aigent.llm import Llm, Request
+from aigent.llm.core import Llm, Request
 from aigent.retrieval.chunk import context_block
 from aigent.workflows.orchestrator_workers import (
     PLAN,

@@ -77,14 +77,14 @@ this machine. Edit both, or neither.
 
 - The one config module is `src/aigent/config.py`: models, spending ceilings, output caps
   (`MAX_TOKENS_CHAT` and friends), the agent turn cap, the report's failure cap.
-- *Split by concern:* `pricing.py` holds the `Price`/`Budget` classes and the cost arithmetic;
+- *Split by concern:* `llm/pricing.py` holds the `Price`/`Budget` classes and the cost arithmetic;
   `config.py` kept the settings they read. It happened when `config.py` got too big to read, not
   before.
 - *Split by isolation:* `tools.py` imports nothing from this package, which is the whole reason it
   can be lifted into the SDK tool runner in Week 5 and a LangGraph node in Week 6. Its constants live
   in `tools_config.py`, travelling beside it. Not in `config.py`, which would cost `tools` its
   independence; not loose in `tools.py`, which would cost the one-place rule.
-- *Split by concern, one file per client:* `adapters/cfg_<name>.py` holds what changes with the
+- *Split by concern, one file per client:* `llm/adapters/cfg_<name>.py` holds what changes with the
   endpoint — which wire it speaks, which models it serves, where it lives, and any output cap it
   wants different — beside the adapters that talk to it. `config.py` keeps what is the same
   whoever answers: the spending ceilings, the loop caps, and `DEFAULT_MAX_TOKENS`, the one table a

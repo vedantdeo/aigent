@@ -16,7 +16,7 @@ Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK f
 
 ## One door to a model
 
-Every model call in the repo goes through `src/aigent/llm.py`: counted for free, checked against the
+Every model call in the repo goes through `src/aigent/llm/core.py`: counted for free, checked against the
 per-request ceiling, admitted against the run's budget, then sent, billed and traced. A test fails
 on any other module that calls the SDK itself.
 
@@ -195,7 +195,7 @@ calls a model at set points; an agent lets the model choose the path.
 | evaluator-optimizer | `workflows/evaluator_optimizer.py` | Opus drafts, Sonnet grades against four criteria, redraft until it passes or three rounds are up |
 
 Each is a function over an `Llm` and the reports' search, tested against the fake client. Every
-call goes through `llm.py`, which checks its worst case against the budget before sending it, and a
+call goes through `llm/core.py`, which checks its worst case against the budget before sending it, and a
 batch of parallel calls as a whole.
 
 ## Agent
@@ -328,8 +328,9 @@ caught before the graph goes stale.
 ## Layout
 
 - `src/aigent/config.py`  every tunable constant bar the tool pair's: models, ceilings, caps
-- `src/aigent/pricing.py` token prices, cost arithmetic, the two budget guards
-- `src/aigent/llm.py`    the one door to a model: count, admit, send, bill, trace
+- `src/aigent/llm/`      everything that talks to a model: `core.py`, the one door (count, admit,
+  send, bill, trace); `messages.py`, the neutral types; `pricing.py`, token prices and the budget
+  guards; `adapters/`, the wire each client speaks
 - `src/aigent/errors.py` every error the package defines, to reuse before adding one
 - `src/aigent/tools.py`   framework-free tools, reused by everything that calls a tool
 - `src/aigent/tools_config.py` their constants, so the pair lifts into any framework intact

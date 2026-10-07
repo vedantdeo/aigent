@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from aigent.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN, WEB_SEARCH_RESULT_TOKENS
 from aigent.errors import BudgetExceeded
-from aigent.messages import CacheTtl, Usage
+from aigent.llm.messages import CacheTtl, Usage
 
 
 @dataclass(frozen=True)

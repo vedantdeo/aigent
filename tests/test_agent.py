@@ -26,7 +26,7 @@ from anthropic.types import (
 
 from aigent.agent import FINISH, run
 from aigent.config import MAX_AGENT_TURNS, MAX_TOKENS_TOOL_LOOP, MAX_USD_PER_TURN, MODEL
-from aigent.pricing import PRICES, worst_case_usd
+from aigent.llm.pricing import PRICES, worst_case_usd
 from aigent.retrieval.chunk import Chunk
 from aigent.tools import WEB_SEARCH_TOOL
 from aigent.tools_config import MAX_WEB_SEARCHES

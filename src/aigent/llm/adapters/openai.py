@@ -27,18 +27,18 @@ from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from openai.types.shared_params import ResponseFormatJSONSchema
 from pydantic import BaseModel, ValidationError
 
-from aigent.adapters.client import Client, model_of
-from aigent.adapters.retry import http_client
 from aigent.errors import Unsupported
-from aigent.messages import BatchStatus, Block, Failed, Parsed, Reply, Usage
+from aigent.llm.adapters.client import Client, model_of
+from aigent.llm.adapters.retry import http_client
+from aigent.llm.messages import BatchStatus, Block, Failed, Parsed, Reply, Usage
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from transformers import PreTrainedTokenizerBase
 
-    from aigent.adapters import Streamed, ToolSession
-    from aigent.llm import Dispatch, Request
+    from aigent.llm.adapters import Streamed, ToolSession
+    from aigent.llm.core import Dispatch, Request
 
 # What this wire can do. Everything absent from it — caching, thinking, effort, tools, server-side
 # search, streaming — `llm` refuses before sending. `schema` is here because a caller may ask for

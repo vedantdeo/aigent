@@ -8,10 +8,10 @@ import httpx2
 import openai
 import pytest
 
-from aigent.adapters import CLIENTS, build, judge_of, spec
-from aigent.adapters.retry import RetryingTransport
 from aigent.config import CLIENT
-from aigent.llm import Llm
+from aigent.llm.adapters import CLIENTS, build, judge_of, spec
+from aigent.llm.adapters.retry import RetryingTransport
+from aigent.llm.core import Llm
 
 
 def test_every_client_builds_an_adapter_that_can_send() -> None:
@@ -82,7 +82,7 @@ def test_a_reply_block_carries_no_unset_fields_to_echo_back() -> None:
     """The API sends `caller: null` on a server tool call, and refuses it when echoed back."""
     from anthropic.types import Message, ServerToolUseBlock, Usage
 
-    from aigent.adapters.anthropic import reply_of
+    from aigent.llm.adapters.anthropic import reply_of
 
     message = Message(
         id="m",

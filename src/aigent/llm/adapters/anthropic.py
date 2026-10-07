@@ -45,10 +45,10 @@ from anthropic.types.messages.batch_create_params import Request as BatchRequest
 from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
 
-from aigent.adapters.client import Client, model_of
-from aigent.adapters.retry import http_client
 from aigent.errors import Unreadable
-from aigent.messages import (
+from aigent.llm.adapters.client import Client, model_of
+from aigent.llm.adapters.retry import http_client
+from aigent.llm.messages import (
     BatchStatus,
     Block,
     Failed,
@@ -63,7 +63,7 @@ from aigent.messages import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from aigent.llm import Dispatch, Request
+    from aigent.llm.core import Dispatch, Request
 
 import os
 from pathlib import Path

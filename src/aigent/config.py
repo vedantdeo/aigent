@@ -9,15 +9,15 @@ import os
 
 from dotenv import load_dotenv
 
-from aigent.adapters import spec
-from aigent.adapters.client import Client
-from aigent.messages import Cache, CacheTtl, Thinking
+from aigent.llm.adapters import spec
+from aigent.llm.adapters.client import Client
+from aigent.llm.messages import Cache, CacheTtl, Thinking
 
 load_dotenv()
 
 
-# Which client `llm` talks to; its settings live in `adapters/cfg_<name>.py`, and the three models
-# below are that client's, overridable one at a time for a run.
+# Which client `llm` talks to; its settings live in `llm/adapters/cfg_<name>.py`, and the three
+# models below are that client's, overridable one at a time for a run.
 CLIENT: str = os.environ.get("AIGENT_CLIENT", "anthropic")
 ACTIVE = spec(CLIENT)
 
@@ -43,7 +43,7 @@ WEB_SEARCH_RESULT_TOKENS = 10_000
 # One output cap per call site. The pre-flight guard prices the full cap, so an oversized number
 # trips the per-request ceiling for nothing; thinking tokens count against it too. Side by side
 # they show which calls are the expensive ones. A client raises or lowers one of these for itself
-# in its own `adapters/cfg_<name>.py`, by key, and inherits every cap it does not name.
+# in its own `llm/adapters/cfg_<name>.py`, by key, and inherits every cap it does not name.
 
 DEFAULT_MAX_TOKENS: dict[str, int] = {
     "ANSWER": 256,  # two sentences plus five chunk ids is ~140, with thinking off

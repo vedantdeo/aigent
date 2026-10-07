@@ -18,13 +18,13 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.completion_usage import PromptTokensDetails
 from pydantic import BaseModel
 
-from aigent.adapters.cfg_local import CLIENT as LOCAL
-from aigent.adapters.cfg_sarvam import CLIENT as SARVAM
-from aigent.adapters.client import Client
-from aigent.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
 from aigent.errors import StepFailed, Unsupported
-from aigent.llm import Llm, Request
-from aigent.messages import Msg
+from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
+from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
+from aigent.llm.adapters.client import Client
+from aigent.llm.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
+from aigent.llm.core import Llm, Request
+from aigent.llm.messages import Msg
 
 Finish = Literal["stop", "length", "tool_calls", "content_filter"]
 

@@ -10,16 +10,16 @@ import pytest
 from anthropic.types.messages import MessageBatch, MessageBatchIndividualResponse
 from pydantic import BaseModel
 
-from aigent import llm as llm_module
-from aigent.adapters.anthropic import Anthropic, batch_params, batch_result
-from aigent.adapters.cfg_anthropic import CLIENT as ANTHROPIC
 from aigent.config import BATCH_POLL_SECONDS, MODEL
 from aigent.errors import BatchUnfinished, BudgetExceeded, Unsupported
-from aigent.llm import Llm, Rehearsed, Request
-from aigent.messages import BatchStatus, Failed, Parsed, Usage
-from aigent.pricing import Budget, usage_cost, worst_case_usd
+from aigent.llm import core as llm_module
+from aigent.llm.adapters.anthropic import Anthropic, batch_params, batch_result
+from aigent.llm.adapters.cfg_anthropic import CLIENT as ANTHROPIC
+from aigent.llm.core import Llm, Rehearsed, Request
+from aigent.llm.messages import BatchStatus, Failed, Parsed, Usage
+from aigent.llm.pricing import Budget, usage_cost, worst_case_usd
 
-from .conftest import FAKE_USAGE, FakeAnthropic, MakeLlm, Recorder, Sent
+from ..conftest import FAKE_USAGE, FakeAnthropic, MakeLlm, Recorder, Sent
 
 
 class Answer(BaseModel):

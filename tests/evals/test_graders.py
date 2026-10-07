@@ -13,7 +13,6 @@ from collections.abc import Callable
 import pytest
 from pydantic import BaseModel, JsonValue
 
-from aigent.adapters.anthropic import usage_of
 from aigent.config import (
     CLIENT,
     JUDGE_MODEL,
@@ -44,7 +43,8 @@ from aigent.evals.grade import (
     unparsed,
 )
 from aigent.evals.judge import LlmJudge, Verdict
-from aigent.llm import Llm
+from aigent.llm.adapters.anthropic import usage_of
+from aigent.llm.core import Llm
 
 from ..conftest import CAPPED, RUBRIC, FakeAnthropic, MakeJudge, Sent
 

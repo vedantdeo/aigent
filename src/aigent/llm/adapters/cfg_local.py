@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from aigent.adapters.client import Client
+from aigent.llm.adapters.client import Client
 
 BASE_URL = "http://127.0.0.1:8080/v1"
 

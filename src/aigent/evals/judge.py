@@ -14,12 +14,12 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 
-from aigent.adapters import spec
 from aigent.config import CLIENT, THINKING_EVAL_PARAM, max_tokens
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Outcome, Score
-from aigent.llm import Llm, Request
-from aigent.messages import Failed, Parsed
+from aigent.llm.adapters import spec
+from aigent.llm.core import Llm, Request
+from aigent.llm.messages import Failed, Parsed
 
 JUDGE_SYSTEM = (
     "You grade one answer against one rubric. Judge only what the rubric asks about. Be strict: if "

@@ -33,14 +33,14 @@ from anthropic.types.messages import MessageBatch, MessageBatchIndividualRespons
 from pydantic import BaseModel
 
 from aigent import tracing
-from aigent.adapters import CLIENTS
-from aigent.adapters.cfg_anthropic import CLIENT as ANTHROPIC
-from aigent.adapters.client import Client
 from aigent.config import CLIENT, JUDGE_MODEL, MAX_USD_PER_TURN, MODEL
 from aigent.evals.judge import LlmJudge, Verdict
-from aigent.llm import Llm
-from aigent.messages import Usage as NeutralUsage
-from aigent.pricing import PRICES, Budget
+from aigent.llm.adapters import CLIENTS
+from aigent.llm.adapters.cfg_anthropic import CLIENT as ANTHROPIC
+from aigent.llm.adapters.client import Client
+from aigent.llm.core import Llm
+from aigent.llm.messages import Usage as NeutralUsage
+from aigent.llm.pricing import PRICES, Budget
 from aigent.retrieval.chunk import Chunk
 from aigent.retrieval.embed import Vectors
 

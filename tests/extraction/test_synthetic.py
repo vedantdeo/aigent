@@ -11,8 +11,6 @@ from typing import cast
 
 import pytest
 
-from aigent.adapters import spec
-from aigent.adapters.openai import record_in
 from aigent.config import SYNTHETIC_CLIENT, SYNTHETIC_HEADLINES, max_tokens
 from aigent.extraction import synthetic
 from aigent.extraction.headlines import (
@@ -33,6 +31,8 @@ from aigent.extraction.synthetic import (
     split,
     wire_for,
 )
+from aigent.llm.adapters import spec
+from aigent.llm.adapters.openai import record_in
 
 EXAMPLES = generate()
 QUARTERS = ("Q1", "Q2", "Q3", "Q4", "H1", "H2", "FY", "unknown")
