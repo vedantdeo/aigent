@@ -35,11 +35,11 @@ from aigent import tracing
 from aigent.adapters import CLIENTS
 from aigent.adapters.cfg_anthropic import CLIENT as ANTHROPIC
 from aigent.adapters.client import Client
-from aigent.config import CLIENT, JUDGE_MODEL, MODEL
+from aigent.config import CLIENT, JUDGE_MODEL, MAX_USD_PER_TURN, MODEL
 from aigent.evals.judge import LlmJudge, Verdict
 from aigent.llm import Llm
 from aigent.messages import Usage as NeutralUsage
-from aigent.pricing import Budget
+from aigent.pricing import PRICES, Budget
 from aigent.retrieval.chunk import Chunk
 from aigent.retrieval.embed import Vectors
 
@@ -160,6 +160,15 @@ class Sent:
 
 Reply = Callable[[Sent], str | BaseModel | Exception | None]
 FAKE_USAGE = Usage(input_tokens=100, output_tokens=50)
+
+
+def context_costing(usd: float) -> int:
+    """The cached context whose write alone costs `usd`: so a row reads relative to the ceiling."""
+    return int(usd / (PRICES[MODEL].cache_write * 1e-6))
+
+
+# Past the per-turn ceiling with the output cap on top, with $0.05 left for an answer.
+GROWN_PAST = context_costing(MAX_USD_PER_TURN - 0.05)
 
 
 class _FakeStream:

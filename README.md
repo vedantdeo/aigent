@@ -344,7 +344,7 @@ caught before the graph goes stale.
 - `evals/`                  eval datasets and the reports they produce
 - `tests/`                  unit tests plus a free API smoke test
 - `LOG.md`                  the log: what shipped, what broke, numbers
-- `CLAUDE.md`               the eight project rules Claude sessions follow here
+- `CLAUDE.md`               the nine project rules Claude sessions follow here
 - `docs/knowledge-graph.md` map of every module, edge, and invariant in the repo
 - `docs/tool-runner.md`    the SDK tool runner, read from source against our own loop
 - `docs/context-management.md` what goes in the agent's context, what it costs, when to summarize

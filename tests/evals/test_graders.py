@@ -545,6 +545,101 @@ def test_tool_order(used: JsonValue, order: JsonValue, passed: bool) -> None:
     assert score.passed is passed, score.detail
 
 
+class _Record(BaseModel):
+    answer: str
+
+
+@pytest.mark.parametrize(
+    ("grader", "expected", "outcome", "says"),
+    [
+        pytest.param(
+            includes(),
+            {"includes": "5.50"},
+            _out(answer="5.50"),
+            "expected 'includes' must be a list",
+            id="includes given one phrase, not a list",
+        ),
+        pytest.param(
+            excludes(),
+            {"excludes": "FINCH"},
+            _out(answer="ok"),
+            "expected 'excludes' must be a list",
+            id="excludes given one phrase, not a list",
+        ),
+        pytest.param(
+            regex("answer", r"\d"),
+            {},
+            _out(other="1"),
+            "output has no 'answer' field",
+            id="regex over a field the task never returned",
+        ),
+        pytest.param(
+            regex("answer"),
+            {},
+            _out(answer="1"),
+            "dataset has no regex in expected 'answer'",
+            id="regex with no pattern on the case",
+        ),
+        pytest.param(
+            right_tools(),
+            {"tools": ["a"]},
+            _out(tools="a"),
+            "output has no list of tool names",
+            id="right_tools over a bare tool name",
+        ),
+        pytest.param(
+            right_tools(),
+            {"tools": "a"},
+            _out(tools=["a"]),
+            "must be lists of tool names",
+            id="right_tools labelled with a bare tool name",
+        ),
+        pytest.param(
+            tool_order(),
+            {"order": [["a", "b"]]},
+            _out(),
+            "output has no list of tool names",
+            id="tool_order with no trajectory",
+        ),
+        pytest.param(
+            tool_order(),
+            {"order": "a,b"},
+            _out(tools=["a", "b"]),
+            "expected 'order' must be a list",
+            id="tool_order labelled with a string",
+        ),
+        pytest.param(
+            tool_order(),
+            {"order": [["a"]]},
+            _out(tools=["a"]),
+            "order pair [a] is not [before, after]",
+            id="an order pair of one tool",
+        ),
+        pytest.param(
+            tool_order(),
+            {"order": [{"b": 1, "a": True}]},
+            _out(tools=["a"]),
+            "order pair {a: true, b: 1} is not [before, after]",
+            id="an order pair that is a map",
+        ),
+        pytest.param(
+            pydantic_valid(_Record),
+            {},
+            Outcome(error="timed out"),
+            "task failed: timed out",
+            id="a schema check on a failed task",
+        ),
+    ],
+)
+def test_a_grader_says_which_side_is_unusable_rather_than_guessing(
+    grader: Grader, expected: Fields, outcome: Outcome, says: str
+) -> None:
+    score = grader(_case(expected), outcome)
+
+    assert score.passed is False
+    assert says in score.detail, score.detail
+
+
 def test_the_judge_grades_with_thinking_off(make_judge: MakeJudge) -> None:
     """An eval is a measurement (invariant 15), and a judge thinking on its own budget ran out of
     room before the verdict."""

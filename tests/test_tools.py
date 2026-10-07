@@ -19,6 +19,7 @@ from aigent.tools_config import MAX_FILE_READ_CHARS
         ("-3 * 4", -12.0),
         ("10 % 3", 1.0),
         ("2 ** 10", 1024.0),
+        ("+5 - 2", 3.0),
     ],
 )
 def test_calculate(expression: str, expected: float) -> None:
@@ -26,11 +27,22 @@ def test_calculate(expression: str, expected: float) -> None:
 
 
 @pytest.mark.parametrize(
-    "expression",
-    ["__import__('os')", "a + 1", "1 / 0", "2 ** 100000", "(1, 2)", "True + 1", "1 +"],
+    ("expression", "says"),
+    [
+        ("__import__('os')", "unsupported syntax: Call"),
+        ("a + 1", "unsupported syntax: Name"),
+        ("1 / 0", "division by zero"),
+        ("7 % 0", "division by zero"),
+        ("2 ** 100000", "exponent too large"),
+        ("(1, 2)", "unsupported syntax: Tuple"),
+        ("True + 1", "unsupported syntax: Constant"),
+        ("1 +", "not a valid expression"),
+        ("1 << 2", "operator not allowed: LShift"),
+        ("~5", "unsupported syntax: UnaryOp"),
+    ],
 )
-def test_calculate_rejects(expression: str) -> None:
-    with pytest.raises(ValueError):
+def test_calculate_rejects(expression: str, says: str) -> None:
+    with pytest.raises(ValueError, match=says):
         calculate(expression)
 
 
@@ -73,6 +85,17 @@ def test_read_file_refuses_a_path_that_leaves_the_sandbox(
         read_file(escape(box), sandbox=box)
 
 
+def test_read_file_turns_an_unreadable_file_into_a_short_error(box: Path) -> None:
+    locked = box / "locked.txt"
+    locked.write_text("private", encoding="utf-8")
+    locked.chmod(0)
+    try:
+        with pytest.raises(ValueError, match="Could not read locked.txt"):
+            read_file("locked.txt", sandbox=box)
+    finally:
+        locked.chmod(0o600)
+
+
 def test_read_file_directory_is_a_short_error_without_the_absolute_path(box: Path) -> None:
     (box / "sub").mkdir()
     with pytest.raises(ValueError, match="^sub is a directory, not a file$"):
@@ -110,6 +133,7 @@ def test_read_file_truncates_only_past_the_cap(box: Path, size: int, truncated: 
         ("calculate", {"expression": "1 / 0"}, True, "Error:"),
         ("read_file", {"file_path": "definitely-not-here.txt"}, True, "Error: File not found"),
         ("read_file", {"file_path": 42}, True, "must be a string"),
+        ("calculate", {"expression": 42}, True, "'expression' must be a string"),
         ("nope", {}, True, "nope"),
     ],
 )

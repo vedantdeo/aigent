@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable
+from typing import cast
 
 import pytest
 
 from aigent.adapters import spec
 from aigent.adapters.openai import record_in
 from aigent.config import SYNTHETIC_CLIENT, SYNTHETIC_HEADLINES, max_tokens
+from aigent.extraction import synthetic
 from aigent.extraction.headlines import (
     METRICS,
     VARIANTS,
@@ -192,3 +194,47 @@ def test_a_training_row_is_the_request_the_eval_sends_then_the_label() -> None:
 def test_rows_are_only_rendered_for_the_wire_mlx_lm_trains_on() -> None:
     with pytest.raises(ValueError, match="openai"):
         wire_for("anthropic")
+
+
+class _Draws:
+    """Stands in for `random.Random` where a test needs one particular draw."""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def randint(self, low: int, high: int) -> int:
+        del low, high
+        return self.value
+
+
+@pytest.mark.parametrize(
+    ("value", "written"),
+    [
+        (120, "Rs 120 crore"),
+        (4_567, "Rs 4,567 crore"),
+        (99_999, "Rs 99,999 crore"),
+        pytest.param(1_234_567, "Rs 12,34,567 crore", id="lakhs grouped in pairs"),
+        pytest.param(123_456_789, "Rs 12,34,56,789 crore", id="crores grouped in pairs too"),
+    ],
+)
+def test_a_crore_amount_is_grouped_the_indian_way(value: int, written: str) -> None:
+    assert synthetic._crore(cast(random.Random, _Draws(value))) == written
+
+
+def test_a_margin_never_moves_to_the_level_it_started_at(monkeypatch: pytest.MonkeyPatch) -> None:
+    levels = iter([12.5, 12.5, 14.0])  # the first draw for `now` ties `before` and is drawn again
+    monkeypatch.setattr(synthetic, "_level", lambda rng: next(levels))
+
+    made = synthetic.margin_level(random.Random(0), "Infosys")
+
+    assert "to 14% from 12.5%" in made.headline, made.headline
+
+
+def test_templates_that_cannot_make_enough_distinct_headlines_are_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    same = synthetic.margin_level(random.Random(0), "Infosys")
+    monkeypatch.setattr(synthetic, "TEMPLATES", (lambda rng, company: same,))
+
+    with pytest.raises(RuntimeError, match="made only 1 of 3 headlines"):
+        synthetic.generate(3, real=[])

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from aigent.evals.dataset import Case, load_jsonl
-from aigent.retrieval.chunk import Chunk, Document, squeeze
+from aigent.retrieval.chunk import Chunk, Document, Inventory, squeeze
 from aigent.retrieval.questions import (
     DATASET,
     Question,
@@ -68,6 +68,22 @@ def test_the_sample_is_spread_and_identical_between_runs() -> None:
     assert first[0] is inventory.chunks[0], "the spread starts at the beginning"
     assert first[-1] is inventory.chunks[-1], "and ends at the end"
     assert len({c.id for c in first}) == 8, "no passage asked about twice"
+
+
+@pytest.mark.parametrize(
+    ("n", "taken"),
+    [
+        pytest.param(0, [], id="none asked for"),
+        pytest.param(-2, [], id="a negative count"),
+        pytest.param(1, [0], id="one: the first eligible passage"),
+        pytest.param(3, [0, 2, 4], id="three spread across five, ends included"),
+    ],
+)
+def test_the_sample_takes_evenly_spaced_passages(n: int, taken: list[int]) -> None:
+    chunks = tuple(_chunk(PROSE, ordinal=i) for i in range(5))
+    inventory = Inventory("sentence", chunks, {chunk.id: chunk for chunk in chunks})
+
+    assert [chunk.ordinal for chunk in sample_passages(inventory, n)] == taken
 
 
 def test_asking_for_more_passages_than_exist_returns_what_there_is() -> None:

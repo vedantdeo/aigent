@@ -32,11 +32,21 @@ import aigent
 from aigent.config import MAX_USD_PER_TURN, MODEL
 from aigent.errors import BudgetExceeded, StepFailed, TurnsExhausted
 from aigent.llm import Dispatch, Llm, Rehearsed, Request, describe
-from aigent.pricing import PRICES, affordable_output_tokens, worst_case_usd
+from aigent.pricing import affordable_output_tokens, worst_case_usd
 from aigent.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
 from aigent.tools_config import MAX_WEB_SEARCHES
 
-from .conftest import FAKE_USAGE, FakeMessages, MakeLlm, Sent, tool_results, tool_turn, turns
+from .conftest import (
+    FAKE_USAGE,
+    GROWN_PAST,
+    FakeMessages,
+    MakeLlm,
+    Sent,
+    context_costing,
+    tool_results,
+    tool_turn,
+    turns,
+)
 
 # Worst case on the fake: 100 input tokens at $5/M plus 64 output at $25/M, $0.0021.
 REQUEST = Request.ask("greet", "be brief", "hello", 64)
@@ -589,15 +599,6 @@ LONG = replace(AGENT, max_tokens=4096, cache_control={"type": "ephemeral"})
 FINISH = "answer now from what you have"
 
 
-def _context_costing(usd: float) -> int:
-    """The cached context whose write alone costs `usd`: so a row reads relative to the ceiling."""
-    return int(usd / (PRICES[MODEL].cache_write * 1e-6))
-
-
-# Past the per-turn ceiling with the output cap on top, with $0.05 left for an answer.
-GROWN_PAST = _context_costing(MAX_USD_PER_TURN - 0.05)
-
-
 def _growing(fake: FakeMessages, tokens: int, ran: list[str] | None = None) -> Dispatch:
     """A tool whose result makes the next turn `tokens` long, by the free count."""
 
@@ -668,9 +669,9 @@ def test_a_conversation_out_of_room_is_told_to_answer_from_what_it_has(
 @pytest.mark.parametrize(
     "grown_to",
     [
-        pytest.param(_context_costing(MAX_USD_PER_TURN) + 1_000, id="no room at all"),
+        pytest.param(context_costing(MAX_USD_PER_TURN) + 1_000, id="no room at all"),
         pytest.param(
-            _context_costing(MAX_USD_PER_TURN - 0.01),
+            context_costing(MAX_USD_PER_TURN - 0.01),
             id="room for less than MIN_TOKENS_FINAL_ANSWER",
         ),
     ],
@@ -741,7 +742,7 @@ def test_a_caller_out_of_room_gets_the_last_answer_run_tools_would_send(make_llm
 @pytest.mark.parametrize(
     ("tokens", "reply", "sent"),
     [
-        pytest.param(_context_costing(MAX_USD_PER_TURN) + 1_000, "unused", 0, id="no room at all"),
+        pytest.param(context_costing(MAX_USD_PER_TURN) + 1_000, "unused", 0, id="no room at all"),
         pytest.param(100, tool_turn(("t1", "current_time", {})), 1, id="it asks for tools again"),
     ],
 )
@@ -771,9 +772,26 @@ def test_server_tools_reach_the_wire_as_written_after_ours(make_llm: MakeLlm) ->
     assert answer == first
 
 
-def test_run_tools_needs_a_tool(make_llm: MakeLlm) -> None:
+@pytest.mark.parametrize(
+    "send",
+    [
+        pytest.param(lambda llm: llm.run_tools(REQUEST, execute_tool), id="a run of turns"),
+        pytest.param(lambda llm: llm.turn(REQUEST), id="one turn the caller drives"),
+    ],
+)
+def test_a_tool_conversation_needs_a_tool(make_llm: MakeLlm, send: Callable[[Llm], object]) -> None:
     llm, fake = make_llm(echo)
 
     with pytest.raises(ValueError, match="at least one tool"):
-        llm.run_tools(REQUEST, execute_tool)
+        send(llm)
     assert fake.sent == [] and fake.counted == []
+
+
+def test_a_turn_that_says_tool_use_but_asks_for_none_ends_the_run(make_llm: MakeLlm) -> None:
+    llm, fake = make_llm(lambda sent: tool_turn())
+
+    ran = llm.run_tools(AGENT, execute_tool)
+
+    assert ran.message.stop_reason == "tool_use" and ran.cut_short is None
+    assert len(fake.sent) == 1, "nothing to run, so nothing more to send"
+    assert llm.budget.held_usd == 0.0

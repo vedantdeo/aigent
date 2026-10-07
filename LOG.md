@@ -1482,3 +1482,11 @@
   lock passed with the lock removed**: CPython 3.12's GIL switches threads only at calls and
   back-edges, never inside `spent_usd += x`, so the race cannot be shown here and the test was
   dropped. The lock stays, correct by construction and needed on free-threaded builds.
+- 10-07: **A sweep for untested behaviour, free.** A new rule, mirrored from the global file: a
+  push that adds a feature carries the tests that pin it down, each guard checked by deleting it
+  and running the suite. Against it, the tests that were missing: the agent eval's wiring and
+  injection graders, running out of budget in all three agent builds as one table, the retrieval
+  eval's `resolve`, the graders' and the calculator's refusals, Langfuse scores, Indian number
+  grouping, and chunker and sampling edges. Every new test was mutation-checked; the one survivor,
+  `sample_passages`' `n <= 0` guard, is equivalent, since `range(n)` is already empty. Left
+  untested: one `run_tools` exit the real SDK cannot reach, and loading the real models.

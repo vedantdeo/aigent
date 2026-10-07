@@ -124,6 +124,10 @@ def test_run_budget_accumulates_then_trips_after_the_crossing_call() -> None:
     assert budget.spent_usd == pytest.approx(0.06)  # the crossing call was billed, so it is counted
 
 
+def test_a_model_with_no_price_affords_no_output() -> None:
+    assert affordable_output_tokens("claude-opus-4-8", 100, 1.0) == 0
+
+
 def test_eval_estimate_is_the_per_request_worst_case_times_the_dataset() -> None:
     # 30 cases, one call each: 400 input at $5/M plus 1024 output at $25/M.
     one = worst_case_usd(OPUS, 400, 1024)

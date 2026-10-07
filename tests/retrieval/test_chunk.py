@@ -99,6 +99,18 @@ def test_heading_chunks_keep_their_heading_even_when_the_section_is_split() -> N
     assert {chunk.heading for chunk in inventory.chunks} == {"Risk Management"}
 
 
+def test_front_matter_is_a_chunk_of_its_own_and_an_empty_section_is_dropped() -> None:
+    front = "This annual report covers the financial year ending March 2025 for all segments. "
+    body = "Revenue grew across every segment, led by consumer goods and the hotels business. "
+    text = f"{front}\nDIRECTORS' REPORT\n{body}\nNOTES\nSee below.\n"
+    inventory = Inventory.build("heading", [_doc(text)], by_heading(300))
+
+    assert [(chunk.heading, chunk.text.split()[0]) for chunk in inventory.chunks] == [
+        (None, "This"),
+        ("DIRECTORS' REPORT", "DIRECTORS'"),
+    ], "NOTES holds less than CHUNK_MIN_CHARS, so it is not a chunk"
+
+
 def test_heading_chunks_fall_back_to_sentences_when_extraction_left_no_headings() -> None:
     text = FILLER * 8
     inventory = Inventory.build("heading", [_doc(text)], by_heading(300))

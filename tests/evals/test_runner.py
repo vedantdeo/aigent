@@ -174,6 +174,22 @@ def test_the_ceiling_stops_the_run_and_keeps_the_rows_it_paid_for() -> None:
     assert "AIGENT_MAX_USD_PER_EVAL" in run.stopped_early, "name the right knob"
 
 
+def test_progress_names_an_error_row_and_why_the_run_stopped(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def costly_then_broken(case: Case) -> Outcome:
+        if case.id == "c1":
+            return Outcome(usage=COSTLY, model=MODEL, error="stop_reason=refusal")
+        return Outcome(output={"answer": "yes"}, usage=COSTLY, model=MODEL)
+
+    run_eval(_cases(3), {"a": costly_then_broken}, {"exact": exact_match("answer")}, limit_usd=0.05)
+
+    out = capsys.readouterr().out
+    assert "[1/3] c1 [a] ERROR stop_reason=refusal" in out
+    assert "[2/3] c2 [a] exact=pass" in out
+    assert "stopped early:" in out and "AIGENT_MAX_USD_PER_EVAL" in out
+
+
 def test_a_run_needs_something_to_run_and_something_to_grade() -> None:
     with pytest.raises(ValueError, match="variant"):
         run_eval(_cases(1), {}, {"exact": exact_match("answer")})

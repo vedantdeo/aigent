@@ -114,6 +114,29 @@ def test_the_real_sdk_gets_a_typed_billed_generation_under_a_tagged_row(
         assert attributes["session.id"] == "s1", attributes
 
 
+def test_the_real_sdk_scores_the_trace_as_a_boolean(
+    exported: tuple[tracing.LangfuseTracer, InMemorySpanExporter],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    langfuse, exporter = exported
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(langfuse._client, "create_score", lambda **kw: sent.append(kw))
+
+    with langfuse.observe("tasks.jsonl") as row:
+        row.score("correct", True, "names the dividend")
+        row.score("guarded", False)
+    langfuse.flush()
+
+    [span] = exporter.get_finished_spans()
+    trace = format(span.context.trace_id, "032x") if span.context else None
+    assert [(s["name"], s["value"], s["comment"]) for s in sent] == [
+        ("correct", 1.0, "names the dividend"),
+        ("guarded", 0.0, ""),
+    ]
+    assert {str(s["data_type"]) for s in sent} == {"BOOLEAN"}
+    assert {s["trace_id"] for s in sent} == {trace}, "scored on the row's own trace"
+
+
 def test_the_real_sdk_marks_an_observation_that_raised_and_lets_it_raise(
     exported: tuple[tracing.LangfuseTracer, InMemorySpanExporter],
 ) -> None:
