@@ -3,19 +3,19 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `5d278fa` plus snap and roll, landing in this commit (2026-10-07).
-1225 tests pass; pyright and ruff are clean.**
+**Verified against commit `f3e2a62` plus dated snap branches and the stable tag, landing in this
+commit (2026-10-07). 1225 tests pass; pyright and ruff are clean.**
 
 > **The package is organised by capability, not by week.** `week01/` became `extraction/`
 > (Project 1a) and `week02/` became `retrieval/`; the test tree mirrors it. Roadmap weeks still
 > appear in §5, where they are dates rather than module names.
 >
-> **Snap and roll, twice a week** (2026-10-07, first run that night): `release.yml` snaps `main` to
-> `snap` on Mon and Thu 00:00 IST and rolls it to `stable` a day later, in step with underhood. On
-> `snap` aigent pins underhood's snap, so CI tests the pair; it rolls only if underhood rolled the
-> commit it pinned, then re-pins `main` to underhood's roll, so day-to-day work runs against rolled
-> underhood. A fix lands on `main`, then is cherry-picked to `snap`; `repin` re-locks after an
-> underhood fix. The bot's only commits to `main` are `uv.lock` re-pins.
+> **Snap and roll, twice a week** (2026-10-07): `release.yml` in both repos. A snap branches `main`
+> as `snap-YYYY-MM-DD` (the last eight kept); a roll tags the snap's head `roll-YYYY-MM-DD` and
+> moves a `stable` tag to it, only if CI passed. aigent's `main` points at underhood's snap branch
+> during the window and at underhood's `stable` tag otherwise, so the pair is tested together and
+> day-to-day work runs on rolled underhood. The bot's commits to `main` rewrite only the underhood
+> source line and `uv.lock`; the graph does not move for them.
 >
 > **underhood is a dependency** (2026-10-07), for its GPU pricing: a git source on `main`, pinned by
 > `uv.lock`. underhood declares no dependencies, its model stack being in dependency groups only its
@@ -790,10 +790,10 @@ AIGENT_MAX_USD_PER_RUN       —configures→ config.MAX_USD_PER_RUN
 AIGENT_MAX_USD_PER_EVAL      —configures→ config.MAX_USD_PER_EVAL
 ANTHROPIC_API_KEY | ANTHROPIC_AUTH_TOKEN | ~/.config/anthropic —authenticates→ llm.adapters.anthropic.get_client
 ANTHROPIC_WORKSPACE_ID         —adds-header→ llm.adapters.anthropic.get_client   (org-level keys only)
-underhood (git, stable, pinned by uv.lock) —provides→ underhood.config, underhood.gpu.pricing   (no dependencies of its own; never torch)
+underhood (git, its snap branch in the window, else its stable tag; pinned by uv.lock) —provides→ underhood.config, underhood.gpu.pricing   (no dependencies of its own; never torch)
 UNDERHOOD_TOKEN (CI secret)    —lets-clone→ underhood, a private repo, in .github/workflows/checks.yml and release.yml
-release.yml (Sun, Wed 18:30 UTC) —snaps→ snap := main, re-pinned to underhood's snap-DATE, tagged snap-DATE
-release.yml (Mon, Thu 18:30 UTC) —rolls→ stable := snap, if CI passed and underhood rolled the pinned commit; main re-pinned to roll-DATE
+release.yml (Sun, Wed 18:30 UTC) —snaps→ main re-pinned to underhood's snap-DATE branch, then branched as snap-DATE (last 8 kept)
+release.yml (Mon, Thu 18:30 UTC) —rolls→ main back on underhood's stable tag; the snap tagged roll-DATE and stable if CI passed and underhood rolled the pinned commit
 ```
 
 Every `AIGENT_*` value is read **at import time** into module-level constants. Setting them

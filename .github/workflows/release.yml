@@ -1,6 +1,6 @@
-# Snap and roll in step with underhood, twice a week, in IST. A snap points `snap` at main and
-# re-pins underhood to its snap; a roll, if CI passed and underhood rolled the commit pinned,
-# points `stable` there and re-pins main to underhood's roll. `repin` re-locks snap mid-window.
+# Snap and roll in step with underhood, twice a week, in IST. A snap points main at underhood's
+# snap-DATE branch and branches main as snap-DATE; a roll points main back at underhood's `stable`
+# tag and, if CI passed and underhood rolled the commit pinned, tags the snap roll-DATE and stable.
 name: snap and roll
 
 on:
@@ -28,7 +28,7 @@ concurrency:
 
 env:
   UNDERHOOD: https://github.com/vedantdeo/underhood
-  SOURCE_LINE: underhood = { git = "https://github.com/vedantdeo/underhood", branch =
+  KEEP: 8 # snap branches kept: a month of them
 
 jobs:
   release:
@@ -68,6 +68,8 @@ jobs:
           esac
           echo "step=$step" >> "$GITHUB_OUTPUT"
           echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
+          latest=$(git ls-remote --heads "$AIGENT" 'snap-*' | sed 's|.*refs/heads/||' | sort | tail -n 1)
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
       - name: Snap
         if: steps.plan.outputs.step == 'snap'
@@ -75,73 +77,76 @@ jobs:
           DATE: ${{ steps.plan.outputs.date }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          under=$(.github/release/wait-for-tag.sh "snap-$DATE")
-          git checkout -B snap origin/main
-          sed -i "s|^${SOURCE_LINE} \"stable\" }|${SOURCE_LINE} \"snap\" }|" pyproject.toml
-          grep -qF "${SOURCE_LINE} \"snap\" }" pyproject.toml
-          uv lock --upgrade-package underhood
-          grep -q "#$under" uv.lock
-          git commit -am "Pin underhood to its snap-$DATE"
-          git push -f "$AIGENT" snap
-          git tag -f "snap-$DATE"
-          git push -f "$AIGENT" "refs/tags/snap-$DATE"
-          gh workflow run checks.yml --ref snap
-          echo "snapped main with underhood $under as snap-$DATE"
+          under=$(.github/release/wait-for-ref.sh "refs/heads/snap-$DATE") || {
+            echo "::error::underhood made no snap-$DATE, so aigent does not snap"
+            exit 1
+          }
+          git checkout -B main origin/main
+          pinned=$(.github/release/pin-underhood.sh "branch = \"snap-$DATE\"")
+          if [ "$pinned" != "$under" ]; then
+            echo "::error::locked underhood $pinned, not its snap-$DATE head $under"
+            exit 1
+          fi
+          git commit -am "Point underhood at its snap-$DATE"
+          git push "$AIGENT" main
+          git push -f "$AIGENT" "main:refs/heads/snap-$DATE"
+          gh workflow run checks.yml --ref "snap-$DATE"
+          echo "main and snap-$DATE now run on underhood's snap-$DATE at $under"
+          git ls-remote --heads "$AIGENT" 'snap-*' | sed 's|.*refs/heads/||' | sort | head -n "-$KEEP" |
+            while read -r old; do git push "$AIGENT" --delete "$old"; echo "pruned $old"; done
 
       - name: Roll
         if: steps.plan.outputs.step == 'roll'
         env:
           DATE: ${{ steps.plan.outputs.date }}
+          SNAP: ${{ steps.plan.outputs.latest }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          under=$(.github/release/wait-for-tag.sh "roll-$DATE") || {
-            echo "::error::underhood made no roll-$DATE; aigent stays paired with it and does not roll"
+          under=$(.github/release/wait-for-ref.sh "refs/tags/roll-$DATE") || under=""
+          git checkout -B main origin/main
+          .github/release/pin-underhood.sh 'tag = "stable"' > /dev/null
+          if git diff --quiet; then
+            echo "main already runs on underhood's stable"
+          else
+            git commit -am "Point underhood back at its stable tag"
+            git push "$AIGENT" main
+            gh workflow run checks.yml --ref main
+          fi
+          if [ -z "$under" ]; then
+            echo "::error::underhood did not roll, so aigent does not; main is back on underhood's last roll"
             exit 1
-          }
-          sha=$(git rev-parse origin/snap)
+          fi
+          sha=$(git ls-remote "$AIGENT" "refs/heads/$SNAP" | cut -f1)
           ci=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs" --jq \
             '[.check_runs[] | select(.name == "lint · types · tests")]
              | sort_by(.completed_at) | last | .conclusion // "missing"')
           if [ "$ci" != success ]; then
-            echo "::error::CI on snap's head $sha is $ci; stable stays where it was"
+            echo "::error::CI on $SNAP's head $sha is $ci; aigent does not roll"
             exit 1
           fi
           if ! git show "$sha:uv.lock" | grep -q "#$under"; then
-            echo "::error::snap pins a different underhood than the $under that rolled; run repin, then roll"
+            echo "::error::$SNAP pins a different underhood than the $under that rolled; run repin, then roll"
             exit 1
           fi
-          git checkout -B stable "$sha"
-          sed -i "s|^${SOURCE_LINE} \"snap\" }|${SOURCE_LINE} \"stable\" }|" pyproject.toml
-          grep -qF "${SOURCE_LINE} \"stable\" }" pyproject.toml
-          uv lock
-          grep -q "#$under" uv.lock
-          git commit -am "Roll: underhood from its stable branch"
-          git push -f "$AIGENT" stable
-          git tag -f "roll-$DATE"
-          git push -f "$AIGENT" "refs/tags/roll-$DATE"
-          gh workflow run checks.yml --ref stable
-          git checkout -B main origin/main
-          uv lock --upgrade-package underhood
-          if git diff --quiet uv.lock; then
-            echo "main already pins underhood's roll"
-          else
-            git commit -m "Pin underhood to its roll-$DATE" uv.lock
-            git push "$AIGENT" main
-            gh workflow run checks.yml --ref main
-          fi
-          echo "rolled $sha with underhood $under as roll-$DATE"
+          git tag -f "roll-$DATE" "$sha"
+          git tag -f stable "$sha"
+          git push -f "$AIGENT" "refs/tags/roll-$DATE" refs/tags/stable
+          echo "rolled $SNAP at $sha with underhood $under as roll-$DATE, now stable"
 
-      - name: Re-pin snap to underhood's snap head
+      - name: Re-pin main and the latest snap to underhood's
         if: steps.plan.outputs.step == 'repin'
         env:
+          SNAP: ${{ steps.plan.outputs.latest }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          git checkout -B snap origin/snap
-          uv lock --upgrade-package underhood
-          if git diff --quiet uv.lock; then
-            echo "snap already pins underhood's snap head"
-            exit 0
-          fi
-          git commit -m "Re-pin underhood to its snap head" uv.lock
-          git push "$AIGENT" snap
-          gh workflow run checks.yml --ref snap
+          for branch in main "$SNAP"; do
+            git checkout -B "$branch" "origin/$branch"
+            uv lock --upgrade-package underhood
+            if git diff --quiet uv.lock; then
+              echo "$branch already pins underhood's latest"
+              continue
+            fi
+            git commit -m "Re-pin underhood to its latest" uv.lock
+            git push "$AIGENT" "$branch"
+            gh workflow run checks.yml --ref "$branch"
+          done

@@ -1548,3 +1548,9 @@
   made with a job's own token starts no workflow, so the job starts CI itself; and checkout's saved
   token overrides `UNDERHOOD_TOKEN`, so the release job pushes with an explicit URL. underhood got
   CI for the first time (Linux, green, mlx tests skipping). First scheduled snap: tonight.
+- 10-07: **Snap and roll reworked before its first run: one dated branch per snap, no `stable`
+  branch.** A snap branches `main` as `snap-YYYY-MM-DD` in each repo, keeping the last eight (a
+  month); a roll tags the snap's head `roll-YYYY-MM-DD` and moves a `stable` tag to it. aigent's
+  `main` now points at underhood's snap branch during the window and at its `stable` tag otherwise,
+  so on Mondays and Thursdays day-to-day work runs against what is about to roll. If underhood
+  skips a roll, `stable` has not moved, so going back to it is going back to the last roll.

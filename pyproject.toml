@@ -62,5 +62,5 @@ markers = ["live: spends real API credits; run explicitly with `uv run pytest -m
 addopts = "-m 'not live'"
 
 [tool.uv.sources]
-# The from-scratch repo's rolled branch, for its GPU pricing; release.yml moves the pin.
-underhood = { git = "https://github.com/vedantdeo/underhood", branch = "stable" }
+# The from-scratch repo, for its GPU pricing: its stable tag, or its snap in the window.
+underhood = { git = "https://github.com/vedantdeo/underhood", tag = "stable" }
