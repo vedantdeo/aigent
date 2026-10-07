@@ -6,8 +6,10 @@ name: checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, snap]
   pull_request:
+  # The release workflow starts this by hand: a push made with the job's own token starts nothing.
+  workflow_dispatch:
 
 concurrency:
   group: checks-${{ github.ref }}

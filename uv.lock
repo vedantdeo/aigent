@@ -55,7 +55,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
     { name = "sentence-transformers", specifier = ">=6.0.1" },
-    { name = "underhood", git = "https://github.com/vedantdeo/underhood?branch=main" },
+    { name = "underhood", git = "https://github.com/vedantdeo/underhood?branch=stable" },
 ]
 
 [package.metadata.requires-dev]
@@ -3233,7 +3233,7 @@ wheels = [
 [[package]]
 name = "underhood"
 version = "0.1.0"
-source = { git = "https://github.com/vedantdeo/underhood?branch=main#58d24225b51bd5260d2f251f05b141fe0743eaab" }
+source = { git = "https://github.com/vedantdeo/underhood?branch=stable#6dada3abf93e9360e7c7ca8981df389ed232f705" }
 
 [[package]]
 name = "urllib3"

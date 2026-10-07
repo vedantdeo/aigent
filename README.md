@@ -329,6 +329,29 @@ it with the `core.hooksPath` line above, since git never installs hooks on clone
 the deliberate exception. The same rule runs in CI, so a clone that skipped the hook is still
 caught before the graph goes stale.
 
+## Snap and roll
+
+Twice a week both repos cut a snapshot of `main` and promote it a day later, all times IST:
+
+| | Snap | Roll |
+|---|---|---|
+| first half | Mon 00:00 (Sun night) | Tue 00:00 (Mon night) |
+| second half | Thu 00:00 (Wed night) | Fri 00:00 (Thu night) |
+
+- **Snap** points the `snap` branch at `main` and tags it `snap-YYYY-MM-DD`.
+- **Roll** points `stable` at `snap`'s head and tags it `roll-YYYY-MM-DD`, only if CI passed on that
+  commit; otherwise it skips and the run goes red.
+- **A fix during the window** lands on `main` first, then is cherry-picked onto `snap`
+  (`git checkout snap && git cherry-pick <sha> && git push origin snap`). A fix only on `snap` is
+  lost at the next snap, which resets it to `main`.
+- `.github/workflows/release.yml` does it; run a step by hand from the Actions tab (`snap`, `roll`).
+
+- **aigent pairs with underhood.** Its snap waits for underhood's, then pins underhood to that snap
+  on aigent's `snap` branch, so CI tests the two together. It rolls only if underhood rolled the
+  commit it pinned, then re-pins `main` to underhood's roll: day to day, aigent runs against rolled
+  underhood, never its moving `main`. After cherry-picking a fix onto underhood's `snap`, run the
+  `repin` step here so aigent's snap picks it up.
+
 ## Layout
 
 - `src/aigent/config.py`  every tunable constant bar the tool pair's: models, ceilings, caps

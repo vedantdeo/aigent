@@ -1539,3 +1539,12 @@
   compute for the 30M model) without torch. A test prices one in a fresh interpreter and fails if
   torch, transformers or mlx come with it. underhood is private: CI clones it through the
   `UNDERHOOD_TOKEN` secret, a read-only token, and fails at install until that secret exists.
+- 10-07: **Snap and roll, twice a week, in step with underhood**, free. `release.yml` in both repos:
+  snap points `snap` at `main` on Mon and Thu 00:00 IST and tags `snap-DATE`; roll, a day later,
+  points `stable` at `snap`'s head and tags `roll-DATE`, only if CI passed there. aigent's snap waits
+  for underhood's tag and pins underhood to it on `snap`; its roll also requires that underhood
+  rolled the commit pinned, then re-pins `main` to underhood's roll, so `main` now follows
+  underhood's `stable` (created at `6dada3a`) instead of its `main`. Two gotchas shaped it: a push
+  made with a job's own token starts no workflow, so the job starts CI itself; and checkout's saved
+  token overrides `UNDERHOOD_TOKEN`, so the release job pushes with an explicit URL. underhood got
+  CI for the first time (Linux, green, mlx tests skipping). First scheduled snap: tonight.
