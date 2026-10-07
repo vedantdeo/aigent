@@ -1558,3 +1558,11 @@
   Sun and Wed nights; a roll only tags (`roll-…` and `stable` are tags on snap branches). The cost:
   if underhood's roll is skipped, `main` stays on that unrolled snap until the next one. Also fixed
   before the first run: both release scripts had gone in without the execute bit.
+- 10-07: **Two CI pipelines over one set of steps.** `checks.yml` became a reusable workflow; the
+  **mains CI** (`main.yml`) runs it against underhood's latest `main`, on aigent's pushes and
+  whenever underhood's `main` goes green, so a cross-repo break shows within minutes rather than at
+  the next snap; the **roll CI** (`roll.yml`) runs it against the pinned underhood on `snap-*`
+  branches, and is what a roll requires. The trigger from underhood needs `AIGENT_DISPATCH_TOKEN`
+  there, a token that can start aigent's workflows and nothing else. Found by underhood renaming
+  `GPU_USD_PER_HOUR` into a table of offers (Jarvis spot by default, GST included): aigent's
+  `tests/test_underhood.py` now prices through that table, and `main` re-locked to it.

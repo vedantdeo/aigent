@@ -281,7 +281,7 @@ What to enable on `main` at that point: require a pull request, require both che
 block force pushes and deletion. The two required checks are matched by *job* name, not workflow
 name, so they are exactly:
 
-- `lint · types · tests` (from `.github/workflows/checks.yml`)
+- `mains / lint · types · tests` (from `.github/workflows/main.yml`, which calls `checks.yml`)
 - `graph moves with the code` (from `.github/workflows/knowledge-graph.yml`)
 
 Settings > Rules > Rulesets on GitHub, or `gh api` against the branch-protection endpoint. Surface

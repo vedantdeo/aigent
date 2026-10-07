@@ -318,8 +318,11 @@ uv run pytest -q            # unit tests plus a free API smoke test; skips paid 
 uv run pytest -m live       # the paid integration tests (about two cents)
 ```
 
-Everything above except the last line runs in CI on every push and pull request
-(`.github/workflows/checks.yml`). No API key is configured there, so the smoke test skips itself and
+Everything above except the last line runs in CI, in two pipelines over one set of steps
+(`.github/workflows/checks.yml`): the **mains CI** (`main.yml`) on every push to `main` and every
+pull request, against underhood's latest `main` rather than the pin, and started again whenever
+underhood's own `main` goes green; and the **roll CI** (`roll.yml`) on each `snap-*` branch, against
+the underhood snap it pins, which is what a roll requires. No API key is configured there, so the smoke test skips itself and
 the paid tests stay deselected — CI spends nothing. `uv sync --locked` also fails the run if
 `uv.lock` has drifted from `pyproject.toml`.
 

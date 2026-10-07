@@ -1,0 +1,20 @@
+# The mains CI: aigent's main against underhood's main, whichever of the two moved. underhood's own
+# mains CI starts this after a green push, and the release job after it re-pins main.
+name: mains
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: mains-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mains:
+    uses: ./.github/workflows/checks.yml
+    with:
+      underhood: main
+    secrets: inherit

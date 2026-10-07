@@ -90,7 +90,8 @@ jobs:
           git commit -am "Point underhood at its snap-$DATE"
           git push "$AIGENT" main
           git push -f "$AIGENT" "main:refs/heads/snap-$DATE"
-          gh workflow run checks.yml --ref "snap-$DATE"
+          gh workflow run roll.yml --ref "snap-$DATE"
+          gh workflow run main.yml --ref main
           echo "main and snap-$DATE now run on underhood's snap-$DATE at $under"
           git ls-remote --heads "$AIGENT" 'snap-*' | sed 's|.*refs/heads/||' | sort | head -n "-$KEEP" |
             while read -r old; do git push "$AIGENT" --delete "$old"; echo "pruned $old"; done
@@ -108,10 +109,10 @@ jobs:
           }
           sha=$(git ls-remote "$AIGENT" "refs/heads/$SNAP" | cut -f1)
           ci=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs" --jq \
-            '[.check_runs[] | select(.name == "lint · types · tests")]
+            '[.check_runs[] | select(.name == "snap / lint · types · tests")]
              | sort_by(.completed_at) | last | .conclusion // "missing"')
           if [ "$ci" != success ]; then
-            echo "::error::CI on $SNAP's head $sha is $ci; aigent does not roll"
+            echo "::error::roll CI on $SNAP's head $sha is $ci; aigent does not roll"
             exit 1
           fi
           if ! git show "$sha:uv.lock" | grep -q "#$under"; then
@@ -138,5 +139,6 @@ jobs:
             fi
             git commit -m "Re-pin underhood to its latest" uv.lock
             git push "$AIGENT" "$branch"
-            gh workflow run checks.yml --ref "$branch"
+            if [ "$branch" = main ]; then ci=main.yml; else ci=roll.yml; fi
+            gh workflow run "$ci" --ref "$branch"
           done

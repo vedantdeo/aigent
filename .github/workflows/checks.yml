@@ -1,19 +1,15 @@
-# The commands from the README's Checks section, on every push and PR.
-# No API key is configured here on purpose: tests/test_api_smoke.py skips itself
-# without credentials, and the paid tests are deselected by `-m 'not live'` in
-# pyproject.toml. CI therefore spends nothing.
+# The README's checks, shared by the mains CI (main.yml) and the roll CI (roll.yml).
+# No API key is configured here on purpose: tests/test_api_smoke.py skips itself without
+# credentials, and the paid tests are deselected by `-m 'not live'`. CI therefore spends nothing.
 name: checks
 
 on:
-  push:
-    branches: [main, "snap-*"]
-  pull_request:
-  # The release workflow starts this by hand: a push made with the job's own token starts nothing.
-  workflow_dispatch:
-
-concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
+    inputs:
+      underhood:
+        description: an underhood ref to test against instead of the one uv.lock pins
+        type: string
+        default: ""
 
 jobs:
   quality:
@@ -51,19 +47,28 @@ jobs:
       - name: Install the locked environment
         run: uv sync --locked --group compare --group graph --group adk
 
+      # Every later step runs with --no-sync, which would otherwise put the locked underhood back.
+      - name: Swap in underhood ${{ inputs.underhood }}
+        if: inputs.underhood != ''
+        env:
+          REF: ${{ inputs.underhood }}
+        run: |
+          uv pip install --no-deps --reinstall "underhood @ git+https://github.com/vedantdeo/underhood@$REF"
+          git ls-remote https://github.com/vedantdeo/underhood "$REF"
+
       # Each check reports its own status rather than hiding behind the first
       # failure, so one red run tells you everything that is wrong.
       - name: ruff · lint
-        run: uv run ruff check --output-format=github .
+        run: uv run --no-sync ruff check --output-format=github .
 
       - name: ruff · format
         if: ${{ !cancelled() }}
-        run: uv run ruff format --check .
+        run: uv run --no-sync ruff format --check .
 
       - name: pyright
         if: ${{ !cancelled() }}
-        run: uv run pyright
+        run: uv run --no-sync pyright
 
       - name: pytest · free tests only
         if: ${{ !cancelled() }}
-        run: uv run pytest -q
+        run: uv run --no-sync pytest -q

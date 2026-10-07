@@ -3,8 +3,8 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `f3e2a62` plus dated snap branches and the stable tag, landing in this
-commit (2026-10-07). 1225 tests pass; pyright and ruff are clean.**
+**Verified against commit `0274493` plus the mains and roll CI and underhood's GPU offers, landing in
+this commit (2026-10-07). 1225 tests pass; pyright and ruff are clean.**
 
 > **The package is organised by capability, not by week.** `week01/` became `extraction/`
 > (Project 1a) and `week02/` became `retrieval/`; the test tree mirrors it. Roadmap weeks still
@@ -588,7 +588,9 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `.githooks/pre-commit` | repo root | Refuses a commit that stages `src/` or `pyproject.toml` without this file. Enabled per clone with `git config core.hooksPath .githooks`; git never installs hooks on clone. |
 | `scripts/check-knowledge-graph.sh` | repo root | The rule itself, reading changed paths on stdin. The hook and CI both call it, so the two cannot drift. |
 | `.github/workflows/knowledge-graph.yml` | repo root | The same check over the push or PR diff, for clones that never enabled the hook. |
-| `.github/workflows/checks.yml` | repo root | ruff, ruff format, pyright and the free tests on every push and PR. Syncs `--group compare --group graph --group adk` so the LangChain, LangGraph and ADK modules are checked rather than skipped. No key is configured, so the smoke test skips and the `live` tests stay deselected — CI spends nothing. `uv sync --locked` also catches lockfile drift. `astral-sh/setup-uv` is pinned to a **full version** (`@v10.1.0`), not a floating major: the action stopped publishing major and minor tags at v8, so `@v10` does not resolve. |
+| `.github/workflows/checks.yml` | repo root | The shared check steps (2026-10-07 a reusable workflow): ruff, ruff format, pyright and the free tests. Its one input, `underhood`, swaps the pinned underhood for a ref after the locked install; every later step runs `--no-sync` so the swap survives. Syncs `--group compare --group graph --group adk` so the LangChain, LangGraph and ADK modules are checked rather than skipped. No key is configured, so the smoke test skips and the `live` tests stay deselected — CI spends nothing. `uv sync --locked` also catches lockfile drift. `astral-sh/setup-uv` is pinned to a **full version** (`@v10.1.0`): the action stopped publishing major and minor tags at v8, so `@v10` does not resolve. |
+| `.github/workflows/main.yml` | repo root | **The mains CI** (2026-10-07): `checks.yml` against underhood's `main`, on pushes to `main`, pull requests, and whenever underhood's own mains CI goes green (it starts this with `AIGENT_DISPATCH_TOKEN`). The early warning: a change in underhood that breaks aigent goes red here before any snap pins it. Job name `mains / lint · types · tests`. |
+| `.github/workflows/roll.yml` | repo root | **The roll CI** (2026-10-07): `checks.yml` against the pinned underhood, on `snap-*` branches and when the release job starts it. `release.yml` rolls only if `snap / lint · types · tests` passed on the snap's head. |
 | roadmap | `~/workspace/MLAI/ML/llm-engineer-roadmap.md` | Outside the repo. The eight-week plan this codebase is executing; the source of every "Week N" comment in the code. |
 
 ---
@@ -792,6 +794,7 @@ ANTHROPIC_API_KEY | ANTHROPIC_AUTH_TOKEN | ~/.config/anthropic —authenticates�
 ANTHROPIC_WORKSPACE_ID         —adds-header→ llm.adapters.anthropic.get_client   (org-level keys only)
 underhood (git, its latest snap branch, pinned by uv.lock) —provides→ underhood.config, underhood.gpu.pricing   (no dependencies of its own; never torch)
 UNDERHOOD_TOKEN (CI secret)    —lets-clone→ underhood, a private repo, in .github/workflows/checks.yml and release.yml
+AIGENT_DISPATCH_TOKEN (underhood's secret) —starts→ main.yml here after underhood's main goes green (Actions write on aigent only)
 release.yml (Sun, Wed 18:30 UTC) —snaps→ main re-pinned to underhood's snap-DATE branch, then branched as snap-DATE (last 8 kept)
 release.yml (Mon, Thu 18:30 UTC) —rolls→ the snap tagged roll-DATE and stable, if CI passed and underhood rolled the pinned commit
 ```
