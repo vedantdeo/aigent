@@ -17,14 +17,7 @@ from aigent.config import MAX_TOKENS_ROUTE, MAX_TOKENS_ROUTED, MODEL, SMALL_MODE
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm import Llm, Request
 from aigent.retrieval.chunk import context_block
-from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import CATALOGUE, DocId, Search
-
-QUESTIONS = (
-    "What dividend per share did Reliance's board recommend for FY25?",
-    "How does Tata Motors describe the trade-offs in its EV strategy?",
-    "What will the RBI do with interest rates next quarter?",
-)
 
 ROUTER = f"You route questions about three annual reports:\n{CATALOGUE}"
 LOOKUP = (
@@ -81,18 +74,3 @@ def run(llm: Llm, search: Search, question: str) -> Routed:
         thinking=THINKING,
     )
     return Routed(route, llm.text(answer), handler.model)
-
-
-def show(result: Routed) -> str:
-    route = result.route
-    where = f" in {route.report}" if route.report else ""
-    handled = f"answered by {result.model}" if result.model else "declined, no call"
-    return f"route: {route.kind}{where} ({route.reason}) — {handled}\n\n{result.answer}"
-
-
-def main(argv: list[str] | None = None) -> None:
-    run_demo(argv, prog="aigent.workflows.routing", questions=QUESTIONS, run=run, show=show)
-
-
-if __name__ == "__main__":
-    main()

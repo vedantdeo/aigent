@@ -13,21 +13,14 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from aigent import guardrails, tracing
-from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
+from aigent.config import MAX_AGENT_TURNS
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm import Llm, Request
 from aigent.messages import Block, Reply
 from aigent.report_tools import SEARCH_TOOL, TOOL_KINDS, ReportSearch, Searched
 from aigent.tools import ALL_TOOLS, WEB_SEARCH_TOOL, execute_tool
-from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import CATALOGUE, Search
-
-QUESTIONS = (
-    "Which of the three companies is most exposed to a slowdown in rural demand, and why?",
-    "What dividend per share did Reliance's board recommend for FY25?",
-    "How has Reliance's share price moved since it announced its FY25 results?",
-)
 
 SYSTEM = (
     f"You answer questions about three FY25 annual reports:\n{CATALOGUE}\n\n"
@@ -133,38 +126,3 @@ def _web_sources(turns: Sequence[Reply]) -> WebSources:
                     returned.update(dict.fromkeys(cast(str, page["url"]) for page in found))
     searches = sum(message.usage.web_searches for message in turns)
     return WebSources(pages, [url for url in returned if url not in pages], searches)
-
-
-def show(result: Answered) -> str:
-    lines = [f"{result.turns} turns, {len(result.searches)} searches:"]
-    for searched in result.searches:
-        found = ", ".join(searched.found) or "nothing"
-        lines.append(f"  search_reports({searched.query!r}, {searched.report}) -> {found}")
-    if result.stopped is not None:
-        lines.append(f"\nsearching stopped: {result.stopped}")
-    if result.answer is not None:
-        lines.append(f"\n{result.answer}")
-    web = result.web
-    if web.cited:
-        lines += ["\nweb pages cited:", *(f"- {url}" for url in web.cited)]
-    if web.returned:
-        lines += ["\nweb pages searched and not cited:", *(f"- {url}" for url in web.returned)]
-    if web.searches and not (web.cited or web.returned):
-        lines.append(f"\n{web.searches} web searches ran, and no page links came back with them.")
-    return "\n".join(lines)
-
-
-def main(argv: list[str] | None = None) -> None:
-    run_demo(
-        argv,
-        prog="aigent.agent",
-        questions=QUESTIONS,
-        run=run,
-        show=show,
-        limit_usd=MAX_USD_PER_RUN,
-        scope="run",
-    )
-
-
-if __name__ == "__main__":
-    main()

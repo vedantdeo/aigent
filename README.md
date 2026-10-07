@@ -10,27 +10,15 @@ what it cost.
 cp .env.example .env        # then paste your ANTHROPIC_API_KEY
 uv sync
 git config core.hooksPath .githooks   # one-time, per clone: enables the pre-commit hook
-uv run aigent             # menu of the five modes (needs a real terminal)
-uv run aigent chat        # or: call, stream, extract, loop "task"
 ```
 
 Or skip the key file: install the `ant` CLI, run `ant auth login`, and the SDK finds the profile itself.
 
-## The primitives aigent is made of
+## One door to a model
 
-| Mode | Module | What it shows |
-|------|--------|---------------|
-| `call` | `primitives/first_call.py` | one call, token count, cost |
-| `stream` | `primitives/streaming.py` | thinking and text arriving separately |
-| `extract` | `primitives/structured_output.py` | schema in, validated object out |
-| `loop` | `primitives/tool_loop.py` | the agent loop, by hand; takes a task |
-| `chat` | `primitives/chat.py` | multi-turn conversation with a cost meter |
-
-Every model call here, and everywhere else in the repo, goes through `src/aigent/llm.py`: counted
-for free, checked against the per-request ceiling, admitted against the run's budget, then sent,
-billed and traced. A test fails on any other module that calls the SDK itself.
-
-Each module also runs on its own: `uv run python -m aigent.primitives.first_call`.
+Every model call in the repo goes through `src/aigent/llm.py`: counted for free, checked against the
+per-request ceiling, admitted against the run's budget, then sent, billed and traced. A test fails
+on any other module that calls the SDK itself.
 
 ## Retrieval
 
@@ -206,15 +194,9 @@ calls a model at set points; an agent lets the model choose the path.
 | orchestrator-workers, as a graph | `workflows/orchestrator_workers_graph.py` | the same, rebuilt in LangGraph to compare; needs `--group graph` |
 | evaluator-optimizer | `workflows/evaluator_optimizer.py` | Opus drafts, Sonnet grades against four criteria, redraft until it passes or three rounds are up |
 
-```bash
-uv run python -m aigent.workflows.routing --cache            # dry run: counts the first call, sends nothing
-uv run python -m aigent.workflows.routing --cache --yes      # spends, capped at $0.25
-uv run python -m aigent.workflows.chaining "your question" --yes --limit 0.10
-```
-
-Every call goes through `llm.py`, which checks its worst case against the workflow's ceiling before
-sending it, and a batch of parallel calls as a whole. Each demo prints a trace: every call, its
-model, its tokens and what it cost.
+Each is a function over an `Llm` and the reports' search, tested against the fake client. Every
+call goes through `llm.py`, which checks its worst case against the budget before sending it, and a
+batch of parallel calls as a whole.
 
 ## Agent
 
@@ -231,10 +213,7 @@ called directly and capped at three searches a turn, $0.01 each; the pages it ci
 listed after the answer. `docs/tool-runner.md` is what the runner does and hides, read from its
 source.
 
-```bash
-uv run python -m aigent.agent --cache                       # dry run: counts the first call, sends nothing
-uv run python -m aigent.agent "your question" --cache --yes # spends, capped at $1.00
-```
+It runs through Project 2's eval below, which estimates first and spends only with `--yes`.
 
 ### Project 2: graded on how it got there
 
@@ -348,7 +327,6 @@ caught before the graph goes stale.
 
 ## Layout
 
-- `src/aigent/cli.py`     the `aigent` command and its menu
 - `src/aigent/config.py`  every tunable constant bar the tool pair's: models, ceilings, caps
 - `src/aigent/pricing.py` token prices, cost arithmetic, the two budget guards
 - `src/aigent/llm.py`    the one door to a model: count, admit, send, bill, trace
@@ -356,7 +334,6 @@ caught before the graph goes stale.
 - `src/aigent/tools.py`   framework-free tools, reused by everything that calls a tool
 - `src/aigent/tools_config.py` their constants, so the pair lifts into any framework intact
 - `src/aigent/report_tools.py` tools that need the package, like search over the reports
-- `src/aigent/primitives/` the five modes
 - `src/aigent/retrieval/` chunking, local embeddings, the dense and sparse indexes, the rankers
 - `src/aigent/workflows/` the five workflow patterns, over the same reports
 - `src/aigent/agent.py`   the first agent: search as a tool, on the SDK's tool runner

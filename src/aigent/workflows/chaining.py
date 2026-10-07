@@ -17,10 +17,7 @@ from aigent.config import MAX_TOKENS_FACTS, MAX_TOKENS_NOTE
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm import Llm, Request
 from aigent.retrieval.chunk import Chunk, context_block, squeeze
-from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import Search
-
-QUESTIONS = ("How did ITC's cigarettes business perform in FY25?",)
 
 # Below this a quote proves nothing: "the company" is in every passage.
 _MIN_QUOTE_WORDS = 3
@@ -75,18 +72,3 @@ def run(llm: Llm, search: Search, question: str) -> Chained:
     prompt = f"question: {question}\n\nfacts:\n{listed}"
     write = Request.ask("write", WRITE, prompt, MAX_TOKENS_NOTE, thinking=THINKING)
     return Chained(llm.text(write), kept, dropped)
-
-
-def show(result: Chained) -> str:
-    lines = [f"gate: kept {len(result.kept)} facts, dropped {len(result.dropped)}"]
-    lines += [f"  dropped [{fact.passage}]: {fact.quote!r}" for fact in result.dropped]
-    lines.append(f"\n{result.note or '(nothing survived the gate, so no note was written)'}")
-    return "\n".join(lines)
-
-
-def main(argv: list[str] | None = None) -> None:
-    run_demo(argv, prog="aigent.workflows.chaining", questions=QUESTIONS, run=run, show=show)
-
-
-if __name__ == "__main__":
-    main()

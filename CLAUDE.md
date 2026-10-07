@@ -124,7 +124,7 @@ of this machine. Edit both, or neither.
 
 **In this repo**, the worked examples are in `tests/`:
 
-- `tests/test_evals_graders.py` is a table per grader — `regex` is eight rows of
+- `tests/evals/test_graders.py` is a table per grader — `regex` is eight rows of
   (pattern, value, passed) where it was five functions, and the row that proves case survives sits
   one line under the row that proves it matters.
 - `tests/test_tools.py` tables the dispatcher (six rows of tool, input, `is_error`, expected text)
@@ -132,8 +132,8 @@ of this machine. Edit both, or neither.
 - `tests/conftest.py` holds the one scripted `LlmJudge`. The grader tests use it to check what the
   judge says, the runner tests to check that the runner bills it — one fake, one set of token
   counts, so the two cannot drift.
-- Staying apart: `tests/test_tool_loop.py`, where each test scripts a different conversation, and
-  `tests/test_evals_report.py`, where each test reads a different section of the same report.
+- Staying apart: `tests/test_agent_graph.py`, where each test scripts a different conversation, and
+  `tests/evals/test_report.py`, where each test reads a different section of the same report.
 
 ## Reference data stays in one canonical order
 

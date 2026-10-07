@@ -1464,3 +1464,10 @@
   claim the answer may refute. Unprompted, every one of the five other attacks was flagged to the
   user too. Also seen: **none of the eight answers cited a passage in square brackets**, though the
   prompt asks for it; they quoted the report's words instead.
+- 10-07: **The demo code is removed.** Week 1's five `primitives/` and the `aigent` command, and
+  `workflows.demo`'s per-question command line, with every `main`/`show` that ran through it in the
+  five patterns and the three agent builds: about 1,000 lines that no other module imported and that
+  made every change touch more files. The patterns and agents stay as tested functions, agents run
+  through `agent_tasks`, and `build_search` moved to `workflows.reports`. Four output caps and
+  `MAX_USD_PER_WORKFLOW` went with their only callers, and the passage gate's two constants moved
+  from `retrieval.questions` into `config`. What those demos measured stays in this log.

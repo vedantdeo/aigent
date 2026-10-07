@@ -24,7 +24,7 @@ from anthropic.types import (
     WebSearchToolResultBlock,
 )
 
-from aigent.agent import FINISH, run, show
+from aigent.agent import FINISH, run
 from aigent.config import MAX_AGENT_TURNS, MAX_TOKENS_TOOL_LOOP, MAX_USD_PER_TURN, MODEL
 from aigent.pricing import PRICES, worst_case_usd
 from aigent.retrieval.chunk import Chunk
@@ -96,7 +96,6 @@ def test_a_run_out_of_room_answers_from_what_it_searched(
 
     assert result.answer == ANSWER and says in str(result.stopped), result.stopped
     assert (result.turns, len(result.searches)) == (turns, searches)
-    assert "searching stopped" in show(result)
 
 
 def test_with_no_room_even_to_answer_it_still_shows_what_it_searched(
@@ -197,27 +196,27 @@ def _first_turn(blocks: list[ContentBlock], searches: int) -> Message:
 
 
 @pytest.mark.parametrize(
-    ("first", "cited", "returned", "says"),
+    ("first", "cited", "returned", "searches"),
     [
         pytest.param(
             _first_turn([*_searched(PAGE_A, PAGE_B), _cited("Up 4%", PAGE_A)], 1),
             [PAGE_A],
             [PAGE_B],
-            f"web pages cited:\n- {PAGE_A}",
+            1,
             id="a page cited in the turn that searched, answered a turn later",
         ),
         pytest.param(
             _first_turn(_searched(PAGE_A), 1),
             [],
             [PAGE_A],
-            f"web pages searched and not cited:\n- {PAGE_A}",
+            1,
             id="a page returned and never cited",
         ),
         pytest.param(
             _first_turn([], 2),
             [],
             [],
-            "2 web searches ran, and no page links came back",
+            2,
             id="searches whose results were left out of the response",
         ),
     ],
@@ -228,7 +227,7 @@ def test_a_web_answer_shows_what_its_searches_found_across_every_turn(
     first: Message,
     cited: list[str],
     returned: list[str],
-    says: str,
+    searches: int,
 ) -> None:
     llm, fake = make_llm(turns(first, "About -4% since the results."))
 
@@ -236,5 +235,5 @@ def test_a_web_answer_shows_what_its_searches_found_across_every_turn(
 
     assert (result.web.cited, result.web.returned) == (cited, returned)
     assert result.answer == "About -4% since the results."
-    assert says in show(result), show(result)
+    assert result.web.searches == searches, result.web
     assert WEB_SEARCH_TOOL in cast(list[object], fake.sent[0].tools), "web search is offered"

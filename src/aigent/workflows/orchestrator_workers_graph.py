@@ -24,16 +24,13 @@ from aigent.config import (
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm import Llm, Request
 from aigent.retrieval.chunk import context_block
-from aigent.workflows.demo import run_demo
 from aigent.workflows.orchestrator_workers import (
     PLAN,
-    QUESTIONS,
     SYNTHESISE,
     WORK,
     Orchestrated,
     Plan,
     Subtask,
-    show,
 )
 from aigent.workflows.reports import Search
 
@@ -111,12 +108,3 @@ def run(llm: Llm, search: Search, question: str) -> Orchestrated:
         return Orchestrated([], [], "(the orchestrator planned no subtasks)")
     findings = [found for _, found in sorted(final["findings"])]
     return Orchestrated(final["plan"], findings, final["answer"])
-
-
-def main(argv: list[str] | None = None) -> None:
-    prog = "aigent.workflows.orchestrator_workers_graph"
-    run_demo(argv, prog=prog, questions=QUESTIONS, run=run, show=show)
-
-
-if __name__ == "__main__":
-    main()

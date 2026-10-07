@@ -16,12 +16,7 @@ from aigent.config import MAX_PLAN_TASKS, MAX_TOKENS_PLAN, MAX_TOKENS_SYNTHESIS,
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm import Llm, Request
 from aigent.retrieval.chunk import context_block
-from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import CATALOGUE, DocId, Search
-
-QUESTIONS = (
-    "Which of the three companies is most exposed to a slowdown in rural demand, and why?",
-)
 
 PLAN = (
     f"You plan research over three annual reports:\n{CATALOGUE}\n\nSplit the question into "
@@ -79,20 +74,3 @@ def run(llm: Llm, search: Search, question: str) -> Orchestrated:
     prompt = f"question: {question}\n\n{listed}"
     last = Request.ask("synthesise", SYNTHESISE, prompt, MAX_TOKENS_SYNTHESIS, thinking=THINKING)
     return Orchestrated(plan, findings, llm.text(last))
-
-
-def show(result: Orchestrated) -> str:
-    lines = [f"plan: {len(result.plan)} subtasks"]
-    for task, found in zip(result.plan, result.findings, strict=True):
-        lines.append(f"- {task.brief} [{task.report or 'all reports'}]\n  {found}")
-    lines.append(f"\n{result.answer}")
-    return "\n".join(lines)
-
-
-def main(argv: list[str] | None = None) -> None:
-    prog = "aigent.workflows.orchestrator_workers"
-    run_demo(argv, prog=prog, questions=QUESTIONS, run=run, show=show)
-
-
-if __name__ == "__main__":
-    main()

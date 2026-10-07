@@ -22,7 +22,13 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from aigent.config import MAX_TOKENS_QUESTION as MAX_TOKENS
-from aigent.config import MAX_USD_PER_EVAL, MODEL, THINKING_EVAL_PARAM
+from aigent.config import (
+    MAX_USD_PER_EVAL,
+    MODEL,
+    PASSAGE_MIN_ALPHA,
+    PASSAGE_MIN_CHARS,
+    THINKING_EVAL_PARAM,
+)
 from aigent.llm import Llm, Request
 from aigent.messages import Msg
 from aigent.pricing import Budget, estimate_eval_usd, usage_cost
@@ -31,12 +37,6 @@ from aigent.retrieval.corpus import MANIFEST, load_corpus
 
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "evals" / "datasets" / "retrieval.jsonl"
-
-# What a passage must look like before it is worth a question: long enough to hold a fact, and
-# mostly prose. A financial table scores low here, and a question about one is a question about
-# formatting. Measured on the corpus: 3,483 of 4,593 sentence chunks qualify.
-PASSAGE_MIN_CHARS = 400
-PASSAGE_MIN_ALPHA = 0.85
 
 SYSTEM = """You write evaluation questions for a document retrieval system, from the annual \
 reports of Indian listed companies.

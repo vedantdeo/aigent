@@ -16,10 +16,7 @@ from aigent.config import MAX_TOKENS_SECTION, MAX_TOKENS_VOTE
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm import Llm, Request
 from aigent.retrieval.chunk import context_block
-from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import REPORTS, Search
-
-QUESTIONS = ("What does each company say about water use and conservation?",)
 
 SECTION = (
     "You report what one company's annual report says on a question. Use only the passages, "
@@ -72,21 +69,3 @@ def run(llm: Llm, search: Search, question: str) -> Parallel:
     ]
     votes = llm.gather_records(reviews, Vote)
     return Parallel(sections, dict(zip(REVIEWERS, votes, strict=True)))
-
-
-def show(result: Parallel) -> str:
-    lines = [f"{REPORTS[doc_id]}:\n{text}\n" for doc_id, text in result.sections.items()]
-    lines += [
-        f"{'pass' if v.passed else 'FAIL'}  {name}: {v.reason}" for name, v in result.votes.items()
-    ]
-    lines.append("flagged" if result.flagged else "every reviewer passed it")
-    return "\n".join(lines)
-
-
-def main(argv: list[str] | None = None) -> None:
-    prog = "aigent.workflows.parallelization"
-    run_demo(argv, prog=prog, questions=QUESTIONS, run=run, show=show)
-
-
-if __name__ == "__main__":
-    main()

@@ -42,8 +42,7 @@ from aigent.llm import Llm
 from aigent.messages import Usage
 from aigent.pricing import PRICES, Budget, estimate_eval_usd, usage_cost
 from aigent.retrieval.answer import spread
-from aigent.workflows.demo import build_search
-from aigent.workflows.reports import Search
+from aigent.workflows.reports import Search, build_search
 
 REPO = Path(__file__).resolve().parents[2]
 DATASET = REPO / "evals" / "datasets" / "tasks.jsonl"

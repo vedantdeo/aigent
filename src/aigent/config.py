@@ -27,13 +27,12 @@ SMALL_MODEL: str = os.environ.get("AIGENT_SMALL_MODEL", ACTIVE.small_model)
 
 
 # --- Budget ceilings -------------------------------------------------------------------------
-# Six scales: one request, one turn of an agent, one interactive run, one workflow, one agent task
-# in Project 2, and one eval over a dataset. `pricing` enforces them.
+# Five scales: one request, one turn of an agent, one interactive run, one agent task in Project 2,
+# and one eval over a dataset. `pricing` enforces them.
 
 MAX_USD_PER_REQUEST: float = float(os.environ.get("AIGENT_MAX_USD_PER_REQUEST", "0.25"))
 MAX_USD_PER_TURN: float = float(os.environ.get("AIGENT_MAX_USD_PER_TURN", "0.60"))
 MAX_USD_PER_RUN: float = float(os.environ.get("AIGENT_MAX_USD_PER_RUN", "1.00"))
-MAX_USD_PER_WORKFLOW: float = float(os.environ.get("AIGENT_MAX_USD_PER_WORKFLOW", "0.25"))
 MAX_USD_PER_EVAL: float = float(os.environ.get("AIGENT_MAX_USD_PER_EVAL", "2.00"))
 MAX_USD_PER_TASK: float = float(os.environ.get("AIGENT_MAX_USD_PER_TASK", "0.50"))
 # Assumed per web search: the API adds results mid-call, where the free count cannot see them.
@@ -48,12 +47,9 @@ WEB_SEARCH_RESULT_TOKENS = 10_000
 
 DEFAULT_MAX_TOKENS: dict[str, int] = {
     "ANSWER": 256,  # two sentences plus five chunk ids is ~140, with thinking off
-    "CHAT": 4096,
     "CRITIQUE": 256,  # evaluator-optimizer
     "DRAFT": 384,
-    "EXTRACT": 2048,
     "FACTS": 1024,  # chaining: up to six claims, each with a verbatim quote
-    "FIRST_CALL": 1024,
     "HEADLINE": 128,  # a five-field record is ~45 tokens with THINKING_EVAL off
     "JUDGE": 512,  # a verdict is a bool and a sentence or two; Opus reasons at length first
     "NOTE": 384,
@@ -62,7 +58,6 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
     "ROUTE": 128,  # routing: a label, a report and one line of reason
     "ROUTED": 768,
     "SECTION": 384,  # parallelization
-    "STREAMING": 4096,
     "SYNTHESIS": 768,
     "TOOL_LOOP": 4096,
     "VOTE": 256,
@@ -83,12 +78,9 @@ def max_tokens(site: str, client: Client | None = None) -> int:
 # Resolved once, so a call site imports a number as it always did. `tests.test_config` checks that
 # these names and the table above stay in step.
 MAX_TOKENS_ANSWER = max_tokens("ANSWER")
-MAX_TOKENS_CHAT = max_tokens("CHAT")
 MAX_TOKENS_CRITIQUE = max_tokens("CRITIQUE")
 MAX_TOKENS_DRAFT = max_tokens("DRAFT")
-MAX_TOKENS_EXTRACT = max_tokens("EXTRACT")
 MAX_TOKENS_FACTS = max_tokens("FACTS")
-MAX_TOKENS_FIRST_CALL = max_tokens("FIRST_CALL")
 MAX_TOKENS_HEADLINE = max_tokens("HEADLINE")
 MAX_TOKENS_JUDGE = max_tokens("JUDGE")
 MAX_TOKENS_NOTE = max_tokens("NOTE")
@@ -97,7 +89,6 @@ MAX_TOKENS_QUESTION = max_tokens("QUESTION")
 MAX_TOKENS_ROUTE = max_tokens("ROUTE")
 MAX_TOKENS_ROUTED = max_tokens("ROUTED")
 MAX_TOKENS_SECTION = max_tokens("SECTION")
-MAX_TOKENS_STREAMING = max_tokens("STREAMING")
 MAX_TOKENS_SYNTHESIS = max_tokens("SYNTHESIS")
 MAX_TOKENS_TOOL_LOOP = max_tokens("TOOL_LOOP")
 MAX_TOKENS_VOTE = max_tokens("VOTE")
@@ -168,6 +159,10 @@ CHUNK_MIN_CHARS = 80
 HEADING_MAX_CHARS = 80
 HEADING_MAX_WORDS = 12
 HEADING_MIN_CAPITAL_RATIO = 0.6
+
+# What a passage needs before it is worth a question: long enough to hold a fact, and mostly prose.
+PASSAGE_MIN_CHARS = 400
+PASSAGE_MIN_ALPHA = 0.85
 
 # How many chunks a retriever returns, and therefore how many an answer can cite.
 TOP_K = 5

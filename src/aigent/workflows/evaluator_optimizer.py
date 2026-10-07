@@ -16,10 +16,7 @@ from aigent.config import JUDGE_MODEL, MAX_REFINE_ROUNDS, MAX_TOKENS_CRITIQUE, M
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm import Llm, Request
 from aigent.retrieval.chunk import context_block
-from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import Search
-
-QUESTIONS = ("What were Reliance's capital expenditure priorities in FY25?",)
 
 CRITERIA = (
     "1. Every figure and claim appears in the passage it cites.\n"
@@ -68,21 +65,3 @@ def run(llm: Llm, search: Search, question: str) -> Refined:
         if critiques[-1].passed:
             return Refined(answer, True, critiques)
     return Refined(answer, False, critiques)
-
-
-def show(result: Refined) -> str:
-    lines = []
-    for number, critique in enumerate(result.critiques, 1):
-        verdict = "passed" if critique.passed else "; ".join(critique.problems)
-        lines.append(f"round {number}: {verdict}")
-    lines.append(f"\n{result.answer}")
-    return "\n".join(lines)
-
-
-def main(argv: list[str] | None = None) -> None:
-    prog = "aigent.workflows.evaluator_optimizer"
-    run_demo(argv, prog=prog, questions=QUESTIONS, run=run, show=show)
-
-
-if __name__ == "__main__":
-    main()

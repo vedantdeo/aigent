@@ -9,7 +9,6 @@ that the cap or the budget refuses becomes one last answer through `Llm.last_tur
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TypedDict, cast
 
@@ -17,15 +16,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from aigent import tracing
-from aigent.agent import FINISH, QUESTIONS, SYSTEM, TOOLS, called, cited
-from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
+from aigent.agent import FINISH, SYSTEM, TOOLS, called, cited
+from aigent.config import MAX_AGENT_TURNS
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm import Dispatch, Llm, Request
 from aigent.messages import Block, Msg, Reply
 from aigent.report_tools import SEARCH_TOOL, TOOL_KINDS, ReportSearch, Searched
 from aigent.tools import execute_tool
-from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import Search
 
 
@@ -174,28 +172,3 @@ def run(
     return Traced(
         answer, end["tools"], end["turns"], end["stopped"], reports.searches, cited(turns)
     )
-
-
-def show(result: Traced) -> str:
-    lines = [f"{result.turns} turns; tools called: {', '.join(result.tools) or 'none'}"]
-    if result.stopped is not None:
-        lines.append(f"\nsearching stopped: {result.stopped}")
-    if result.answer is not None:
-        lines.append(f"\n{result.answer}")
-    return "\n".join(lines)
-
-
-def main(argv: Sequence[str] | None = None) -> None:
-    run_demo(
-        argv,
-        prog="aigent.agent_graph",
-        questions=QUESTIONS,
-        run=run,
-        show=show,
-        limit_usd=MAX_USD_PER_RUN,
-        scope="run",
-    )
-
-
-if __name__ == "__main__":
-    main()

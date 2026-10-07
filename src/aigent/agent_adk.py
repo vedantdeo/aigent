@@ -30,16 +30,15 @@ from google.genai import types
 from pydantic import ConfigDict, PrivateAttr
 
 from aigent.adapters import spec
-from aigent.agent import FINISH, QUESTIONS, SYSTEM, called, cited
+from aigent.agent import FINISH, SYSTEM, called, cited
 from aigent.agent_graph import Traced
-from aigent.config import MAX_AGENT_TURNS, MAX_USD_PER_RUN
+from aigent.config import MAX_AGENT_TURNS
 from aigent.config import MAX_TOKENS_TOOL_LOOP as MAX_TOKENS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm import Llm, Request
 from aigent.messages import Block, Msg, Reply, Tool
 from aigent.report_tools import ReportSearch
 from aigent.tools import WEB_SEARCH_TOOL, execute_tool
-from aigent.workflows.demo import run_demo
 from aigent.workflows.reports import Search
 
 KEPT = ("text", "thinking", "redacted_thinking", "tool_use")  # what ADK's converter can carry
@@ -210,28 +209,3 @@ def run(
         reports.searches,
         cited(block for turn in brain._sent for block in turn),
     )
-
-
-def show(result: Traced) -> str:
-    lines = [f"{result.turns} turns; tools called: {', '.join(result.tools) or 'none'}"]
-    if result.stopped is not None:
-        lines.append(f"\nsearching stopped: {result.stopped}")
-    if result.answer is not None:
-        lines.append(f"\n{result.answer}")
-    return "\n".join(lines)
-
-
-def main(argv: Sequence[str] | None = None) -> None:
-    run_demo(
-        argv,
-        prog="aigent.agent_adk",
-        questions=QUESTIONS,
-        run=run,
-        show=show,
-        limit_usd=MAX_USD_PER_RUN,
-        scope="run",
-    )
-
-
-if __name__ == "__main__":
-    main()
