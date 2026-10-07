@@ -46,7 +46,7 @@ from aigent.evals.grade import (
 from aigent.evals.judge import LlmJudge, Verdict
 from aigent.llm import Llm
 
-from ..conftest import CAPPED, MakeJudge
+from ..conftest import CAPPED, RUBRIC, FakeAnthropic, MakeJudge, Sent
 
 Fields = dict[str, JsonValue]
 
@@ -660,3 +660,96 @@ def test_the_judge_grades_with_thinking_off(make_judge: MakeJudge) -> None:
 def test_an_unparsed_reply_keeps_its_opening_in_the_error(text: str, kept: str) -> None:
     error = unparsed("stop", text)
     assert error == f"no parsed output; stop_reason=stop; reply: {kept}", error
+
+
+def _verdicts(sent: Sent) -> Verdict | str | Exception | None:
+    """A verdict named by the answer the judge was shown, or a way for its request to fail."""
+    answer = sent.prompt.rsplit("<answer>", 1)[-1]
+    if "unanswerable" in answer:
+        return ValueError("overloaded")
+    if "rambling" in answer:
+        return "I think it is probably fine."
+    return Verdict(reasoning="checked", passed="right" in answer)
+
+
+@pytest.fixture
+def batch_judge() -> tuple[LlmJudge, FakeAnthropic]:
+    fake = FakeAnthropic(_verdicts)
+    return LlmJudge(rubric=RUBRIC, sdk=fake), fake
+
+
+def test_a_batch_judges_every_outcome_in_order_at_the_batch_price(
+    batch_judge: tuple[LlmJudge, FakeAnthropic],
+) -> None:
+    judge, fake = batch_judge
+    outcomes = [_out(answer="right"), _out(answer="wrong"), _out(answer="right again")]
+
+    scores = judge.grade_all([(_case(headline="h"), outcome) for outcome in outcomes])
+
+    assert [score.passed for score in scores] == [True, False, True]
+    assert all(s.usage is not None and s.usage.batched for s in scores), "billed as batched"
+    assert {score.model for score in scores} == {JUDGE_MODEL}
+    assert len(fake.messages.batches.created) == 1 and len(fake.messages.batches.created[0]) == 3
+
+
+@pytest.mark.parametrize(
+    ("outcome", "says", "billed"),
+    [
+        pytest.param(
+            Outcome(error="timed out"), "task failed: timed out", False, id="a failed task"
+        ),
+        pytest.param(
+            _out(answer="unanswerable"),
+            "judge request failed: errored: invalid_request_error: overloaded",
+            False,
+            id="a request the batch could not answer",
+        ),
+        pytest.param(
+            _out(answer="rambling"),
+            "judge returned no verdict (stop_reason=end_turn)",
+            True,
+            id="a reply with no verdict in it",
+        ),
+    ],
+)
+def test_a_batch_fails_a_row_it_cannot_judge_and_says_why(
+    outcome: Outcome, says: str, billed: bool, batch_judge: tuple[LlmJudge, FakeAnthropic]
+) -> None:
+    judge, _ = batch_judge
+
+    ok, failed = judge.grade_all([(_case(headline="h"), _out(answer="right")), (_case(), outcome)])
+
+    assert ok.passed and not failed.passed
+    assert failed.detail == says
+    assert (failed.usage is not None) is billed
+
+
+def test_a_batch_of_failed_tasks_sends_nothing(
+    batch_judge: tuple[LlmJudge, FakeAnthropic],
+) -> None:
+    judge, fake = batch_judge
+
+    scores = judge.grade_all([(_case(), Outcome(error="timed out"))])
+
+    assert [score.detail for score in scores] == ["task failed: timed out"]
+    assert fake.messages.batches.created == []
+
+
+def test_a_batched_judge_sends_what_a_single_one_would(
+    batch_judge: tuple[LlmJudge, FakeAnthropic],
+) -> None:
+    judge, fake = batch_judge
+    case, outcome = _case(headline="h"), _out(answer="right")
+
+    judge(case, outcome)
+    judge.grade_all([(case, outcome)])
+
+    single, batched = fake.messages.sent
+    assert (single.kind, batched.kind) == ("parse", "batch")
+    assert (single.model, single.max_tokens, single.system, single.messages, single.thinking) == (
+        batched.model,
+        batched.max_tokens,
+        batched.system,
+        batched.messages,
+        batched.thinking,
+    )

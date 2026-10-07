@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, replace
@@ -301,6 +302,11 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         "--workers", type=int, default=EVAL_WORKERS, help="tasks in flight at once (cost unchanged)"
     )
     parser.add_argument(
+        "--batch-judge",
+        action="store_true",
+        help="judge every answer in one batch once all have run: half price, up to 24 hours",
+    )
+    parser.add_argument(
         "--agent",
         default="langgraph",
         choices=("langgraph", "adk", "sdk"),
@@ -333,14 +339,20 @@ def main(argv: list[str] | None = None) -> None:
         # An unknown model estimates as free, so the dry run would print $0.00 for it.
         raise SystemExit(f"{', '.join(unpriced)} has no price; add it to pricing.PRICES")
 
+    if args.batch_judge and args.set != "tasks":
+        raise SystemExit(f"the {args.set} set is graded free; there is no judge to batch")
     # Each task is held to its own ceiling, so that bounds its cost; the judge is one call a task.
     judge_cap = max_tokens("JUDGE", settings)
     if args.regrade is not None:
         regrade(args, cases, judge, judge_cap)
         return
-    judged = estimate_eval_usd(judge, len(cases), 2_000, judge_cap) if args.set == "tasks" else 0.0
+    judged = (
+        estimate_eval_usd(judge, len(cases), 2_000, judge_cap, batched=args.batch_judge)
+        if args.set == "tasks"
+        else 0.0
+    )
     worst = len(cases) * MAX_USD_PER_TASK + judged
-    grading = f"judged by {judge}" if args.set == "tasks" else "graded free"
+    grading = f"judged by {judge}{_batched(args)}" if args.set == "tasks" else "graded free"
     print(f"{dataset.name}: {len(cases)} tasks, {args.agent} agent on {model}, {grading}")
     print(f"worst case ${worst:.2f}: ${MAX_USD_PER_TASK:.2f} a task at most, ${judged:.2f} judging")
     print(f"run ceiling ${args.limit:.2f}")
@@ -350,6 +362,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         return
 
+    _show_batch_ids(args)
     shared = Llm.for_eval(args.client)
     search = build_search(args.cache)
     outcomes: dict[str, Outcome] = {}
@@ -364,6 +377,7 @@ def main(argv: list[str] | None = None) -> None:
         limit_usd=args.limit,
         worst_usd=worst,
         workers=args.workers,
+        batch=args.batch_judge,
     )
     rows = result.rows
     mean = result.spent_usd / len(rows) if rows else 0.0
@@ -379,13 +393,18 @@ def regrade(args: argparse.Namespace, cases: Sequence[Case], judge: str, judge_c
     saved = load_rows(args.regrade)
     cases = [case for case in cases if case.id in saved]
     judging = args.set == "tasks"
-    judged = estimate_eval_usd(judge, len(cases), 2_000, judge_cap) if judging else 0.0
-    grading = f"judged by {judge}" if judging else "graded free"
+    judged = (
+        estimate_eval_usd(judge, len(cases), 2_000, judge_cap, batched=args.batch_judge)
+        if judging
+        else 0.0
+    )
+    grading = f"judged by {judge}{_batched(args)}" if judging else "graded free"
     print(f"re-grading {len(cases)} saved answers from {args.regrade.name}, {grading}")
     print(f"worst case ${judged:.2f}, all of it judging")
     if not args.yes:
         print("\nnothing spent. re-run with --yes to send the judge's calls.")
         return
+    _show_batch_ids(args)
     shared = Llm.for_eval(args.client)
     model = next((o.model for o, _ in saved.values() if o.model), "unknown")
     result = run_eval(
@@ -398,11 +417,26 @@ def regrade(args: argparse.Namespace, cases: Sequence[Case], judge: str, judge_c
         limit_usd=args.limit,
         worst_usd=judged,
         workers=args.workers,
+        batch=args.batch_judge,
     )
     agent = sum(usage_cost(model, u) for _, u in saved.values() if u is not None) / len(saved)
     passed = sum(row.passed for row in result.rows)
     print(f"\nsuccess {passed}/{len(result.rows)}; the agent had cost ${agent:.4f} a task")
     print(f"report: {write_report(result)}")
+
+
+def _show_batch_ids(args: argparse.Namespace) -> None:
+    """Print each batch's id as it is submitted, so an interrupted run can still be collected."""
+    if not args.batch_judge:
+        return
+    logger = logging.getLogger("aigent.llm")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        logger.addHandler(logging.StreamHandler(sys.stdout))
+
+
+def _batched(args: argparse.Namespace) -> str:
+    return " in one batch, at half price" if args.batch_judge else ""
 
 
 if __name__ == "__main__":

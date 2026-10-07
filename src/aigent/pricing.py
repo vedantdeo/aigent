@@ -53,6 +53,9 @@ PRICES: dict[str, Price] = {
 # Billed per search, on top of the tokens its results add.
 PRICE_PER_WEB_SEARCH = 0.01
 
+# What the Message Batches API charges per token, as a share of the list price. Searches stay whole.
+BATCH_DISCOUNT = 0.5
+
 
 def cost_usd(
     model: str,
@@ -61,12 +64,14 @@ def cost_usd(
     cache_write_tokens: int = 0,
     cache_read_tokens: int = 0,
     web_searches: int = 0,
+    *,
+    batched: bool = False,
 ) -> float:
     """Dollar cost of one request. Unknown models cost nothing rather than crashing the script."""
     price = PRICES.get(model)
     if price is None:
         return 0.0
-    per_token = 1e-6
+    per_token = 1e-6 * (BATCH_DISCOUNT if batched else 1.0)
     return web_searches * PRICE_PER_WEB_SEARCH + per_token * (
         input_tokens * price.input
         + output_tokens * price.output
@@ -83,6 +88,7 @@ def usage_cost(model: str, usage: Usage) -> float:
         cache_write_tokens=usage.cache_write_tokens,
         cache_read_tokens=usage.cache_read_tokens,
         web_searches=usage.web_searches,
+        batched=usage.batched,
     )
 
 
@@ -93,12 +99,19 @@ def describe_usage(model: str, usage: Usage) -> str:
         f"cache_write={usage.cache_write_tokens} "
         f"cache_read={usage.cache_read_tokens} "
         + (f"web_searches={usage.web_searches} " if usage.web_searches else "")
+        + ("batched " if usage.batched else "")
         + f"cost=${usage_cost(model, usage):.5f}"
     )
 
 
 def worst_case_usd(
-    model: str, input_tokens: int, max_tokens: int, *, cached: bool = False, web_searches: int = 0
+    model: str,
+    input_tokens: int,
+    max_tokens: int,
+    *,
+    cached: bool = False,
+    web_searches: int = 0,
+    batched: bool = False,
 ) -> float:
     """The most one request can cost: the full output cap, and all input at the input price — or at
     the cache-write price if `cached`, since a miss writes the whole prefix. Each web search adds
@@ -106,9 +119,14 @@ def worst_case_usd(
     input_tokens += web_searches * WEB_SEARCH_RESULT_TOKENS
     if cached:
         return cost_usd(
-            model, 0, max_tokens, cache_write_tokens=input_tokens, web_searches=web_searches
+            model,
+            0,
+            max_tokens,
+            cache_write_tokens=input_tokens,
+            web_searches=web_searches,
+            batched=batched,
         )
-    return cost_usd(model, input_tokens, max_tokens, web_searches=web_searches)
+    return cost_usd(model, input_tokens, max_tokens, web_searches=web_searches, batched=batched)
 
 
 def affordable_output_tokens(
@@ -132,6 +150,8 @@ def estimate_eval_usd(
     max_tokens: int,
     calls_per_case: int = 1,
     cached_tokens: int = 0,
+    *,
+    batched: bool = False,
 ) -> float:
     """Worst case for a whole run: cases x calls-per-case x `worst_case_usd`.
 
@@ -142,8 +162,8 @@ def estimate_eval_usd(
     if not calls:
         return 0.0
     fresh = max(input_tokens_per_case - cached_tokens, 0)
-    first = cost_usd(model, fresh, max_tokens, cache_write_tokens=cached_tokens)
-    rest = cost_usd(model, fresh, max_tokens, cache_read_tokens=cached_tokens)
+    first = cost_usd(model, fresh, max_tokens, cache_write_tokens=cached_tokens, batched=batched)
+    rest = cost_usd(model, fresh, max_tokens, cache_read_tokens=cached_tokens, batched=batched)
     return first + (calls - 1) * rest
 
 
@@ -156,6 +176,7 @@ def assert_request_within_budget(
     cached: bool = False,
     scope: str = "request",
     web_searches: int = 0,
+    batched: bool = False,
 ) -> float:
     """Pure check, no network. Returns the worst-case cost, or raises BudgetExceeded.
 
@@ -167,11 +188,12 @@ def assert_request_within_budget(
             "billed as free. Add it to pricing.PRICES."
         )
     worst = worst_case_usd(
-        model, input_tokens, max_tokens, cached=cached, web_searches=web_searches
+        model, input_tokens, max_tokens, cached=cached, web_searches=web_searches, batched=batched
     )
     if worst > limit_usd:
         written = " written to cache" if cached else ""
         written += f", {web_searches} web searches" if web_searches else ""
+        written += ", batched" if batched else ""
         raise BudgetExceeded(
             f"request could cost up to ${worst:.4f} ({input_tokens} input tokens{written} plus "
             f"max_tokens={max_tokens} on {model}), above the per-{scope} ceiling of "

@@ -22,6 +22,7 @@ from aigent.pricing import (
     affordable_output_tokens,
     assert_request_within_budget,
     cost_usd,
+    describe_usage,
     estimate_eval_usd,
     usage_cost,
     worst_case_usd,
@@ -71,6 +72,39 @@ OPUS = "claude-opus-5"
             0.005 + 0.1024 + 2 * (0.01 + WEB_SEARCH_RESULT_TOKENS * 5e-6),
             id="each search a call may run adds its fee and an allowance for its results",
         ),
+        pytest.param(
+            cost_usd(OPUS, 10**6, 10**6, batched=True), 15.0, id="a batched call is half price"
+        ),
+        pytest.param(
+            cost_usd(OPUS, 0, 0, 10**6, 10**6, batched=True),
+            3.375,
+            id="a batched call's cache writes and reads are halved too",
+        ),
+        pytest.param(
+            cost_usd(OPUS, 0, 0, web_searches=1000, batched=True),
+            10.0,
+            id="a batched call's searches stay full price",
+        ),
+        pytest.param(
+            usage_cost(OPUS, Usage(input_tokens=10**6, output_tokens=0, batched=True)),
+            2.5,
+            id="a usage marked batched bills at the batch price",
+        ),
+        pytest.param(
+            worst_case_usd(OPUS, 1000, 4096, batched=True),
+            (0.005 + 0.1024) / 2,
+            id="a batched call's worst case is half the full one",
+        ),
+        pytest.param(
+            worst_case_usd(OPUS, 1000, 4096, cached=True, batched=True),
+            (0.00625 + 0.1024) / 2,
+            id="and half when it may write the cache",
+        ),
+        pytest.param(
+            estimate_eval_usd(OPUS, 10, 1000, 4096, batched=True),
+            10 * (0.005 + 0.1024) / 2,
+            id="a batched eval is estimated at half price",
+        ),
     ],
 )
 def test_the_price_list(charged: float, expected: float) -> None:
@@ -106,6 +140,20 @@ def test_request_guard_passes_a_normal_week1_call() -> None:
 def test_request_guard_trips_on_runaway_input() -> None:
     with pytest.raises(BudgetExceeded, match="per-request ceiling"):
         assert_request_within_budget(OPUS, 40_000, 4096, limit_usd=0.25)
+
+
+def test_request_guard_admits_at_the_batch_price_what_it_refuses_at_full() -> None:
+    assert_request_within_budget(OPUS, 1000, 4096, 0.06, batched=True)
+    with pytest.raises(BudgetExceeded, match="batched"):
+        assert_request_within_budget(OPUS, 1000, 8192, 0.06, batched=True)
+    with pytest.raises(BudgetExceeded):
+        assert_request_within_budget(OPUS, 1000, 4096, 0.06)
+
+
+def test_a_batched_usage_says_so_on_its_log_line() -> None:
+    line = describe_usage(OPUS, Usage(input_tokens=10, output_tokens=5, batched=True))
+
+    assert "batched" in line and "batched" not in describe_usage(OPUS, _usage(10, 5))
 
 
 def test_request_guard_refuses_a_model_it_has_no_price_for() -> None:

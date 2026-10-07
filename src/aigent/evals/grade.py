@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
@@ -49,6 +50,15 @@ class Score:
 
 
 Grader = Callable[[Case, Outcome], Score]
+
+
+@runtime_checkable
+class BatchGrader(Protocol):
+    """A grader that can also grade many outcomes in one batch, scores in the order given."""
+
+    def __call__(self, case: Case, outcome: Outcome) -> Score: ...
+
+    def grade_all(self, pairs: Sequence[tuple[Case, Outcome]]) -> list[Score]: ...
 
 
 def unparsed(stop_reason: str | None, text: str) -> str:

@@ -8,14 +8,18 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 import anthropic
 from anthropic import Omit, omit
+from anthropic.lib._parse._response import parse_response
+from anthropic.lib._parse._transform import transform_schema
 from anthropic.lib.streaming import MessageStream
 from anthropic.lib.tools import BetaFunctionTool, ToolError, beta_tool
 from anthropic.types import (
     CacheControlEphemeralParam,
+    JSONOutputFormatParam,
     Message,
     MessageParam,
     OutputConfigParam,
@@ -35,13 +39,26 @@ from anthropic.types.beta import (
     BetaToolUnionParam,
     BetaUsage,
 )
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from anthropic.types.messages import MessageBatchIndividualResponse
+from anthropic.types.messages.batch_create_params import Request as BatchRequest
 from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
 
 from aigent.adapters.client import Client, model_of
 from aigent.adapters.retry import http_client
 from aigent.errors import Unreadable
-from aigent.messages import Block, Msg, Parsed, Reply, Tool, Usage, is_client_tool
+from aigent.messages import (
+    BatchStatus,
+    Block,
+    Failed,
+    Msg,
+    Parsed,
+    Reply,
+    Tool,
+    Usage,
+    is_client_tool,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -55,7 +72,9 @@ from pathlib import Path
 AnthropicClient = anthropic.Anthropic
 
 # Every capability this wire supports; `llm` refuses a request asking for one not listed here.
-SUPPORTS = frozenset({"cache", "thinking", "effort", "tools", "web_search", "stream", "schema"})
+SUPPORTS = frozenset(
+    {"batch", "cache", "thinking", "effort", "tools", "web_search", "stream", "schema"}
+)
 
 
 def usage_of(usage: WireUsage | BetaUsage) -> Usage:
@@ -108,6 +127,54 @@ def system_param(request: Request) -> str | Sequence[TextBlockParam] | Omit:
     if request.system is None or isinstance(request.system, str):
         return or_omit(request.system)
     return cast(Sequence[TextBlockParam], request.system)
+
+
+def batch_params(request: Request, settings: Client, schema: type[BaseModel]) -> dict[str, object]:
+    """One request as a batch carries it: `create`'s parameters, the schema as `parse` sends it."""
+    output_format = JSONOutputFormatParam(
+        type="json_schema", schema=transform_schema(schema.model_json_schema())
+    )
+    params: dict[str, object] = {
+        "model": model_of(request, settings),
+        "max_tokens": request.max_tokens,
+        "messages": list(request.messages),
+        "output_config": {**(request.output_config or {}), "format": output_format},
+    }
+    optional = {
+        "system": request.system,
+        "tools": request.tools,
+        "thinking": request.thinking,
+        "cache_control": request.cache_control,
+    }
+    params.update({key: value for key, value in optional.items() if value is not None})
+    return params
+
+
+def batch_result[Record: BaseModel](
+    response: MessageBatchIndividualResponse, schema: type[Record]
+) -> Parsed[Record] | Failed:
+    """One request's result: a reply billed at the batch price, or why there is none."""
+    result = response.result
+    if result.type == "errored":
+        error = result.error.error
+        return Failed(f"errored: {error.type}: {error.message}")
+    if result.type != "succeeded":
+        return Failed(result.type)
+    reply = reply_of(result.message)
+    try:
+        message = parse_response(output_format=schema, response=result.message)
+        record = cast("ParsedMessage[Record]", message).parsed_output
+    except ValidationError:
+        record = None
+    return Parsed[Record](
+        text=reply.text,
+        usage=replace(reply.usage, batched=True),
+        stop_reason=reply.stop_reason,
+        model=reply.model,
+        blocks=reply.blocks,
+        raw=result.message,
+        parsed=record,
+    )
 
 
 def _runnable(tool: Tool, dispatch: Dispatch) -> BetaFunctionTool[Callable[..., str]]:
@@ -306,6 +373,38 @@ class Anthropic:
     def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession:
         """A tool-using conversation, which `llm` drives one admitted turn at a time."""
         return ToolSession(self.client, self.settings, request, dispatch, max_turns)
+
+    def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str:
+        """Send every request as one batch, each under its id; returns the batch's id."""
+        requests = [
+            BatchRequest(
+                custom_id=custom_id,
+                params=cast(
+                    MessageCreateParamsNonStreaming, batch_params(request, self.settings, schema)
+                ),
+            )
+            for custom_id, request in batch
+        ]
+        return self.client.messages.batches.create(requests=requests).id
+
+    def poll(self, batch_id: str) -> BatchStatus:
+        batch = self.client.messages.batches.retrieve(batch_id)
+        counts = batch.request_counts
+        return BatchStatus(
+            ended=batch.processing_status == "ended",
+            processing=counts.processing,
+            succeeded=counts.succeeded,
+            failed=counts.errored + counts.expired + counts.canceled,
+        )
+
+    def collect[Record: BaseModel](
+        self, batch_id: str, schema: type[Record]
+    ) -> dict[str, Parsed[Record] | Failed]:
+        """Every result of an ended batch, by id: the API returns them in any order."""
+        return {
+            response.custom_id: batch_result(response, schema)
+            for response in self.client.messages.batches.results(batch_id)
+        }
 
 
 def has_credentials() -> bool:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
@@ -18,6 +19,7 @@ from aigent.config import CLIENT, THINKING_EVAL_PARAM, max_tokens
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Outcome, Score
 from aigent.llm import Llm, Request
+from aigent.messages import Failed, Parsed
 
 JUDGE_SYSTEM = (
     "You grade one answer against one rubric. Judge only what the rubric asks about. Be strict: if "
@@ -57,28 +59,50 @@ class LlmJudge:
     def __call__(self, case: Case, outcome: Outcome) -> Score:
         if outcome.error is not None:
             return Score(False, f"task failed: {outcome.error}")
+        return self._score(self._shared().parse(self.request_for(case, outcome), Verdict))
+
+    def grade_all(self, pairs: Sequence[tuple[Case, Outcome]]) -> list[Score]:
+        """Every outcome judged in one batch at the batch price, in order. A failed task is not
+        sent, and a request the batch could not answer fails its row."""
+        sent = [index for index, (_, outcome) in enumerate(pairs) if outcome.error is None]
+        requests = [self.request_for(*pairs[index]) for index in sent]
+        results = self._shared().batch_records(requests, Verdict) if requests else []
+        scores = [Score(False, f"task failed: {outcome.error}") for _, outcome in pairs]
+        for index, result in zip(sent, results, strict=True):
+            scores[index] = self._score(result)
+        return scores
+
+    @property
+    def grader(self) -> str:
+        """The model that gives the verdict."""
+        return self.model or spec(self.client).judge_model
+
+    def request_for(self, case: Case, outcome: Outcome) -> Request:
+        """The one call that judges `outcome`, as sent alone or in a batch."""
+        cap = max_tokens("JUDGE", spec(self.client))
+        prompt = self.prompt_for(case, outcome)
+        return Request.ask(
+            "judge", JUDGE_SYSTEM, prompt, cap, model=self.grader, thinking=THINKING_EVAL_PARAM
+        )
+
+    def _shared(self) -> Llm:
         with self._building:  # rows judged concurrently share one Llm
             if self._llm is None:
                 self._llm = Llm.for_eval(self.client, sdk=self.sdk)
-        llm = self._llm
+            return self._llm
 
-        prompt = self.prompt_for(case, outcome)
-        settings = spec(self.client)
-        grader = self.model or settings.judge_model
-        cap = max_tokens("JUDGE", settings)
-        request = Request.ask(
-            "judge", JUDGE_SYSTEM, prompt, cap, model=grader, thinking=THINKING_EVAL_PARAM
-        )
-        response = llm.parse(request, Verdict)
+    def _score(self, response: Parsed[Verdict] | Failed) -> Score:
+        if isinstance(response, Failed):
+            return Score(False, f"judge request failed: {response.reason}", model=self.grader)
         verdict = response.parsed
         if verdict is None:
             return Score(
                 False,
                 f"judge returned no verdict (stop_reason={response.stop_reason})",
                 usage=response.usage,
-                model=grader,
+                model=self.grader,
             )
-        return Score(verdict.passed, verdict.reasoning, usage=response.usage, model=grader)
+        return Score(verdict.passed, verdict.reasoning, usage=response.usage, model=self.grader)
 
     def prompt_for(self, case: Case, outcome: Outcome) -> str:
         """The judged text, XML-delimited so the parts cannot bleed into each other.

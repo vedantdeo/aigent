@@ -13,7 +13,7 @@ maps to exactly one, so naming the client is enough to pick it.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Protocol
 
@@ -25,7 +25,7 @@ from aigent.adapters.cfg_local import CLIENTS as LOCAL_CLIENTS
 from aigent.adapters.cfg_sarvam import CLIENT as SARVAM
 from aigent.adapters.client import Client
 from aigent.adapters.openai import OpenAI
-from aigent.messages import Msg, Parsed, Reply
+from aigent.messages import BatchStatus, Failed, Msg, Parsed, Reply
 
 if TYPE_CHECKING:
     from aigent.llm import Dispatch, Request
@@ -72,6 +72,14 @@ class Adapter(Protocol):
     def streamed(self, request: Request) -> AbstractContextManager[Streamed]: ...
 
     def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession: ...
+
+    def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str: ...
+
+    def poll(self, batch_id: str) -> BatchStatus: ...
+
+    def collect[Record: BaseModel](
+        self, batch_id: str, schema: type[Record]
+    ) -> dict[str, Parsed[Record] | Failed]: ...
 
 
 # Wire name → the class that speaks it, in one canonical order.

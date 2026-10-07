@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import contextvars
 import itertools
+import logging
 import math
 import threading
+import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -27,6 +29,8 @@ from aigent import tracing
 from aigent.adapters import Streamed, ToolSession, build, spec
 from aigent.adapters.client import model_of
 from aigent.config import (
+    BATCH_POLL_SECONDS,
+    BATCH_WAIT_SECONDS,
     CLIENT,
     MAX_AGENT_TURNS,
     MAX_PARALLEL_CALLS,
@@ -34,10 +38,18 @@ from aigent.config import (
     MAX_USD_PER_TURN,
     MIN_TOKENS_FINAL_ANSWER,
 )
-from aigent.errors import BudgetExceeded, StepFailed, TurnsExhausted, Unreadable, Unsupported
+from aigent.errors import (
+    BatchUnfinished,
+    BudgetExceeded,
+    StepFailed,
+    TurnsExhausted,
+    Unreadable,
+    Unsupported,
+)
 from aigent.messages import (
     Block,
     Cache,
+    Failed,
     Msg,
     OutputConfig,
     Parsed,
@@ -48,6 +60,10 @@ from aigent.messages import (
     is_client_tool,
 )
 from aigent.pricing import Budget, affordable_output_tokens, assert_request_within_budget
+
+log = logging.getLogger(__name__)
+_sleep = time.sleep  # module-level so a test can wait out a batch without waiting
+_now = time.monotonic
 
 
 @dataclass(frozen=True)
@@ -224,6 +240,67 @@ class Llm:
         with self._held(requests, schema):
             return self._fan_out(requests, lambda request: self._record(request, schema))
 
+    def batch_records[Record: BaseModel](
+        self, requests: Sequence[Request], schema: type[Record]
+    ) -> list[Parsed[Record] | Failed]:
+        """Every request for a `schema` record as one batch, billed at the batch price, in request
+        order. Admitted whole first; a request with no reply comes back `Failed`, unbilled.
+
+        Raises `BatchUnfinished` if the batch cannot be collected, keeping its hold: its requests
+        may still be billed. `collect_batch` picks it up later by its id.
+        """
+        requests = [self._bound(request) for request in requests]
+        held = self._admit(requests, schema, batched=True, capability="batch")
+        batch = [(_batch_id(index), request) for index, request in enumerate(requests)]
+        try:
+            batch_id = self._adapter.submit(batch, schema)
+        except BaseException:
+            self._release(held)
+            raise
+        log.info("batch %s submitted: %d requests", batch_id, len(requests))
+        results = self.collect_batch(batch_id, requests, schema)
+        self._release(held)
+        return results
+
+    def collect_batch[Record: BaseModel](
+        self,
+        batch_id: str,
+        requests: Sequence[Request],
+        schema: type[Record],
+        *,
+        wait_seconds: float = BATCH_WAIT_SECONDS,
+    ) -> list[Parsed[Record] | Failed]:
+        """Wait for a submitted batch to end, then bill and trace each result. `requests` must be
+        the list it was submitted with: a result finds its request by position."""
+        requests = [self._bound(request) for request in requests]
+        try:
+            self._wait_for(batch_id, wait_seconds)
+            results = self._adapter.collect(batch_id, schema)
+        except Exception as exc:
+            raise BatchUnfinished(
+                f"batch {batch_id} was not collected ({exc}); its {len(requests)} requests may "
+                "still be billed. Collect it later with Llm.collect_batch."
+            ) from exc
+        collected: list[Parsed[Record] | Failed] = []
+        for index, request in enumerate(requests):
+            result = results.get(_batch_id(index), Failed("no result came back"))
+            with self._traced(request) as seen:
+                if isinstance(result, Failed):
+                    seen.finish({"failed": result.reason}, error=result.reason)
+                else:
+                    self._bill(request, result.usage, seen)
+                    seen.finish(_shown(result), error=None if result.parsed else "no record parsed")
+            collected.append(result)
+        return collected
+
+    def _wait_for(self, batch_id: str, wait_seconds: float) -> None:
+        """Poll until the batch ends; raise once it has run past `wait_seconds`."""
+        deadline = _now() + wait_seconds
+        while not (status := self._adapter.poll(batch_id)).ended:
+            if _now() >= deadline:
+                raise TimeoutError(f"{status.processing} requests still processing")
+            _sleep(BATCH_POLL_SECONDS)
+
     def run_tools(
         self,
         request: Request,
@@ -379,13 +456,16 @@ class Llm:
         *,
         limit_usd: float = MAX_USD_PER_REQUEST,
         scope: str = "request",
+        batched: bool = False,
+        capability: str | None = None,
     ) -> float:
         """Admit every request, holding their summed worst case until `_release`; returns it."""
         # The sum, not each call: calls in flight cannot be recalled, so a batch that cannot all
         # fit must not start.
         worst = 0.0
         for request in requests:
-            self._require(request, *(() if schema is None else ("schema",)))
+            needs = () if schema is None else ("schema",)
+            self._require(request, *needs, *(() if capability is None else (capability,)))
             if any(marker.get("ttl") == "1h" for marker in _cache_markers(request)):
                 raise BudgetExceeded(
                     f"{request.step}: asks for the 1-hour cache, whose writes pricing does not "
@@ -401,6 +481,7 @@ class Llm:
                 cached=_writes_cache(request),
                 scope=scope,
                 web_searches=searches,
+                batched=batched,
             )
             if self.rehearse:
                 raise Rehearsed(request, tokens, cost)
@@ -590,3 +671,8 @@ def describe(trace: Sequence[Call]) -> str:
     calls = f"{len(trace)} calls"
     lines.append(f"  {calls:<66}{sum(call.usd for call in trace):>10.5f}")
     return "\n".join(lines)
+
+
+def _batch_id(index: int) -> str:
+    """A request's id within its batch: its position, which is all a result is matched by."""
+    return f"r{index}"

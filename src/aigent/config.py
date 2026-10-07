@@ -111,6 +111,10 @@ MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this m
 MAX_PARALLEL_CALLS = 4
 EVAL_WORKERS = 1  # eval rows in flight at once; above 1 needs the run's worst case admitted
 
+# How often a submitted batch is checked, and how long to wait for it: the API's own 24 hours.
+BATCH_POLL_SECONDS = 30
+BATCH_WAIT_SECONDS = 24 * 60 * 60
+
 # Workflows split a task into small, fully specified calls: the case thinking adds least to.
 THINKING_WORKFLOW_PARAM: Thinking = {"type": "disabled"}
 

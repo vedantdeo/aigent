@@ -1490,3 +1490,28 @@
   grouping, and chunker and sampling edges. Every new test was mutation-checked; the one survivor,
   `sample_passages`' `n <= 0` guard, is equivalent, since `range(n)` is already empty. Left
   untested: one `run_tools` exit the real SDK cannot reach, and loading the real models.
+- 10-07: **The Batch API, and the judge on it: free, no live batch yet.** `Llm.batch_records` sends
+  every request for one record type as a Message Batch at half price: admitted whole at the batch
+  worst case, polled every 30 s for up to the API's 24 hours, each result billed and traced in
+  request order. `Usage.batched` carries the discount, so every budget and report prices it without
+  a second path; search fees stay whole. A batch that cannot be collected raises `BatchUnfinished`
+  with its id and **keeps its hold**, since its requests may still bill; `collect_batch` resumes it.
+  `run_eval(batch=True)` judges every row in one batch after they run, and `agent_tasks
+  --batch-judge` turns it on, for a fresh run or a re-grade. **Quality is the same, the output is
+  not**: same model and parameters, but a different sample, exactly as two live runs differ
+  (floating-point reduction order varies with what a GPU batches together; Thinking Machines saw 80
+  distinct completions from 1,000 identical temperature-0 prompts), so a batched and a live run are
+  not a controlled comparison and the report names batch-graded graders. **No cache lost on the
+  judge**: it never cached, and its shared prefix is under Opus 5's 512-token minimum. Headlines
+  would lose hits in a batch (it outlives the 5-minute cache) until `pricing` models the 1-hour
+  cache's 2× write. Mutation checks caught every guard but two: the up-front capability check,
+  whose test now demands the early refusal, and a lock on the runner's row dict, dropped since its
+  one item set per row is atomic and no test could show it.
+- 10-07: **First live batch: the Sep 28 answers re-graded with `--batch-judge`, $0.047** of a
+  $0.11 worst case, 25 verdicts in one batch (`msgbatch_019q36we4dMgVMsG51GdbhPi`), ended in under
+  five minutes. `correct` 22/25, against 23/25 when Sonnet 5 judged the same answers live on
+  09-28: 24 of 25 verdicts agree, and the one flip, `pt-017`, is an answer that hedges between two
+  "best sellers", which the judge itself called neither a decline nor a match. **Not a clean
+  batch-vs-live test**: the rubric ends with today's date, so the two judges read different
+  prompts. The batch id was only logged at INFO, which no main configured; `--batch-judge` now
+  prints it as it is submitted, so an interrupted run can be collected.

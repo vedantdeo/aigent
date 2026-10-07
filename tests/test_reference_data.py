@@ -8,6 +8,7 @@ See `CLAUDE.md`, "Reference data stays in one canonical order".
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import cast
 
 import pytest
 
+from aigent import errors
 from aigent.extraction.headlines import DIRECTORY
 from aigent.retrieval.corpus import MANIFEST
 from aigent.retrieval.questions import DATASET
@@ -22,6 +24,7 @@ from aigent.retrieval.questions import DATASET
 PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
 TASKS = DATASET.parent / "tasks.jsonl"
 INJECTIONS = DATASET.parent / "injections.jsonl"
+ERRORS = Path(errors.__file__)
 
 Pairs = list[tuple[str, object]]
 
@@ -57,6 +60,11 @@ def jsonl_ids(field: str) -> Callable[[Path], list[str]]:
     return read
 
 
+def class_names(path: Path) -> list[str]:
+    """Every top-level class a module defines, in file order."""
+    return re.findall(r"^class (\w+)", path.read_text(encoding="utf-8"), flags=re.M)
+
+
 @dataclass(frozen=True)
 class Ordered:
     """A hand-edited file whose entries stay sorted by the key they are looked up by."""
@@ -76,6 +84,7 @@ ORDERED_FILES = [
     Ordered(PARAPHRASED, key="id", load=jsonl_ids("id")),
     Ordered(INJECTIONS, key="id", load=jsonl_ids("id")),
     Ordered(TASKS, key="id", load=jsonl_ids("id")),
+    Ordered(ERRORS, key="class name", load=class_names),
 ]
 
 

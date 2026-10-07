@@ -2,7 +2,8 @@
 
 A task that raises becomes an error row rather than ending the run; a tripped ceiling stops the run
 and keeps the rows already paid for; every dollar is billed to one budget. Cases are the outer loop
-so a truncated run is still a comparison. Rows may run concurrently once the whole run is admitted.
+so a truncated run is still a comparison. Rows may run concurrently, and batch graders may grade
+every row in one batch, once the whole run is admitted.
 """
 
 from __future__ import annotations
@@ -15,13 +16,23 @@ from datetime import UTC, datetime
 
 from aigent import tracing
 from aigent.config import EVAL_WORKERS, MAX_USD_PER_EVAL, MODEL
+from aigent.errors import BatchUnfinished
 from aigent.evals.dataset import Case
-from aigent.evals.grade import Grader, Outcome, Score
+from aigent.evals.grade import BatchGrader, Grader, Outcome, Score
 from aigent.messages import Usage
 from aigent.pricing import Budget
 
 Task = Callable[[Case], Outcome]
 Job = tuple[Case, str, Task]
+
+
+@dataclass(frozen=True)
+class _Ran:
+    """What a row left for its batch graders: the case, what the task returned, and its trace."""
+
+    case: Case
+    outcome: Outcome
+    seen: tracing.Observation
 
 
 @dataclass(frozen=True)
@@ -59,6 +70,7 @@ class EvalRun:
     limit_usd: float = MAX_USD_PER_EVAL
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     stopped_early: str | None = None
+    batched: tuple[str, ...] = ()  # graders that graded every row in one batch
 
     @property
     def n_cases(self) -> int:
@@ -80,13 +92,15 @@ def run_eval(
     worst_usd: float | None = None,
     progress: bool = True,
     workers: int = EVAL_WORKERS,
+    batch: bool = False,
 ) -> EvalRun:
     """Run every case through every variant, grade each outcome, return the whole run.
 
     `model` is recorded, not applied — the task owns its own call. Pass the one it really uses.
     `worst_usd` is the whole run's worst case; given, the run is refused before its first row
     unless all of it fits under `limit_usd`. `workers` rows run at once, which needs `worst_usd`;
-    rows come back in case order however they finish.
+    rows come back in case order however they finish. With `batch`, every `BatchGrader` grades all
+    the rows in one batch once they have run, which also needs `worst_usd`.
     """
     if not variants:
         raise ValueError("run_eval needs at least one variant")
@@ -97,6 +111,15 @@ def run_eval(
             "concurrent rows need worst_usd: rows in flight cannot be recalled, so only a run "
             "admitted whole before it starts is sure to stay under its ceiling"
         )
+    batched = {n: g for n, g in graders.items() if batch and isinstance(g, BatchGrader)}
+    if batch and not batched:
+        raise ValueError("batch grading needs a grader that can batch, such as an LlmJudge")
+    if batch and worst_usd is None:
+        raise ValueError(
+            "batch grading needs worst_usd: a submitted batch cannot be recalled, so only a run "
+            "admitted whole before it starts is sure to stay under its ceiling"
+        )
+    inline = {name: grader for name, grader in graders.items() if name not in batched}
 
     run = EvalRun(
         dataset=dataset,
@@ -105,6 +128,7 @@ def run_eval(
         variants=tuple(variants),
         graders=tuple(graders),
         limit_usd=limit_usd,
+        batched=tuple(batched),
     )
     budget = Budget(limit_usd=limit_usd, scope="eval")
     if worst_usd is not None:
@@ -114,6 +138,7 @@ def run_eval(
     session = f"{dataset}-{run.started_at:%Y%m%d-%H%M%S}"
     tracer = tracing.tracer()  # chosen here, before any row could race to choose it
     done = 0
+    ran: dict[tuple[str, str], _Ran] = {}  # one item set per row, atomic without a lock
 
     def traced(case: Case, name: str, task: Task) -> RowResult:
         with tracer.observe(
@@ -123,7 +148,10 @@ def run_eval(
             tags=(dataset, name, model, *case.tags),
             session=session,
         ) as seen:
-            return _run_one(case, name, task, graders, budget, model, seen)
+            row, outcome = _run_one(case, name, task, inline, budget, model, seen)
+        if batched and outcome is not None and row.error is None:
+            ran[case.id, name] = _Ran(case, outcome, seen)
+        return row
 
     def finished(row: RowResult) -> None:
         nonlocal done
@@ -141,6 +169,11 @@ def run_eval(
                 break
 
     run.stopped_early = budget.tripped
+    if batched:
+        run.rows, unfinished = _grade_in_batches(run.rows, ran, batched, graders, budget, model)
+        run.stopped_early = run.stopped_early or unfinished
+        if progress:
+            print(f"batch-graded {len(ran)} rows: {sum(row.passed for row in run.rows)} passed")
     run.spent_usd = budget.spent_usd
     tracer.flush()
     if progress:
@@ -184,6 +217,7 @@ def combine(runs: Sequence[EvalRun]) -> EvalRun:
         limit_usd=first.limit_usd,
         started_at=min(run.started_at for run in runs),
         stopped_early=next((run.stopped_early for run in runs if run.stopped_early), None),
+        batched=tuple(dict.fromkeys(name for run in runs for name in run.batched)),
     )
 
 
@@ -227,19 +261,19 @@ def _run_one(
     budget: Budget,
     model: str,
     seen: tracing.Observation,
-) -> RowResult:
+) -> tuple[RowResult, Outcome | None]:
     """One case, one variant: run it, bill it, grade it, under the row's trace. Never raises."""
     try:
         outcome = task(case)
     except Exception as exc:  # noqa: BLE001 - a broken task is a row, not the end of the run
         error = f"{type(exc).__name__}: {exc}"
         seen.finish(error=error)
-        return RowResult(case.id, variant, scores={}, error=error)
+        return RowResult(case.id, variant, scores={}, error=error), None
 
     cost = _bill(budget, outcome.usage, outcome.model or model)
     if outcome.error is not None:
         seen.finish(outcome.output, error=outcome.error, metadata={"cost_usd": cost})
-        return RowResult(case.id, variant, scores={}, cost_usd=cost, error=outcome.error)
+        return RowResult(case.id, variant, scores={}, cost_usd=cost, error=outcome.error), outcome
 
     scores: dict[str, Score] = {}
     for grader_name, grader in graders.items():
@@ -254,7 +288,60 @@ def _run_one(
         cost += _bill(budget, score.usage, score.model or model)
 
     seen.finish(outcome.output, metadata={"cost_usd": cost})
-    return RowResult(case.id, variant, scores=scores, cost_usd=cost)
+    return RowResult(case.id, variant, scores=scores, cost_usd=cost), outcome
+
+
+def _grade_in_batches(
+    rows: Sequence[RowResult],
+    ran: Mapping[tuple[str, str], _Ran],
+    batched: Mapping[str, BatchGrader],
+    graders: Mapping[str, Grader],
+    budget: Budget,
+    model: str,
+) -> tuple[list[RowResult], str | None]:
+    """Each batch grader over every row that ran, then each row's scores in the graders' order.
+    Returns the rows, and why a batch went uncollected if one did."""
+    keys = [(row.case_id, row.variant) for row in rows if (row.case_id, row.variant) in ran]
+    pairs = [(ran[key].case, ran[key].outcome) for key in keys]
+    added: dict[tuple[str, str], dict[str, Score]] = {key: {} for key in keys}
+    costs = dict.fromkeys(keys, 0.0)
+    unfinished: str | None = None
+    for name, grader in batched.items():
+        if budget.tripped is not None:
+            scores = [Score(False, "not graded: the run stopped before its batch was sent")] * len(
+                pairs
+            )
+        else:
+            with tracing.tracer().observe(f"{name} batch", "evaluator") as graded:
+                try:
+                    scores = grader.grade_all(pairs) if pairs else []
+                except Exception as exc:  # noqa: BLE001 - a lost batch fails its rows, not the run
+                    if isinstance(exc, BatchUnfinished):
+                        unfinished = str(exc)
+                    scores = [Score(False, f"grader raised {type(exc).__name__}: {exc}")] * len(
+                        pairs
+                    )
+                graded.finish({"rows": len(scores), "passed": sum(s.passed for s in scores)})
+        for key, score in zip(keys, scores, strict=True):
+            added[key][name] = score
+            ran[key].seen.score(name, score.passed, score.detail)
+            costs[key] += _bill(budget, score.usage, score.model or model)
+    graded_rows = [
+        row
+        if (row.case_id, row.variant) not in added
+        else _with(row, added[row.case_id, row.variant], costs[row.case_id, row.variant], graders)
+        for row in rows
+    ]
+    return graded_rows, unfinished
+
+
+def _with(
+    row: RowResult, added: Mapping[str, Score], cost: float, graders: Mapping[str, Grader]
+) -> RowResult:
+    """`row` with its batch scores added, every score in the graders' order, and their cost."""
+    scores = {**row.scores, **added}
+    ordered = {name: scores[name] for name in graders if name in scores}
+    return RowResult(row.case_id, row.variant, ordered, row.cost_usd + cost, row.error)
 
 
 def _describe(row: RowResult) -> str:

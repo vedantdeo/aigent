@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, cast
 
@@ -263,19 +264,43 @@ def test_a_run_that_cannot_be_priced_or_judged_fairly_is_refused_before_the_esti
         main(argv)
 
 
+@pytest.mark.parametrize(
+    ("flags", "batched"),
+    [
+        pytest.param([], False, id="judged one call at a time"),
+        pytest.param(["--batch-judge"], True, id="judged in one batch, at half price"),
+    ],
+)
 def test_a_regrade_is_priced_for_the_answers_saved_not_the_whole_set(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    flags: list[str], batched: bool, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A one-answer file once dry-ran at 25 judge calls' worst case."""
     path = tmp_path / "one.rows.jsonl"
     save_rows(
         path, {CASES[0].id: Outcome(output={"answer": "x"}, raw="x", model="claude-sonnet-5")}
     )
-    one = estimate_eval_usd("claude-opus-5", 1, 2_000, 512)
+    one = estimate_eval_usd("claude-opus-5", 1, 2_000, 512, batched=batched)
 
-    main(["--model", "claude-sonnet-5", "--judge-model", "claude-opus-5", "--regrade", str(path)])
+    main([*JUDGED, "--regrade", str(path), *flags])
 
-    assert f"worst case ${one:.2f}" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"worst case ${one:.2f}" in out  # $0.02 a call, $0.01 batched
+    assert ("in one batch" in out) is batched
+
+
+def test_a_batch_judged_run_is_estimated_at_half_the_judging(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    full = estimate_eval_usd("claude-opus-5", len(CASES), 2_000, 512)
+
+    main([*JUDGED, "--batch-judge"])
+
+    assert f"${full / 2:.2f} judging" in capsys.readouterr().out
+
+
+def test_a_set_graded_free_has_no_judge_to_batch() -> None:
+    with pytest.raises(SystemExit, match="no judge to batch"):
+        main(["--set", "injections", "--batch-judge"])
 
 
 class _NoClient:
@@ -289,33 +314,47 @@ class _NoClient:
         return cls()
 
 
+JUDGED = ["--model", "claude-sonnet-5", "--judge-model", "claude-opus-5"]
+TASK_GRADERS = {"right_tools", "tool_order", "finished", "correct"}
+
+
 @pytest.mark.parametrize(
-    ("argv", "workers", "graded_by"),
+    ("argv", "workers", "graded_by", "batch"),
     [
         pytest.param(
             ["--set", "injections", "--only", "inj-001,inj-002", "--workers", "3"],
             3,
             {"right_tools", "includes", "excludes", "guarded", "finished"},
+            False,
             id="the injection set, three at once, graded free",
         ),
         pytest.param(
-            ["--only", "pt-001", "--model", "claude-sonnet-5", "--judge-model", "claude-opus-5"],
+            ["--only", "pt-001", *JUDGED],
             1,
-            {"right_tools", "tool_order", "finished", "correct"},
+            TASK_GRADERS,
+            False,
             id="the task set, serial by default, judged",
         ),
         pytest.param(
-            [
-                "--regrade",
-                "{saved}",
-                "--model",
-                "claude-sonnet-5",
-                "--judge-model",
-                "claude-opus-5",
-            ],
+            ["--only", "pt-001", *JUDGED, "--batch-judge"],
+            1,
+            TASK_GRADERS,
+            True,
+            id="the task set, judged in one batch",
+        ),
+        pytest.param(
+            ["--regrade", "{saved}", *JUDGED],
             2,
-            {"right_tools", "tool_order", "finished", "correct"},
+            TASK_GRADERS,
+            False,
             id="a re-grade, two at once",
+        ),
+        pytest.param(
+            ["--regrade", "{saved}", *JUDGED, "--batch-judge"],
+            2,
+            TASK_GRADERS,
+            True,
+            id="a re-grade judged in one batch",
         ),
     ],
 )
@@ -323,6 +362,7 @@ def test_a_paid_run_hands_its_workers_and_graders_to_the_runner(
     argv: list[str],
     workers: int,
     graded_by: set[str],
+    batch: bool,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -349,6 +389,7 @@ def test_a_paid_run_hands_its_workers_and_graders_to_the_runner(
     assert handed["workers"] == workers, handed
     assert handed["graders"] == graded_by, handed["graders"]
     assert handed["worst_usd"] is not None, "every paid run is admitted whole"
+    assert handed["batch"] is batch, handed
 
 
 INJECTION_CASES = {case.id: case for case in load_jsonl(INJECTIONS)}
@@ -487,3 +528,43 @@ def test_every_build_runs_out_of_budget_the_same_way(
     assert says in str(traced.stopped), traced.stopped
     assert len(fake.sent) == sent, [s.kind for s in fake.sent]
     assert llm.budget.held_usd == 0.0, "every hold let go, however the run ended"
+
+
+@pytest.mark.parametrize(
+    ("argv", "shown"),
+    [
+        pytest.param(["--only", "pt-001", "--batch-judge"], True, id="a batched run prints its id"),
+        pytest.param(
+            ["--regrade", "{saved}", "--batch-judge"], True, id="so does a batched re-grade"
+        ),
+        pytest.param(["--regrade", "{saved}"], False, id="a run judged call by call prints none"),
+    ],
+)
+def test_a_batch_id_is_printed_as_it_is_submitted(
+    argv: list[str],
+    shown: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    logger = logging.getLogger("aigent.llm")
+    monkeypatch.setattr(logger, "handlers", [])
+    monkeypatch.setattr(logger, "level", logging.NOTSET)
+    saved = tmp_path / "saved.rows.jsonl"
+    save_rows(saved, {"pt-001": Outcome(output={"answer": "x"}, raw="x", model="claude-sonnet-5")})
+
+    def runner(
+        cases: list[Case], variants: dict[str, object], graders: dict[str, Grader], **kw: Any
+    ) -> EvalRun:
+        logger.info("batch %s submitted: %d requests", "msgbatch_7", len(cases))
+        return EvalRun("d", "", "m", tuple(variants), tuple(graders))
+
+    monkeypatch.setattr(agent_tasks, "run_eval", runner)
+    monkeypatch.setattr(agent_tasks, "Llm", _NoClient)
+    monkeypatch.setattr(agent_tasks, "build_search", lambda cache: FakeSearch())
+    monkeypatch.setattr(agent_tasks, "write_report", lambda run: tmp_path / "report.md")
+    monkeypatch.setattr(agent_tasks, "save_rows", lambda path, outcomes: None)
+
+    main([*JUDGED, *[str(saved) if arg == "{saved}" else arg for arg in argv], "--yes"])
+
+    assert ("batch msgbatch_7 submitted: 1 requests" in capsys.readouterr().out) is shown

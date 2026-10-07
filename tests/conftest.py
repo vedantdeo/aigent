@@ -29,6 +29,7 @@ from anthropic.types import (
 )
 from anthropic.types.beta import BetaMessage, BetaToolUnionParam
 from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
+from anthropic.types.messages import MessageBatch, MessageBatchIndividualResponse
 from pydantic import BaseModel
 
 from aigent import tracing
@@ -208,6 +209,7 @@ class FakeMessages:
         self.counted: list[type | None] = []
         self.input_tokens = FAKE_USAGE.input_tokens
         self.count_error: Exception | None = None
+        self.batches = FakeBatches(self)
 
     def count_tokens(self, **kwargs: object) -> MessageTokensCount:
         with self._lock:
@@ -218,6 +220,15 @@ class FakeMessages:
 
     def create(self, **kwargs: object) -> Message:
         return self._message(self._reply(self._log("create", kwargs)), kwargs)
+
+    def reply_to(self, sent: Sent) -> str | BaseModel | Exception | None:
+        return self._reply(sent)
+
+    def log(self, kind: str, kwargs: dict[str, object]) -> Sent:
+        return self._log(kind, kwargs)
+
+    def message(self, text: str, kwargs: dict[str, object]) -> Message:
+        return self._message(text, kwargs)
 
     def stream(self, **kwargs: object) -> _FakeStream:
         return _FakeStream(self._message(self._reply(self._log("stream", kwargs)), kwargs))
@@ -270,6 +281,66 @@ class FakeMessages:
         with self._lock:
             self.sent.append(sent)
         return sent
+
+
+class FakeBatches:
+    """`client.messages.batches`: each request is answered through its client's `reply`, so a batch
+    is scripted exactly as single calls are. A record succeeds, text succeeds unparseable, an
+    exception errors and None expires. The first `polls` checks find the batch still processing,
+    and results come back in reverse, as the API may return them in any order."""
+
+    def __init__(self, messages: FakeMessages) -> None:
+        self._messages = messages
+        self.created: list[list[dict[str, object]]] = []
+        self.polls = 0
+        self.checked = 0
+        self.submit_error: Exception | None = None
+        self.results_error: Exception | None = None
+
+    def create(self, *, requests: Sequence[Mapping[str, object]]) -> MessageBatch:
+        if self.submit_error is not None:
+            raise self.submit_error
+        self.created.append([dict(request) for request in requests])
+        return self._batch("in_progress")
+
+    def retrieve(self, batch_id: str) -> MessageBatch:
+        self.checked += 1
+        return self._batch("ended" if self.checked > self.polls else "in_progress")
+
+    def results(self, batch_id: str) -> list[MessageBatchIndividualResponse]:
+        if self.results_error is not None:
+            raise self.results_error
+        return [self._result(request) for request in reversed(self.created[-1])]
+
+    def _result(self, request: dict[str, object]) -> MessageBatchIndividualResponse:
+        params = cast(dict[str, object], request["params"])
+        reply = self._messages.reply_to(self._messages.log("batch", params))
+        if reply is None:
+            result: dict[str, object] = {"type": "expired"}
+        elif isinstance(reply, Exception):
+            error = {"type": "invalid_request_error", "message": str(reply)}
+            result = {"type": "errored", "error": {"type": "error", "error": error}}
+        else:
+            text = reply if isinstance(reply, str) else reply.model_dump_json()
+            message = self._messages.message(text, params)
+            result = {"type": "succeeded", "message": message.model_dump()}
+        body = {"custom_id": request["custom_id"], "result": result}
+        return MessageBatchIndividualResponse.model_validate(body)
+
+    def _batch(self, status: str) -> MessageBatch:
+        submitted = len(self.created[-1]) if self.created else 0
+        ended = status == "ended"
+        counts = {"processing": 0 if ended else submitted, "succeeded": submitted if ended else 0}
+        return MessageBatch.model_validate(
+            {
+                "id": f"msgbatch_{len(self.created)}",
+                "type": "message_batch",
+                "processing_status": status,
+                "request_counts": {**counts, "errored": 0, "expired": 0, "canceled": 0},
+                "created_at": "2026-10-07T00:00:00Z",
+                "expires_at": "2026-10-08T00:00:00Z",
+            }
+        )
 
 
 def _cache_control(kwargs: dict[str, object]) -> object:

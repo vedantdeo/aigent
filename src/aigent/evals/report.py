@@ -62,6 +62,9 @@ def _header_block(run: EvalRun) -> list[str]:
     graders = _grading_models(run)
     if graders:
         block.append(f"- graded by: {', '.join(f'`{m}`' for m in graders)}")
+    if run.batched:
+        names = ", ".join(f"`{name}`" for name in run.batched)
+        block.append(f"- batch-graded: {names}, through the Message Batches API at half price")
     block += [
         f"- run: {run.started_at:%Y-%m-%d %H:%M} UTC",
         f"- cost: ${run.spent_usd:.5f} of a ${run.limit_usd:.2f} ceiling",

@@ -67,6 +67,7 @@ class Usage:
     cache_write_tokens: int = 0
     cache_read_tokens: int = 0
     web_searches: int = 0
+    batched: bool = False  # sent through the Message Batches API, which bills tokens at half price
 
 
 @dataclass(frozen=True)
@@ -90,3 +91,20 @@ class Parsed[Record: BaseModel](Reply):
     """A reply that was asked for a record. `parsed` is None when none could be read."""
 
     parsed: Record | None = None
+
+
+@dataclass(frozen=True)
+class Failed:
+    """A batched request that produced no reply: errored, expired or canceled. Never billed."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
+class BatchStatus:
+    """Where a submitted batch has got to. `ended` once every request has a result."""
+
+    ended: bool
+    processing: int = 0
+    succeeded: int = 0
+    failed: int = 0

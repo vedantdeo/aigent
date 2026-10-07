@@ -30,7 +30,7 @@ from pydantic import BaseModel, ValidationError
 from aigent.adapters.client import Client, model_of
 from aigent.adapters.retry import http_client
 from aigent.errors import Unsupported
-from aigent.messages import Block, Parsed, Reply, Usage
+from aigent.messages import BatchStatus, Block, Failed, Parsed, Reply, Usage
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -301,6 +301,18 @@ class OpenAI:
     def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession:
         """Refused: this wire has tool calling, but no runner here drives it yet."""
         raise Unsupported(f"{request.step}: the {self.name} wire runs no tools yet")
+
+    def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str:
+        """Refused: no server this wire talks to has a batch endpoint wired up here."""
+        raise Unsupported(f"the {self.name} wire sends no batches")
+
+    def poll(self, batch_id: str) -> BatchStatus:
+        raise Unsupported(f"the {self.name} wire sends no batches")
+
+    def collect[Record: BaseModel](
+        self, batch_id: str, schema: type[Record]
+    ) -> dict[str, Parsed[Record] | Failed]:
+        raise Unsupported(f"the {self.name} wire sends no batches")
 
 
 def _text_of(content: str | Sequence[Block] | None) -> str:
