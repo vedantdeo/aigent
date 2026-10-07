@@ -22,7 +22,7 @@ from pathlib import Path
 from aigent import guardrails, tracing
 from aigent.adapters import CLIENTS, spec
 from aigent.agent_graph import Traced
-from aigent.config import CLIENT, MAX_USD_PER_EVAL, MAX_USD_PER_TASK, max_tokens
+from aigent.config import CLIENT, EVAL_WORKERS, MAX_USD_PER_EVAL, MAX_USD_PER_TASK, max_tokens
 from aigent.errors import GuardrailTripped
 from aigent.evals.dataset import Case, digest, load_jsonl
 from aigent.evals.grade import (
@@ -298,6 +298,9 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--cache", action="store_true", help="reuse PDF text and chunk vectors")
     parser.add_argument(
+        "--workers", type=int, default=EVAL_WORKERS, help="tasks in flight at once (cost unchanged)"
+    )
+    parser.add_argument(
         "--agent",
         default="langgraph",
         choices=("langgraph", "adk", "sdk"),
@@ -360,6 +363,7 @@ def main(argv: list[str] | None = None) -> None:
         model=model,
         limit_usd=args.limit,
         worst_usd=worst,
+        workers=args.workers,
     )
     rows = result.rows
     mean = result.spent_usd / len(rows) if rows else 0.0
@@ -393,6 +397,7 @@ def regrade(args: argparse.Namespace, cases: Sequence[Case], judge: str, judge_c
         model=model,
         limit_usd=args.limit,
         worst_usd=judged,
+        workers=args.workers,
     )
     agent = sum(usage_cost(model, u) for _, u in saved.values() if u is not None) / len(saved)
     passed = sum(row.passed for row in result.rows)

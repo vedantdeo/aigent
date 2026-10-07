@@ -8,6 +8,7 @@ budget.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
@@ -49,12 +50,17 @@ class LlmJudge:
     client: str = CLIENT  # the client the judge runs on, not the one that answered
     sdk: object | None = None
     _llm: Llm | None = field(default=None, init=False, repr=False)
+    _building: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
 
     def __call__(self, case: Case, outcome: Outcome) -> Score:
         if outcome.error is not None:
             return Score(False, f"task failed: {outcome.error}")
-        if self._llm is None:
-            self._llm = Llm.for_eval(self.client, sdk=self.sdk)
+        with self._building:  # rows judged concurrently share one Llm
+            if self._llm is None:
+                self._llm = Llm.for_eval(self.client, sdk=self.sdk)
+        llm = self._llm
 
         prompt = self.prompt_for(case, outcome)
         settings = spec(self.client)
@@ -63,7 +69,7 @@ class LlmJudge:
         request = Request.ask(
             "judge", JUDGE_SYSTEM, prompt, cap, model=grader, thinking=THINKING_EVAL_PARAM
         )
-        response = self._llm.parse(request, Verdict)
+        response = llm.parse(request, Verdict)
         verdict = response.parsed
         if verdict is None:
             return Score(

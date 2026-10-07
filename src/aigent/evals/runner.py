@@ -2,23 +2,26 @@
 
 A task that raises becomes an error row rather than ending the run; a tripped ceiling stops the run
 and keeps the rows already paid for; every dollar is billed to one budget. Cases are the outer loop
-so a truncated run is still a comparison.
+so a truncated run is still a comparison. Rows may run concurrently once the whole run is admitted.
 """
 
 from __future__ import annotations
 
+import contextvars
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from aigent import tracing
-from aigent.config import MAX_USD_PER_EVAL, MODEL
+from aigent.config import EVAL_WORKERS, MAX_USD_PER_EVAL, MODEL
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Grader, Outcome, Score
 from aigent.messages import Usage
 from aigent.pricing import Budget
 
 Task = Callable[[Case], Outcome]
+Job = tuple[Case, str, Task]
 
 
 @dataclass(frozen=True)
@@ -76,17 +79,24 @@ def run_eval(
     limit_usd: float = MAX_USD_PER_EVAL,
     worst_usd: float | None = None,
     progress: bool = True,
+    workers: int = EVAL_WORKERS,
 ) -> EvalRun:
     """Run every case through every variant, grade each outcome, return the whole run.
 
     `model` is recorded, not applied — the task owns its own call. Pass the one it really uses.
     `worst_usd` is the whole run's worst case; given, the run is refused before its first row
-    unless all of it fits under `limit_usd`.
+    unless all of it fits under `limit_usd`. `workers` rows run at once, which needs `worst_usd`;
+    rows come back in case order however they finish.
     """
     if not variants:
         raise ValueError("run_eval needs at least one variant")
     if not graders:
         raise ValueError("run_eval needs at least one grader")
+    if workers > 1 and worst_usd is None:
+        raise ValueError(
+            "concurrent rows need worst_usd: rows in flight cannot be recalled, so only a run "
+            "admitted whole before it starts is sure to stay under its ceiling"
+        )
 
     run = EvalRun(
         dataset=dataset,
@@ -100,32 +110,39 @@ def run_eval(
     if worst_usd is not None:
         budget.admit(worst_usd)
 
-    total = len(cases) * len(variants)
-    done = 0
+    jobs: list[Job] = [(case, name, task) for case in cases for name, task in variants.items()]
     session = f"{dataset}-{run.started_at:%Y%m%d-%H%M%S}"
+    tracer = tracing.tracer()  # chosen here, before any row could race to choose it
+    done = 0
 
-    for case in cases:
-        for name, task in variants.items():
-            done += 1
-            with tracing.tracer().observe(
-                dataset,
-                inputs=case.input,
-                metadata={"case": case.id, "variant": name, "expected": case.expected},
-                tags=(dataset, name, model, *case.tags),
-                session=session,
-            ) as seen:
-                row = _run_one(case, name, task, graders, budget, model, seen)
-            run.rows.append(row)
-            if progress:
-                print(f"[{done}/{total}] {_describe(row)}")
+    def traced(case: Case, name: str, task: Task) -> RowResult:
+        with tracer.observe(
+            dataset,
+            inputs=case.input,
+            metadata={"case": case.id, "variant": name, "expected": case.expected},
+            tags=(dataset, name, model, *case.tags),
+            session=session,
+        ) as seen:
+            return _run_one(case, name, task, graders, budget, model, seen)
+
+    def finished(row: RowResult) -> None:
+        nonlocal done
+        done += 1
+        if progress:
+            print(f"[{done}/{len(jobs)}] {_describe(row)}")
+
+    if workers > 1:
+        run.rows = _concurrently(jobs, traced, finished, budget, workers)
+    else:
+        for job in jobs:
+            run.rows.append(row := traced(*job))
+            finished(row)
             if budget.tripped is not None:
-                run.stopped_early = budget.tripped
                 break
-        if budget.tripped is not None:
-            break
 
+    run.stopped_early = budget.tripped
     run.spent_usd = budget.spent_usd
-    tracing.tracer().flush()
+    tracer.flush()
     if progress:
         print(f"\n{len(run.rows)} rows, ${run.spent_usd:.5f} of a ${limit_usd:.2f} ceiling")
         if run.stopped_early:
@@ -168,6 +185,33 @@ def combine(runs: Sequence[EvalRun]) -> EvalRun:
         started_at=min(run.started_at for run in runs),
         stopped_early=next((run.stopped_early for run in runs if run.stopped_early), None),
     )
+
+
+def _concurrently(
+    jobs: Sequence[Job],
+    traced: Callable[[Case, str, Task], RowResult],
+    finished: Callable[[RowResult], None],
+    budget: Budget,
+    workers: int,
+) -> list[RowResult]:
+    """Every job on a pool of `workers`, in job order; a tripped ceiling cancels what has not
+    started, and keeps the rows in flight, which are already paid for."""
+    rows: dict[int, RowResult] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        # Each row runs in a copy of this context, so its trace nests where the run was started.
+        sent: dict[Future[RowResult], int] = {
+            pool.submit(contextvars.copy_context().run, traced, *job): index
+            for index, job in enumerate(jobs)
+        }
+        for future in as_completed(sent):
+            if future.cancelled():
+                continue
+            rows[sent[future]] = row = future.result()
+            finished(row)
+            if budget.tripped is not None:
+                for waiting in sent:
+                    waiting.cancel()
+    return [rows[index] for index in sorted(rows)]
 
 
 def _bill(budget: Budget, usage: Usage | None, model: str) -> float:

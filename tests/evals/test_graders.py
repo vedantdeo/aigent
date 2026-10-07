@@ -6,6 +6,8 @@ and names itself in the pytest output.
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable
 
 import pytest
@@ -20,6 +22,7 @@ from aigent.config import (
     THINKING_EVAL_PARAM,
     UNPARSED_PREVIEW_CHARS,
 )
+from aigent.evals import judge as judge_module
 from aigent.evals.dataset import Case
 from aigent.evals.grade import (
     Grader,
@@ -41,6 +44,7 @@ from aigent.evals.grade import (
     unparsed,
 )
 from aigent.evals.judge import LlmJudge, Verdict
+from aigent.llm import Llm
 
 from ..conftest import CAPPED, MakeJudge
 
@@ -198,6 +202,32 @@ def test_judge_returns_the_verdict_and_bills_its_usage_to_the_score(make_judge: 
     assert score.usage == usage_of(log.usage), "the score carries the judge's own usage"
     assert log.counted == 1, "a paid call is counted first, like every other paid call in the repo"
     assert score.model == JUDGE_MODEL, "the score names the judge's model, not the task's"
+
+
+def test_rows_judged_at_once_share_one_llm(
+    make_judge: MakeJudge, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge, log = make_judge(Verdict(reasoning="fine", passed=True))
+    built: list[Llm] = []
+    build = Llm.for_eval
+
+    def slow_build(client: str, *, sdk: object | None = None) -> Llm:
+        time.sleep(0.01)  # wide enough for every thread to find no Llm yet, without the lock
+        built.append(llm := build(client, sdk=sdk))
+        return llm
+
+    monkeypatch.setattr(judge_module.Llm, "for_eval", staticmethod(slow_build))
+    rows = [
+        threading.Thread(target=judge, args=(_case(headline="h"), _out(answer="a")))
+        for _ in range(4)
+    ]
+    for row in rows:
+        row.start()
+    for row in rows:
+        row.join()
+
+    assert len(built) == 1, f"built {len(built)} Llms for one judge"
+    assert log.counted == 4
 
 
 def test_judge_defaults_to_the_judge_model_not_the_agents(make_judge: MakeJudge) -> None:

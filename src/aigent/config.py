@@ -109,6 +109,7 @@ MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this m
 
 # How many calls one concurrent batch keeps in flight at once.
 MAX_PARALLEL_CALLS = 4
+EVAL_WORKERS = 1  # eval rows in flight at once; above 1 needs the run's worst case admitted
 
 # Workflows split a task into small, fully specified calls: the case thinking adds least to.
 THINKING_WORKFLOW_PARAM: Thinking = {"type": "disabled"}

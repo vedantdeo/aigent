@@ -8,7 +8,8 @@ any call whose worst case would carry spending past the ceiling. `llm` applies b
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 
 from aigent.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN, WEB_SEARCH_RESULT_TOKENS
 from aigent.errors import BudgetExceeded
@@ -185,7 +186,7 @@ class Budget:
     """Per-run accumulator. `charge` records an overrun in `tripped`; `add` also raises.
 
     Both bill before they trip, so `spent_usd` always includes the crossing call. `scope` picks
-    which env var the message names.
+    which env var the message names. Safe to share between threads.
     """
 
     limit_usd: float = MAX_USD_PER_RUN
@@ -193,17 +194,21 @@ class Budget:
     scope: str = "run"
     tripped: str | None = None
     held_usd: float = 0.0  # worst cases of calls admitted and not yet billed
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
 
     def charge(self, model: str, usage: Usage) -> float:
         """Bill one call and return what it added. Never raises; sets `tripped` when over."""
         charged = usage_cost(model, usage)
-        self.spent_usd += charged
-        if self.spent_usd > self.limit_usd:
-            self.tripped = (
-                f"{self.scope} has spent ${self.spent_usd:.4f}, above the per-{self.scope} "
-                f"ceiling of ${self.limit_usd:.4f}. Raise "
-                f"AIGENT_MAX_USD_PER_{self.scope.upper()} in .env if this was intended."
-            )
+        with self._lock:
+            self.spent_usd += charged
+            if self.spent_usd > self.limit_usd:
+                self.tripped = (
+                    f"{self.scope} has spent ${self.spent_usd:.4f}, above the per-{self.scope} "
+                    f"ceiling of ${self.limit_usd:.4f}. Raise "
+                    f"AIGENT_MAX_USD_PER_{self.scope.upper()} in .env if this was intended."
+                )
         return charged
 
     def add(self, model: str, usage: Usage) -> float:
@@ -219,17 +224,21 @@ class Budget:
 
         Admitting bills nothing; `charge` still bills the actual cost once a call returns.
         """
-        if self.spent_usd + self.held_usd + worst_usd > self.limit_usd:
-            held = f" with ${self.held_usd:.4f} held for calls in flight" if self.held_usd else ""
-            raise BudgetExceeded(
-                f"{self.scope} has spent ${self.spent_usd:.4f}{held}, and the next spending could "
-                f"cost up to ${worst_usd:.4f}, past the per-{self.scope} ceiling of "
-                f"${self.limit_usd:.4f}. Raise AIGENT_MAX_USD_PER_{self.scope.upper()} in .env "
-                "if this was intended."
-            )
-        if hold:
-            self.held_usd += worst_usd
+        with self._lock:
+            if self.spent_usd + self.held_usd + worst_usd > self.limit_usd:
+                held = (
+                    f" with ${self.held_usd:.4f} held for calls in flight" if self.held_usd else ""
+                )
+                raise BudgetExceeded(
+                    f"{self.scope} has spent ${self.spent_usd:.4f}{held}, and the next spending "
+                    f"could cost up to ${worst_usd:.4f}, past the per-{self.scope} ceiling of "
+                    f"${self.limit_usd:.4f}. Raise AIGENT_MAX_USD_PER_{self.scope.upper()} in "
+                    ".env if this was intended."
+                )
+            if hold:
+                self.held_usd += worst_usd
 
     def release(self, worst_usd: float) -> None:
         """Let go of a hold, once its call is billed or has failed."""
-        self.held_usd = max(0.0, self.held_usd - worst_usd)
+        with self._lock:
+            self.held_usd = max(0.0, self.held_usd - worst_usd)

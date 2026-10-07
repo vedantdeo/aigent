@@ -1471,3 +1471,14 @@
   through `agent_tasks`, and `build_search` moved to `workflows.reports`. Four output caps and
   `MAX_USD_PER_WORKFLOW` went with their only callers, and the passage gate's two constants moved
   from `retrieval.questions` into `config`. What those demos measured stays in this log.
+- 10-07: **Eval rows can run concurrently: `run_eval(workers=N)`, free, no live run yet.** Threads,
+  not `asyncio`, because every SDK call and `llm` itself is synchronous, and `llm._fan_out` already
+  fans calls out the same way. **Concurrency requires `worst_usd`**: rows in flight cannot be
+  recalled, so only a run admitted whole before it starts is sure to stay under its ceiling. A trip
+  still cancels the rows not yet started. Four things shared between rows were not thread-safe: the
+  runner's `Budget` (now locked), `LlmJudge`'s lazy `Llm` and the lazily chosen tracer (each could be
+  built twice), and the search, whose torch models on MPS are not safe across threads (now one
+  search at a time; milliseconds, against seconds per model call). **A hammer test of the `Budget`
+  lock passed with the lock removed**: CPython 3.12's GIL switches threads only at calls and
+  back-edges, never inside `spent_usd += x`, so the race cannot be shown here and the test was
+  dropped. The lock stays, correct by construction and needed on free-threaded builds.

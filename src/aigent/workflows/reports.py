@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from typing import Literal, Protocol, cast
 
 from aigent.config import SEARCH_METHOD
@@ -30,8 +31,11 @@ def build_search(cache: bool) -> Search:
     """Chunk, embed and index the corpus once; passages come back by `SEARCH_METHOD`."""
     inventory = Inventory.build("by_sentence", load_corpus(cache=cache), by_sentence())
     ranker = build_ranker(SEARCH_METHOD, Indexes.build(inventory, cache=cache))
+    one_at_a_time = threading.Lock()  # torch on MPS is not safe across threads
 
     def search(query: str, /, *, doc_id: str | None = None) -> list[Chunk]:
-        return [inventory.by_id[hit.chunk_id] for hit in ranker.rank(query, doc_id=doc_id)]
+        with one_at_a_time:
+            hits = ranker.rank(query, doc_id=doc_id)
+        return [inventory.by_id[hit.chunk_id] for hit in hits]
 
     return search

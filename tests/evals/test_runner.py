@@ -7,6 +7,8 @@ reason the harness takes one instead of a prompt.
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 
@@ -308,3 +310,61 @@ def test_a_run_is_admitted_whole_before_it_spends(
             progress=False,
         )
     assert len(called) == ran
+
+
+# --- rows in flight at once ----------------------------------------------------------------------
+
+
+def test_concurrent_rows_overlap_and_come_back_in_case_order() -> None:
+    together = threading.Barrier(4, timeout=5)  # breaks unless four rows are in flight at once
+
+    def task(case: Case) -> Outcome:
+        together.wait()
+        time.sleep((9 - int(case.id[1:])) / 1000)  # early cases finish last
+        return Outcome(output={"answer": "yes"}, usage=COSTLY, model=MODEL)
+
+    run = run_eval(
+        _cases(8),
+        {"a": task, "b": task},
+        {"exact": exact_match("answer")},
+        worst_usd=1.00,
+        workers=4,
+        progress=False,
+    )
+
+    assert [(row.case_id, row.variant) for row in run.rows] == [
+        (f"c{i}", variant) for i in range(1, 9) for variant in ("a", "b")
+    ]
+    assert all(row.passed for row in run.rows)
+    assert run.spent_usd == pytest.approx(16 * 0.03), "every row billed to the one budget"
+
+
+def test_concurrent_rows_need_the_run_admitted_whole() -> None:
+    called: list[str] = []
+
+    def task(case: Case) -> Outcome:
+        called.append(case.id)
+        return Outcome(output={"answer": "yes"})
+
+    with pytest.raises(ValueError, match="worst_usd"):
+        run_eval(_cases(2), {"a": task}, {"exact": exact_match("answer")}, workers=2)
+    assert called == []
+
+
+def test_a_ceiling_tripped_mid_run_cancels_the_rows_not_yet_started() -> None:
+    # A worst case that understates the run, the one way a concurrent run can still trip.
+    run = run_eval(
+        _cases(12),
+        {"baseline": _always("yes", COSTLY)},
+        {"exact": exact_match("answer")},
+        limit_usd=0.05,
+        worst_usd=0.01,
+        workers=2,
+        progress=False,
+    )
+
+    ran = [row.case_id for row in run.rows]
+    assert 2 <= len(ran) < 12, ran
+    assert ran == [f"c{i}" for i in range(1, len(ran) + 1)], "what ran is a prefix, in case order"
+    assert run.spent_usd == pytest.approx(0.03 * len(ran)), "rows in flight were billed"
+    assert run.stopped_early is not None and "AIGENT_MAX_USD_PER_EVAL" in run.stopped_early

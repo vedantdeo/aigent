@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from anthropic.types import CitationsWebSearchResultLocation, TextBlock
 
 pytest.importorskip("langgraph")
 
+from aigent import agent_tasks  # noqa: E402
 from aigent.agent import TOOLS  # noqa: E402
 from aigent.agent_graph import Traced  # noqa: E402
 from aigent.agent_tasks import (  # noqa: E402
@@ -24,11 +25,19 @@ from aigent.agent_tasks import (  # noqa: E402
     save_rows,
 )
 from aigent.evals.dataset import Case, load_jsonl  # noqa: E402
-from aigent.evals.grade import Outcome  # noqa: E402
+from aigent.evals.grade import Grader, Outcome  # noqa: E402
+from aigent.evals.runner import EvalRun  # noqa: E402
 from aigent.pricing import estimate_eval_usd  # noqa: E402
 from aigent.tools_config import SANDBOX  # noqa: E402
 
-from .conftest import FAKE_USAGE, FakeSearch, MakeLlm, Recorder, tool_turn, turns  # noqa: E402
+from .conftest import (  # noqa: E402
+    FAKE_USAGE,
+    FakeSearch,
+    MakeLlm,
+    Recorder,
+    tool_turn,
+    turns,
+)
 
 CASES = load_jsonl(DATASET)
 PAGE = "https://rates.example/aud-inr"
@@ -259,3 +268,76 @@ def test_a_regrade_is_priced_for_the_answers_saved_not_the_whole_set(
     main(["--model", "claude-sonnet-5", "--judge-model", "claude-opus-5", "--regrade", str(path)])
 
     assert f"worst case ${one:.2f}" in capsys.readouterr().out
+
+
+class _NoClient:
+    """Stands in for `Llm` where `main` only wants a connection to hand on."""
+
+    sdk = None
+
+    @classmethod
+    def for_eval(cls, client: str) -> _NoClient:
+        del client
+        return cls()
+
+
+@pytest.mark.parametrize(
+    ("argv", "workers", "graded_by"),
+    [
+        pytest.param(
+            ["--set", "injections", "--only", "inj-001,inj-002", "--workers", "3"],
+            3,
+            {"right_tools", "includes", "excludes", "guarded", "finished"},
+            id="the injection set, three at once, graded free",
+        ),
+        pytest.param(
+            ["--only", "pt-001", "--model", "claude-sonnet-5", "--judge-model", "claude-opus-5"],
+            1,
+            {"right_tools", "tool_order", "finished", "correct"},
+            id="the task set, serial by default, judged",
+        ),
+        pytest.param(
+            [
+                "--regrade",
+                "{saved}",
+                "--model",
+                "claude-sonnet-5",
+                "--judge-model",
+                "claude-opus-5",
+            ],
+            2,
+            {"right_tools", "tool_order", "finished", "correct"},
+            id="a re-grade, two at once",
+        ),
+    ],
+)
+def test_a_paid_run_hands_its_workers_and_graders_to_the_runner(
+    argv: list[str],
+    workers: int,
+    graded_by: set[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved = tmp_path / "saved.rows.jsonl"
+    save_rows(saved, {"pt-001": Outcome(output={"answer": "x"}, raw="x", model="claude-sonnet-5")})
+    if "{saved}" in argv:
+        argv = [str(saved) if arg == "{saved}" else arg for arg in argv] + ["--workers", "2"]
+    handed: dict[str, Any] = {}
+
+    def runner(
+        cases: list[Case], variants: dict[str, object], graders: dict[str, Grader], **kw: Any
+    ) -> EvalRun:
+        handed.update(kw, cases=[case.id for case in cases], graders=set(graders))
+        return EvalRun("d", "", "m", tuple(variants), tuple(graders))
+
+    monkeypatch.setattr(agent_tasks, "run_eval", runner)
+    monkeypatch.setattr(agent_tasks, "Llm", _NoClient)
+    monkeypatch.setattr(agent_tasks, "build_search", lambda cache: FakeSearch())
+    monkeypatch.setattr(agent_tasks, "write_report", lambda run: tmp_path / "report.md")
+    monkeypatch.setattr(agent_tasks, "save_rows", lambda path, outcomes: None)
+
+    main([*argv, "--yes"])
+
+    assert handed["workers"] == workers, handed
+    assert handed["graders"] == graded_by, handed["graders"]
+    assert handed["worst_usd"] is not None, "every paid run is admitted whole"
