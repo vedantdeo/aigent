@@ -18,7 +18,10 @@ jobs:
     name: lint · types · tests
     runs-on: ubuntu-latest
     steps:
+      # A saved checkout token would override UNDERHOOD_TOKEN and 403 the underhood clone.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Pinned to a full version on purpose: setup-uv stopped publishing floating
       # major and minor tags at v8, so `@v10` does not exist and would fail the
