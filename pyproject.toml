@@ -64,4 +64,4 @@ addopts = "-m 'not live'"
 
 [tool.uv.sources]
 # The from-scratch repo, for its GPU pricing: its latest snap branch, re-pinned at each snap.
-underhood = { git = "https://github.com/vedantdeo/underhood", branch = "snap-2026-10-08" }
+underhood = { git = "https://github.com/vedantdeo/underhood", branch = "main" }

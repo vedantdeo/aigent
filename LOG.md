@@ -1586,3 +1586,18 @@
   second write to it, and read it back; the scratch file was removed.
   The sandbox check then moved into one helper, `tools._in_sandbox`, that both file tools call;
   its two guards were mutation-checked in a scratch copy of the repo, not the working tree.
+- 10-08: **Snap and roll became one run of three jobs, at 00:07 IST.** The first scheduled snap
+  (10-07) was created 4 h 43 min late in both repos, two seconds apart; GitHub had two critical
+  Actions incidents that afternoon, the second clearing 26 minutes before the cron. In each repo
+  `release.yml` now runs `snap`, then `roll` (`checks.yml` on the snap's head, via a new `ref`
+  input), then `stable`, which tags only if roll passed: no Tue/Fri roll, no separate `roll.yml`, no
+  check-run lookup by job name. The cron moved from 18:30 to 18:37 UTC, off the busy :30. `roll-DATE`
+  stays the day it rolled, at Vedant's call, so aigent now waits for any underhood `roll-*` tag on
+  the commit it pins rather than for a tag of a given date. Then, the same day, **one release for
+  both repos**, all or nothing, at Vedant's call: aigent's `release.yml` snaps both, runs both
+  repos' checks in parallel (underhood's own `checks.yml`, called across repos), and tags both only
+  if both pass. underhood's `release.yml` and every cross-repo wait script are gone.
+  Last, **the mains pair and the snaps pair**: aigent's `main` pins underhood `branch = "main"` and a
+  snap re-pins only aigent's snap branch, so a snap no longer commits to `main`. The mains CI tests
+  against the exact commit underhood's `main` is at, then a `relock` job locks `uv.lock` to it, so
+  `main`'s lock is the last pair known to work.

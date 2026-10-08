@@ -3,22 +3,25 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `c1d6fc3` plus `read_file` and `write_file` on the MCP server, landing in
-this commit (2026-10-08). 1259 tests pass; pyright and ruff are clean.**
+**Verified against commit `8755995` plus the joint release of both repos and `main` pinned to
+underhood's `main`, landing in this commit (2026-10-08). 1259 tests pass; pyright and ruff are clean.**
 
 > **The package is organised by capability, not by week.** `week01/` became `extraction/`
 > (Project 1a) and `week02/` became `retrieval/`; the test tree mirrors it. Roadmap weeks still
 > appear in §5, where they are dates rather than module names.
 >
-> **Snap and roll, twice a week** (2026-10-07): `release.yml` in both repos. A snap branches `main`
-> as `snap-YYYY-MM-DD` (the last eight kept); a roll tags the snap's head `roll-YYYY-MM-DD` and
-> moves a `stable` tag to it, only if CI passed. aigent's `main` points at underhood's latest snap
-> branch, re-pointed only by a snap (Sun and Wed nights), so the pair is tested together; aigent
-> rolls only if underhood rolled the commit it pins. The bot's commits to `main` rewrite only the
-> underhood source line and `uv.lock`; the graph does not move for them.
+> **Snap and roll, twice a week, both repos as one** (2026-10-07; one joint run since 2026-10-08):
+> aigent's `release.yml`, Mon and Thu 00:07 IST. `snap` branches underhood's `main` and then
+> aigent's, re-pinned to it on the snap branch only, as `snap-YYYY-MM-DD` (the last eight kept in each); `roll-underhood` and
+> `roll-aigent` run each repo's checks on its snap; `stable`, only if both pass, tags both snaps
+> `roll-YYYY-MM-DD`, the day they rolled, and moves both `stable` tags. All or nothing. underhood
+> has no release workflow of its own. The bot's only commits to `main` are the mains CI's relocks,
+> which rewrite `uv.lock` alone; the graph does not move for them.
 >
-> **underhood is a dependency** (2026-10-07), for its GPU pricing: a git source on `main`, pinned by
-> `uv.lock`. underhood declares no dependencies, its model stack being in dependency groups only its
+> **underhood is a dependency** (2026-10-07), for its GPU pricing: a git source. **The mains pair, and
+> the snaps pair** (2026-10-08): `main` pins underhood `branch = "main"`, locked by `uv.lock` to the
+> last underhood commit the mains CI passed with; a snap branch pins underhood's snap of the same
+> date. underhood declares no dependencies, its model stack being in dependency groups only its
 > own `uv sync` installs, so aigent gets `config` and `gpu/` and never torch through it. It is the
 > seam for starting a GPU session for a local model from aigent.
 >
@@ -595,9 +598,9 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 | `.githooks/pre-commit` | repo root | Refuses a commit that stages `src/` or `pyproject.toml` without this file. Enabled per clone with `git config core.hooksPath .githooks`; git never installs hooks on clone. |
 | `scripts/check-knowledge-graph.sh` | repo root | The rule itself, reading changed paths on stdin. The hook and CI both call it, so the two cannot drift. |
 | `.github/workflows/knowledge-graph.yml` | repo root | The same check over the push or PR diff, for clones that never enabled the hook. |
-| `.github/workflows/checks.yml` | repo root | The shared check steps (2026-10-07 a reusable workflow): ruff, ruff format, pyright and the free tests. Its one input, `underhood`, swaps the pinned underhood for a ref after the locked install; every later step runs `--no-sync` so the swap survives. Syncs `--group compare --group graph --group adk` so the LangChain, LangGraph and ADK modules are checked rather than skipped. No key is configured, so the smoke test skips and the `live` tests stay deselected — CI spends nothing. `uv sync --locked` also catches lockfile drift. `astral-sh/setup-uv` is pinned to a **full version** (`@v10.1.0`): the action stopped publishing major and minor tags at v8, so `@v10` does not resolve. |
-| `.github/workflows/main.yml` | repo root | **The mains CI** (2026-10-07): `checks.yml` against underhood's `main`, on pushes to `main`, pull requests, and whenever underhood's own mains CI goes green (it starts this with `AIGENT_DISPATCH_TOKEN`). The early warning: a change in underhood that breaks aigent goes red here before any snap pins it. Job name `mains / lint · types · tests`. |
-| `.github/workflows/roll.yml` | repo root | **The roll CI** (2026-10-07): `checks.yml` against the pinned underhood, on `snap-*` branches and when the release job starts it. `release.yml` rolls only if `snap / lint · types · tests` passed on the snap's head. |
+| `.github/workflows/checks.yml` | repo root | The shared check steps (2026-10-07 a reusable workflow): ruff, ruff format, pyright and the free tests. Input `ref` (2026-10-08) checks a given commit instead of the one that started the run, which is how `release.yml`'s roll checks a snap. Input `underhood` swaps the pinned underhood for a ref after the locked install; every later step runs `--no-sync` so the swap survives. Syncs `--group compare --group graph --group adk` so the LangChain, LangGraph and ADK modules are checked rather than skipped. No key is configured, so the smoke test skips and the `live` tests stay deselected — CI spends nothing. `uv sync --locked` also catches lockfile drift. `astral-sh/setup-uv` is pinned to a **full version** (`@v10.1.0`): the action stopped publishing major and minor tags at v8, so `@v10` does not resolve. |
+| `.github/workflows/main.yml` | repo root | **The mains CI** (2026-10-07; relock 2026-10-08): job `underhood` reads the commit underhood's `main` is at, `mains` runs `checks.yml` against exactly that commit (its `underhood` input), on pushes to `main`, pull requests, and whenever underhood's own mains CI goes green (it starts this with `AIGENT_DISPATCH_TOKEN`). The early warning: a change in underhood that breaks aigent goes red here. **`relock`**, on `main` only and once `mains` passed, re-locks `uv.lock` and commits it only if the lock lands on the commit tested and aigent's `main` has not moved since; otherwise the newer run locks instead. Its push uses the job's token, so it starts no run of its own. Job name `mains / lint · types · tests`. |
+| `.github/workflows/release.yml` | repo root | **Snap and roll for both repos** (2026-10-07; one joint run since 2026-10-08, all or nothing): cron `37 18 * * 0,3` (Mon and Thu 00:07 IST, an odd minute because GitHub delays schedules at busy ones). `snap` cuts underhood's `snap-DATE` from its `main`, then cuts aigent's from its `main` and re-pins that branch alone to underhood's (by hand: `roll` takes the latest pair, `repin` re-locks aigent's snap first), and outputs the pair as commits: aigent's snap head and the underhood commit its `uv.lock` pins (`pinned-underhood.sh`). `roll-underhood` calls `vedantdeo/underhood/.github/workflows/checks.yml@main` (a reusable workflow's ref cannot be an expression, so underhood's checks run as of its `main`) on that commit, with `UNDERHOOD_TOKEN` as its `token`; `roll-aigent` calls `checks.yml` here on aigent's. `stable` needs all three and tags both commits `roll-<IST date it rolled>` and `stable`. `setup-git.sh` gives `snap` and `stable` the same git setup. **`UNDERHOOD_TOKEN` must have Contents write on underhood**, and underhood's Actions access must allow repositories owned by the user. Replaced both repos' separate `release.yml`, `roll.yml`, the Tue/Fri roll and the cross-repo tag polling. |
 | roadmap | `~/workspace/MLAI/ML/llm-engineer-roadmap.md` | Outside the repo. The eight-week plan this codebase is executing; the source of every "Week N" comment in the code. |
 
 ---
@@ -802,11 +805,14 @@ AIGENT_MAX_USD_PER_RUN       —configures→ config.MAX_USD_PER_RUN
 AIGENT_MAX_USD_PER_EVAL      —configures→ config.MAX_USD_PER_EVAL
 ANTHROPIC_API_KEY | ANTHROPIC_AUTH_TOKEN | ~/.config/anthropic —authenticates→ llm.adapters.anthropic.get_client
 ANTHROPIC_WORKSPACE_ID         —adds-header→ llm.adapters.anthropic.get_client   (org-level keys only)
-underhood (git, its latest snap branch, pinned by uv.lock) —provides→ underhood.config, underhood.gpu.pricing   (no dependencies of its own; never torch)
-UNDERHOOD_TOKEN (CI secret)    —lets-clone→ underhood, a private repo, in .github/workflows/checks.yml and release.yml
+underhood (git: main on main, its snap-DATE on a snap; pinned by uv.lock) —provides→ underhood.config, underhood.gpu.pricing   (no dependencies of its own; never torch)
+UNDERHOOD_TOKEN (CI secret)    —lets-clone→ underhood, a private repo, in .github/workflows/checks.yml and release.yml; —lets-push→ its snap branches and tags, from release.yml (Contents write, 2026-10-08)
 AIGENT_DISPATCH_TOKEN (underhood's secret) —starts→ main.yml here after underhood's main goes green (Actions write on aigent only)
-release.yml (Sun, Wed 18:30 UTC) —snaps→ main re-pinned to underhood's snap-DATE branch, then branched as snap-DATE (last 8 kept)
-release.yml (Mon, Thu 18:30 UTC) —rolls→ the snap tagged roll-DATE and stable, if CI passed and underhood rolled the pinned commit
+release.yml snap   (Sun, Wed 18:37 UTC) —snaps→ underhood's main as snap-DATE, then aigent's main as snap-DATE re-pinned to it (last 8 kept in each)
+main.yml relock    (needs mains)        —locks→ aigent main's uv.lock to the underhood commit the checks passed with
+release.yml roll-underhood (needs snap) —calls→ underhood's checks.yml@main on the underhood commit the snap pins
+release.yml roll-aigent    (needs snap) —calls→ checks.yml on aigent's snap head
+release.yml stable (needs all three)    —tags→  both commits roll-<today> and stable; all or nothing
 ```
 
 Every `AIGENT_*` value is read **at import time** into module-level constants. Setting them

@@ -1,5 +1,5 @@
-# The mains CI: aigent's main against underhood's main, whichever of the two moved. underhood's own
-# mains CI starts this after a green push, and the release job after it re-pins main.
+# The mains CI: aigent's main against underhood's main. underhood's own mains CI starts this after a
+# green push; once main is green, relock locks main's uv.lock to the underhood commit it passed with.
 name: mains
 
 on:
@@ -8,13 +8,78 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: mains-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  UNDERHOOD: https://github.com/vedantdeo/underhood
+
 jobs:
+  underhood:
+    name: find underhood's main
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.main.outputs.sha }}
+    steps:
+      - name: Read the commit underhood's main is at
+        id: main
+        env:
+          UNDERHOOD_TOKEN: ${{ secrets.UNDERHOOD_TOKEN }}
+        run: |
+          sha=$(git ls-remote "https://x-access-token:${UNDERHOOD_TOKEN}@github.com/vedantdeo/underhood" refs/heads/main | cut -f1)
+          [ -n "$sha" ] || { echo "::error::cannot read underhood's main"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   mains:
+    needs: underhood
     uses: ./.github/workflows/checks.yml
     with:
-      underhood: main
+      underhood: ${{ needs.underhood.outputs.sha }}
     secrets: inherit
+
+  relock:
+    name: lock main to the underhood it passed with
+    needs: [underhood, mains]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      # Without persisted credentials, the job's token cannot shadow UNDERHOOD_TOKEN.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Let git reach underhood, and push here
+        env:
+          UNDERHOOD_TOKEN: ${{ secrets.UNDERHOOD_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: .github/release/setup-git.sh
+
+      - name: Lock underhood at the commit the checks passed with
+        env:
+          TESTED: ${{ needs.underhood.outputs.sha }}
+        run: |
+          uv lock --upgrade-package underhood
+          pinned=$(.github/release/pinned-underhood.sh < uv.lock)
+          if [ "$pinned" != "$TESTED" ]; then
+            echo "::notice::underhood's main moved past $TESTED; the run it starts locks the new one"
+            exit 0
+          fi
+          if git diff --quiet uv.lock; then
+            echo "main already locks underhood at $TESTED"
+            exit 0
+          fi
+          if [ "$(git ls-remote "$AIGENT" refs/heads/main | cut -f1)" != "$GITHUB_SHA" ]; then
+            echo "::notice::aigent's main moved past $GITHUB_SHA; its own run locks underhood"
+            exit 0
+          fi
+          git commit -m "Lock underhood at its main, ${TESTED:0:7}" uv.lock
+          git push "$AIGENT" HEAD:main
+          echo "main now locks underhood at $TESTED"

@@ -337,9 +337,10 @@ uv run pytest -m live       # the paid integration tests (about two cents)
 
 Everything above except the last line runs in CI, in two pipelines over one set of steps
 (`.github/workflows/checks.yml`): the **mains CI** (`main.yml`) on every push to `main` and every
-pull request, against underhood's latest `main` rather than the pin, and started again whenever
-underhood's own `main` goes green; and the **roll CI** (`roll.yml`) on each `snap-*` branch, against
-the underhood snap it pins, which is what a roll requires. No API key is configured there, so the smoke test skips itself and
+pull request, against the commit underhood's `main` is at, and started again whenever underhood's
+own `main` goes green; once green on `main`, it locks `uv.lock` to that underhood commit, so `main`'s
+lock is always the last pair known to work; and the **roll** jobs in `release.yml` on each new pair of snaps,
+which is what tagging them `stable` requires. No API key is configured there, so the smoke test skips itself and
 the paid tests stay deselected — CI spends nothing. `uv sync --locked` also fails the run if
 `uv.lock` has drifted from `pyproject.toml`.
 
@@ -351,25 +352,25 @@ caught before the graph goes stale.
 
 ## Snap and roll
 
-Twice a week both repos branch `main` and promote the branch a day later, all times IST:
+aigent and underhood are released as a pair, all or nothing, by `.github/workflows/release.yml`.
+Twice a week, at Mon and Thu 00:07 IST (Sun and Wed 18:37 UTC; an odd minute, since GitHub runs
+schedules late at busy ones):
 
-| | Snap | Roll |
-|---|---|---|
-| first half | Mon 00:00 (Sun night) | Tue 00:00 (Mon night) |
-| second half | Thu 00:00 (Wed night) | Fri 00:00 (Thu night) |
-
-- **Snap** points `main` at underhood's `snap-YYYY-MM-DD` branch, then branches `main` as aigent's
-  own `snap-YYYY-MM-DD`, so the pair is tested together. Each repo keeps its last eight snaps.
-- **Roll** tags the snap's head `roll-YYYY-MM-DD` and moves aigent's `stable` tag to it, if CI
-  passed there and underhood rolled the commit it pins. Otherwise nothing rolls and the run goes
-  red. `roll-…` and `stable` are tags on snap branches, not branches of their own.
-- So `main` always runs against underhood's latest snap, re-pointed only by a snap, Sun and Wed
-  nights.
-- **A fix during the window** lands on `main` first, then is cherry-picked onto the snap branch
-  (`git checkout snap-YYYY-MM-DD && git cherry-pick <sha> && git push`). After an underhood fix,
-  run the `repin` step so `main` and the snap pick it up.
-- `.github/workflows/release.yml` does it, with `.github/release/`'s two scripts; run a step by
-  hand from the Actions tab.
+- **snap** branches underhood's `main` as `snap-YYYY-MM-DD`, then branches aigent's `main` the same
+  way and re-pins only that branch to underhood's snap. Each repo keeps its last eight snaps.
+- **roll** runs both repos' checks at once: underhood's own `checks.yml` on its snap, and aigent's on
+  its snap against the underhood it pins.
+- **stable**, only if both pass, tags both snaps `roll-YYYY-MM-DD`, dated the day they roll, and
+  moves each repo's `stable` tag there. Otherwise nothing moves in either repo and the run goes red.
+  `roll-…` and `stable` are tags on snap branches, not branches of their own.
+- So the mains pair with each other and the snaps with each other: aigent's `main` always pins
+  underhood's `main`, and a snap never touches it.
+- **A fix after a red roll** lands on `main` first, then is cherry-picked onto the snap branch
+  (`git checkout snap-YYYY-MM-DD && git cherry-pick <sha> && git push`). Run the workflow by hand
+  with step `roll` to roll the latest pair again, or, after an underhood fix, `repin`, which re-pins
+  aigent's snap to underhood's snap head, then rolls.
+- `UNDERHOOD_TOKEN` (underhood only, Contents read and write) lets it branch and tag underhood, and
+  underhood's Actions access setting lets it call underhood's `checks.yml`.
 
 ## Layout
 
