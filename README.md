@@ -399,6 +399,7 @@ schedules late at busy ones):
 - `docs/langgraph.md`      the LangGraph executor read from source, and orchestrator-workers rebuilt in it
 - `docs/agent-frameworks.md` one agent in three frameworks, and which to use when
 - `docs/v0.2-agent.md`     milestone `v0.2-agent`: Project 2's numbers, failures and frameworks
+- `docs/capstone.md`      the filings analyst's architecture, written before its code
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind
 - `scripts/`                the rule that hook and CI share
 - `.github/workflows/`      CI: the checks above, and the graph rule for anyone who skipped the hook
