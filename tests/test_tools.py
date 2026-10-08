@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from aigent import tools
-from aigent.tools import calculate, execute_tool, fence, read_file
-from aigent.tools_config import MAX_FILE_READ_CHARS
+from aigent.tools import calculate, execute_tool, fence, read_file, write_file
+from aigent.tools_config import MAX_FILE_READ_CHARS, MAX_FILE_WRITE_CHARS
 
 
 @pytest.mark.parametrize(
@@ -47,16 +47,6 @@ def test_calculate_rejects(expression: str, says: str) -> None:
 
 
 # --- read_file -----------------------------------------------------------------------------
-
-
-@pytest.fixture
-def box(tmp_path: Path) -> Path:
-    """A throwaway sandbox with one file inside it and one file outside it."""
-    sandbox = tmp_path / "box"
-    sandbox.mkdir()
-    (sandbox / "notes.txt").write_text("hello from the sandbox\n", encoding="utf-8")
-    (tmp_path / "outside.txt").write_text("secret\n", encoding="utf-8")
-    return sandbox
 
 
 def test_read_file_reads_inside_the_sandbox(box: Path) -> None:
@@ -120,6 +110,76 @@ def test_read_file_truncates_only_past_the_cap(box: Path, size: int, truncated: 
     assert len(content.removesuffix(marker)) == min(size, MAX_FILE_READ_CHARS)
 
 
+# --- write_file ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("file_path", "content"),
+    [
+        pytest.param("new.txt", "fresh\n", id="a new file"),
+        pytest.param("deep/er/new.txt", "nested", id="with parents that do not exist yet"),
+        pytest.param("empty.txt", "", id="an empty file"),
+        pytest.param("big.txt", "x" * MAX_FILE_WRITE_CHARS, id="exactly at the cap"),
+    ],
+)
+def test_write_file_creates_inside_the_sandbox(box: Path, file_path: str, content: str) -> None:
+    said = write_file(file_path, content, sandbox=box)
+
+    assert (box / file_path).read_text(encoding="utf-8") == content
+    assert said == f"Wrote {len(content)} characters to {file_path}"
+
+
+def _dangling_symlink_pointing_out(box: Path) -> str:
+    os.symlink(box.parent / "planted.txt", box / "link.txt")
+    return "link.txt"
+
+
+@pytest.mark.parametrize(
+    ("target", "says"),
+    [
+        pytest.param(lambda box: "../planted.txt", "escapes the workspace", id="parent traversal"),
+        pytest.param(
+            lambda box: str((box.parent / "planted.txt").resolve()),
+            "escapes the workspace",
+            id="an absolute path",
+        ),
+        pytest.param(
+            _dangling_symlink_pointing_out, "escapes the workspace", id="a symlink pointing out"
+        ),
+        pytest.param(lambda box: "notes.txt", "notes.txt already exists", id="an existing file"),
+        pytest.param(lambda box: "", "^\\. is a directory, not a file$", id="the sandbox itself"),
+        pytest.param(
+            lambda box: "notes.txt/inner.txt", "Could not write", id="a parent that is a file"
+        ),
+    ],
+)
+def test_write_file_refuses_without_touching_anything(
+    box: Path, target: Callable[[Path], str], says: str
+) -> None:
+    with pytest.raises(ValueError, match=says):
+        write_file(target(box), "planted", sandbox=box)
+
+    assert not (box.parent / "planted.txt").exists()
+    assert (box / "notes.txt").read_text(encoding="utf-8") == "hello from the sandbox\n"
+
+
+def test_write_file_refuses_content_over_the_cap(box: Path) -> None:
+    with pytest.raises(ValueError, match=f"the cap is {MAX_FILE_WRITE_CHARS}"):
+        write_file("big.txt", "x" * (MAX_FILE_WRITE_CHARS + 1), sandbox=box)
+    assert not (box / "big.txt").exists()
+
+
+def test_write_file_turns_an_unwritable_directory_into_a_short_error(box: Path) -> None:
+    locked = box / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    try:
+        with pytest.raises(ValueError, match="^Could not write locked/new.txt: Permission denied$"):
+            write_file("locked/new.txt", "x", sandbox=box)
+    finally:
+        locked.chmod(0o700)
+
+
 # --- dispatcher ----------------------------------------------------------------------------
 # Every row is the same call with different arguments, and the contract never changes: a tuple,
 # never an exception, with `is_error` telling the model which kind of answer it is looking at.
@@ -144,6 +204,41 @@ def test_execute_tool(
 
     assert flagged is is_error, content
     assert expect in content
+
+
+@pytest.mark.parametrize(
+    ("tool_input", "is_error", "expect"),
+    [
+        pytest.param({"file_path": "new.txt", "content": "hi"}, False, "Wrote 2", id="a write"),
+        pytest.param(
+            {"file_path": "notes.txt", "content": "hi"}, True, "already exists", id="over"
+        ),
+        pytest.param({"file_path": 42, "content": "hi"}, True, "'file_path' must", id="a bad path"),
+        pytest.param({"file_path": "new.txt", "content": 7}, True, "'content' must", id="bad text"),
+    ],
+)
+def test_execute_tool_writes_for_a_caller_that_opts_in(
+    box: Path, tool_input: dict[str, object], is_error: bool, expect: str
+) -> None:
+    content, flagged = execute_tool("write_file", tool_input, sandbox=box, writes=True)
+
+    assert flagged is is_error, content
+    assert expect in content and not content.startswith("<untrusted"), content
+
+
+def test_execute_tool_refuses_a_write_nobody_opted_into(box: Path) -> None:
+    """The agents dispatch whatever name the model sends; a write it was never offered stays out."""
+    content, flagged = execute_tool(
+        "write_file", {"file_path": "new.txt", "content": "hi"}, sandbox=box
+    )
+
+    assert flagged and "not available" in content, content
+    assert not (box / "new.txt").exists()
+
+
+def test_execute_tool_reads_from_the_sandbox_it_is_given(box: Path) -> None:
+    content, flagged = execute_tool("read_file", {"file_path": "notes.txt"}, sandbox=box)
+    assert not flagged and "hello from the sandbox" in content, content
 
 
 # --- fencing ---------------------------------------------------------------------------------

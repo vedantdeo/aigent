@@ -1575,3 +1575,14 @@
   tool", so guard refusals are raised as `ToolError`. A live stdio run listed the one tool and found
   ITC's dividend passage (`ITC-FY25#0970`, p.232) in 19 s, nearly all of it the first model load.
   Next for MCP, in Week 6: the client side, the agent using other servers' tools.
+- 10-08: **The MCP server reads and writes the sandbox too, free.** `read_file` and `write_file`
+  joined `search_reports` at Vedant's request, reversing the one-tool choice of 10-07. Both go through
+  `tools.execute_tool`, so a read arrives fenced. `write_file` is new and **create-only** (mode
+  `"x"`), since `sandbox/` holds the tracked injection and task fixtures; the dispatcher refuses it
+  unless the caller passes `writes=True`, because the agents dispatch any name the model sends, and
+  `ALL_TOOLS` is unchanged, so the agent's evals still hold. Found on the way: the SDK prefixes its
+  own `Error executing tool …:`, so the dispatcher's `Error: ` is stripped before the `ToolError`. A
+  live stdio run listed three tools, read `tasks/watchlist.txt` fenced, created a file, refused the
+  second write to it, and read it back; the scratch file was removed.
+  The sandbox check then moved into one helper, `tools._in_sandbox`, that both file tools call;
+  its two guards were mutation-checked in a scratch copy of the repo, not the working tree.

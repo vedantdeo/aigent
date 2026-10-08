@@ -1,6 +1,7 @@
 """Fixtures shared across test modules.
 
-The scripted judge, the fake client, the fake search and the fake embedder live here because more
+The scripted judge, the fake client, the fake search, the fake embedder and the throwaway sandbox
+live here because more
 than one module needs each, and two copies of a fake drift.
 """
 
@@ -12,6 +13,7 @@ import zlib
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import cast
 
 import anthropic
@@ -479,6 +481,16 @@ class FakeSearch:
 @pytest.fixture
 def search() -> FakeSearch:
     return FakeSearch()
+
+
+@pytest.fixture
+def box(tmp_path: Path) -> Path:
+    """A throwaway sandbox with one file inside it and one file outside it."""
+    sandbox = tmp_path / "box"
+    sandbox.mkdir()
+    (sandbox / "notes.txt").write_text("hello from the sandbox\n", encoding="utf-8")
+    (tmp_path / "outside.txt").write_text("secret\n", encoding="utf-8")
+    return sandbox
 
 
 class KeywordReranker:

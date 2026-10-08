@@ -245,9 +245,13 @@ uv run --group graph python -m aigent.agent_tasks --model claude-sonnet-5 --agen
 
 ## MCP server
 
-The reports' search, served to other MCP clients: one tool, `search_reports`, the same search and
-the same passage text the agent gets, its query through the agent's input guard. It runs over stdio
-and loads its models on the first search (about 20 s), free like all search here.
+Three tools served to other MCP clients, over stdio:
+
+- `search_reports`: the same search and passage text the agent gets, its query through the agent's
+  input guard. It loads its models on the first search (about 20 s), free like all search here.
+- `read_file`: a file in `sandbox/`, returned fenced as untrusted text, as the agent reads it.
+- `write_file`: creates a new file in `sandbox/`. It never overwrites, so the tracked eval fixtures
+  there stay as they are; the agent itself is not offered it.
 
 ```bash
 claude mcp add aigent-reports -- uv --directory /path/to/aigent run python -m aigent.mcp_server

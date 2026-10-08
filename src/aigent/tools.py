@@ -15,7 +15,13 @@ from pathlib import Path
 
 from anthropic.types import ToolParam, WebSearchTool20260318Param
 
-from aigent.tools_config import MAX_EXPONENT, MAX_FILE_READ_CHARS, MAX_WEB_SEARCHES, SANDBOX
+from aigent.tools_config import (
+    MAX_EXPONENT,
+    MAX_FILE_READ_CHARS,
+    MAX_FILE_WRITE_CHARS,
+    MAX_WEB_SEARCHES,
+    SANDBOX,
+)
 
 _BINARY_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
     ast.Add: operator.add,
@@ -65,14 +71,20 @@ def current_time() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def _in_sandbox(file_path: str, sandbox: Path) -> Path:
+    """`file_path` resolved under `sandbox`, refusing one that escapes it or names a directory."""
+    resolved = (sandbox / file_path).resolve()
+    if not resolved.is_relative_to(sandbox.resolve()):
+        raise ValueError(f"path escapes the workspace: {file_path}")
+    if resolved.is_dir():
+        raise ValueError(f"{file_path or '.'} is a directory, not a file")
+    return resolved
+
+
 def read_file(file_path: str, sandbox: Path = SANDBOX) -> str:
     """Read the contents of a file and return it as a string."""
     try:
-        resolved = (sandbox / file_path).resolve()
-        if not resolved.is_relative_to(sandbox.resolve()):
-            raise ValueError(f"path escapes the workspace: {file_path}")
-        if resolved.is_dir():
-            raise ValueError(f"{file_path or '.'} is a directory, not a file")
+        resolved = _in_sandbox(file_path, sandbox)
         with open(resolved, encoding="utf-8", errors="replace") as f:
             r = f.read(MAX_FILE_READ_CHARS + 1)  # one extra character tells us whether it was cut
         if len(r) > MAX_FILE_READ_CHARS:
@@ -82,6 +94,25 @@ def read_file(file_path: str, sandbox: Path = SANDBOX) -> str:
         raise ValueError(f"File not found: {file_path}") from exc
     except OSError as exc:
         raise ValueError(f"Could not read {file_path}: {exc}") from exc
+
+
+def write_file(file_path: str, content: str, sandbox: Path = SANDBOX) -> str:
+    """Create a new file, and any missing parent directories, inside the sandbox.
+    Never overwrites: the sandbox holds tracked eval fixtures."""
+    if len(content) > MAX_FILE_WRITE_CHARS:
+        raise ValueError(f"content is {len(content)} characters; the cap is {MAX_FILE_WRITE_CHARS}")
+    try:
+        resolved = _in_sandbox(file_path, sandbox)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # "x" refuses an existing file atomically, where a check-then-write would race
+            with open(resolved, "x", encoding="utf-8") as f:
+                f.write(content)
+        except FileExistsError as exc:
+            raise ValueError(f"{file_path} already exists; pick a new name") from exc
+    except OSError as exc:
+        raise ValueError(f"Could not write {file_path}: {exc.strerror}") from exc
+    return f"Wrote {len(content)} characters to {file_path}"
 
 
 CALCULATOR_TOOL: ToolParam = {
@@ -138,11 +169,39 @@ READ_FILE_TOOL: ToolParam = {
     "strict": True,
 }
 
+WRITE_FILE_TOOL: ToolParam = {
+    "name": "write_file",
+    "description": (
+        "Create a new text file in the sandbox directory, with any missing parent directories. "
+        "The file path is relative to the sandbox. An existing file is never overwritten: pick a "
+        f"new name instead. The content can be at most {MAX_FILE_WRITE_CHARS} characters."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "file_path": {
+                "type": "string",
+                "description": "Path of the new file.",
+            },
+            "content": {
+                "type": "string",
+                "description": "The text to write.",
+            },
+        },
+        "required": ["file_path", "content"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
+# What the agent is offered. `write_file` is served over MCP only, so the agent's evals still hold.
 ALL_TOOLS: list[ToolParam] = [CALCULATOR_TOOL, TIME_TOOL, READ_FILE_TOOL]
 
 
 # Tools whose output is text someone else wrote; a model only ever sees it fenced.
 UNTRUSTED_TOOLS = frozenset({"read_file"})
+# Tools that change the sandbox; the dispatcher runs one only for a caller that opts in.
+WRITE_TOOLS = frozenset({"write_file"})
 _FENCE_TAG = re.compile(r"<(/?)untrusted", re.IGNORECASE)
 
 
@@ -152,16 +211,21 @@ def fence(source: str, content: str) -> str:
     return f'<untrusted source="{source}">\n{escaped}\n</untrusted>'
 
 
-def execute_tool(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
-    """Dispatch by name, returning `(content, is_error)`, with an `UNTRUSTED_TOOLS` result fenced.
-    Never raises: the model can recover from an error message, not from a traceback."""
-    content, is_error = _dispatch(name, tool_input)
+def execute_tool(
+    name: str, tool_input: dict[str, object], *, sandbox: Path = SANDBOX, writes: bool = False
+) -> tuple[str, bool]:
+    """Dispatch by name, returning `(content, is_error)`, with an `UNTRUSTED_TOOLS` result fenced
+    and a `WRITE_TOOLS` call refused unless `writes`. Never raises: the model can recover from an
+    error message, not from a traceback."""
+    if name in WRITE_TOOLS and not writes:
+        return f"Error: {name} is not available here", True
+    content, is_error = _dispatch(name, tool_input, sandbox)
     if name in UNTRUSTED_TOOLS and not is_error:
         return fence(name, content), is_error
     return content, is_error
 
 
-def _dispatch(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
+def _dispatch(name: str, tool_input: dict[str, object], sandbox: Path) -> tuple[str, bool]:
     try:
         if name == "calculate":
             expression = tool_input.get("expression")
@@ -176,7 +240,15 @@ def _dispatch(name: str, tool_input: dict[str, object]) -> tuple[str, bool]:
             file_path = tool_input.get("file_path")
             if not isinstance(file_path, str):
                 return "Error: 'file_path' must be a string", True
-            return read_file(file_path), False
+            return read_file(file_path, sandbox), False
+
+        if name == "write_file":
+            file_path, content = tool_input.get("file_path"), tool_input.get("content")
+            if not isinstance(file_path, str):
+                return "Error: 'file_path' must be a string", True
+            if not isinstance(content, str):
+                return "Error: 'content' must be a string", True
+            return write_file(file_path, content, sandbox), False
 
         return f"Error: unknown tool {name!r}", True
     except Exception as exc:

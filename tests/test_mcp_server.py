@@ -1,9 +1,10 @@
-"""The MCP server through the SDK's own client, in process: what it lists, what its one tool
-returns, what it refuses before searching, and that the real search waits for the first call."""
+"""The MCP server through the SDK's own client, in process: what it lists, what each tool returns
+and refuses, and that the real search waits for the first call."""
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import cast
 
 import anyio
@@ -16,38 +17,58 @@ from aigent.config import MCP_SERVER_NAME
 from aigent.mcp_server import LazySearch, build_server
 from aigent.report_tools import SEARCH_TOOL
 from aigent.retrieval.chunk import Chunk
+from aigent.tools import READ_FILE_TOOL, WRITE_FILE_TOOL, fence
 from aigent.workflows.reports import REPORTS, Search
 
 from .conftest import PASSAGES, FakeSearch
 
 
-def _with_client[Result](search: Search, use: Callable[[Client], Awaitable[Result]]) -> Result:
+def _with_client[Result](
+    search: Search, use: Callable[[Client], Awaitable[Result]], sandbox: Path | None = None
+) -> Result:
     async def run() -> Result:
-        async with Client(build_server(search)) as client:
+        server = build_server(search) if sandbox is None else build_server(search, sandbox)
+        async with Client(server) as client:
             return await use(client)
 
     return anyio.run(run)
 
 
-def _call(search: Search, arguments: dict[str, object]) -> CallToolResult:
-    return _with_client(search, lambda client: client.call_tool("search_reports", arguments))
+def _call(
+    search: Search,
+    arguments: dict[str, object],
+    tool: str = "search_reports",
+    sandbox: Path | None = None,
+) -> CallToolResult:
+    return _with_client(search, lambda client: client.call_tool(tool, arguments), sandbox)
 
 
 def _text(result: CallToolResult) -> str:
     return "".join(cast(TextContent, block).text for block in result.content)
 
 
-def test_the_server_offers_one_tool_described_as_the_agent_sees_it(search: FakeSearch) -> None:
+def test_the_server_offers_three_tools_described_as_the_agent_sees_them(
+    search: FakeSearch,
+) -> None:
     async def listed(client: Client) -> tuple[list[Tool], str | None, str]:
         tools = (await client.list_tools()).tools
         named = client.server_info.name if client.server_info else None
         return tools, named, client.instructions or ""
 
-    [tool], name, instructions = _with_client(search, listed)
+    listing, name, instructions = _with_client(search, listed)
+    tools = {tool.name: tool for tool in listing}
 
     assert name == MCP_SERVER_NAME
     assert all(company in instructions for company in REPORTS.values()), instructions
-    assert (tool.name, tool.description) == ("search_reports", SEARCH_TOOL.get("description"))
+    assert {named: tool.description for named, tool in tools.items()} == {
+        "search_reports": SEARCH_TOOL.get("description"),
+        "read_file": READ_FILE_TOOL.get("description"),
+        "write_file": WRITE_FILE_TOOL.get("description"),
+    }
+    assert tools["read_file"].annotations and tools["read_file"].annotations.read_only_hint
+    assert tools["write_file"].annotations and not tools["write_file"].annotations.read_only_hint
+    assert tools["write_file"].input_schema["required"] == ["file_path", "content"]
+    tool = tools["search_reports"]
     properties = cast(dict[str, dict[str, object]], tool.input_schema["properties"])
     assert tool.input_schema["required"] == ["query"], "report defaults to all"
     assert "all" in str(properties["report"]) and all(
@@ -133,3 +154,54 @@ def test_the_real_search_is_built_on_the_first_call_and_only_once(
     lazy("q", doc_id="ITC-FY25")
 
     assert built == [True], "built once, from the cached corpus and vectors"
+
+
+def test_a_read_arrives_fenced_from_the_sandbox_it_was_given(search: FakeSearch, box: Path) -> None:
+    result = _call(search, {"file_path": "notes.txt"}, "read_file", box)
+
+    assert not result.is_error, _text(result)
+    assert _text(result) == fence("read_file", "hello from the sandbox\n")
+
+
+def test_a_write_creates_a_file_the_next_read_returns(search: FakeSearch, box: Path) -> None:
+    async def write_then_read(client: Client) -> tuple[CallToolResult, CallToolResult]:
+        wrote = await client.call_tool("write_file", {"file_path": "out/memo.md", "content": "hi"})
+        return wrote, await client.call_tool("read_file", {"file_path": "out/memo.md"})
+
+    wrote, read = _with_client(search, write_then_read, box)
+
+    assert not wrote.is_error and _text(wrote) == "Wrote 2 characters to out/memo.md", _text(wrote)
+    assert (box / "out" / "memo.md").read_text(encoding="utf-8") == "hi"
+    assert _text(read) == fence("read_file", "hi"), _text(read)
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "says"),
+    [
+        pytest.param(
+            "read_file", {"file_path": "missing.txt"}, "File not found", id="no such file"
+        ),
+        pytest.param("read_file", {"file_path": "../outside.txt"}, "escapes", id="a read out"),
+        pytest.param(
+            "write_file",
+            {"file_path": "../planted.txt", "content": "x"},
+            "escapes",
+            id="a write out",
+        ),
+        pytest.param(
+            "write_file",
+            {"file_path": "notes.txt", "content": "x"},
+            "already exists",
+            id="a write over an existing file",
+        ),
+    ],
+)
+def test_a_bad_file_call_is_refused_with_its_reason_and_changes_nothing(
+    search: FakeSearch, box: Path, tool: str, arguments: dict[str, object], says: str
+) -> None:
+    result = _call(search, arguments, tool, box)
+
+    assert result.is_error and says in _text(result), _text(result)
+    assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
+    assert (box / "notes.txt").read_text(encoding="utf-8") == "hello from the sandbox\n"
+    assert not (box.parent / "planted.txt").exists()

@@ -8,13 +8,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# The only directory `read_file` can reach. Resolved from this file's location, so it survives being
-# copied into another checkout but not being moved to a different depth in the tree.
+# The only directory `read_file` and `write_file` can reach. Resolved from this file's location, so
+# it survives being copied into another checkout but not being moved to a different depth.
 SANDBOX = Path(__file__).resolve().parents[2] / "sandbox"
 
 # Cap on a single read. Interpolated into the tool description, so the model is told the limit
 # rather than discovering it by having its output silently cut.
 MAX_FILE_READ_CHARS = 20_000
+
+# Cap on a single write, told to the model in the tool description the same way.
+MAX_FILE_WRITE_CHARS = 20_000
 
 # Guard on `**` in the calculator. `2 ** 10` is arithmetic; `2 ** 10_000_000` is a way to hang the
 # process from a tool argument.
