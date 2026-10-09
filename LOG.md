@@ -1601,3 +1601,20 @@
   snap re-pins only aigent's snap branch, so a snap no longer commits to `main`. The mains CI tests
   against the exact commit underhood's `main` is at, then a `relock` job locks `uv.lock` to it, so
   `main`'s lock is the last pair known to work.
+- 10-09: **`main` stopped taking pushes, and the tag went out.** CI's `ruff format` failure on
+  `docs/capstone.md` (ruff 0.16 formats Python blocks in Markdown) turned `main` red; format now
+  warns in CI and blocks in the pre-commit hook, which also runs `ruff check`. Both repos went public
+  with a "main via PR" ruleset: PR required, no approvals (GitHub refuses self-approval, so the
+  merge is the approval), required checks, no bypass, merge commits only. GitHub would not let the
+  Actions app bypass a personal repo's ruleset, so `relock` and `find underhood's main` went: CI
+  tests underhood's `main` as it is when a run starts. PRs come from the long-lived `vedant` branch
+  while Vedant is the only contributor. `v0.2-agent` is tagged on `823c0e0`.
+- 10-09: **The first GPU run: underhood's 30M GPT on TinyStories, ₹52.35 all in.** One A100 40GB
+  PCIe, on-demand on Jarvis Labs at ₹84.24/hr (GST paid with the top-up), for 5,000 steps of 131k
+  tokens (655M, 1.2 passes over 541M): 25.6 min at 306.6 ms/iter, 427k tokens/s, about 25% MFU
+  against the 30% guess, so the 21-min estimate became 25. The same step took 18,230 ms on MPS,
+  59× slower. Val loss 10.90 → 2.094, train level with it throughout. The ₹52.35 covers setup, the
+  data fetch (2 min), a 20-step smoke run whose 1,012 ms/iter was compile and one eval rather than
+  the GPU, a 200-step probe that gave the real rate, and the run. Samples: fluent TinyStories
+  ("From that day on, Max learned…") whose characters drift mid-story; three of the retrieval
+  questions came back as stories about Lily, as a base model trained on children's stories must.
