@@ -406,7 +406,7 @@ schedules late at busy ones):
 - `docs/context-management.md` what goes in the agent's context, what it costs, when to summarize
 - `docs/langgraph.md`      the LangGraph executor read from source, and orchestrator-workers rebuilt in it
 - `docs/agent-frameworks.md` one agent in three frameworks, and which to use when
-- `docs/v0.2-agent.md`     milestone `v0.2-agent`: Project 2's numbers, failures and frameworks
+- `docs/v0.2-agent.md`     milestone `v0.2-agent`: Project 2's numbers, failures, frameworks and hardening
 - `docs/capstone.md`      the filings analyst's architecture, written before its code
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind, or fails ruff
 - `scripts/`                the rule that hook and CI share
