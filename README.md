@@ -332,15 +332,17 @@ type-checks; its warnings are signal, not noise.
 uv run ruff check . && uv run ruff format --check .
 uv run pyright
 uv run pytest -q            # unit tests plus a free API smoke test; skips paid tests
-uv run pytest -m live       # the paid integration tests (about two cents)
 ```
 
-Everything above except the last line runs in CI, in two pipelines over one set of steps
+A paid test carries `@pytest.mark.live` and runs only with `uv run pytest -m live`. There are none
+at the moment: the last went with the Week 1 demo code on 2026-10-07.
+
+Everything above runs in CI, in two pipelines over one set of steps
 (`.github/workflows/checks.yml`): the **mains CI** (`main.yml`) on every push to `main` and every
 pull request, against the commit underhood's `main` is at, and started again whenever underhood's
 own `main` goes green — `uv.lock`'s underhood commit is only where a local `uv sync` starts; and the **roll** jobs in `release.yml` on each new pair of snaps,
 which is what tagging them `stable` requires. No API key is configured there, so the smoke test skips itself and
-the paid tests stay deselected — CI spends nothing. `uv sync --locked` also fails the run if
+any `live` test stays deselected — CI spends nothing. `uv sync --locked` also fails the run if
 `uv.lock` has drifted from `pyproject.toml`. In CI `ruff format --check` only warns: an unformatted
 file shows as a yellow annotation on the run, not a failure. The pre-commit hook below still blocks it.
 
@@ -404,7 +406,7 @@ schedules late at busy ones):
 - `docs/context-management.md` what goes in the agent's context, what it costs, when to summarize
 - `docs/langgraph.md`      the LangGraph executor read from source, and orchestrator-workers rebuilt in it
 - `docs/agent-frameworks.md` one agent in three frameworks, and which to use when
-- `docs/v0.2-agent.md`     milestone `v0.2-agent`: Project 2's numbers, failures and frameworks
+- `docs/v0.2-agent.md`     milestone `v0.2-agent`: Project 2's numbers, failures, frameworks and hardening
 - `docs/capstone.md`      the filings analyst's architecture, written before its code
 - `.githooks/pre-commit`    refuses a commit that leaves the graph behind, or fails ruff
 - `scripts/`                the rule that hook and CI share
