@@ -16,25 +16,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  underhood:
-    name: find underhood's main
-    runs-on: ubuntu-latest
-    outputs:
-      sha: ${{ steps.main.outputs.sha }}
-    steps:
-      - name: Read the commit underhood's main is at
-        id: main
-        env:
-          UNDERHOOD_TOKEN: ${{ secrets.UNDERHOOD_TOKEN }}
-        run: |
-          sha=$(git ls-remote "https://x-access-token:${UNDERHOOD_TOKEN}@github.com/vedantdeo/underhood" refs/heads/main | cut -f1)
-          [ -n "$sha" ] || { echo "::error::cannot read underhood's main"; exit 1; }
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
   mains:
-    needs: underhood
     uses: ./.github/workflows/checks.yml
     with:
-      underhood: ${{ needs.underhood.outputs.sha }}
+      underhood: main
     secrets: inherit
 
