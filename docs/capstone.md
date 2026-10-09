@@ -75,6 +75,7 @@ Every value carries its page, so a `fundamentals` answer can be cited like a pas
 
 ## State
 
+<!-- fmt:off -->
 ```python
 class State(TypedDict):
     question: str
@@ -87,6 +88,7 @@ class State(TypedDict):
     review: Review | None                             # the human's decision and note
     spent: Usage                                      # every call's tokens, for the per-task ceiling
 ```
+<!-- fmt:on -->
 
 `evidence` is the one field with a reducer: a retriever sent back for more adds passages beside
 the old ones, keyed by chunk id, so the analyst never sees a passage twice and a claim's citation
@@ -95,6 +97,7 @@ runs with a checkpointer, which is what lets it stop at the human gate and resum
 
 The final output is one Pydantic model, validated before it is shown:
 
+<!-- fmt:off -->
 ```python
 class Claim(BaseModel):
     id: str
@@ -108,6 +111,7 @@ class Memo(BaseModel):
     claims: list[Claim]
     caveats: list[str]            # what the filings do not say
 ```
+<!-- fmt:on -->
 
 ## Handoffs
 
