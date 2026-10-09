@@ -275,3 +275,8 @@ is the approval. Nobody bypasses the ruleset, Vedant and the Actions bot include
 **How to apply:** "push" means push a branch and open a PR with `gh pr create`, each with its own
 confirmation as before. Never merge a PR — that click is Vedant's. A ruleset change decides who can
 write to the repo, so surface the exact call before running it.
+
+**While Vedant is the only contributor**, PRs come from one long-lived branch, `vedant`, in both
+repos: work on it, push it, open the PR from it, and after a merge carry on from the same branch.
+Merges are merge commits only — squash and rebase are switched off — which keeps `vedant` inside
+`main`'s history. When a second person joins, this paragraph goes and each change gets its own branch.
