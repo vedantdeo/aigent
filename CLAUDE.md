@@ -260,29 +260,18 @@ of this machine. Edit both, or neither.
 - Every run's cost goes in `LOG.md` beside what it bought. Keep that ledger honest — it is the only
   record of what this project has spent.
 
-## Turn on branch protection before anyone else can touch this repo
+## `main` only takes pull requests
 
-**Trigger: the moment a collaborator is added, or the repo goes public — planned for Sat
-2026-10-31, moved on 2026-09-28 from Wed 2026-09-23. Raise it then; do not wait to be asked.**
+Since 2026-10-09 both repos are public, and `main` in each is guarded by a ruleset, "main via PR":
+no direct push, no force push, no deletion, and the required checks pass before a merge. They are
+matched by *job* name:
 
-The repo was private and unprotected through the `v0.1-rag` work, which is a **decision taken on
-Sat 2026-09-19, not an oversight**: nobody else can pull a red commit from a private one-person
-repo, so protection buys nothing until the day it goes public and buys everything that day. Do not
-raise it early to be safe, and do not let the date slip quietly — going public without it is the
-failure this section exists to prevent, and the two happen in one move or not at all. On the free
-plan they cannot happen apart anyway: GitHub refuses protection on a private repo with a 403.
+- `mains / lint · types · tests` (both repos: `main.yml`, which calls `checks.yml`)
+- `graph moves with the code` (aigent only: `.github/workflows/knowledge-graph.yml`)
 
-CI is a detector, not a gate. GitHub accepts a push first and runs the workflows after, so a bad
-commit reaches `main` and goes red a minute later. That is fine while this is a one-person repo and
-the loop is push-look-fix. It stops being fine the moment someone else can pull a red commit or push
-their own.
+No approval is required, because GitHub never lets an author approve their own PR: Vedant's merge
+is the approval. Nobody bypasses the ruleset, Vedant and the Actions bot included.
 
-What to enable on `main` at that point: require a pull request, require both checks to pass, and
-block force pushes and deletion. The two required checks are matched by *job* name, not workflow
-name, so they are exactly:
-
-- `mains / lint · types · tests` (from `.github/workflows/main.yml`, which calls `checks.yml`)
-- `graph moves with the code` (from `.github/workflows/knowledge-graph.yml`)
-
-Settings > Rules > Rulesets on GitHub, or `gh api` against the branch-protection endpoint. Surface
-the exact call before running it — it changes who can write to the repo.
+**How to apply:** "push" means push a branch and open a PR with `gh pr create`, each with its own
+confirmation as before. Never merge a PR — that click is Vedant's. A ruleset change decides who can
+write to the repo, so surface the exact call before running it.
