@@ -338,8 +338,7 @@ uv run pytest -m live       # the paid integration tests (about two cents)
 Everything above except the last line runs in CI, in two pipelines over one set of steps
 (`.github/workflows/checks.yml`): the **mains CI** (`main.yml`) on every push to `main` and every
 pull request, against the commit underhood's `main` is at, and started again whenever underhood's
-own `main` goes green; once green on `main`, it locks `uv.lock` to that underhood commit, so `main`'s
-lock is always the last pair known to work; and the **roll** jobs in `release.yml` on each new pair of snaps,
+own `main` goes green — `uv.lock`'s underhood commit is only where a local `uv sync` starts; and the **roll** jobs in `release.yml` on each new pair of snaps,
 which is what tagging them `stable` requires. No API key is configured there, so the smoke test skips itself and
 the paid tests stay deselected — CI spends nothing. `uv sync --locked` also fails the run if
 `uv.lock` has drifted from `pyproject.toml`. In CI `ruff format --check` only warns: an unformatted
@@ -352,6 +351,10 @@ the deliberate exception. The same rule runs in CI, so a clone that skipped the 
 caught before the graph goes stale. The same hook runs `ruff check` and `ruff format --check` over
 the staged `.py` and `.md` files — Markdown included, since ruff formats its Python blocks and CI
 checks them.
+
+`main` takes changes only through pull requests, in both repos: a ruleset refuses direct and force
+pushes and waits for the checks above. No approval is required — GitHub never lets an author approve
+their own PR — so merging is the approval.
 
 ## Snap and roll
 
