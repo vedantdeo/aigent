@@ -342,13 +342,16 @@ own `main` goes green; once green on `main`, it locks `uv.lock` to that underhoo
 lock is always the last pair known to work; and the **roll** jobs in `release.yml` on each new pair of snaps,
 which is what tagging them `stable` requires. No API key is configured there, so the smoke test skips itself and
 the paid tests stay deselected — CI spends nothing. `uv sync --locked` also fails the run if
-`uv.lock` has drifted from `pyproject.toml`.
+`uv.lock` has drifted from `pyproject.toml`. In CI `ruff format --check` only warns: an unformatted
+file shows as a yellow annotation on the run, not a failure. The pre-commit hook below still blocks it.
 
 `docs/knowledge-graph.md` maps this repo, and it moves with the code. A commit that touches
 `src/` or `pyproject.toml` without staging the graph is refused by `.githooks/pre-commit` — enable
 it with the `core.hooksPath` line above, since git never installs hooks on clone. `--no-verify` is
 the deliberate exception. The same rule runs in CI, so a clone that skipped the hook is still
-caught before the graph goes stale.
+caught before the graph goes stale. The same hook runs `ruff check` and `ruff format --check` over
+the staged `.py` and `.md` files — Markdown included, since ruff formats its Python blocks and CI
+checks them.
 
 ## Snap and roll
 
@@ -400,6 +403,6 @@ schedules late at busy ones):
 - `docs/agent-frameworks.md` one agent in three frameworks, and which to use when
 - `docs/v0.2-agent.md`     milestone `v0.2-agent`: Project 2's numbers, failures and frameworks
 - `docs/capstone.md`      the filings analyst's architecture, written before its code
-- `.githooks/pre-commit`    refuses a commit that leaves the graph behind
+- `.githooks/pre-commit`    refuses a commit that leaves the graph behind, or fails ruff
 - `scripts/`                the rule that hook and CI share
 - `.github/workflows/`      CI: the checks above, and the graph rule for anyone who skipped the hook

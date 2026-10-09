@@ -1,12 +1,36 @@
 #!/bin/sh
-# Keep docs/knowledge-graph.md honest: a commit that changes the code the graph
-# describes must carry the graph update with it.
+# Refuse a commit that leaves the knowledge graph behind, or that stages files
+# ruff would flag (lint, or format — Python blocks in Markdown included).
 #
 # Enable once per clone:  git config core.hooksPath .githooks
 # Deliberate exception:   git commit --no-verify
 #
-# The rule itself lives in scripts/check-knowledge-graph.sh, which CI runs too.
+# The graph rule itself lives in scripts/check-knowledge-graph.sh, which CI runs too.
 
 root=$(git rev-parse --show-toplevel) || exit 0
+cd "$root" || exit 1
+
 git diff --cached --name-only --diff-filter=ACMRD |
-  sh "$root/scripts/check-knowledge-graph.sh" commit
+  sh scripts/check-knowledge-graph.sh commit || exit 1
+
+# ruff reads the working tree, so a partly staged file is checked as it sits on disk.
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.md')
+[ -z "$staged" ] && exit 0
+
+# ruff lints only Python; Markdown gets the format check alone.
+py=$(printf '%s\n' "$staged" | grep '\.py$')
+[ -n "$py" ] && { printf '%s\n' "$py" | tr '\n' '\0' |
+  xargs -0 uv run --no-sync ruff check --force-exclude || {
+  echo >&2 "
+  commit blocked — ruff check failed on staged files. Fix, or: uv run ruff check --fix
+"
+  exit 1
+}; }
+
+printf '%s\n' "$staged" | tr '\n' '\0' |
+  xargs -0 uv run --no-sync ruff format --check --force-exclude || {
+  echo >&2 "
+  commit blocked — staged files are not ruff-formatted. Fix with: uv run ruff format <files>
+"
+  exit 1
+}

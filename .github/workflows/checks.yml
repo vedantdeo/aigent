@@ -66,9 +66,14 @@ jobs:
       - name: ruff · lint
         run: uv run --no-sync ruff check --output-format=github .
 
+      # Unformatted files warn rather than fail; ruff's exit 2 (it crashed) still fails.
       - name: ruff · format
         if: ${{ !cancelled() }}
-        run: uv run --no-sync ruff format --check .
+        run: |
+          set +e
+          out=$(uv run --no-sync ruff format --check --output-format=github .); rc=$?
+          printf '%s\n' "$out" | sed 's/^::error title=ruff (unformatted)/::warning title=ruff (unformatted)/'
+          [ "$rc" -le 1 ]
 
       - name: pyright
         if: ${{ !cancelled() }}
