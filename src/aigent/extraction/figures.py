@@ -2,7 +2,8 @@
 states that answer what is wanted, as records.
 
 The training rows, the eval and the tool all build their prompt with `figure_messages`, so the
-fine-tune is taught exactly what it is later asked.
+fine-tune is taught exactly what it is later asked. The model applies scale words and percentages
+by calling `calculate`, and `transcript` writes the conversations that teach it to.
 """
 
 from __future__ import annotations
@@ -10,13 +11,15 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Outcome, Score
 from aigent.retrieval.chunk import squeeze
+from aigent.tools import CALCULATOR_TOOL, calculate
 
 DATASET = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figures.jsonl"
 CURRENCIES = ("INR", "USD", "AUD", "EUR", "GBP")
@@ -102,13 +105,28 @@ def _rules() -> str:
     return "\n".join(lines)
 
 
+TOOL_RULE = (
+    "Do no arithmetic yourself. When an amount carries a scale word (thousand, lakh, crore, "
+    "million, billion) or is a percentage, call calculate with the number times its scale, or "
+    "over 100, and copy the result into value. A number already written in full needs no call."
+)
+
 SYSTEM = (
     "You extract figures from a passage of an Indian company's annual report. Return only the "
     "figures that answer what is wanted, as JSON of the form "
     '{"figures": [{"metric": ..., "value": ..., "unit": ..., "year": ..., "description": ...}]}, '
-    "and nothing else. "
-    "Each figure:\n" + _rules()
+    "and nothing else. " + TOOL_RULE + " Each figure:\n" + _rules()
 )
+
+# The calculate tool as Hugging Face chat templates take it; aigent's own definition, re-shaped.
+TOOL: dict[str, JsonValue] = {
+    "type": "function",
+    "function": {
+        "name": CALCULATOR_TOOL["name"],
+        "description": CALCULATOR_TOOL.get("description", ""),
+        "parameters": json.loads(json.dumps(CALCULATOR_TOOL["input_schema"])),
+    },
+}
 
 
 def figure_messages(passage: str, source: str, wanted: str) -> tuple[str, str]:
@@ -183,3 +201,98 @@ def figures_match(case: Case, outcome: Outcome) -> Score:
     parts = {"all_found": not missed, "no_extra": not left, "described": not undescribed}
     recall = found / len(want) if want else 1.0
     return Score(all(parts.values()), detail, parts=parts, value=recall)
+
+
+class Labelled(Figure):
+    """A figure as the labeller returns it: the amount as written, so code can check its value."""
+
+    amount: str = Field(
+        description=(
+            "The amount exactly as the passage writes it, with any scale word or % sign: "
+            "'1,250 crores', '7.25%', 'over 80'."
+        )
+    )
+
+
+_SCALE_POWERS = {"thousand": 3, "lakh": 5, "million": 6, "crore": 7, "billion": 9}
+_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+_NUMBER_WORDS = {
+    name: i
+    for i, name in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve".split()
+    )
+}
+
+
+def expression(amount: str) -> str | None:
+    """The calculate call an amount needs, or None when it is already written in full.
+
+    Raises ValueError for an amount with no number in it.
+    """
+    match = _NUMBER.search(amount)
+    if match is None:
+        if any(w in _NUMBER_WORDS for w in amount.lower().split()):
+            return None
+        raise ValueError(f"no number in amount {amount!r}")
+    number = match.group().replace(",", "")
+    after = [w.rstrip("s.").lower() for w in amount[match.end() :].split()]
+    if "%" in amount or "percent" in after or "per cent" in " ".join(after):
+        return f"{number} / 100"
+    power = next((_SCALE_POWERS[w] for w in after if w in _SCALE_POWERS), None)
+    return None if power is None else f"{number} * 10**{power}"
+
+
+def amount_value(amount: str) -> float:
+    """What an amount comes to, through the same calculate the model is taught to call."""
+    call = expression(amount)
+    if call is not None:
+        return calculate(call)
+    match = _NUMBER.search(amount)
+    if match is not None:
+        return float(match.group().replace(",", ""))
+    return float(next(_NUMBER_WORDS[w] for w in amount.lower().split() if w in _NUMBER_WORDS))
+
+
+Message = dict[str, JsonValue]
+
+
+def transcript(
+    passage: str, source: str, wanted: str, labels: Sequence[Labelled]
+) -> list[Message] | None:
+    """The conversation that teaches one passage: the prompt, one turn calling calculate for every
+    amount that needs it, the results, then the figures. None when a label's value disagrees with
+    its own amount."""
+    calls: list[str] = []
+    figures: list[JsonValue] = []
+    for label in labels:
+        value = amount_value(label.amount)
+        if not math.isclose(value, label.value, rel_tol=1e-9, abs_tol=1e-12):
+            return None
+        call = expression(label.amount)
+        if call is not None:
+            calls.append(call)
+        figures.append(label.model_dump(exclude={"amount"}) | {"value": value})
+    system, user = figure_messages(passage, source, wanted)
+    messages: list[Message] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    if calls:
+        messages.append(
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "function": {"name": "calculate", "arguments": {"expression": c}},
+                    }
+                    for c in calls
+                ],
+            }
+        )
+        results: list[Message] = [
+            {"role": "tool", "name": "calculate", "content": str(calculate(c))} for c in calls
+        ]
+        messages.extend(results)
+    messages.append({"role": "assistant", "content": json.dumps({"figures": figures})})
+    return messages

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -13,11 +14,17 @@ from aigent.extraction.figures import (
     DATASET,
     METRICS,
     SYSTEM,
+    TOOL,
+    TOOL_RULE,
     Figure,
     Figures,
+    Labelled,
+    amount_value,
+    expression,
     figure_messages,
     figures_match,
     parse_figures,
+    transcript,
     unit_key,
 )
 from aigent.retrieval.chunk import squeeze
@@ -255,3 +262,73 @@ def test_no_example_in_the_prompt_comes_from_the_test_set() -> None:
         if shared:
             leaked[case.id] = shared
     assert not leaked, f"the prompt quotes the test set: {leaked}"
+
+
+@pytest.mark.parametrize(
+    ("amount", "call", "value"),
+    [
+        pytest.param("Rs 1,250 crores", "1250 * 10**7", 12500000000, id="crores"),
+        pytest.param("₹3 lakh", "3 * 10**5", 300000, id="a lakh after the rupee sign"),
+        pytest.param("4.5 million", "4.5 * 10**6", 4500000, id="a decimal in millions"),
+        pytest.param("USD 2 billion", "2 * 10**9", 2000000000, id="billions"),
+        pytest.param("12 thousand", "12 * 10**3", 12000, id="thousands"),
+        pytest.param("7.25%", "7.25 / 100", 0.0725, id="a percentage"),
+        pytest.param("8 per cent", "8 / 100", 0.08, id="per cent spelt out"),
+        pytest.param("12,34,56,789", None, 123456789, id="Indian grouping, already in full"),
+        pytest.param("over 80", None, 80, id="a qualifier but no scale"),
+        pytest.param("60+", None, 60, id="a trailing plus"),
+        pytest.param("eight", None, 8, id="a number word"),
+    ],
+)
+def test_an_amount_becomes_one_calculate_call_or_none(
+    amount: str, call: str | None, value: float
+) -> None:
+    assert expression(amount) == call
+    assert amount_value(amount) == pytest.approx(value)
+
+
+def test_an_amount_with_no_number_is_refused() -> None:
+    with pytest.raises(ValueError, match="no number"):
+        expression("a large sum")
+
+
+def labelled(
+    amount: str, value: float, metric: str = "revenue", unit: str | None = "INR"
+) -> Labelled:
+    return Labelled(metric=metric, value=value, unit=unit, year=2025, amount=amount)
+
+
+def test_a_transcript_calls_calculate_for_each_scaled_amount_then_answers() -> None:
+    labels = [labelled("Rs 1,250 crores", 12500000000), labelled("7.25%", 0.0725, "margin", None)]
+
+    messages = transcript("passage", "source", "wanted", labels)
+
+    assert messages is not None
+    roles = [m["role"] for m in messages]
+    assert roles == ["system", "user", "assistant", "tool", "tool", "assistant"]
+    sent = json.loads(json.dumps(messages[2]["tool_calls"]))
+    assert [c["function"]["arguments"]["expression"] for c in sent] == [
+        "1250 * 10**7",
+        "7.25 / 100",
+    ]
+    assert [m["content"] for m in messages[3:5]] == ["12500000000.0", "0.0725"]
+    final = Figures.model_validate(json.loads(str(messages[-1]["content"]))).figures
+    assert [f.value for f in final] == [12500000000, 0.0725]
+    assert "amount" not in str(messages[-1]["content"]), "the label's own field is not taught"
+
+
+def test_a_transcript_needs_no_tool_turn_when_every_amount_is_in_full() -> None:
+    messages = transcript("p", "s", "w", [labelled("over 80", 80, "other", None)])
+
+    assert messages is not None
+    assert [m["role"] for m in messages] == ["system", "user", "assistant"]
+
+
+def test_a_label_whose_value_disagrees_with_its_amount_teaches_nothing() -> None:
+    assert transcript("p", "s", "w", [labelled("Rs 1,250 crores", 1250)]) is None
+
+
+def test_the_prompt_tells_the_model_to_leave_arithmetic_to_the_tool() -> None:
+    assert TOOL_RULE in SYSTEM
+    function = TOOL["function"]
+    assert isinstance(function, dict) and function["name"] == "calculate"
