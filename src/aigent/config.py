@@ -50,6 +50,7 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
     "CRITIQUE": 256,  # evaluator-optimizer
     "DRAFT": 384,
     "FACTS": 1024,  # chaining: up to six claims, each with a verbatim quote
+    "FIGURE_LABELS": 1024,  # three questions with a few figures each is ~650
     "HEADLINE": 128,  # a five-field record is ~45 tokens with THINKING_EVAL off
     "JUDGE": 512,  # a verdict is a bool and a sentence or two; Opus reasons at length first
     "NOTE": 384,
@@ -81,6 +82,7 @@ MAX_TOKENS_ANSWER = max_tokens("ANSWER")
 MAX_TOKENS_CRITIQUE = max_tokens("CRITIQUE")
 MAX_TOKENS_DRAFT = max_tokens("DRAFT")
 MAX_TOKENS_FACTS = max_tokens("FACTS")
+MAX_TOKENS_FIGURE_LABELS = max_tokens("FIGURE_LABELS")
 MAX_TOKENS_HEADLINE = max_tokens("HEADLINE")
 MAX_TOKENS_JUDGE = max_tokens("JUDGE")
 MAX_TOKENS_NOTE = max_tokens("NOTE")
@@ -227,6 +229,16 @@ SYNTHETIC_HEADLINES = 200
 SYNTHETIC_VALID_FRACTION = 0.1
 SYNTHETIC_SEED = 0
 SYNTHETIC_CLIENT = "local-1.7b"
+
+# The figure fine-tune's training labels (extraction.figure_training): chunks per training report
+# with a scaled figure and with a plain one, questions per chunk, the split, and a batch ceiling.
+FIGURE_LABEL_SCALED_PER_DOC = 40
+FIGURE_LABEL_PLAIN_PER_DOC = 30
+FIGURE_LABEL_QUESTIONS = 3
+FIGURE_LABEL_SEED = 0
+FIGURE_LABEL_MODEL = "claude-sonnet-5"
+FIGURE_VALID_FRACTION = 0.1
+MAX_USD_FIGURE_LABELS = 6.00
 
 # --- Classical baseline ----------------------------------------------------------------------
 # Project 1a's TF-IDF + logistic regression on `direction`: word n-grams, and the C grid that
