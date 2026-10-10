@@ -24,6 +24,7 @@ from aigent.retrieval.questions import DATASET
 PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
 TASKS = DATASET.parent / "tasks.jsonl"
 INJECTIONS = DATASET.parent / "injections.jsonl"
+FIGURES = DATASET.parent / "figures.jsonl"
 ERRORS = Path(errors.__file__)
 
 Pairs = list[tuple[str, object]]
@@ -85,6 +86,7 @@ ORDERED_FILES = [
     Ordered(PARAPHRASED, key="id", load=jsonl_ids("id")),
     Ordered(INJECTIONS, key="id", load=jsonl_ids("id")),
     Ordered(TASKS, key="id", load=jsonl_ids("id")),
+    Ordered(FIGURES, key="id", load=jsonl_ids("id")),
     Ordered(ERRORS, key="class name", load=class_names),
 ]
 
