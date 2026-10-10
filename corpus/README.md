@@ -11,6 +11,10 @@ SHA-256, which is what makes a retrieval number reproducible. To fetch them:
 ./scripts/fetch-corpus.sh
 ```
 
+`evals/reference/training-manifest.json` lists a second set: reports from other companies that
+only the figure-extraction fine-tune trains on. They live in `corpus/training/`, which
+`load_corpus` never reads, so no retrieval number depends on them. The same script fetches both.
+
 Annual report URLs move, and companies quietly republish a report after a correction. Either shows
 up as a failure from that script rather than as a retrieval score that drifted for no visible
 reason. If a URL has moved, find the current one and update the manifest; if a digest has changed,

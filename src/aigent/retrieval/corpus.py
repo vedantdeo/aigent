@@ -29,7 +29,9 @@ from aigent.retrieval.chunk import Document
 REPO = Path(__file__).resolve().parents[3]
 CORPUS_DIR = REPO / "corpus"
 CACHE_DIR = CORPUS_DIR / ".cache"
+TRAINING_DIR = CORPUS_DIR / "training"  # the fine-tune's reports; load_corpus never reads it
 MANIFEST = REPO / "evals" / "reference" / "corpus-manifest.json"
+TRAINING_MANIFEST = MANIFEST.with_name("training-manifest.json")  # never retrieved over
 
 _HYPHENATED_BREAK = re.compile(r"(\w)-\n(\w)")
 _RUN_OF_SPACES = re.compile(r" {2,}")
