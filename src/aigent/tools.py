@@ -1,4 +1,5 @@
-"""Tool implementations, their JSON schemas, and a name->function dispatcher.
+"""Tools for aigent's agents: their JSON schemas and a name->function dispatcher over the shared
+implementations in `underhood.tools`, which underhood's fine-tunes train against.
 
 Imports nothing from this package except `tools_config`, which is what lets the pair be lifted into
 an SDK tool runner or a LangGraph node unchanged.
@@ -6,64 +7,18 @@ an SDK tool runner or a LangGraph node unchanged.
 
 from __future__ import annotations
 
-import ast
-import operator
-import re
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 from anthropic.types import ToolParam, WebSearchTool20260318Param
+from underhood.tools import files
+from underhood.tools.calc import calculate
+from underhood.tools.config import MAX_FILE_READ_CHARS, MAX_FILE_WRITE_CHARS
+from underhood.tools.guard import fence
 
-from aigent.tools_config import (
-    MAX_EXPONENT,
-    MAX_FILE_READ_CHARS,
-    MAX_FILE_WRITE_CHARS,
-    MAX_WEB_SEARCHES,
-    SANDBOX,
-)
+from aigent.tools_config import MAX_WEB_SEARCHES, SANDBOX
 
-_BINARY_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.Pow: operator.pow,
-    ast.Mod: operator.mod,
-}
-
-
-def calculate(expression: str) -> float:
-    """Evaluate an arithmetic expression safely. No names, no calls, no attribute access."""
-    try:
-        tree = ast.parse(expression.strip(), mode="eval")
-    except SyntaxError as exc:
-        raise ValueError(f"not a valid expression: {expression!r}") from exc
-    return _eval_node(tree.body)
-
-
-def _eval_node(node: ast.expr) -> float:
-    match node:
-        case ast.Constant(value=value) if isinstance(value, int | float) and not isinstance(
-            value, bool
-        ):
-            return float(value)
-        case ast.UnaryOp(op=ast.USub(), operand=operand):
-            return -_eval_node(operand)
-        case ast.UnaryOp(op=ast.UAdd(), operand=operand):
-            return _eval_node(operand)
-        case ast.BinOp(left=left, op=op, right=right):
-            fn = _BINARY_OPS.get(type(op))
-            if fn is None:
-                raise ValueError(f"operator not allowed: {type(op).__name__}")
-            lhs, rhs = _eval_node(left), _eval_node(right)
-            if isinstance(op, ast.Pow) and abs(rhs) > MAX_EXPONENT:
-                raise ValueError(f"exponent too large: {rhs}")
-            if isinstance(op, ast.Div | ast.Mod) and rhs == 0:
-                raise ValueError("division by zero")
-            return fn(lhs, rhs)
-        case _:
-            raise ValueError(f"unsupported syntax: {type(node).__name__}")
+__all__ = ["calculate", "fence", "read_file", "write_file"]
 
 
 def current_time() -> str:
@@ -71,48 +26,14 @@ def current_time() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _in_sandbox(file_path: str, sandbox: Path) -> Path:
-    """`file_path` resolved under `sandbox`, refusing one that escapes it or names a directory."""
-    resolved = (sandbox / file_path).resolve()
-    if not resolved.is_relative_to(sandbox.resolve()):
-        raise ValueError(f"path escapes the workspace: {file_path}")
-    if resolved.is_dir():
-        raise ValueError(f"{file_path or '.'} is a directory, not a file")
-    return resolved
-
-
 def read_file(file_path: str, sandbox: Path = SANDBOX) -> str:
-    """Read the contents of a file and return it as a string."""
-    try:
-        resolved = _in_sandbox(file_path, sandbox)
-        with open(resolved, encoding="utf-8", errors="replace") as f:
-            r = f.read(MAX_FILE_READ_CHARS + 1)  # one extra character tells us whether it was cut
-        if len(r) > MAX_FILE_READ_CHARS:
-            r = r[:MAX_FILE_READ_CHARS] + f"\n[truncated at {MAX_FILE_READ_CHARS} characters]"
-        return r
-    except FileNotFoundError as exc:
-        raise ValueError(f"File not found: {file_path}") from exc
-    except OSError as exc:
-        raise ValueError(f"Could not read {file_path}: {exc}") from exc
+    """Read the contents of a file and return it as a string, from aigent's sandbox by default."""
+    return files.read_file(file_path, sandbox)
 
 
 def write_file(file_path: str, content: str, sandbox: Path = SANDBOX) -> str:
-    """Create a new file, and any missing parent directories, inside the sandbox.
-    Never overwrites: the sandbox holds tracked eval fixtures."""
-    if len(content) > MAX_FILE_WRITE_CHARS:
-        raise ValueError(f"content is {len(content)} characters; the cap is {MAX_FILE_WRITE_CHARS}")
-    try:
-        resolved = _in_sandbox(file_path, sandbox)
-        resolved.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            # "x" refuses an existing file atomically, where a check-then-write would race
-            with open(resolved, "x", encoding="utf-8") as f:
-                f.write(content)
-        except FileExistsError as exc:
-            raise ValueError(f"{file_path} already exists; pick a new name") from exc
-    except OSError as exc:
-        raise ValueError(f"Could not write {file_path}: {exc.strerror}") from exc
-    return f"Wrote {len(content)} characters to {file_path}"
+    """Create a new file inside aigent's sandbox by default; never overwrites."""
+    return files.write_file(file_path, content, sandbox)
 
 
 CALCULATOR_TOOL: ToolParam = {
@@ -202,13 +123,6 @@ ALL_TOOLS: list[ToolParam] = [CALCULATOR_TOOL, TIME_TOOL, READ_FILE_TOOL]
 UNTRUSTED_TOOLS = frozenset({"read_file"})
 # Tools that change the sandbox; the dispatcher runs one only for a caller that opts in.
 WRITE_TOOLS = frozenset({"write_file"})
-_FENCE_TAG = re.compile(r"<(/?)untrusted", re.IGNORECASE)
-
-
-def fence(source: str, content: str) -> str:
-    """`content` inside an `<untrusted>` element no tag in it can close."""
-    escaped = _FENCE_TAG.sub(lambda tag: f"&lt;{tag[1]}untrusted", content)
-    return f'<untrusted source="{source}">\n{escaped}\n</untrusted>'
 
 
 def execute_tool(

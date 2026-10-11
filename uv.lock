@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -3319,7 +3319,7 @@ wheels = [
 [[package]]
 name = "underhood"
 version = "0.1.0"
-source = { git = "https://github.com/vedantdeo/underhood?branch=main#262b3f06fb0ae21a0c2d4fafbccbed233322842d" }
+source = { git = "https://github.com/vedantdeo/underhood?branch=main#915cd48adc2a95ed88dbad6dbceca86a780f7752" }
 
 [[package]]
 name = "urllib3"

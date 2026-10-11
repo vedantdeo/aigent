@@ -199,10 +199,14 @@ def test_the_corpus_is_every_pdf_in_filename_order(tmp_path: Path) -> None:
     annual_report(tmp_path, "TCS-FY25")
     annual_report(tmp_path, "INFY-FY25")
     (tmp_path / "notes.txt").write_text("not a report")
+    (tmp_path / "training").mkdir()
+    annual_report(tmp_path / "training", "HDFCBANK-FY25")
 
     documents = load_corpus(tmp_path)
 
-    assert [document.doc_id for document in documents] == ["INFY-FY25", "TCS-FY25"]
+    assert [document.doc_id for document in documents] == ["INFY-FY25", "TCS-FY25"], (
+        "a training report in corpus/training/ must never be retrieved over"
+    )
 
 
 def test_a_corpus_with_no_pdfs_raises_rather_than_scoring_zero(tmp_path: Path) -> None:

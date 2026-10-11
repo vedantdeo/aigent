@@ -18,12 +18,13 @@ import pytest
 
 from aigent import errors
 from aigent.extraction.headlines import DIRECTORY
-from aigent.retrieval.corpus import MANIFEST
+from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 
 PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
 TASKS = DATASET.parent / "tasks.jsonl"
 INJECTIONS = DATASET.parent / "injections.jsonl"
+FIGURES = DATASET.parent / "figures.jsonl"
 ERRORS = Path(errors.__file__)
 
 Pairs = list[tuple[str, object]]
@@ -80,10 +81,12 @@ class Ordered:
 ORDERED_FILES = [
     Ordered(DIRECTORY, key="ticker", load=json_keys("companies")),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
+    Ordered(TRAINING_MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(DATASET, key="id", load=jsonl_ids("id")),
     Ordered(PARAPHRASED, key="id", load=jsonl_ids("id")),
     Ordered(INJECTIONS, key="id", load=jsonl_ids("id")),
     Ordered(TASKS, key="id", load=jsonl_ids("id")),
+    Ordered(FIGURES, key="id", load=jsonl_ids("id")),
     Ordered(ERRORS, key="class name", load=class_names),
 ]
 

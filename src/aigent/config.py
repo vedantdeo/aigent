@@ -50,6 +50,8 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
     "CRITIQUE": 256,  # evaluator-optimizer
     "DRAFT": 384,
     "FACTS": 1024,  # chaining: up to six claims, each with a verbatim quote
+    "FIGURE_ANSWER": 256,  # a few figures with their calls: 90 on average in the smoke run
+    "FIGURE_QUESTIONS": 256,  # three one-line questions
     "HEADLINE": 128,  # a five-field record is ~45 tokens with THINKING_EVAL off
     "JUDGE": 512,  # a verdict is a bool and a sentence or two; Opus reasons at length first
     "NOTE": 384,
@@ -81,6 +83,8 @@ MAX_TOKENS_ANSWER = max_tokens("ANSWER")
 MAX_TOKENS_CRITIQUE = max_tokens("CRITIQUE")
 MAX_TOKENS_DRAFT = max_tokens("DRAFT")
 MAX_TOKENS_FACTS = max_tokens("FACTS")
+MAX_TOKENS_FIGURE_ANSWER = max_tokens("FIGURE_ANSWER")
+MAX_TOKENS_FIGURE_QUESTIONS = max_tokens("FIGURE_QUESTIONS")
 MAX_TOKENS_HEADLINE = max_tokens("HEADLINE")
 MAX_TOKENS_JUDGE = max_tokens("JUDGE")
 MAX_TOKENS_NOTE = max_tokens("NOTE")
@@ -227,6 +231,23 @@ SYNTHETIC_HEADLINES = 200
 SYNTHETIC_VALID_FRACTION = 0.1
 SYNTHETIC_SEED = 0
 SYNTHETIC_CLIENT = "local-1.7b"
+
+# The figure fine-tune's training labels (extraction.figure_training): chunks per training report
+# naming a core metric, stating a scaled figure, and a plain one; questions per chunk; the split;
+# and the ceiling on each batch.
+FIGURE_LABEL_CORE_PER_DOC = 60
+FIGURE_LABEL_SCALED_PER_DOC = 50
+FIGURE_LABEL_PLAIN_PER_DOC = 30
+FIGURE_LABEL_QUESTIONS = 3
+FIGURE_LABEL_SEED = 0
+FIGURE_LABEL_MODEL = "claude-sonnet-5"
+FIGURE_VALID_FRACTION = 0.1
+MAX_USD_FIGURE_LABELS = 9.00
+# The answer batch goes in slices held under the ceiling. Its system prompt is cached for five
+# minutes, renewed by each read, and written by one ordinary call first, since a batch starts all
+# its requests at once and the smoke batches took 77-156 seconds.
+FIGURE_ANSWER_CACHE: Cache = CACHE_PARAM
+FIGURE_ANSWER_SLICE = 300
 
 # --- Classical baseline ----------------------------------------------------------------------
 # Project 1a's TF-IDF + logistic regression on `direction`: word n-grams, and the C grid that

@@ -83,7 +83,9 @@ this machine. Edit both, or neither.
 - *Split by isolation:* `tools.py` imports nothing from this package, which is the whole reason it
   can be lifted into the SDK tool runner in Week 5 and a LangGraph node in Week 6. Its constants live
   in `tools_config.py`, travelling beside it. Not in `config.py`, which would cost `tools` its
-  independence; not loose in `tools.py`, which would cost the one-place rule.
+  independence; not loose in `tools.py`, which would cost the one-place rule. The implementations
+  themselves live in `underhood.tools` (since 2026-10-11), which the fine-tunes train against, with
+  their own caps in `underhood.tools.config` on the same principle.
 - *Split by concern, one file per client:* `llm/adapters/cfg_<name>.py` holds what changes with the
   endpoint — which wire it speaks, which models it serves, where it lives, and any output cap it
   wants different — beside the adapters that talk to it. `config.py` keeps what is the same

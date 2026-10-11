@@ -5,10 +5,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from underhood.tools.config import MAX_FILE_READ_CHARS, MAX_FILE_WRITE_CHARS
 
 from aigent import tools
 from aigent.tools import calculate, execute_tool, fence, read_file, write_file
-from aigent.tools_config import MAX_FILE_READ_CHARS, MAX_FILE_WRITE_CHARS
 
 
 @pytest.mark.parametrize(

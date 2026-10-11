@@ -1,0 +1,95 @@
+{
+  "_about": "Training-only reports for the figure-extraction fine-tune: companies outside the Project 1 corpus, so a model trained on them is never tested on a document it learned from. Never retrieved over and never searched. `scripts/fetch-corpus.sh` downloads these beside the corpus and checks each digest. Sorted by doc_id.",
+  "documents": {
+    "BAJAJ-AUTO-FY24": {
+      "ticker": "BAJAJ-AUTO",
+      "company": "Bajaj Auto Limited",
+      "title": "Annual Report 2023-24",
+      "url": "https://www.bajajauto.com/-/media/images/bajajauto/media-kit/press-release/new-annual-reports/fy2023-24/bal-annual-report-fy24.pdf",
+      "sha256": "e13350910bd9090c1ee250425a942cbbba8286bc8bdd37444a1992bba388ef2c",
+      "bytes": 18648341,
+      "pages": 276,
+      "retrieved": "2026-10-10"
+    },
+    "BAJAJ-AUTO-FY25": {
+      "ticker": "BAJAJ-AUTO",
+      "company": "Bajaj Auto Limited",
+      "title": "18th Annual Report 2024-25",
+      "url": "https://www.bajajauto.com/-/media/images/bajajauto/media-kit/press-release/new-annual-reports/fy2024-25/bal_annual_report_2025.pdf",
+      "sha256": "4debb786700237a601a7358363cdcdf00519f8c45e818461af59b3c69819d70d",
+      "bytes": 16672219,
+      "pages": 300,
+      "retrieved": "2026-10-10"
+    },
+    "HDFCBANK-FY24": {
+      "ticker": "HDFCBANK",
+      "company": "HDFC Bank Limited",
+      "title": "Integrated Annual Report 2023-24",
+      "url": "https://www.hdfc.bank.in/content/dam/hdfcbankpws/in/en/pdf/annual-reports/2023-24/integrated-annual-report-2023-24.pdf",
+      "sha256": "40f73920a8b153ecb04a826db8d916e904da9f99ba6dd1e054a9a2da60524793",
+      "bytes": 15692637,
+      "pages": 585,
+      "retrieved": "2026-10-10"
+    },
+    "HDFCBANK-FY25": {
+      "ticker": "HDFCBANK",
+      "company": "HDFC Bank Limited",
+      "title": "Integrated Annual Report 2024-25",
+      "url": "https://www.hdfc.bank.in/content/dam/hdfcbankpws/in/en/pdf/annual-reports/2024-25/HDFC_Bank_Annual_Report_2024_25-310202.pdf",
+      "sha256": "2a1879eee544526b7cecacb5380c2664f92e0d031361f5d54ffe55370c9487ea",
+      "bytes": 9438688,
+      "pages": 590,
+      "retrieved": "2026-10-10"
+    },
+    "POWERGRID-FY26": {
+      "ticker": "POWERGRID",
+      "company": "Power Grid Corporation of India Limited",
+      "title": "Integrated Annual Report 2025-26",
+      "url": "https://www.powergrid.in/sites/default/files/annual_reports/Powergrid%20Annual%20Report%202025-26%20Final_2.pdf",
+      "sha256": "b3e0e675c567cab22eda2fec3226db0876de7ea7e85afcaaa7c3c3a68a2d6df2",
+      "bytes": 162428049,
+      "pages": 347,
+      "retrieved": "2026-10-10"
+    },
+    "SUNPHARMA-FY24": {
+      "ticker": "SUNPHARMA",
+      "company": "Sun Pharmaceutical Industries Limited",
+      "title": "Annual Report 2023-24",
+      "url": "https://sunpharma.com/wp-content/uploads/2024/07/SPIL-Annual-Report-2023-24.pdf",
+      "sha256": "cca3bdde342aa160a874bc3d711365d116c4d73612afd35472558cae3433a0d6",
+      "bytes": 9652646,
+      "pages": 312,
+      "retrieved": "2026-10-10"
+    },
+    "SUNPHARMA-FY25": {
+      "ticker": "SUNPHARMA",
+      "company": "Sun Pharmaceutical Industries Limited",
+      "title": "Annual Report 2024-25",
+      "url": "https://sunpharma.com/wp-content/uploads/2025/07/SPIL-Annual-Report-2024-25.pdf",
+      "sha256": "7cf1d4f4697c0d5fcade96cb612e1783bf886b585a6aff97efed59ab625a3eeb",
+      "bytes": 15328016,
+      "pages": 326,
+      "retrieved": "2026-10-10"
+    },
+    "WIPRO-FY24": {
+      "ticker": "WIPRO",
+      "company": "Wipro Limited",
+      "title": "Integrated Annual Report 2023-24",
+      "url": "https://www.wipro.com/content/dam/nexus/en/investor/annual-reports/2023-2024/integrated-annual-report-2023-24.pdf",
+      "sha256": "4c1d713111f82550cfe28cb8d97427ed7a99af95af535d66eb8853684e2f0a38",
+      "bytes": 12080740,
+      "pages": 481,
+      "retrieved": "2026-10-10"
+    },
+    "WIPRO-FY25": {
+      "ticker": "WIPRO",
+      "company": "Wipro Limited",
+      "title": "Integrated Annual Report 2024-25",
+      "url": "https://www.wipro.com/content/dam/nexus/en/investor/annual-reports/2024-2025/Integrated-Annual-report-2024-2025.pdf",
+      "sha256": "316951a35fc3355bea8bcdd1d90c55d8ed1eb3fc0d5adef1172e81820893fac8",
+      "bytes": 17826210,
+      "pages": 520,
+      "retrieved": "2026-10-10"
+    }
+  }
+}
