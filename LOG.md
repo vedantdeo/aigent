@@ -1618,3 +1618,52 @@
   the GPU, a 200-step probe that gave the real rate, and the run. Samples: fluent TinyStories
   ("From that day on, Max learned…") whose characters drift mid-story; three of the retrieval
   questions came back as stories about Lily, as a base model trained on children's stories must.
+- 10-10: **the figure fine-tune's first labels: a 20-chunk smoke batch, $0.0853** (Sonnet 5 at the
+  batch price, 55,076 input and 6,046 output tokens, against a $0.16 worst case; batch
+  `msgbatch_01GE6Yw5SK4p1ZR3JdMsvCny`). 19 of 20 chunks came back with a record: 35 questions, 63
+  figures. It found three faults in the design rather than in the labels. 17 of the 20 figures the
+  arithmetic check refused were right: table cells whose scale sits in a heading (`2,871.59` under
+  `₹ in crore`), which a parser of the amount alone cannot see, plus a compound `lakh crore`; one was
+  a real Sonnet error (`6.83 crore` as 60000000). 14 of 50 descriptions were paraphrases, not
+  verbatim. And 50 of 63 figures were `other`, because random chunks are mostly notes and governance
+  text. Redesigned in response: the teacher writes the `calculate` call itself and `check_call`
+  verifies its number is printed, its scale real and its result the value; descriptions are checked
+  verbatim; a core-metric stratum leads the chunk sample; and the sign rule is stated. Vedant then
+  asked whether Sonnet saw the prompt the model is trained on — it had not — so labelling became two
+  batches, questions and then answers with exactly the fine-tune's prompt.
+- 10-10: **the two-batch labelling's smoke run: 20 chunks, $0.1517** — 29 questions for $0.0249,
+  then 29 answers with the fine-tune's own prompt for $0.1268 (Sonnet 5, batch price). The questions
+  were financial this time (tax expense, profit before tax, borrowings, equity). 37 of 43 figures
+  came with a `calculate` call, scales read off table headings (`2331.80 * 10**7` under `₹ in
+  crore`); `build` made 18 conversations and dropped 11: 2 empty, 5 paraphrased descriptions, 8 calls
+  refused — all Wipro's, which guessed `10**4` for a table whose `₹ in million` heading lay outside
+  the chunk, exactly the label that should not be taught. The hour-long cache cost rather than saved:
+  every request wrote it (48,894 tokens at twice the input price) and none read it, because a batch
+  runs its requests at once, so it is gone. Answers averaged 90 output tokens; the cap fell to 256.
+- 10-10: **a warmed cache made the answer batch 69% cheaper: $0.0391 against $0.1268** for the
+  same 29 questions. The first goes as an ordinary call, which writes the cached prefix, and the
+  other 28 batched answers all read it (47,208 tokens read, none written), where the uncached batch
+  wrote 48,894 and read none. Each read was 1,686 tokens, so the output schema is cached along with
+  the 808-token system prompt — the estimate of a ~20% saving had assumed the schema was not. The
+  TTL is five minutes, renewed by each read; the smoke batches took 77–156 seconds. 24 of the 29
+  answers came back identical to the uncached run; the other 5 differ, which is labelling noise
+  with no temperature to fix it. A full run re-prices to about $2 for 630 chunks.
+- 10-10: **the full figure labels: 1,260 chunks, 2,474 questions, 2,459 answers, $5.0243** (Sonnet 5,
+  batch price). Doubled sample, 60 core / 50 scaled / 30 plain chunks per training report. Questions
+  $1.7322 (every chunk returned some). Answers $3.2921 against an $8.62 worst case: the first as an
+  ordinary call to warm the cache, the other 2,473 in nine slices, 2,317 of which read it — slice 1
+  hit on 144 of 300, the requests that started before the warm write landed writing their own, and
+  slices 2–9 on all. 2,459 answers came back with a record. Not yet built into conversations. The
+  day's labelling came to $5.3004 with the three smoke runs.
+- 10-10: **the T4 repeat settles the card question as noise.** Same commit, seed and data as the
+  first T4 fp16 run: val 2.0509 against 1.9782, 1 of 21 evaluations identical, up to 0.12 apart
+  mid-run, 2,308 ms/iter. So identical runs spread by 0.07 on the T4; the first run's 1.978 was a
+  lucky draw, and all four fp16 runs (1.98–2.05) sit within that spread. bf16's 2.094 is one run
+  0.04–0.05 above the fp16 cluster — not settled by a single run. fp16 did not hurt.
+- 10-11: **built the labels into 1,894 training conversations: 1,710 train and 184 validation**,
+  split by chunk, from 2,459 answers; 565 dropped — 322 paraphrased descriptions, 224 refused calls,
+  18 empty, and one figure labelled `deposit`, a metric outside the vocabulary, which `transcript`
+  now refuses. The kept figures are 2,208 with a `calculate` call and 893 printed in full, so the
+  model sees both when to call and when not to. By metric: other 1,864, revenue 258, profit 224,
+  debt 192, cash_flow 106, dividend 86, margin 84, eps 79, capex 54, employees 49, volume 47,
+  customers 31, market_share 22, ebitda 4 — banks and IT companies rarely state EBITDA. $0.00.

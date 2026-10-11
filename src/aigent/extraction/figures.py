@@ -2,8 +2,8 @@
 states that answer what is wanted, as records.
 
 The training rows, the eval and the tool all build their prompt with `figure_messages`, so the
-fine-tune is taught exactly what it is later asked. The model applies scale words and percentages
-by calling `calculate`, and `transcript` writes the conversations that teach it to.
+fine-tune is taught exactly what it is later asked. The model applies scales and percentages by
+calling `calculate`, and `transcript` writes the conversations that teach it to.
 """
 
 from __future__ import annotations
@@ -63,7 +63,9 @@ class Figure(BaseModel):
             "The number in full, with any scale word applied: 'Rs 1,250 crores' is "
             "12500000000, '3 lakh' is 300000, '4.5 million' is 4500000, '12,34,56,789' is "
             "123456789; a percentage as a fraction, '50%' is 0.5 and '7.25%' is 0.0725; 'over "
-            "80' is 80, '60+' is 60, 'eight' is 8."
+            "80' is 80, '60+' is 60, 'eight' is 8. A table heading such as '(Rs in crore)' "
+            "scales every number under it. Negative only when printed so, with a minus sign or "
+            "in parentheses; a fall stated in words stays positive."
         )
     )
     unit: str | None = Field(
@@ -106,9 +108,10 @@ def _rules() -> str:
 
 
 TOOL_RULE = (
-    "Do no arithmetic yourself. When an amount carries a scale word (thousand, lakh, crore, "
-    "million, billion) or is a percentage, call calculate with the number times its scale, or "
-    "over 100, and copy the result into value. A number already written in full needs no call."
+    "Do no arithmetic yourself. When an amount carries a scale (thousand, lakh, crore, million, "
+    "billion), beside it or in a table heading, or is a percentage, call calculate with the "
+    "number as printed times its scale, or over 100, and copy the result into value. A number "
+    "already printed in full needs no call."
 )
 
 SYSTEM = (
@@ -204,18 +207,21 @@ def figures_match(case: Case, outcome: Outcome) -> Score:
 
 
 class Labelled(Figure):
-    """A figure as the labeller returns it: the amount as written, so code can check its value."""
+    """A figure as the teacher returns it: with the calculate call behind its value, if any."""
 
-    amount: str = Field(
+    call: str | None = Field(
         description=(
-            "The amount exactly as the passage writes it, with any scale word or % sign: "
-            "'1,250 crores', '7.25%', 'over 80'."
+            "The calculate expression behind value: the number as printed times its scale, "
+            "'1,250 crore' is '1250 * 10**7' and '2.5' under a '(Rs in lakh)' heading is "
+            "'2.5 * 10**5', or over 100 for a percentage, '7.25%' is '7.25 / 100'. Null when the "
+            "number is printed in full."
         )
     )
 
 
-_SCALE_POWERS = {"thousand": 3, "lakh": 5, "million": 6, "crore": 7, "billion": 9}
-_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+_CALL = re.compile(r"(-?\d+(?:\.\d+)?) (?:\* 10\*\*(\d+)|/ 100)")
+_POWERS = {3, 5, 6, 7, 9, 12}
+_PRINTED = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _NUMBER_WORDS = {
     name: i
     for i, name in enumerate(
@@ -224,33 +230,24 @@ _NUMBER_WORDS = {
 }
 
 
-def expression(amount: str) -> str | None:
-    """The calculate call an amount needs, or None when it is already written in full.
-
-    Raises ValueError for an amount with no number in it.
-    """
-    match = _NUMBER.search(amount)
-    if match is None:
-        if any(w in _NUMBER_WORDS for w in amount.lower().split()):
-            return None
-        raise ValueError(f"no number in amount {amount!r}")
-    number = match.group().replace(",", "")
-    after = [w.rstrip("s.").lower() for w in amount[match.end() :].split()]
-    if "%" in amount or "percent" in after or "per cent" in " ".join(after):
-        return f"{number} / 100"
-    power = next((_SCALE_POWERS[w] for w in after if w in _SCALE_POWERS), None)
-    return None if power is None else f"{number} * 10**{power}"
+def _printed(passage: str) -> set[float]:
+    """Every number printed in a passage, commas dropped, plus the small ones written as words."""
+    numbers = {float(n.replace(",", "")) for n in _PRINTED.findall(passage)}
+    words = {float(v) for w, v in _NUMBER_WORDS.items() if re.search(rf"\b{w}\b", passage, re.I)}
+    return numbers | words
 
 
-def amount_value(amount: str) -> float:
-    """What an amount comes to, through the same calculate the model is taught to call."""
-    call = expression(amount)
-    if call is not None:
-        return calculate(call)
-    match = _NUMBER.search(amount)
-    if match is not None:
-        return float(match.group().replace(",", ""))
-    return float(next(_NUMBER_WORDS[w] for w in amount.lower().split() if w in _NUMBER_WORDS))
+def check_call(label: Labelled, passage: str) -> bool:
+    """Whether a label's value is the passage's own number, scaled by a real scale or made a
+    fraction by its call, and the call gives that value."""
+    if label.call is None:
+        return abs(label.value) in _printed(passage)
+    match = _CALL.fullmatch(label.call.strip())
+    if match is None or (match.group(2) is not None and int(match.group(2)) not in _POWERS):
+        return False
+    if abs(float(match.group(1))) not in _printed(passage):
+        return False
+    return math.isclose(calculate(label.call), label.value, rel_tol=1e-9, abs_tol=1e-12)
 
 
 Message = dict[str, JsonValue]
@@ -259,19 +256,15 @@ Message = dict[str, JsonValue]
 def transcript(
     passage: str, source: str, wanted: str, labels: Sequence[Labelled]
 ) -> list[Message] | None:
-    """The conversation that teaches one passage: the prompt, one turn calling calculate for every
-    amount that needs it, the results, then the figures. None when a label's value disagrees with
-    its own amount."""
-    calls: list[str] = []
-    figures: list[JsonValue] = []
-    for label in labels:
-        value = amount_value(label.amount)
-        if not math.isclose(value, label.value, rel_tol=1e-9, abs_tol=1e-12):
-            return None
-        call = expression(label.amount)
-        if call is not None:
-            calls.append(call)
-        figures.append(label.model_dump(exclude={"amount"}) | {"value": value})
+    """The conversation that teaches one question: the prompt, one turn making every calculate
+    call the figures need, the results, then the figures. None when any label fails `check_call`,
+    carries a description the passage does not contain, or names a metric not in `METRICS`."""
+    if not all(check_call(label, passage) and _described(label, passage) for label in labels):
+        return None
+    if any(label.metric not in METRICS for label in labels):
+        return None
+    calls = [label.call for label in labels if label.call is not None]
+    figures: list[JsonValue] = [label.model_dump(exclude={"call"}) for label in labels]
     system, user = figure_messages(passage, source, wanted)
     messages: list[Message] = [
         {"role": "system", "content": system},

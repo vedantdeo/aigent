@@ -1,8 +1,10 @@
-"""Training data for the figure fine-tune: chunks of the training reports, labelled by Claude
-through the Batch API, then written as tool-use conversations for underhood to train on.
+"""Training data for the figure fine-tune, in two batches: Claude writes the questions a chunk of a
+training report answers, then answers each with exactly the prompt the fine-tune is trained on.
+`build` writes the answers as tool-use conversations for underhood.
 
-uv run python -m aigent.extraction.figure_training label          # chunks, tokens, worst case
-uv run python -m aigent.extraction.figure_training label --yes    # send the batch
+uv run python -m aigent.extraction.figure_training ask            # chunks, tokens, worst case
+uv run python -m aigent.extraction.figure_training ask --yes      # send the question batch
+uv run python -m aigent.extraction.figure_training answer --yes   # send the answer batch
 uv run python -m aigent.extraction.figure_training build --out ../underhood/data/figures
 """
 
@@ -22,6 +24,9 @@ from pydantic import BaseModel, Field, ValidationError
 
 from aigent.config import (
     CLIENT,
+    FIGURE_ANSWER_CACHE,
+    FIGURE_ANSWER_SLICE,
+    FIGURE_LABEL_CORE_PER_DOC,
     FIGURE_LABEL_MODEL,
     FIGURE_LABEL_PLAIN_PER_DOC,
     FIGURE_LABEL_QUESTIONS,
@@ -32,56 +37,68 @@ from aigent.config import (
     THINKING_EVAL_PARAM,
     max_tokens,
 )
-from aigent.extraction.figures import METRICS, TOOL, Labelled, Message, transcript
+from aigent.extraction.figures import METRICS, TOOL, Labelled, Message, figure_messages, transcript
 from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
-from aigent.llm.messages import Failed
+from aigent.llm.messages import Failed, Parsed
 from aigent.llm.pricing import Budget, estimate_eval_usd
 from aigent.retrieval.chunk import Chunk, Inventory, by_sentence
 from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
 
-LABELS = TRAINING_DIR / "figure-labels.jsonl"
+QUESTIONS = TRAINING_DIR / "figure-questions.jsonl"
+ANSWERS = TRAINING_DIR / "figure-answers.jsonl"
+_CORE = re.compile(
+    r"\b(revenue|turnover|ebitda|profit after tax|net profit|earnings per share|eps|dividend|"
+    r"margin|borrowings|net debt|capital expenditure|capex|cash flow)\b",
+    re.I,
+)
 _SCALED = re.compile(r"\d[\d,.]*\s*(%|per cent|lakh|crore|million|billion)", re.I)
 _PLAIN = re.compile(r"\b\d{1,3}(?:,\d{2,3})+\b|\b\d{3,}\b")
 _YEAR = re.compile(r"(19|20)\d\d")
 
 
-class Asked(BaseModel):
-    """One question the passage answers, with the figures that answer it."""
+class Questions(BaseModel):
+    """What the question writer returns for one passage."""
 
-    question: str = Field(
+    questions: list[str] = Field(
         description=(
-            "A question an analyst might ask that the passage answers with figures, naming the "
-            "company, as a reader of the report would phrase it."
-        )
-    )
-    figures: list[Labelled] = Field(description="Every figure in the passage that answers it.")
-
-
-class Labels(BaseModel):
-    """What the labeller returns for one passage."""
-
-    asked: list[Asked] = Field(
-        description=(
-            f"Up to {FIGURE_LABEL_QUESTIONS} questions, each answered by figures the passage "
-            "states; empty when it states none worth asking about."
+            f"Up to {FIGURE_LABEL_QUESTIONS} questions, each naming the company and answered by "
+            "figures the passage states; empty when it states none worth asking about."
         )
     )
 
 
-def _figure_rules() -> str:
-    return "\n".join(f"- {name}: {f.description}" for name, f in Labelled.model_fields.items())
+class Taught(BaseModel):
+    """A `Labelled` figure as the teacher's schema: the rules are in its system prompt already, so
+    only the call, which that prompt does not ask for, carries one."""
+
+    metric: str
+    value: float
+    unit: str | None
+    year: int | None
+    description: str | None
+    call: str | None = Field(description=Labelled.model_fields["call"].description)
 
 
-LABEL_SYSTEM = (
-    "You write training labels for a model that extracts figures from passages of Indian "
+class Answer(BaseModel):
+    """What the teacher returns for one question: the figures, each with its calculate call."""
+
+    figures: list[Taught] = Field(
+        description=(
+            "Every figure in the passage that answers what is wanted, in the order it appears; "
+            "empty when none does."
+        )
+    )
+
+
+QUESTION_SYSTEM = (
+    "You write questions for training a model that extracts figures from passages of Indian "
     "companies' annual reports. For the passage, write up to "
-    f"{FIGURE_LABEL_QUESTIONS} questions an analyst might ask that it answers with figures, "
-    "and for each question every figure that answers it. Prefer the figures a financial "
-    "analyst looks for: "
+    f"{FIGURE_LABEL_QUESTIONS} questions an analyst might ask that it answers with figures. Each "
+    "names the company and asks for one kind of figure, which may be a figure for two years. "
+    "Prefer what a financial analyst looks for: "
     + ", ".join(m for m in METRICS if m != "other")
-    + ". Each figure:\n"
-    + _figure_rules()
+    + ". A question the passage cannot answer with a figure is wrong."
 )
 
 
@@ -93,18 +110,23 @@ def source_of(doc_id: str, manifest: Path = TRAINING_MANIFEST) -> str:
 
 
 def _kind(chunk: Chunk) -> str | None:
+    states = any(not _YEAR.fullmatch(n.replace(",", "")) for n in _PLAIN.findall(chunk.text))
+    if _CORE.search(chunk.text) and (states or _SCALED.search(chunk.text)):
+        return "core"
     if _SCALED.search(chunk.text):
         return "scaled"
-    if any(not _YEAR.fullmatch(n.replace(",", "")) for n in _PLAIN.findall(chunk.text)):
-        return "plain"
-    return None
+    return "plain" if states else None
 
 
 def select(chunks: Sequence[Chunk], seed: int = FIGURE_LABEL_SEED) -> list[Chunk]:
-    """Per report, a seeded sample of chunks stating a scaled figure and of chunks stating a plain
-    one, in id order. A chunk whose only numbers are years states neither."""
+    """Per report, a seeded sample of chunks naming a core metric beside a figure, then of chunks
+    stating a scaled figure, then a plain one, in id order. Only years state nothing."""
     rng = random.Random(seed)
-    wanted = {"scaled": FIGURE_LABEL_SCALED_PER_DOC, "plain": FIGURE_LABEL_PLAIN_PER_DOC}
+    wanted = {
+        "core": FIGURE_LABEL_CORE_PER_DOC,
+        "scaled": FIGURE_LABEL_SCALED_PER_DOC,
+        "plain": FIGURE_LABEL_PLAIN_PER_DOC,
+    }
     picked: list[Chunk] = []
     for doc_id in sorted({c.doc_id for c in chunks}):
         for kind, n in wanted.items():
@@ -113,14 +135,28 @@ def select(chunks: Sequence[Chunk], seed: int = FIGURE_LABEL_SEED) -> list[Chunk
     return sorted(picked, key=lambda c: c.id)
 
 
-def label_request(chunk: Chunk, source: str, cap: int) -> Request:
-    """The labeller's call for one chunk, on the labelling model whatever the client serves."""
+def ask_request(chunk: Chunk, source: str, cap: int) -> Request:
+    """The question writer's call for one chunk."""
     user = f"<source>{source}</source>\n<passage>{chunk.text}</passage>"
     return Request(
-        f"label:{chunk.id}",
+        f"ask:{chunk.id}",
         [{"role": "user", "content": user}],
         cap,
-        system=LABEL_SYSTEM,
+        system=QUESTION_SYSTEM,
+        model=FIGURE_LABEL_MODEL,
+        thinking=THINKING_EVAL_PARAM,
+    )
+
+
+def answer_request(passage: str, source: str, question: str, step: str, cap: int) -> Request:
+    """The teacher's call: the fine-tune's own prompt, on the labelling model, its system prompt
+    marked for the cache every answer shares."""
+    system, user = figure_messages(passage, source, question)
+    return Request(
+        step,
+        [{"role": "user", "content": user}],
+        cap,
+        system=[{"type": "text", "text": system, "cache_control": FIGURE_ANSWER_CACHE}],
         model=FIGURE_LABEL_MODEL,
         thinking=THINKING_EVAL_PARAM,
     )
@@ -135,40 +171,82 @@ def _llm(client: str) -> Llm:
     return Llm(client, budget=Budget(limit_usd=MAX_USD_FIGURE_LABELS, scope="figure labels"))
 
 
-def label(args: argparse.Namespace) -> None:
-    """Print the batch's size and worst case; with `--yes`, send it and write what came back."""
+def _price(llm: Llm, requests: Sequence[Request], schema: type[BaseModel], cap: int) -> float:
+    """Print a batch's size and worst case, counted for free off its longest request."""
+    longest = max(requests, key=lambda r: len(str(r.messages[0]["content"])))
+    tokens = llm.count(longest, schema)
+    worst = estimate_eval_usd(FIGURE_LABEL_MODEL, len(requests), tokens, cap, batched=True)
+    print(f"{len(requests)} requests on {FIGURE_LABEL_MODEL}")
+    print(f"longest request {tokens} input tokens; output capped at {cap}")
+    print(f"worst case ${worst:.2f} at the batch price; ceiling ${MAX_USD_FIGURE_LABELS:.2f}")
+    return worst
+
+
+def _rows(path: Path) -> list[dict[str, object]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def ask(args: argparse.Namespace) -> None:
+    """The question batch: price it, and with `--yes` send it and write the questions."""
     chosen = select(_chunks())
     if args.sample is not None:
         chosen = chosen[:: max(1, len(chosen) // args.sample)][: args.sample]
     llm = _llm(args.client)
-    settings = spec(llm.client)
-    cap = max_tokens("FIGURE_LABELS", settings)
+    cap = max_tokens("FIGURE_QUESTIONS", spec(llm.client))
     sources = {doc_id: source_of(doc_id) for doc_id in {c.doc_id for c in chosen}}
-    requests = [label_request(c, sources[c.doc_id], cap) for c in chosen]
-    longest = max(requests, key=lambda r: len(str(r.messages[0]["content"])))
-    tokens = llm.count(longest, Labels)
-    worst = estimate_eval_usd(FIGURE_LABEL_MODEL, len(requests), tokens, cap, batched=True)
-    print(f"{len(requests)} chunks from {len(sources)} reports on {FIGURE_LABEL_MODEL}")
-    print(f"longest request {tokens} input tokens; output capped at {cap}")
-    print(f"worst case ${worst:.2f} at the batch price; ceiling ${MAX_USD_FIGURE_LABELS:.2f}")
+    requests = [ask_request(c, sources[c.doc_id], cap) for c in chosen]
+    print(f"{len(chosen)} chunks from {len(sources)} reports")
+    _price(llm, requests, Questions, cap)
     if not args.yes:
         print("\nnothing spent. re-run with --yes to send the batch.")
         return
-    results = llm.batch_records(requests, Labels)
-    failed = 0
-    with LABELS.open("w", encoding="utf-8") as out:
+    results = llm.batch_records(requests, Questions)
+    with QUESTIONS.open("w", encoding="utf-8") as out:
         for chunk, result in zip(chosen, results, strict=True):
             if isinstance(result, Failed) or result.parsed is None:
-                failed += 1
                 continue
             row = {
                 "chunk_id": chunk.id,
                 "source": sources[chunk.doc_id],
                 "passage": chunk.text,
-                "asked": result.parsed.model_dump()["asked"],
+                "questions": result.parsed.questions,
             }
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
-    print(f"labels: {LABELS} ({len(results) - failed} chunks, {failed} without a record)")
+    print(f"questions: {QUESTIONS}; spent ${llm.spent_usd:.4f}")
+
+
+def answer(args: argparse.Namespace) -> None:
+    """One request per question: price them, and with `--yes` send the first as an ordinary call,
+    which writes the cached prompt, then the rest as a batch in slices that can read it."""
+    asked = [
+        (row, str(question))
+        for row in _rows(QUESTIONS)
+        for question in cast(list[str], row["questions"])
+    ]
+    llm = _llm(args.client)
+    cap = max_tokens("FIGURE_ANSWER", spec(llm.client))
+    requests = [
+        answer_request(str(row["passage"]), str(row["source"]), q, f"answer:{row['chunk_id']}", cap)
+        for row, q in asked
+    ]
+    _price(llm, requests, Answer, cap)
+    if not args.yes:
+        print("\nnothing spent. re-run with --yes to send the batch.")
+        return
+    results: list[Parsed[Answer] | Failed] = [llm.parse(requests[0], Answer)]
+    for start in range(1, len(requests), FIGURE_ANSWER_SLICE):
+        results += llm.batch_records(requests[start : start + FIGURE_ANSWER_SLICE], Answer)
+    batched = [r for r in results[1:] if isinstance(r, Parsed)]
+    hits = sum(1 for r in batched if r.usage.cache_read_tokens)
+    print(f"cache read by {hits} of {len(batched)} batched answers")
+    with ANSWERS.open("w", encoding="utf-8") as out:
+        for (row, question), result in zip(asked, results, strict=True):
+            if isinstance(result, Failed) or result.parsed is None:
+                continue
+            kept = {k: row[k] for k in ("chunk_id", "source", "passage")}
+            figures = result.parsed.model_dump()["figures"]
+            out.write(json.dumps(kept | {"question": question, "figures": figures}) + "\n")
+    print(f"answers: {ANSWERS}; spent ${llm.spent_usd:.4f}")
 
 
 @dataclass(frozen=True)
@@ -180,27 +258,27 @@ class Built:
     dropped: int
 
 
-def build(labels: Path, out_dir: Path, seed: int = FIGURE_LABEL_SEED) -> Built:
-    """Every labelled question as a conversation, split by chunk so a passage never sits on both
-    sides. A question with no figures, or one whose arithmetic does not check out, is dropped."""
-    rows = [json.loads(line) for line in labels.read_text(encoding="utf-8").splitlines() if line]
+def build(answers: Path, out_dir: Path, seed: int = FIGURE_LABEL_SEED) -> Built:
+    """Every answered question as a conversation, split by chunk so a passage never sits on both
+    sides. An answer with no figures, a malformed figure or one `transcript` refuses is dropped."""
+    rows = _rows(answers)
     chunk_ids = sorted({str(row["chunk_id"]) for row in rows})
     held = set(random.Random(seed).sample(chunk_ids, round(len(chunk_ids) * FIGURE_VALID_FRACTION)))
     splits: dict[str, list[list[Message]]] = {"train": [], "valid": []}
     dropped = 0
     for row in rows:
-        for asked in row["asked"]:
-            messages: list[Message] | None = None
-            try:
-                figures = [Labelled.model_validate(f) for f in asked["figures"]]
-                if figures:
-                    messages = transcript(row["passage"], row["source"], asked["question"], figures)
-            except (ValidationError, ValueError):
-                messages = None
-            if not messages:
-                dropped += 1
-                continue
-            splits["valid" if row["chunk_id"] in held else "train"].append(messages)
+        messages: list[Message] | None = None
+        try:
+            figures = [Labelled.model_validate(f) for f in cast(list[object], row["figures"])]
+            if figures:
+                passage, source = str(row["passage"]), str(row["source"])
+                messages = transcript(passage, source, str(row["question"]), figures)
+        except (ValidationError, ValueError):
+            messages = None
+        if not messages:
+            dropped += 1
+            continue
+        splits["valid" if row["chunk_id"] in held else "train"].append(messages)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, conversations in splits.items():
         with (out_dir / f"{name}.jsonl").open("w", encoding="utf-8") as out:
@@ -212,22 +290,26 @@ def build(labels: Path, out_dir: Path, seed: int = FIGURE_LABEL_SEED) -> Built:
 def _parse(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="aigent.extraction.figure_training")
     commands = parser.add_subparsers(dest="command", required=True)
-    labelling = commands.add_parser("label", help="label training chunks through the Batch API")
-    labelling.add_argument("--yes", action="store_true", help="send the batch; else estimate")
-    labelling.add_argument("--sample", type=int, metavar="N", help="label N chunks, spread out")
-    labelling.add_argument("--client", default=CLIENT, help=f"who labels (default {CLIENT})")
-    building = commands.add_parser("build", help="write the labels as training conversations")
+    for name, what in (("ask", "write questions for training chunks"), ("answer", "answer them")):
+        command = commands.add_parser(name, help=f"{what} through the Batch API")
+        command.add_argument("--yes", action="store_true", help="send the batch; else estimate")
+        command.add_argument("--client", default=CLIENT, help=f"who is billed (default {CLIENT})")
+        if name == "ask":
+            command.add_argument("--sample", type=int, metavar="N", help="N chunks, spread out")
+    building = commands.add_parser("build", help="write the answers as training conversations")
     building.add_argument("--out", type=Path, required=True, help="directory for train/valid")
     return parser.parse_args(list(argv))
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
-    if args.command == "label":
-        label(args)
-        return
-    built = build(LABELS, args.out)
-    print(f"{built.train} train, {built.valid} valid, {built.dropped} dropped -> {args.out}")
+    if args.command == "ask":
+        ask(args)
+    elif args.command == "answer":
+        answer(args)
+    else:
+        built = build(ANSWERS, args.out)
+        print(f"{built.train} train, {built.valid} valid, {built.dropped} dropped -> {args.out}")
 
 
 if __name__ == "__main__":
