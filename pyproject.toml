@@ -1,7 +1,7 @@
 [project]
 name = "aigent"
 version = "0.1.0"
-description = "aigent: a personal AI agent, built one capability at a time."
+description = "An AI agent over company filings: tool use, RAG, evals, guardrails and budgets on every model call."
 readme = "README.md"
 authors = [
     { name = "vedantdeo", email = "vedantdeo1@gmail.com" }
