@@ -25,6 +25,7 @@ PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
 TASKS = DATASET.parent / "tasks.jsonl"
 INJECTIONS = DATASET.parent / "injections.jsonl"
 FIGURES = DATASET.parent / "figures.jsonl"
+ADJUDICATIONS = DATASET.parent / "figure-adjudications.jsonl"
 ERRORS = Path(errors.__file__)
 
 Pairs = list[tuple[str, object]]
@@ -87,6 +88,7 @@ ORDERED_FILES = [
     Ordered(INJECTIONS, key="id", load=jsonl_ids("id")),
     Ordered(TASKS, key="id", load=jsonl_ids("id")),
     Ordered(FIGURES, key="id", load=jsonl_ids("id")),
+    Ordered(ADJUDICATIONS, key="id", load=jsonl_ids("id")),
     Ordered(ERRORS, key="class name", load=class_names),
 ]
 

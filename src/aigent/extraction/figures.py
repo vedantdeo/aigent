@@ -78,12 +78,15 @@ class Figure(BaseModel):
     year: int | None = Field(
         description=(
             "The Indian financial year (April to March) the figure belongs to, as the year it "
-            "ends, when the passage states or dates it: 2025 for FY 2024-25, for 'during the "
-            "year' in a 2024-25 report, for as at 31 March 2025, or for an event on 20 June "
-            "2024. A bare calendar year the report presents as current takes the report's "
-            "year: an award won in 2023, in a 2023-24 report, is 2024. Null for a cumulative or "
-            "'till date' total, 'since inception', a duration such as a three-year term, a year "
-            "that only names something such as Vision 2030, or no period."
+            "ends: 2025 for FY 2024-25, for as at 31 March 2025, or for an event on 20 June "
+            "2024. Read the report's year from source: a figure the passage states as current, "
+            "or 'during the year', takes it, so a headcount in a 2023-24 report is 2024, and "
+            "'previous year' is the year before. A bare calendar year the report presents as "
+            "current takes the report's year: an award won in 2023, in a 2023-24 report, is "
+            "2024. Null only for a cumulative, 'till date' or 'since inception' total, a "
+            "duration such as a three-year term, a fixed term or specification such as the face "
+            "value of a share or a vehicle's seating capacity, or a year that only names "
+            "something such as Vision 2030."
         )
     )
     description: str | None = Field(
