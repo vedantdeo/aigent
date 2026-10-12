@@ -55,7 +55,8 @@ class Figure(BaseModel):
             "per share; profit is profit after tax, or before tax when no other is stated; "
             "revenue is revenue from operations, sales or turnover; debt includes borrowings and "
             "loan facilities; volume is units sold or produced, tonnes or capacity; customers "
-            "includes subscribers and users. other is any figure the rest do not name."
+            "includes subscribers and users. A growth rate or other change is other unless it "
+            "is a margin or market share. other is any figure the rest do not name."
         )
     )
     value: float = Field(
@@ -65,7 +66,8 @@ class Figure(BaseModel):
             "123456789; a percentage as a fraction, '50%' is 0.5 and '7.25%' is 0.0725; 'over "
             "80' is 80, '60+' is 60, 'eight' is 8. A table heading such as '(Rs in crore)' "
             "scales every number under it. Negative only when printed so, with a minus sign or "
-            "in parentheses; a fall stated in words stays positive."
+            "in parentheses; a fall stated in words stays positive. Always a plain number, never "
+            "an expression such as 10**6: an expression goes to calculate, its result here."
         )
     )
     unit: str | None = Field(
@@ -76,9 +78,13 @@ class Figure(BaseModel):
     )
     year: int | None = Field(
         description=(
-            "The year the figure's period ends, when the passage states or dates it: 2025 for "
-            "FY 2024-25, for 'during the year' in a 2024-25 report, or as at 31 March 2025; "
-            "2024 for calendar 2024. Null for 'till date', 'since inception' or no period."
+            "The Indian financial year (April to March) the figure belongs to, as the year it "
+            "ends, when the passage states or dates it: 2025 for FY 2024-25, for 'during the "
+            "year' in a 2024-25 report, for as at 31 March 2025, or for an event on 20 June "
+            "2024. A bare calendar year the report presents as current takes the report's "
+            "year: an award won in 2023, in a 2023-24 report, is 2024. Null for a cumulative or "
+            "'till date' total, 'since inception', a duration such as a three-year term, a year "
+            "that only names something such as Vision 2030, or no period."
         )
     )
     description: str | None = Field(
@@ -96,8 +102,9 @@ class Figures(BaseModel):
 
     figures: list[Figure] = Field(
         description=(
-            "Every figure in the passage that answers what is wanted, in the order it appears; "
-            "empty when none does."
+            "Every figure in the passage that answers what is wanted, in the order it appears, "
+            "a rate of change beside the amount it describes included; empty when none does. On "
+            "a highlights page a number usually sits on the line above its label."
         )
     )
 
@@ -110,7 +117,8 @@ def _rules() -> str:
 TOOL_RULE = (
     "Do no arithmetic yourself. When an amount carries a scale (thousand, lakh, crore, million, "
     "billion), beside it or in a table heading, or is a percentage, call calculate with the "
-    "number as printed times its scale, or over 100, and copy the result into value. A number "
+    "number as printed times its scale, or over 100, and copy the result into value. Every "
+    "percentage takes a call: '18%' is calculate('18 / 100') and value 0.18, never 18. A number "
     "already printed in full needs no call."
 )
 

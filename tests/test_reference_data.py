@@ -17,6 +17,7 @@ from typing import cast
 import pytest
 
 from aigent import errors
+from aigent.extraction.figure_augment import COMPANY_FORMS
 from aigent.extraction.headlines import DIRECTORY
 from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
@@ -79,6 +80,7 @@ class Ordered:
 
 
 ORDERED_FILES = [
+    Ordered(COMPANY_FORMS, key="company", load=json_keys("companies")),
     Ordered(DIRECTORY, key="ticker", load=json_keys("companies")),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(TRAINING_MANIFEST, key="doc_id", load=json_keys("documents")),

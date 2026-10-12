@@ -26,24 +26,40 @@ from aigent.config import (
     CLIENT,
     FIGURE_ANSWER_CACHE,
     FIGURE_ANSWER_SLICE,
+    FIGURE_AUGMENT_COPIES,
+    FIGURE_AUGMENT_LEAST,
     FIGURE_LABEL_CORE_PER_DOC,
     FIGURE_LABEL_MODEL,
     FIGURE_LABEL_PLAIN_PER_DOC,
     FIGURE_LABEL_QUESTIONS,
     FIGURE_LABEL_SCALED_PER_DOC,
     FIGURE_LABEL_SEED,
+    FIGURE_MASSAGE_CHANCE,
+    FIGURE_MASSAGE_COPIES,
+    FIGURE_MASSAGE_SHIFTS,
     FIGURE_VALID_FRACTION,
     MAX_USD_FIGURE_LABELS,
     THINKING_EVAL_PARAM,
     max_tokens,
 )
+from aigent.extraction.figure_augment import (
+    Answer as Labelling,
+)
+from aigent.extraction.figure_augment import (
+    Massage,
+    company_pool,
+    load_forms,
+    massaged,
+    variants,
+)
 from aigent.extraction.figures import METRICS, TOOL, Labelled, Message, figure_messages, transcript
+from aigent.extraction.headlines import load_directory
 from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Failed, Parsed
 from aigent.llm.pricing import Budget, estimate_eval_usd
 from aigent.retrieval.chunk import Chunk, Inventory, by_sentence
-from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
+from aigent.retrieval.corpus import MANIFEST, TRAINING_DIR, TRAINING_MANIFEST, load_corpus
 
 QUESTIONS = TRAINING_DIR / "figure-questions.jsonl"
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"
@@ -256,18 +272,39 @@ class Built:
     train: int
     valid: int
     dropped: int
+    augmented: int
+    massaged: int
 
 
-def build(answers: Path, out_dir: Path, seed: int = FIGURE_LABEL_SEED) -> Built:
+def massage_settings() -> Massage:
+    """Config's massage, swapping to any directory company in neither corpus."""
+    companies = [
+        entry["company"]
+        for manifest in (MANIFEST, TRAINING_MANIFEST)
+        for entry in cast(
+            dict[str, dict[str, str]], json.loads(manifest.read_text())["documents"]
+        ).values()
+    ]
+    pool = company_pool(load_directory(), companies)
+    return Massage(FIGURE_MASSAGE_CHANCE, FIGURE_MASSAGE_SHIFTS, load_forms(), pool)
+
+
+def build(
+    answers: Path, out_dir: Path, seed: int = FIGURE_LABEL_SEED, how: Massage | None = None
+) -> Built:
     """Every answered question as a conversation, split by chunk so a passage never sits on both
-    sides. An answer with no figures, a malformed figure or one `transcript` refuses is dropped."""
+    sides, plus `figure_augment` copies of each training answer: percentage rewrites and massaged
+    ones (`how`, config's by default). An answer with no figures, a malformed figure or one
+    `transcript` refuses is dropped; a copy `transcript` refuses is skipped."""
+    how = how or massage_settings()
     rows = _rows(answers)
     chunk_ids = sorted({str(row["chunk_id"]) for row in rows})
     held = set(random.Random(seed).sample(chunk_ids, round(len(chunk_ids) * FIGURE_VALID_FRACTION)))
     splits: dict[str, list[list[Message]]] = {"train": [], "valid": []}
-    dropped = 0
+    dropped = augmented = massaged_count = 0
     for row in rows:
         messages: list[Message] | None = None
+        figures: list[Labelled] = []
         try:
             figures = [Labelled.model_validate(f) for f in cast(list[object], row["figures"])]
             if figures:
@@ -278,13 +315,32 @@ def build(answers: Path, out_dir: Path, seed: int = FIGURE_LABEL_SEED) -> Built:
         if not messages:
             dropped += 1
             continue
-        splits["valid" if row["chunk_id"] in held else "train"].append(messages)
+        if row["chunk_id"] in held:
+            splits["valid"].append(messages)
+            continue
+        splits["train"].append(messages)
+        answer = Labelling(
+            str(row["passage"]), str(row["question"]), str(row["source"]), tuple(figures)
+        )
+        for kind, copies in (
+            ("percent", variants(answer, FIGURE_AUGMENT_COPIES, FIGURE_AUGMENT_LEAST, seed)),
+            ("massage", massaged(answer, FIGURE_MASSAGE_COPIES, how, seed)),
+        ):
+            for copy in copies:
+                rewritten = transcript(copy.passage, copy.source, copy.question, list(copy.labels))
+                if not rewritten:
+                    continue
+                splits["train"].append(rewritten)
+                if kind == "percent":
+                    augmented += 1
+                else:
+                    massaged_count += 1
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, conversations in splits.items():
         with (out_dir / f"{name}.jsonl").open("w", encoding="utf-8") as out:
             for messages in conversations:
                 out.write(json.dumps({"messages": messages, "tools": [TOOL]}) + "\n")
-    return Built(len(splits["train"]), len(splits["valid"]), dropped)
+    return Built(len(splits["train"]), len(splits["valid"]), dropped, augmented, massaged_count)
 
 
 def _parse(argv: Sequence[str]) -> argparse.Namespace:
@@ -309,7 +365,11 @@ def main(argv: list[str] | None = None) -> None:
         answer(args)
     else:
         built = build(ANSWERS, args.out)
-        print(f"{built.train} train, {built.valid} valid, {built.dropped} dropped -> {args.out}")
+        print(
+            f"{built.train} train ({built.augmented} percentage rewrites, {built.massaged} "
+            f"massaged), {built.valid} valid, "
+            f"{built.dropped} dropped -> {args.out}"
+        )
 
 
 if __name__ == "__main__":
