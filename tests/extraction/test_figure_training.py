@@ -146,8 +146,8 @@ class FakeLlm:
         ]
 
 
-def _args(yes: bool) -> argparse.Namespace:
-    return argparse.Namespace(yes=yes, sample=None, client="anthropic")
+def _args(yes: bool, only: Path | None = None) -> argparse.Namespace:
+    return argparse.Namespace(yes=yes, sample=None, client="anthropic", only=only)
 
 
 @pytest.fixture
@@ -257,3 +257,32 @@ def test_export_hands_underhood_the_answers_and_the_task(tmp_path: Path) -> None
     assert sent == 2
     assert (tmp_path / "out" / "answers.jsonl").read_text() == answers.read_text()
     assert json.loads((tmp_path / "out" / "task.json").read_text()) == task()
+
+
+def test_answering_only_the_listed_questions_relabels_them_and_keeps_the_rest(
+    files: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    row = {"chunk_id": "WIPRO-FY25#0001", "source": "Wipro Limited", "passage": SCALED}
+    (files / "questions.jsonl").write_text(
+        json.dumps(row | {"questions": ["q1", "q2", "q3"]}) + "\n"
+    )
+    old = [row | {"question": q, "figures": [{"old": q}]} for q in ("q1", "q2", "q3")]
+    (files / "answers.jsonl").write_text("".join(json.dumps(r) + "\n" for r in old))
+    only = files / "dropped.jsonl"
+    keys = [{"chunk_id": "WIPRO-FY25#0001", "question": q} for q in ("q2", "q3")]
+    only.write_text("".join(json.dumps(k) + "\n" for k in keys))
+    good = Answer.model_validate({"figures": [_taught(12500000000, "1250 * 10**7")]})
+    fake = FakeLlm([good, None])  # q2 relabelled, q3's relabel fails
+    monkeypatch.setattr(figure_training, "_llm", lambda client: fake)
+
+    figure_training.answer(_args(yes=True, only=only))
+
+    rows = [json.loads(x) for x in (files / "answers.jsonl").read_text().splitlines()]
+    assert [r["question"] for r in rows] == ["q1", "q2", "q3"], "order kept"
+    assert rows[0]["figures"] == [{"old": "q1"}], "an unlisted question is untouched"
+    assert rows[1]["figures"][0]["call"] == "1250 * 10**7", "a listed question relabelled"
+    assert rows[2]["figures"] == [{"old": "q3"}], "a failed relabel keeps the old label"
+    assert [str(r.messages[0]["content"]).endswith("<wanted>q2</wanted>") for r in fake.parsed] == [
+        True
+    ]
+    assert fake.batches == [1], "only q3 went in the batch"

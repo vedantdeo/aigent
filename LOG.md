@@ -1667,3 +1667,34 @@
   model sees both when to call and when not to. By metric: other 1,864, revenue 258, profit 224,
   debt 192, cash_flow 106, dividend 86, margin 84, eps 79, capex 54, employees 49, volume 47,
   customers 31, market_share 22, ebitda 4 — banks and IT companies rarely state EBITDA. $0.00.
+- 10-11: **v1, the first tool-use fine-tune: Qwen3-4B, bf16 LoRA on a Jarvis A30, ₹37.56.** 2,931
+  examples from the 1,894 conversations, 184 steps in 50 minutes; eval loss 0.549 → 0.0245. Full
+  precision ran out of the A30's 24 GB until gradient checkpointing covered every CUDA run. Graded
+  on a free Kaggle T4 over the 43-case test set: base 3/43, v1 24/43, calling `calculate` when needed
+  12/22 and when not 1/21. Settling four `review` years made it 26/43. $0.00 of API.
+
+## Week 6 (2026-10-12 to 2026-10-18)
+
+- 10-12: **v2, trained on augmented data: 28/43 against v1's 26.** 1,710 real conversations plus 216
+  percentage rewrites and 1,588 massaged copies (years shifted, companies swapped, rupee glyphs and
+  currencies varied), 6,057 examples, 379 steps in 1 h 52 min on the A30, about ₹83 — estimated from
+  the run at the A30's ~₹41/h, not read from a bill. Eval loss 0.0202. `calculate` when needed 17/22,
+  when not 0/21. Graded free on a Kaggle T4.
+- 10-12: **the fault census: v2 is clean on 89% of training cases, 70% of held-out, 63% of test.**
+  184 validation and 300 training conversations on a free T4 (36 + 67 min). Augmented copies were
+  learned as well as real ones (89% against 88%). The 89 disagreements, adjudicated by hand into
+  `evals/datasets/figure-adjudications.jsonl`: 41 label right, 30 model right, 15 neither, 3 both —
+  **half the "model errors" were label errors**, chiefly scales the passage never names (now refused
+  by underhood's `check_call`), currencies read off exchange-rate columns, and the old year rule.
+- 10-12: **the rules changed before relabelling** (each Vedant's call): the year comes from the
+  source for anything stated as current; money with no currency shown is INR; a change keeps its
+  metric, described `change`, negative for a fall; `roe`, `roce`, `roa` joined the metrics; `debt`
+  is what is owed; a scale applies only when the passage names it. Under the new test labels v1 and
+  v2 fall to 19/43 and 18/43, their top fault "year dropped": both learned undated current figures.
+- 10-12: **relabelled under the new rules: $3.68, then the 1,142 refused answers again for $2.07.**
+  Full answer batch: 2,474 requests, 2,230 of 2,473 batched answers read the warmed cache, 2,455
+  recorded; underhood refused 1,142 (403 descriptions over five words, 249 unnamed scales, 242
+  paraphrased descriptions). The scale and `change` rules then went into the prompt and only the
+  refused answers were relabelled (`answer --only`), 891 of 1,141 reading the cache: refusals fell
+  to 871, unnamed scales 249 → 127 and descriptions on named metrics 44 → 9. Built: 2,966 training
+  conversations (1,442 real) and 142 validation. The day's labelling came to $5.7531.

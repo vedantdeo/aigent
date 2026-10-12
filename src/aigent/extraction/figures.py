@@ -73,7 +73,9 @@ class Figure(BaseModel):
             "12500000000, '3 lakh' is 300000, '4.5 million' is 4500000, '12,34,56,789' is "
             "123456789; a percentage as a fraction, '50%' is 0.5 and '7.25%' is 0.0725; 'over "
             "80' is 80, '60+' is 60, 'eight' is 8. A table heading such as '(Rs in crore)' "
-            "scales every number under it. Negative when printed so, with a minus sign or in "
+            "scales every number under it. A scale applies only when the passage names it, "
+            "beside the number or in a heading within the passage; otherwise the number stays "
+            "as printed. Negative when printed so, with a minus sign or in "
             "parentheses, and for a change that is a fall: 'declined 4%' is -0.04; otherwise a "
             "fall stated in words stays positive. Always a plain number, never "
             "an expression such as 10**6: an expression goes to calculate, its result here."
@@ -106,7 +108,9 @@ class Figure(BaseModel):
         description=(
             "When metric is other, the word or few words of the passage that name what is "
             "counted or measured, copied verbatim: 'branches', 'retail outlets', 'vessels'. "
-            "For a named metric, 'change' when the figure is its change, else null."
+            "For a named metric, 'change' when the figure is its change, else null: only a named "
+            "metric takes 'change', and it takes nothing else. An other figure's description "
+            "names the thing itself, even when the figure is its change."
         ),
     )
 
@@ -130,8 +134,9 @@ def _rules() -> str:
 
 TOOL_RULE = (
     "Do no arithmetic yourself. When an amount carries a scale (thousand, lakh, crore, million, "
-    "billion), beside it or in a table heading, or is a percentage, call calculate with the "
-    "number as printed times its scale, or over 100, and copy the result into value. Every "
+    "billion), beside it or in a table heading in the passage, or is a percentage, call "
+    "calculate with the number as printed times its scale, or over 100, and copy the result "
+    "into value. Every "
     "percentage takes a call: '18%' is calculate('18 / 100') and value 0.18, never 18. A number "
     "already printed in full needs no call."
 )
