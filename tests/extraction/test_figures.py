@@ -10,6 +10,7 @@ from pydantic import JsonValue
 from aigent.evals.dataset import Case, load_jsonl
 from aigent.evals.grade import Outcome
 from aigent.extraction.figures import (
+    CHANGE,
     DATASET,
     METRICS,
     SYSTEM,
@@ -191,6 +192,18 @@ PASSAGE = "Pioneer in farmer empowerment F Exports to over 95 countries F ITCMAA
             True,
             id="a named metric left undescribed",
         ),
+        pytest.param(
+            fig(-0.04, metric="revenue", description="change"),
+            PASSAGE,
+            True,
+            id="a named metric's change",
+        ),
+        pytest.param(
+            fig(0.04, metric="revenue", description="growth"),
+            PASSAGE,
+            False,
+            id="a change named any other way",
+        ),
     ],
 )
 def test_a_figure_is_described_exactly_when_its_metric_is_other(
@@ -233,7 +246,10 @@ def test_every_test_case_names_a_chunk_and_holds_valid_figures() -> None:
         figures = Figures.model_validate(case.expected).figures
         assert figures, case.id
         assert all(f.metric in METRICS for f in figures), case.id
-        assert all((f.metric == "other") == bool(f.description) for f in figures), case.id
+        assert all(
+            bool(f.description) if f.metric == "other" else f.description in (None, CHANGE)
+            for f in figures
+        ), case.id
 
 
 YEAR = re.compile(r"(19|20)\d\d")

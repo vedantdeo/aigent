@@ -22,12 +22,18 @@ from aigent.tools import CALCULATOR_TOOL
 
 DATASET = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figures.jsonl"
 CURRENCIES = ("INR", "USD", "AUD", "EUR", "GBP")
+CHANGE = "change"
+# The metrics a percentage may be, besides a change in any metric.
+RATE_METRICS = ("margin", "roe", "roce", "roa", "market_share")
 _RUPEE = {"rs", "rs.", "₹", "inr", "rupee", "rupees"}
 _WORD = re.compile(r"[A-Za-z₹%]+\.?")
 
 # Tie-break order, most specific first: the order is the data, so do not sort.
 METRICS = (
     "margin",
+    "roe",
+    "roce",
+    "roa",
     "eps",
     "dividend",
     "ebitda",
@@ -50,12 +56,15 @@ class Figure(BaseModel):
     metric: str = Field(
         description=(
             "Exactly one of: " + ", ".join(METRICS) + ". The first that fits, in that order: "
-            "margin is any percentage of revenue (EBITDA margin is margin); eps and dividend are "
+            "margin is any percentage of revenue (EBITDA margin is margin); roe, roce and roa are "
+            "the returns on equity, capital employed and assets; eps and dividend are "
             "per share; profit is profit after tax, or before tax when no other is stated; "
-            "revenue is revenue from operations, sales or turnover; debt includes borrowings and "
-            "loan facilities; volume is units sold or produced, tonnes or capacity; customers "
-            "includes subscribers and users. A growth rate or other change is other unless it "
-            "is a margin or market share. other is any figure the rest do not name."
+            "revenue is revenue from operations, sales or turnover; debt is what the company owes, "
+            "its borrowings and the loan facilities it took, not the loans and advances it makes; "
+            "volume is units sold or produced, tonnes or capacity; customers "
+            "includes subscribers and users. A change in a named metric, a rise or a fall, as a "
+            "rate or an amount, keeps that metric with description 'change'. other is any "
+            "figure the rest do not name."
         )
     )
     value: float = Field(
@@ -64,15 +73,18 @@ class Figure(BaseModel):
             "12500000000, '3 lakh' is 300000, '4.5 million' is 4500000, '12,34,56,789' is "
             "123456789; a percentage as a fraction, '50%' is 0.5 and '7.25%' is 0.0725; 'over "
             "80' is 80, '60+' is 60, 'eight' is 8. A table heading such as '(Rs in crore)' "
-            "scales every number under it. Negative only when printed so, with a minus sign or "
-            "in parentheses; a fall stated in words stays positive. Always a plain number, never "
+            "scales every number under it. Negative when printed so, with a minus sign or in "
+            "parentheses, and for a change that is a fall: 'declined 4%' is -0.04; otherwise a "
+            "fall stated in words stays positive. Always a plain number, never "
             "an expression such as 10**6: an expression goes to calculate, its result here."
         )
     )
     unit: str | None = Field(
         description=(
             "For money, the currency code: " + ", ".join(CURRENCIES) + ". The rupee sign may "
-            "appear as C, I or ` in this text. Null for anything else, a percentage included."
+            "appear as C, E, H, I, J, K or ` in this text. Money with no currency shown is INR, "
+            "the report being Indian; an exchange rate beside a subsidiary's amounts is not "
+            "their currency. Null for anything that is not money, a percentage included."
         )
     )
     year: int | None = Field(
@@ -94,7 +106,7 @@ class Figure(BaseModel):
         description=(
             "When metric is other, the word or few words of the passage that name what is "
             "counted or measured, copied verbatim: 'branches', 'retail outlets', 'vessels'. "
-            "Null for every other metric."
+            "For a named metric, 'change' when the figure is its change, else null."
         ),
     )
 
@@ -180,9 +192,10 @@ def _same(want: Figure, got: Figure) -> bool:
 
 
 def _described(figure: Figure, passage: object) -> bool:
-    """A description iff the metric is other, and verbatim in the passage when there is one."""
+    """A description verbatim from the passage iff the metric is other; on a named metric,
+    none, or exactly `CHANGE` for a change in it."""
     if figure.metric != "other":
-        return figure.description is None
+        return figure.description in (None, CHANGE)
     if not figure.description:
         return False
     return not isinstance(passage, str) or squeeze(figure.description) in squeeze(passage)

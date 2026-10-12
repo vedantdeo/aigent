@@ -244,6 +244,8 @@ def test_the_task_renders_the_user_turn_exactly_as_the_fine_tune_is_asked() -> N
     assert user == figure_messages("P", "S {x}", "W")[1]
     assert shipped["system"] == SYSTEM and shipped["tool"] == TOOL
     assert shipped["metrics"] == list(METRICS)
+    assert shipped["rate_metrics"] == ["margin", "roe", "roce", "roa", "market_share"]
+    assert shipped["change"] == "change"
 
 
 def test_export_hands_underhood_the_answers_and_the_task(tmp_path: Path) -> None:

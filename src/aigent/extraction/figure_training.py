@@ -35,7 +35,15 @@ from aigent.config import (
     THINKING_EVAL_PARAM,
     max_tokens,
 )
-from aigent.extraction.figures import METRICS, SYSTEM, TOOL, Labelled, figure_messages
+from aigent.extraction.figures import (
+    CHANGE,
+    METRICS,
+    RATE_METRICS,
+    SYSTEM,
+    TOOL,
+    Labelled,
+    figure_messages,
+)
 from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Failed, Parsed
@@ -249,9 +257,16 @@ def answer(args: argparse.Namespace) -> None:
 
 def task() -> dict[str, JsonValue]:
     """The task as underhood builds from it: the system prompt, the user turn as a template, the
-    tool and the metric vocabulary."""
+    tool, the metric vocabulary, the metrics a percentage may be, and the word for a change."""
     _, user = figure_messages("{passage}", "{source}", "{wanted}")
-    return {"system": SYSTEM, "user": user, "tool": TOOL, "metrics": list(METRICS)}
+    return {
+        "system": SYSTEM,
+        "user": user,
+        "tool": TOOL,
+        "metrics": list(METRICS),
+        "rate_metrics": list(RATE_METRICS),
+        "change": CHANGE,
+    }
 
 
 def export(answers: Path, out_dir: Path) -> int:

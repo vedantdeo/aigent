@@ -218,6 +218,7 @@ def test_conversations_become_eval_rows_with_their_final_figures_as_the_label() 
     sent = cast(list[JsonValue], conversation["messages"])[:2]
     assert json.loads(json.dumps(row["messages"])) == sent
     assert row["expected"] == [SCALED] and row["tools"] == [TOOL]
+    assert row["calls"] == [], "the label made no call"
     assert "augmented" not in row, "unmarked without the originals"
 
 
@@ -258,3 +259,19 @@ def test_census_counts_each_fault_and_a_missing_prediction() -> None:
         "fg-2": ["year added"],
         "fg-3": ["no prediction"],
     }
+
+
+@pytest.mark.parametrize(
+    ("calls", "needed"),
+    [
+        pytest.param(["100.00 / 100"], True, id="the label called, though 1 is printed"),
+        pytest.param([], False, id="the label made no call"),
+    ],
+)
+def test_a_row_with_the_labels_calls_needs_one_exactly_when_the_label_made_one(
+    calls: list[str], needed: bool
+) -> None:
+    share = {"metric": "other", "value": 1.0, "unit": None, "year": None, "description": "held"}
+    row = _row("va-1", share) | {"passage": "1 subsidiary, 100.00 held", "calls": calls}
+
+    assert needs_call(cast(dict[str, JsonValue], row)) is needed
