@@ -1,6 +1,6 @@
 # aigent — notes for Claude
 
-Nine project rules live here rather than in a session's private memory, so they travel with the
+Ten project rules live here rather than in a session's private memory, so they travel with the
 repo and reach anyone who clones it.
 
 Six of them — constants, testing, tests for new features, reference data, comments and paid
@@ -261,6 +261,22 @@ of this machine. Edit both, or neither.
   cannot smoke-test the cache.
 - Every run's cost goes in `LOG.md` beside what it bought. Keep that ledger honest — it is the only
   record of what this project has spent.
+
+## Fine-tuning lives in underhood; model calls live in aigent
+
+**The rule (2026-10-12):** everything that trains or prepares training for a model lives in
+underhood. Every call to a hosted LLM goes through aigent. aigent grades.
+
+- **underhood:** label validation, augmentation, building conversations and the train/valid split
+  (`underhood.tooldata`), training, inference on our own models, and the GPU and Kaggle machinery.
+- **aigent:** the task (schema, prompt, tool, grader), labelling with Claude through `llm/` and its
+  budgets, the test sets, grading predictions and the fault census.
+- **The seam:** aigent exports plain JSON (`answers.jsonl`, `task.json`) for underhood to build
+  from. underhood writes predictions for aigent to grade. underhood never imports aigent, and has
+  no grader of its own.
+
+**Why:** one place per concern. Paid calls stay behind the machinery built to admit them, and a
+fine-tune is scored by the same grader as the agent that uses it.
 
 ## `main` only takes pull requests
 

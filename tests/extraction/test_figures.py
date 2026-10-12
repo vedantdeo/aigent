@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 
 import pytest
@@ -18,12 +17,9 @@ from aigent.extraction.figures import (
     TOOL_RULE,
     Figure,
     Figures,
-    Labelled,
-    check_call,
     figure_messages,
     figures_match,
     parse_figures,
-    transcript,
     unit_key,
 )
 from aigent.retrieval.chunk import squeeze
@@ -261,87 +257,6 @@ def test_no_example_in_the_prompt_comes_from_the_test_set() -> None:
         if shared:
             leaked[case.id] = shared
     assert not leaked, f"the prompt quotes the test set: {leaked}"
-
-
-TABLE = "Revenue (Rs in crore) 2,871.59 1,665.71; margin 7.25%; staff 1,234; (1,554.3) loss; ten"
-
-
-def labelled(
-    value: float,
-    call: str | None,
-    metric: str = "revenue",
-    unit: str | None = "INR",
-    description: str | None = None,
-) -> Labelled:
-    return Labelled(
-        metric=metric, value=value, unit=unit, year=2025, description=description, call=call
-    )
-
-
-@pytest.mark.parametrize(
-    ("label", "ok"),
-    [
-        pytest.param(labelled(28715900000, "2871.59 * 10**7"), True, id="a heading's crore"),
-        pytest.param(labelled(0.0725, "7.25 / 100", "margin", None), True, id="a percentage"),
-        pytest.param(labelled(-15543000000, "-1554.3 * 10**7"), True, id="parentheses, negative"),
-        pytest.param(labelled(1234, None, "employees", None), True, id="printed in full"),
-        pytest.param(labelled(10, None, "other", None, "ten"), True, id="a number word"),
-        pytest.param(labelled(2871590000, "2871.59 * 10**7"), False, id="a call it does not give"),
-        pytest.param(labelled(2871590, "2871.59 * 10**3"), True, id="thousands"),
-        pytest.param(labelled(28715900, "2871.59 * 10**4"), False, id="no such scale"),
-        pytest.param(labelled(99990000000, "9999 * 10**7"), False, id="a number not printed"),
-        pytest.param(labelled(2871.59, None), True, id="the bare cell, unscaled"),
-        pytest.param(labelled(28715900000, None), False, id="scaled with no call"),
-        pytest.param(labelled(28715900000, "2871.59*10**7"), False, id="a call not in the form"),
-        pytest.param(labelled(5, "5 + 0"), False, id="arithmetic that is not scaling"),
-    ],
-)
-def test_check_call(label: Labelled, ok: bool) -> None:
-    assert check_call(label, TABLE) is ok
-
-
-def test_a_transcript_makes_every_call_in_one_turn_then_answers() -> None:
-    labels = [
-        labelled(28715900000, "2871.59 * 10**7"),
-        labelled(0.0725, "7.25 / 100", "margin", None),
-        labelled(1234, None, "employees", None),
-    ]
-
-    messages = transcript(TABLE, "source", "wanted", labels)
-
-    assert messages is not None
-    roles = [m["role"] for m in messages]
-    assert roles == ["system", "user", "assistant", "tool", "tool", "assistant"]
-    sent = json.loads(json.dumps(messages[2]["tool_calls"]))
-    assert [c["function"]["arguments"]["expression"] for c in sent] == [
-        "2871.59 * 10**7",
-        "7.25 / 100",
-    ]
-    assert [m["content"] for m in messages[3:5]] == ["28715900000.0", "0.0725"]
-    final = Figures.model_validate(json.loads(str(messages[-1]["content"]))).figures
-    assert [f.value for f in final] == [28715900000, 0.0725, 1234]
-    assert "call" not in str(messages[-1]["content"]), "the teacher's call is not in the answer"
-
-
-def test_a_transcript_needs_no_tool_turn_when_every_number_is_printed_in_full() -> None:
-    messages = transcript(TABLE, "s", "w", [labelled(1234, None, "employees", None)])
-
-    assert messages is not None
-    assert [m["role"] for m in messages] == ["system", "user", "assistant"]
-
-
-@pytest.mark.parametrize(
-    "label",
-    [
-        pytest.param(labelled(2871590000, "2871.59 * 10**7"), id="a call that fails its check"),
-        pytest.param(
-            labelled(1234, None, "other", None, "staff headcount"), id="a paraphrased description"
-        ),
-        pytest.param(labelled(1234, None, "deposit", None), id="a metric not in the vocabulary"),
-    ],
-)
-def test_a_label_that_fails_a_check_teaches_nothing(label: Labelled) -> None:
-    assert transcript(TABLE, "s", "w", [labelled(1234, None, "employees", None), label]) is None
 
 
 def test_the_prompt_tells_the_model_to_leave_arithmetic_to_the_tool() -> None:

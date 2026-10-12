@@ -19,11 +19,12 @@ from aigent.extraction.figure_training import (
     Questions,
     answer_request,
     ask_request,
-    build,
+    export,
     select,
     source_of,
+    task,
 )
-from aigent.extraction.figures import METRICS, SYSTEM, TOOL, Labelled
+from aigent.extraction.figures import METRICS, SYSTEM, TOOL, Labelled, figure_messages
 from aigent.llm.core import Request
 from aigent.llm.messages import Failed, Parsed, Usage
 from aigent.retrieval.chunk import Chunk
@@ -236,55 +237,21 @@ def test_answering_warms_the_cache_with_the_first_question_then_batches_the_rest
     assert rows[0]["figures"][0]["call"] == "1250 * 10**7" and rows[0]["passage"] == SCALED
 
 
-def _answer(chunk_id: str, question: str, *figures: dict[str, object]) -> str:
-    passage = f"Capex of Rs 1,250 crore, in {chunk_id}"
-    row = {"chunk_id": chunk_id, "source": "Aaa Limited", "passage": passage}
-    return json.dumps(row | {"question": question, "figures": list(figures)})
+def test_the_task_renders_the_user_turn_exactly_as_the_fine_tune_is_asked() -> None:
+    shipped = task()
+    user = str(shipped["user"]).format(source="S {x}", passage="P", wanted="W")
+
+    assert user == figure_messages("P", "S {x}", "W")[1]
+    assert shipped["system"] == SYSTEM and shipped["tool"] == TOOL
+    assert shipped["metrics"] == list(METRICS)
 
 
-GOOD = _taught(12500000000, "1250 * 10**7")
-WRONG = _taught(1250, "1250 * 10**7")
-BROKEN: dict[str, object] = {"metric": "capex", "call": "1250 * 10**7"}
-
-
-def test_build_writes_one_conversation_per_good_answer_and_drops_the_rest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(figure_training, "FIGURE_VALID_FRACTION", 0.5)
+def test_export_hands_underhood_the_answers_and_the_task(tmp_path: Path) -> None:
     answers = tmp_path / "answers.jsonl"
-    answers.write_text(
-        "\n".join(
-            [
-                _answer("AAA#0001", "good", GOOD),
-                _answer("AAA#0001", "a call that does not give the value", WRONG),
-                _answer("AAA#0001", "no figures"),
-                _answer("AAA#0001", "a figure missing fields", BROKEN),
-                _answer("AAA#0002", "good too", GOOD),
-            ]
-        )
-        + "\n"
-    )
+    answers.write_text('{"question": "q1"}\n{"question": "q2"}\n\n')
 
-    built = build(answers, tmp_path / "out", seed=0)
+    sent = export(answers, tmp_path / "out")
 
-    assert (built.train, built.valid, built.dropped) == (1, 1, 3)
-    for name in ("train", "valid"):
-        lines = (tmp_path / "out" / f"{name}.jsonl").read_text().splitlines()
-        rows = [json.loads(x) for x in lines]
-        assert len(rows) == 1 and rows[0]["tools"] == [TOOL]
-        assert rows[0]["messages"][0]["role"] == "system"
-
-
-def test_build_keeps_every_question_of_a_chunk_on_one_side(tmp_path: Path) -> None:
-    answers = tmp_path / "answers.jsonl"
-    rows = [_answer(f"AAA#{i:04d}", q, GOOD) for i in range(20) for q in ("q1", "q2")]
-    answers.write_text("\n".join(rows))
-
-    build(answers, tmp_path / "out", seed=3)
-
-    sides: dict[str, set[str]] = {}
-    for name in ("train", "valid"):
-        for line in (tmp_path / "out" / f"{name}.jsonl").read_text().splitlines():
-            passage = json.loads(line)["messages"][1]["content"].split("<passage>")[1]
-            sides.setdefault(passage, set()).add(name)
-    assert all(len(s) == 1 for s in sides.values())
+    assert sent == 2
+    assert (tmp_path / "out" / "answers.jsonl").read_text() == answers.read_text()
+    assert json.loads((tmp_path / "out" / "task.json").read_text()) == task()

@@ -4,12 +4,20 @@ their figures and for when they called calculate."""
 from __future__ import annotations
 
 import json
+from typing import cast
 
 import pytest
 from pydantic import JsonValue
 
 from aigent.evals.dataset import Case
-from aigent.extraction.figure_eval import export, grade, needs_call
+from aigent.extraction.figure_eval import (
+    census,
+    export,
+    faults,
+    from_conversations,
+    grade,
+    needs_call,
+)
 from aigent.extraction.figures import SYSTEM, TOOL
 
 PASSAGE = "Revenue was Rs 1,250 crore; the company runs 41 plants."
@@ -96,3 +104,157 @@ def test_a_description_not_in_the_passage_fails_the_described_part() -> None:
     graded = grade([_row("fg-2", PLAIN)], {"fg-2": {"final": answer(made_up), "calls": []}})
 
     assert (graded.passed, graded.all_found, graded.described) == (0, 1, 0)
+
+
+SHARE: dict[str, JsonValue] = {
+    "metric": "other",
+    "value": 0.12,
+    "unit": None,
+    "year": None,
+    "description": "share",
+}
+
+
+def _share_row() -> dict[str, JsonValue]:
+    row = _row("fg-p", SHARE)
+    return row | {"passage": "The share rose to 12% in the year."}
+
+
+def said(*figures: dict[str, JsonValue], calls: list[str] | None = None) -> dict[str, JsonValue]:
+    return {"final": answer(*figures), "calls": cast(JsonValue, calls or [])}
+
+
+@pytest.mark.parametrize(
+    ("figure", "prediction", "expected"),
+    [
+        pytest.param(SCALED, said(SCALED, calls=["1250 * 10**7"]), [], id="a perfect answer"),
+        pytest.param(SCALED, said(SCALED), ["no call when needed"], id="right without the call"),
+        pytest.param(
+            PLAIN, said(PLAIN, calls=["41 * 1"]), ["call when not needed"], id="a needless call"
+        ),
+        pytest.param(
+            SCALED,
+            said(SCALED | {"value": 1250000000}, calls=["125 * 10**7"]),
+            ["wrong scale"],
+            id="a power of ten out",
+        ),
+        pytest.param(
+            PLAIN, said(PLAIN | {"metric": "volume", "description": None}), ["metric"], id="metric"
+        ),
+        pytest.param(
+            PLAIN, said(PLAIN | {"unit": "plants"}), ["unit not a currency"], id="a unit not money"
+        ),
+        pytest.param(
+            SCALED,
+            said(SCALED | {"unit": "USD"}, calls=["1250 * 10**7"]),
+            ["unit"],
+            id="the wrong currency",
+        ),
+        pytest.param(PLAIN, said(PLAIN | {"year": 2025}), ["year added"], id="a year added"),
+        pytest.param(
+            SCALED,
+            said(SCALED | {"year": None}, calls=["1250 * 10**7"]),
+            ["year dropped"],
+            id="year dropped",
+        ),
+        pytest.param(
+            SCALED,
+            said(SCALED | {"year": 2024}, calls=["1250 * 10**7"]),
+            ["year wrong"],
+            id="year wrong",
+        ),
+        pytest.param(
+            PLAIN, said(PLAIN | {"description": "factories"}), ["description"], id="description"
+        ),
+        pytest.param(PLAIN, said(), ["missed"], id="nothing found"),
+        pytest.param(
+            SCALED,
+            said(SCALED | {"value": 3000000000}, calls=["300 * 10**7"]),
+            ["missed", "extra"],
+            id="an unrelated number is not a scale slip",
+        ),
+        pytest.param(PLAIN, said(PLAIN, PLAIN | {"value": 7}), ["extra"], id="one too many"),
+        pytest.param(
+            PLAIN,
+            {"final": '{"figures": [{"value": 10**6}]}', "calls": []},
+            ["expression in JSON"],
+            id="expression",
+        ),
+        pytest.param(
+            PLAIN, {"final": "not json", "calls": []}, ["invalid JSON"], id="not JSON at all"
+        ),
+    ],
+)
+def test_faults(
+    figure: dict[str, JsonValue], prediction: dict[str, JsonValue], expected: list[str]
+) -> None:
+    assert faults(_row("fg-x", figure), prediction) == expected
+
+
+def test_a_raw_percentage_is_named_as_such() -> None:
+    found = faults(_share_row(), said(SHARE | {"value": 12}))
+
+    assert found == ["no call when needed", "percentage not converted"]
+
+
+def test_conversations_become_eval_rows_with_their_final_figures_as_the_label() -> None:
+    user = (
+        "<source>Aaa Limited</source>\n<passage>Capex was Rs 5 crore.</passage>\n<wanted>q</wanted>"
+    )
+    conversation: dict[str, JsonValue] = {
+        "messages": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": user},
+            {"role": "assistant", "tool_calls": []},
+            {"role": "tool", "content": "50000000.0"},
+            {"role": "assistant", "content": answer(SCALED)},
+        ],
+        "tools": [TOOL],
+    }
+
+    (row,) = from_conversations([conversation])
+
+    assert row["id"] == "va-0000" and row["passage"] == "Capex was Rs 5 crore."
+    sent = cast(list[JsonValue], conversation["messages"])[:2]
+    assert json.loads(json.dumps(row["messages"])) == sent
+    assert row["expected"] == [SCALED] and row["tools"] == [TOOL]
+    assert "augmented" not in row, "unmarked without the originals"
+
+
+@pytest.mark.parametrize(
+    ("originals", "augmented"),
+    [
+        pytest.param({("Capex was Rs 5 crore.", "q")}, False, id="labelled by hand"),
+        pytest.param({("Capex was Rs 9 crore.", "q")}, True, id="a rewritten copy"),
+    ],
+)
+def test_rows_say_whether_they_are_augmented(
+    originals: set[tuple[str, str]], augmented: bool
+) -> None:
+    user = "<source>A</source>\n<passage>Capex was Rs 5 crore.</passage>\n<wanted>q</wanted>"
+    conversation: dict[str, JsonValue] = {
+        "messages": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": user},
+            {"role": "assistant", "content": answer(SCALED)},
+        ],
+        "tools": [TOOL],
+    }
+
+    (row,) = from_conversations([conversation], "tr", originals)
+
+    assert row["id"] == "tr-0000" and row["augmented"] is augmented
+
+
+def test_census_counts_each_fault_and_a_missing_prediction() -> None:
+    rows = [_row("fg-1", SCALED), _row("fg-2", PLAIN), _row("fg-3", PLAIN)]
+    predictions = {"fg-1": said(SCALED), "fg-2": said(PLAIN | {"year": 2025})}
+
+    counts, each = census(rows, predictions)
+
+    assert counts == {"no call when needed": 1, "year added": 1, "no prediction": 1}
+    assert each == {
+        "fg-1": ["no call when needed"],
+        "fg-2": ["year added"],
+        "fg-3": ["no prediction"],
+    }

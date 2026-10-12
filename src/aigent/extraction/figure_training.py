@@ -1,11 +1,11 @@
 """Training data for the figure fine-tune, in two batches: Claude writes the questions a chunk of a
 training report answers, then answers each with exactly the prompt the fine-tune is trained on.
-`build` writes the answers as tool-use conversations for underhood.
+`export` hands the answers and the task to underhood, which builds the conversations.
 
 uv run python -m aigent.extraction.figure_training ask            # chunks, tokens, worst case
 uv run python -m aigent.extraction.figure_training ask --yes      # send the question batch
 uv run python -m aigent.extraction.figure_training answer --yes   # send the answer batch
-uv run python -m aigent.extraction.figure_training build --out ../underhood/data/figures
+uv run python -m aigent.extraction.figure_training export --out ../underhood/data/figures-v3
 """
 
 from __future__ import annotations
@@ -16,11 +16,10 @@ import random
 import re
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, JsonValue
 
 from aigent.config import (
     CLIENT,
@@ -32,12 +31,11 @@ from aigent.config import (
     FIGURE_LABEL_QUESTIONS,
     FIGURE_LABEL_SCALED_PER_DOC,
     FIGURE_LABEL_SEED,
-    FIGURE_VALID_FRACTION,
     MAX_USD_FIGURE_LABELS,
     THINKING_EVAL_PARAM,
     max_tokens,
 )
-from aigent.extraction.figures import METRICS, TOOL, Labelled, Message, figure_messages, transcript
+from aigent.extraction.figures import METRICS, SYSTEM, TOOL, Labelled, figure_messages
 from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Failed, Parsed
@@ -249,42 +247,21 @@ def answer(args: argparse.Namespace) -> None:
     print(f"answers: {ANSWERS}; spent ${llm.spent_usd:.4f}")
 
 
-@dataclass(frozen=True)
-class Built:
-    """What `build` wrote and what it dropped."""
-
-    train: int
-    valid: int
-    dropped: int
+def task() -> dict[str, JsonValue]:
+    """The task as underhood builds from it: the system prompt, the user turn as a template, the
+    tool and the metric vocabulary."""
+    _, user = figure_messages("{passage}", "{source}", "{wanted}")
+    return {"system": SYSTEM, "user": user, "tool": TOOL, "metrics": list(METRICS)}
 
 
-def build(answers: Path, out_dir: Path, seed: int = FIGURE_LABEL_SEED) -> Built:
-    """Every answered question as a conversation, split by chunk so a passage never sits on both
-    sides. An answer with no figures, a malformed figure or one `transcript` refuses is dropped."""
-    rows = _rows(answers)
-    chunk_ids = sorted({str(row["chunk_id"]) for row in rows})
-    held = set(random.Random(seed).sample(chunk_ids, round(len(chunk_ids) * FIGURE_VALID_FRACTION)))
-    splits: dict[str, list[list[Message]]] = {"train": [], "valid": []}
-    dropped = 0
-    for row in rows:
-        messages: list[Message] | None = None
-        try:
-            figures = [Labelled.model_validate(f) for f in cast(list[object], row["figures"])]
-            if figures:
-                passage, source = str(row["passage"]), str(row["source"])
-                messages = transcript(passage, source, str(row["question"]), figures)
-        except (ValidationError, ValueError):
-            messages = None
-        if not messages:
-            dropped += 1
-            continue
-        splits["valid" if row["chunk_id"] in held else "train"].append(messages)
+def export(answers: Path, out_dir: Path) -> int:
+    """The labelled answers and the task into `out_dir`, for `underhood-tool-data`; how many
+    answers went."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    for name, conversations in splits.items():
-        with (out_dir / f"{name}.jsonl").open("w", encoding="utf-8") as out:
-            for messages in conversations:
-                out.write(json.dumps({"messages": messages, "tools": [TOOL]}) + "\n")
-    return Built(len(splits["train"]), len(splits["valid"]), dropped)
+    rows = answers.read_text(encoding="utf-8")
+    (out_dir / "answers.jsonl").write_text(rows, encoding="utf-8")
+    (out_dir / "task.json").write_text(json.dumps(task(), indent=2, ensure_ascii=False) + "\n")
+    return sum(1 for line in rows.splitlines() if line.strip())
 
 
 def _parse(argv: Sequence[str]) -> argparse.Namespace:
@@ -296,8 +273,8 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         command.add_argument("--client", default=CLIENT, help=f"who is billed (default {CLIENT})")
         if name == "ask":
             command.add_argument("--sample", type=int, metavar="N", help="N chunks, spread out")
-    building = commands.add_parser("build", help="write the answers as training conversations")
-    building.add_argument("--out", type=Path, required=True, help="directory for train/valid")
+    exporting = commands.add_parser("export", help="write the answers and the task for underhood")
+    exporting.add_argument("--out", type=Path, required=True, help="underhood's data directory")
     return parser.parse_args(list(argv))
 
 
@@ -308,8 +285,8 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "answer":
         answer(args)
     else:
-        built = build(ANSWERS, args.out)
-        print(f"{built.train} train, {built.valid} valid, {built.dropped} dropped -> {args.out}")
+        n = export(ANSWERS, args.out)
+        print(f"{n} answers and the task -> {args.out}; build with underhood-tool-data")
 
 
 if __name__ == "__main__":

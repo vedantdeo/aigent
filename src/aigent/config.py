@@ -233,15 +233,14 @@ SYNTHETIC_SEED = 0
 SYNTHETIC_CLIENT = "local-1.7b"
 
 # The figure fine-tune's training labels (extraction.figure_training): chunks per training report
-# naming a core metric, stating a scaled figure, and a plain one; questions per chunk; the split;
-# and the ceiling on each batch.
+# naming a core metric, stating a scaled figure, and a plain one; questions per chunk; and the
+# ceiling on each batch.
 FIGURE_LABEL_CORE_PER_DOC = 60
 FIGURE_LABEL_SCALED_PER_DOC = 50
 FIGURE_LABEL_PLAIN_PER_DOC = 30
 FIGURE_LABEL_QUESTIONS = 3
 FIGURE_LABEL_SEED = 0
 FIGURE_LABEL_MODEL = "claude-sonnet-5"
-FIGURE_VALID_FRACTION = 0.1
 MAX_USD_FIGURE_LABELS = 9.00
 # The answer batch goes in slices held under the ceiling. Its system prompt is cached for five
 # minutes, renewed by each read, and written by one ordinary call first, since a batch starts all

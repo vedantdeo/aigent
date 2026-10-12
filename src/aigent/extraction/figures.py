@@ -3,7 +3,7 @@ states that answer what is wanted, as records.
 
 The training rows, the eval and the tool all build their prompt with `figure_messages`, so the
 fine-tune is taught exactly what it is later asked. The model applies scales and percentages by
-calling `calculate`, and `transcript` writes the conversations that teach it to.
+calling `calculate`; underhood's `tooldata` writes the conversations that teach it to.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Sequence
 from pathlib import Path
 
 from pydantic import BaseModel, Field, JsonValue, ValidationError
@@ -19,7 +18,7 @@ from pydantic import BaseModel, Field, JsonValue, ValidationError
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Outcome, Score
 from aigent.retrieval.chunk import squeeze
-from aigent.tools import CALCULATOR_TOOL, calculate
+from aigent.tools import CALCULATOR_TOOL
 
 DATASET = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figures.jsonl"
 CURRENCIES = ("INR", "USD", "AUD", "EUR", "GBP")
@@ -55,7 +54,8 @@ class Figure(BaseModel):
             "per share; profit is profit after tax, or before tax when no other is stated; "
             "revenue is revenue from operations, sales or turnover; debt includes borrowings and "
             "loan facilities; volume is units sold or produced, tonnes or capacity; customers "
-            "includes subscribers and users. other is any figure the rest do not name."
+            "includes subscribers and users. A growth rate or other change is other unless it "
+            "is a margin or market share. other is any figure the rest do not name."
         )
     )
     value: float = Field(
@@ -65,7 +65,8 @@ class Figure(BaseModel):
             "123456789; a percentage as a fraction, '50%' is 0.5 and '7.25%' is 0.0725; 'over "
             "80' is 80, '60+' is 60, 'eight' is 8. A table heading such as '(Rs in crore)' "
             "scales every number under it. Negative only when printed so, with a minus sign or "
-            "in parentheses; a fall stated in words stays positive."
+            "in parentheses; a fall stated in words stays positive. Always a plain number, never "
+            "an expression such as 10**6: an expression goes to calculate, its result here."
         )
     )
     unit: str | None = Field(
@@ -76,9 +77,13 @@ class Figure(BaseModel):
     )
     year: int | None = Field(
         description=(
-            "The year the figure's period ends, when the passage states or dates it: 2025 for "
-            "FY 2024-25, for 'during the year' in a 2024-25 report, or as at 31 March 2025; "
-            "2024 for calendar 2024. Null for 'till date', 'since inception' or no period."
+            "The Indian financial year (April to March) the figure belongs to, as the year it "
+            "ends, when the passage states or dates it: 2025 for FY 2024-25, for 'during the "
+            "year' in a 2024-25 report, for as at 31 March 2025, or for an event on 20 June "
+            "2024. A bare calendar year the report presents as current takes the report's "
+            "year: an award won in 2023, in a 2023-24 report, is 2024. Null for a cumulative or "
+            "'till date' total, 'since inception', a duration such as a three-year term, a year "
+            "that only names something such as Vision 2030, or no period."
         )
     )
     description: str | None = Field(
@@ -96,8 +101,9 @@ class Figures(BaseModel):
 
     figures: list[Figure] = Field(
         description=(
-            "Every figure in the passage that answers what is wanted, in the order it appears; "
-            "empty when none does."
+            "Every figure in the passage that answers what is wanted, in the order it appears, "
+            "a rate of change beside the amount it describes included; empty when none does. On "
+            "a highlights page a number usually sits on the line above its label."
         )
     )
 
@@ -110,7 +116,8 @@ def _rules() -> str:
 TOOL_RULE = (
     "Do no arithmetic yourself. When an amount carries a scale (thousand, lakh, crore, million, "
     "billion), beside it or in a table heading, or is a percentage, call calculate with the "
-    "number as printed times its scale, or over 100, and copy the result into value. A number "
+    "number as printed times its scale, or over 100, and copy the result into value. Every "
+    "percentage takes a call: '18%' is calculate('18 / 100') and value 0.18, never 18. A number "
     "already printed in full needs no call."
 )
 
@@ -219,8 +226,6 @@ class Labelled(Figure):
     )
 
 
-_CALL = re.compile(r"(-?\d+(?:\.\d+)?) (?:\* 10\*\*(\d+)|/ 100)")
-_POWERS = {3, 5, 6, 7, 9, 12}
 _PRINTED = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _NUMBER_WORDS = {
     name: i
@@ -235,57 +240,3 @@ def _printed(passage: str) -> set[float]:
     numbers = {float(n.replace(",", "")) for n in _PRINTED.findall(passage)}
     words = {float(v) for w, v in _NUMBER_WORDS.items() if re.search(rf"\b{w}\b", passage, re.I)}
     return numbers | words
-
-
-def check_call(label: Labelled, passage: str) -> bool:
-    """Whether a label's value is the passage's own number, scaled by a real scale or made a
-    fraction by its call, and the call gives that value."""
-    if label.call is None:
-        return abs(label.value) in _printed(passage)
-    match = _CALL.fullmatch(label.call.strip())
-    if match is None or (match.group(2) is not None and int(match.group(2)) not in _POWERS):
-        return False
-    if abs(float(match.group(1))) not in _printed(passage):
-        return False
-    return math.isclose(calculate(label.call), label.value, rel_tol=1e-9, abs_tol=1e-12)
-
-
-Message = dict[str, JsonValue]
-
-
-def transcript(
-    passage: str, source: str, wanted: str, labels: Sequence[Labelled]
-) -> list[Message] | None:
-    """The conversation that teaches one question: the prompt, one turn making every calculate
-    call the figures need, the results, then the figures. None when any label fails `check_call`,
-    carries a description the passage does not contain, or names a metric not in `METRICS`."""
-    if not all(check_call(label, passage) and _described(label, passage) for label in labels):
-        return None
-    if any(label.metric not in METRICS for label in labels):
-        return None
-    calls = [label.call for label in labels if label.call is not None]
-    figures: list[JsonValue] = [label.model_dump(exclude={"call"}) for label in labels]
-    system, user = figure_messages(passage, source, wanted)
-    messages: list[Message] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
-    if calls:
-        messages.append(
-            {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "type": "function",
-                        "function": {"name": "calculate", "arguments": {"expression": c}},
-                    }
-                    for c in calls
-                ],
-            }
-        )
-        results: list[Message] = [
-            {"role": "tool", "name": "calculate", "content": str(calculate(c))} for c in calls
-        ]
-        messages.extend(results)
-    messages.append({"role": "assistant", "content": json.dumps({"figures": figures})})
-    return messages
