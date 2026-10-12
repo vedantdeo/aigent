@@ -38,7 +38,7 @@ from aigent.evals.grade import (
 from aigent.evals.report import write_report
 from aigent.evals.runner import EvalRun, Task, combine, run_eval
 from aigent.retrieval.chunk import Document, Inventory, Splitter, by_sentence, fixed
-from aigent.retrieval.corpus import load_corpus
+from aigent.retrieval.corpus import FY25_REPORTS, load_corpus
 from aigent.retrieval.dense import DenseIndex
 from aigent.retrieval.embed import Embedder, LocalEmbedder, Vectors
 from aigent.retrieval.hits import rank_ids
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> None:
 
     cases = load_jsonl(args.dataset)
     started = time.perf_counter()
-    documents = load_corpus(cache=args.cache)
+    documents = load_corpus(cache=args.cache, doc_ids=FY25_REPORTS)
     print(f"{args.dataset.name}: {len(cases)} cases over {len(documents)} documents")
 
     embedder: Embedder = LocalEmbedder()

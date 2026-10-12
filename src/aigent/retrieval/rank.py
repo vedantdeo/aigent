@@ -7,7 +7,7 @@ indexes are built once, in `Indexes`, and shared: embedding the corpus is the sl
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -31,11 +31,14 @@ METHODS = (
     "hybrid+rerank",
 )
 
+# One report by id, several, or every report when None.
+Scope = str | Collection[str] | None
+
 
 class Ranker(Protocol):
     """Anything that ranks an inventory's chunks for a query, best first."""
 
-    def rank(self, query: str, k: int = TOP_K, *, doc_id: str | None = None) -> list[Hit]: ...
+    def rank(self, query: str, k: int = TOP_K, *, doc_id: Scope = None) -> list[Hit]: ...
 
 
 @dataclass(frozen=True)
@@ -60,15 +63,16 @@ class Indexes:
 
 
 def _scoped(
-    search: Callable[[int], list[Hit]], k: int, doc_id: str | None, inventory: Inventory
+    search: Callable[[int], list[Hit]], k: int, doc_id: Scope, inventory: Inventory
 ) -> list[Hit]:
-    """`search`'s best `k`, or with `doc_id` the best `k` from that report alone."""
+    """`search`'s best `k`, or with `doc_id` the best `k` from that report or reports alone."""
     if doc_id is None:
         return search(k)
+    wanted = {doc_id} if isinstance(doc_id, str) else set(doc_id)
     # Rank everything and drop the other reports: the global top k filtered by report comes back
     # empty for a report that ranks low overall.
     everything = search(max(len(inventory), 1))
-    return [hit for hit in everything if inventory.by_id[hit.chunk_id].doc_id == doc_id][:k]
+    return [hit for hit in everything if inventory.by_id[hit.chunk_id].doc_id in wanted][:k]
 
 
 @dataclass(frozen=True)
@@ -77,7 +81,7 @@ class DenseRanker:
 
     indexes: Indexes
 
-    def rank(self, query: str, k: int = TOP_K, *, doc_id: str | None = None) -> list[Hit]:
+    def rank(self, query: str, k: int = TOP_K, *, doc_id: Scope = None) -> list[Hit]:
         vector = self.indexes.embedder.embed_query(query)
         dense = self.indexes.dense
         return _scoped(lambda n: dense.search(vector, k=n), k, doc_id, self.indexes.inventory)
@@ -89,7 +93,7 @@ class SparseRanker:
 
     indexes: Indexes
 
-    def rank(self, query: str, k: int = TOP_K, *, doc_id: str | None = None) -> list[Hit]:
+    def rank(self, query: str, k: int = TOP_K, *, doc_id: Scope = None) -> list[Hit]:
         sparse = self.indexes.sparse
         return _scoped(lambda n: sparse.search(query, k=n), k, doc_id, self.indexes.inventory)
 
@@ -105,7 +109,7 @@ class HybridRanker:
     sparse: Ranker
     depth: int = FUSE_DEPTH
 
-    def rank(self, query: str, k: int = TOP_K, *, doc_id: str | None = None) -> list[Hit]:
+    def rank(self, query: str, k: int = TOP_K, *, doc_id: Scope = None) -> list[Hit]:
         rankings = [
             rank_ids(self.dense.rank(query, self.depth, doc_id=doc_id)),
             rank_ids(self.sparse.rank(query, self.depth, doc_id=doc_id)),
@@ -125,7 +129,7 @@ class Reranked:
     inventory: Inventory
     candidates: int = RERANK_CANDIDATES
 
-    def rank(self, query: str, k: int = TOP_K, *, doc_id: str | None = None) -> list[Hit]:
+    def rank(self, query: str, k: int = TOP_K, *, doc_id: Scope = None) -> list[Hit]:
         hits = self.base.rank(query, self.candidates, doc_id=doc_id)
         texts = [self.inventory.by_id[hit.chunk_id].text for hit in hits]
         return rerank(self.reranker, query, hits, texts, k=k)

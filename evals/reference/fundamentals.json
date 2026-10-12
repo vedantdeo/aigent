@@ -1,0 +1,215 @@
+{
+  "_about": "A frozen fundamentals table for the capstone's `fundamentals` tool: consolidated figures from each year's own annual report, as originally reported. revenue is revenue from operations, profit is profit attributable to the parent's owners, eps is basic EPS, dividend is the year's total per share (interim and final). Values in full rupees, rupees per share for eps and dividend; `page` is the PDF page in `doc_id`, so an answer can be cited like a passage. Sorted by ticker, then year, then metric.",
+  "fundamentals": {
+    "ITC": {
+      "2024": {
+        "dividend": {
+          "value": 13.75,
+          "unit": "INR",
+          "printed": "13.75 per share (Interim 6.25 + Final 7.50)",
+          "doc_id": "ITC-FY24",
+          "page": 72,
+          "note": "the year's total: interim and final"
+        },
+        "eps": {
+          "value": 16.42,
+          "unit": "INR",
+          "printed": "Basic 16.42",
+          "doc_id": "ITC-FY24",
+          "page": 289,
+          "note": null
+        },
+        "profit": {
+          "value": 204587800000,
+          "unit": "INR",
+          "printed": "20458.78 crore, attributable to owners of the parent",
+          "doc_id": "ITC-FY24",
+          "page": 289,
+          "note": null
+        },
+        "revenue": {
+          "value": 768404900000,
+          "unit": "INR",
+          "printed": "Revenue From Operations 76840.49 crore",
+          "doc_id": "ITC-FY24",
+          "page": 289,
+          "note": "as reported in FY24; the FY25 report restates FY24 for the ITC Hotels demerger"
+        }
+      },
+      "2025": {
+        "dividend": {
+          "value": 14.35,
+          "unit": "INR",
+          "printed": "14.35 per share (Final 7.85 + Interim 6.50)",
+          "doc_id": "ITC-FY25",
+          "page": 51,
+          "note": "the year's total: interim and final"
+        },
+        "eps": {
+          "value": 27.79,
+          "unit": "INR",
+          "printed": "Basic 27.79",
+          "doc_id": "ITC-FY25",
+          "page": 251,
+          "note": "continuing and discontinued operations; 15.78 from continuing operations alone"
+        },
+        "profit": {
+          "value": 347466300000,
+          "unit": "INR",
+          "printed": "34746.63 crore, attributable to owners of the parent",
+          "doc_id": "ITC-FY25",
+          "page": 251,
+          "note": "includes the one-off gain on the ITC Hotels demerger, a discontinued operation"
+        },
+        "revenue": {
+          "value": 816127800000,
+          "unit": "INR",
+          "printed": "Revenue From Operations 81612.78 crore",
+          "doc_id": "ITC-FY25",
+          "page": 251,
+          "note": "continuing operations; ITC Hotels is discontinued"
+        }
+      }
+    },
+    "RELIANCE": {
+      "2024": {
+        "dividend": {
+          "value": 10.0,
+          "unit": "INR",
+          "printed": "10 per equity share of 10",
+          "doc_id": "RELIANCE-FY24",
+          "page": 49,
+          "note": null
+        },
+        "eps": {
+          "value": 102.9,
+          "unit": "INR",
+          "printed": "Basic 102.90",
+          "doc_id": "RELIANCE-FY24",
+          "page": 111,
+          "note": null
+        },
+        "profit": {
+          "value": 696210000000,
+          "unit": "INR",
+          "printed": "69,621 crore, attributable to owners of the Company",
+          "doc_id": "RELIANCE-FY24",
+          "page": 111,
+          "note": null
+        },
+        "revenue": {
+          "value": 9144720000000,
+          "unit": "INR",
+          "printed": "Revenue from Operations 9,14,472 crore",
+          "doc_id": "RELIANCE-FY24",
+          "page": 111,
+          "note": null
+        }
+      },
+      "2025": {
+        "dividend": {
+          "value": 5.5,
+          "unit": "INR",
+          "printed": "5.50 per equity share of 10",
+          "doc_id": "RELIANCE-FY25",
+          "page": 40,
+          "note": "on the share count doubled by the 1:1 bonus issue"
+        },
+        "eps": {
+          "value": 51.47,
+          "unit": "INR",
+          "printed": "Basic 51.47",
+          "doc_id": "RELIANCE-FY25",
+          "page": 100,
+          "note": "on the share count doubled by the 1:1 bonus issue"
+        },
+        "profit": {
+          "value": 696480000000,
+          "unit": "INR",
+          "printed": "69,648 crore, attributable to owners of the Company",
+          "doc_id": "RELIANCE-FY25",
+          "page": 100,
+          "note": null
+        },
+        "revenue": {
+          "value": 9801360000000,
+          "unit": "INR",
+          "printed": "Revenue from Operations 9,80,136 crore",
+          "doc_id": "RELIANCE-FY25",
+          "page": 100,
+          "note": null
+        }
+      }
+    },
+    "TATAMOTORS": {
+      "2024": {
+        "dividend": {
+          "value": 6.0,
+          "unit": "INR",
+          "printed": "Final 3 + Special 3 per ordinary share",
+          "doc_id": "TATAMOTORS-FY24",
+          "page": 9,
+          "note": "ordinary shares; DVR holders were paid 3.10 + 3.10"
+        },
+        "eps": {
+          "value": 81.95,
+          "unit": "INR",
+          "printed": "Basic EPS 81.95 (ordinary shares)",
+          "doc_id": "TATAMOTORS-FY24",
+          "page": 281,
+          "note": null
+        },
+        "profit": {
+          "value": 313990900000,
+          "unit": "INR",
+          "printed": "31,399.09 crore, attributable to shareholders of the Company",
+          "doc_id": "TATAMOTORS-FY24",
+          "page": 281,
+          "note": null
+        },
+        "revenue": {
+          "value": 4379277700000,
+          "unit": "INR",
+          "printed": "Total revenue from operations 437,927.77 crore",
+          "doc_id": "TATAMOTORS-FY24",
+          "page": 281,
+          "note": null
+        }
+      },
+      "2025": {
+        "dividend": {
+          "value": 6.0,
+          "unit": "INR",
+          "printed": "Final 6 per ordinary share",
+          "doc_id": "TATAMOTORS-FY25",
+          "page": 11,
+          "note": null
+        },
+        "eps": {
+          "value": 78.8,
+          "unit": "INR",
+          "printed": "Basic EPS 78.80 (ordinary shares)",
+          "doc_id": "TATAMOTORS-FY25",
+          "page": 314,
+          "note": "continuing and discontinued operations"
+        },
+        "profit": {
+          "value": 278300000000,
+          "unit": "INR",
+          "printed": "27,830 crore, attributable to shareholders of the Company",
+          "doc_id": "TATAMOTORS-FY25",
+          "page": 313,
+          "note": null
+        },
+        "revenue": {
+          "value": 4396950000000,
+          "unit": "INR",
+          "printed": "Total revenue from operations 4,39,695 crore",
+          "doc_id": "TATAMOTORS-FY25",
+          "page": 313,
+          "note": null
+        }
+      }
+    }
+  }
+}

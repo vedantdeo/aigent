@@ -8,16 +8,16 @@ from typing import Literal, Protocol, cast
 
 from aigent.config import SEARCH_METHOD
 from aigent.retrieval.chunk import Chunk, Inventory, by_sentence
-from aigent.retrieval.corpus import MANIFEST, load_corpus
+from aigent.retrieval.corpus import FY25_REPORTS, MANIFEST, load_corpus
 from aigent.retrieval.rank import Indexes, build_ranker
 
-# As a schema field, this holds the model to a real report. A test holds it to the manifest.
+# As a schema field, this holds the model to a real report. A test holds it to FY25_REPORTS.
 DocId = Literal["ITC-FY25", "RELIANCE-FY25", "TATAMOTORS-FY25"]
 
 _DOCUMENTS = cast(
     dict[str, dict[str, object]], json.loads(MANIFEST.read_text(encoding="utf-8"))["documents"]
 )
-REPORTS: dict[str, str] = {doc_id: str(entry["company"]) for doc_id, entry in _DOCUMENTS.items()}
+REPORTS: dict[str, str] = {doc_id: str(_DOCUMENTS[doc_id]["company"]) for doc_id in FY25_REPORTS}
 CATALOGUE = "\n".join(f"- {doc_id}: {company}" for doc_id, company in REPORTS.items())
 
 
@@ -29,7 +29,9 @@ class Search(Protocol):
 
 def build_search(cache: bool) -> Search:
     """Chunk, embed and index the corpus once; passages come back by `SEARCH_METHOD`."""
-    inventory = Inventory.build("by_sentence", load_corpus(cache=cache), by_sentence())
+    inventory = Inventory.build(
+        "by_sentence", load_corpus(cache=cache, doc_ids=FY25_REPORTS), by_sentence()
+    )
     ranker = build_ranker(SEARCH_METHOD, Indexes.build(inventory, cache=cache))
     one_at_a_time = threading.Lock()  # torch on MPS is not safe across threads
 

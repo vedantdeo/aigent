@@ -13,7 +13,7 @@ import json
 import re
 import unicodedata
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 from pypdf import PdfReader
@@ -32,6 +32,9 @@ CACHE_DIR = CORPUS_DIR / ".cache"
 TRAINING_DIR = CORPUS_DIR / "training"  # the fine-tune's reports; load_corpus never reads it
 MANIFEST = REPO / "evals" / "reference" / "corpus-manifest.json"
 TRAINING_MANIFEST = MANIFEST.with_name("training-manifest.json")  # never retrieved over
+# The reports the published retrieval, RAG and agent numbers were measured over; the capstone reads
+# the FY24 reports beside them.
+FY25_REPORTS = ("ITC-FY25", "RELIANCE-FY25", "TATAMOTORS-FY25")
 
 _HYPHENATED_BREAK = re.compile(r"(\w)-\n(\w)")
 _RUN_OF_SPACES = re.compile(r" {2,}")
@@ -202,8 +205,11 @@ def load_pdf_cached(path: Path, doc_id: str | None = None, cache_dir: Path = CAC
     return document
 
 
-def load_corpus(directory: Path = CORPUS_DIR, *, cache: bool = False) -> list[Document]:
-    """Every PDF directly in a directory, in filename order, so two runs build the same chunk ids.
+def load_corpus(
+    directory: Path = CORPUS_DIR, *, cache: bool = False, doc_ids: Collection[str] | None = None
+) -> list[Document]:
+    """Every PDF directly in a directory, or just the `doc_ids` named, in filename order, so two
+    runs build the same chunk ids. A named report that is not there raises.
 
     A directory with no PDFs raises rather than returning nothing: an empty corpus scores zero
     recall on every question and looks like a bad retriever.
@@ -214,5 +220,10 @@ def load_corpus(directory: Path = CORPUS_DIR, *, cache: bool = False) -> list[Do
     paths = sorted(directory.glob("*.pdf"))
     if not paths:
         raise ValueError(f"no PDFs in {directory} — run ./scripts/fetch-corpus.sh to download them")
+    if doc_ids is not None:
+        missing = sorted(set(doc_ids) - {path.stem for path in paths})
+        if missing:
+            raise ValueError(f"{missing} not in {directory} — run ./scripts/fetch-corpus.sh")
+        paths = [path for path in paths if path.stem in doc_ids]
     read = load_pdf_cached if cache else load_pdf
     return [read(path) for path in paths]

@@ -65,7 +65,7 @@ says*.
 | Tool | Signature | Source | New or reused |
 |---|---|---|---|
 | `search_filings` | `(query, company="all", year="all") -> passages` | `report_tools.ReportSearch` over the six-report inventory | Reused; gains a `year` scope beside `report` |
-| `fundamentals` | `(ticker, metric, year) -> value, unit, source` | `evals/reference/fundamentals.json`: revenue, profit, EPS, dividend per share, segment margins, and a closing price on one dated day, each with the page it came from | New |
+| `fundamentals` | `(ticker, metric, year) -> value, unit, source` | `evals/reference/fundamentals.json`: revenue, profit, EPS and dividend per share, consolidated and as originally reported, each with the page it came from (built 2026-10-12; segment margins and a share price left out until a task needs them) | New |
 | `calculate` | `(expression) -> number` | `tools.calculate` | Reused as is |
 | `extract_figures` | `(chunk_ids, wanted) -> [Figure]` | A structured call over the cited chunks, returning `{metric, value, unit, year, chunk_id}` | New; the local model's role |
 
@@ -208,8 +208,9 @@ paid eval stays a deliberate, by-hand run.
 
 **Week 6, end to end, ugly is fine:**
 
-1. FY24 reports into the manifest and the inventory; `search_filings` with a year scope; the
-   fundamentals table and its sort test.
+1. ~~FY24 reports into the manifest and the inventory; `search_filings` with a year scope; the
+   fundamentals table and its sort test.~~ Done 2026-10-12: `analyst.filings`, `analyst.fundamentals`;
+   the published evals keep reading the FY25 reports (`FY25_REPORTS`).
 2. The graph with the four agents as stubs that pass typed state, and the human gate with a
    checkpointer, tested before any prompt is written.
 3. The real prompts, one agent at a time, each on a handful of tasks.

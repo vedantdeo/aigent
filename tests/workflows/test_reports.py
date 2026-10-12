@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from aigent.retrieval.chunk import Chunk
+from aigent.retrieval.corpus import FY25_REPORTS
 from aigent.retrieval.hits import Hit
 from aigent.workflows import reports
 
@@ -30,6 +31,7 @@ class _Ranker:
     inside: int = 0
     most_inside: int = 0
     asked: list[tuple[str, str | None]] = field(default_factory=list[tuple[str, str | None]])
+    loaded: list[object] = field(default_factory=list[object])
 
     def rank(self, query: str, doc_id: str | None = None) -> list[Hit]:
         self.inside += 1
@@ -44,7 +46,9 @@ class _Ranker:
 @pytest.fixture
 def ranker(monkeypatch: pytest.MonkeyPatch) -> _Ranker:
     built = _Ranker()
-    monkeypatch.setattr(reports, "load_corpus", lambda cache: [])
+    monkeypatch.setattr(
+        reports, "load_corpus", lambda cache, doc_ids: built.loaded.append(doc_ids) or []
+    )
     monkeypatch.setattr(reports.Inventory, "build", lambda *args: _Inventory())
     monkeypatch.setattr(reports.Indexes, "build", lambda *args, **kwargs: None)
     monkeypatch.setattr(reports, "build_ranker", lambda method, indexes: built)
@@ -58,6 +62,7 @@ def test_search_returns_the_ranked_passages_scoped_as_asked(ranker: _Ranker) -> 
     assert search("dividend") == list(CHUNKS.values())
     assert search("dividend", doc_id=doc_id) == PASSAGES[doc_id]
     assert ranker.asked == [("dividend", None), ("dividend", doc_id)]
+    assert ranker.loaded == [FY25_REPORTS], "the agents search the reports their numbers came from"
 
 
 def test_concurrent_searches_rank_one_at_a_time(ranker: _Ranker) -> None:
