@@ -248,14 +248,29 @@ def test_the_task_renders_the_user_turn_exactly_as_the_fine_tune_is_asked() -> N
     assert shipped["change"] == "change"
 
 
-def test_export_hands_underhood_the_answers_and_the_task(tmp_path: Path) -> None:
+def test_export_hands_underhood_the_answers_and_the_task_with_overrides_applied(
+    tmp_path: Path,
+) -> None:
     answers = tmp_path / "answers.jsonl"
-    answers.write_text('{"question": "q1"}\n{"question": "q2"}\n\n')
+    rows = [
+        {"chunk_id": "A#1", "question": "q1", "figures": [{"teacher": 1}]},
+        {"chunk_id": "A#1", "question": "q2", "figures": [{"teacher": 2}]},
+    ]
+    answers.write_text("".join(json.dumps(r) + "\n" for r in rows) + "\n")
+    adjudications = tmp_path / "adjudications.jsonl"
+    adjudications.write_text(
+        "// a comment\n"
+        + json.dumps({"id": "va-1", "chunk_id": "A#1", "question": "q2", "answer": [{"hand": 2}]})
+        + "\n"
+        + json.dumps({"id": "va-2", "chunk_id": "A#1", "question": "q1", "verdict": "label"})
+        + "\n"
+    )
 
-    sent = export(answers, tmp_path / "out")
+    sent, overridden = export(answers, tmp_path / "out", adjudications)
 
-    assert sent == 2
-    assert (tmp_path / "out" / "answers.jsonl").read_text() == answers.read_text()
+    assert (sent, overridden) == (2, 1)
+    out = [json.loads(x) for x in (tmp_path / "out" / "answers.jsonl").read_text().splitlines()]
+    assert [r["figures"] for r in out] == [[{"teacher": 1}], [{"hand": 2}]]
     assert json.loads((tmp_path / "out" / "task.json").read_text()) == task()
 
 

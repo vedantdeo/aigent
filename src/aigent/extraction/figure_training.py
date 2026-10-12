@@ -53,6 +53,9 @@ from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
 
 QUESTIONS = TRAINING_DIR / "figure-questions.jsonl"
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"
+ADJUDICATIONS = (
+    Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figure-adjudications.jsonl"
+)
 _CORE = re.compile(
     r"\b(revenue|turnover|ebitda|profit after tax|net profit|earnings per share|eps|dividend|"
     r"margin|borrowings|net debt|capital expenditure|capex|cash flow)\b",
@@ -288,14 +291,26 @@ def task() -> dict[str, JsonValue]:
     }
 
 
-def export(answers: Path, out_dir: Path) -> int:
-    """The labelled answers and the task into `out_dir`, for `underhood-tool-data`; how many
-    answers went."""
+def export(answers: Path, out_dir: Path, adjudications: Path = ADJUDICATIONS) -> tuple[int, int]:
+    """The labelled answers, with each hand-written `answer` in `adjudications` swapped in for its
+    (chunk_id, question), and the task into `out_dir` for `underhood-tool-data`; how many answers
+    went and how many were overridden."""
+    lines = adjudications.read_text(encoding="utf-8").splitlines()
+    rulings = [json.loads(x) for x in lines if x.startswith("{")]
+    written = {_key(r): r["answer"] for r in rulings if "answer" in r}
+    rows: list[dict[str, object]] = []
+    overridden = 0
+    for row in _rows(answers):
+        if _key(row) in written:
+            row = row | {"figures": written[_key(row)]}
+            overridden += 1
+        rows.append(row)
     out_dir.mkdir(parents=True, exist_ok=True)
-    rows = answers.read_text(encoding="utf-8")
-    (out_dir / "answers.jsonl").write_text(rows, encoding="utf-8")
+    (out_dir / "answers.jsonl").write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
+    )
     (out_dir / "task.json").write_text(json.dumps(task(), indent=2, ensure_ascii=False) + "\n")
-    return sum(1 for line in rows.splitlines() if line.strip())
+    return len(rows), overridden
 
 
 def _parse(argv: Sequence[str]) -> argparse.Namespace:
@@ -323,8 +338,8 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "answer":
         answer(args)
     else:
-        n = export(ANSWERS, args.out)
-        print(f"{n} answers and the task -> {args.out}; build with underhood-tool-data")
+        n, overridden = export(ANSWERS, args.out)
+        print(f"{n} answers ({overridden} overridden by hand) and the task -> {args.out}")
 
 
 if __name__ == "__main__":
