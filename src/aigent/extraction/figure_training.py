@@ -35,7 +35,15 @@ from aigent.config import (
     THINKING_EVAL_PARAM,
     max_tokens,
 )
-from aigent.extraction.figures import METRICS, SYSTEM, TOOL, Labelled, figure_messages
+from aigent.extraction.figures import (
+    CHANGE,
+    METRICS,
+    RATE_METRICS,
+    SYSTEM,
+    TOOL,
+    Labelled,
+    figure_messages,
+)
 from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Failed, Parsed
@@ -45,6 +53,9 @@ from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
 
 QUESTIONS = TRAINING_DIR / "figure-questions.jsonl"
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"
+ADJUDICATIONS = (
+    Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figure-adjudications.jsonl"
+)
 _CORE = re.compile(
     r"\b(revenue|turnover|ebitda|profit after tax|net profit|earnings per share|eps|dividend|"
     r"margin|borrowings|net debt|capital expenditure|capex|cash flow)\b",
@@ -213,13 +224,28 @@ def ask(args: argparse.Namespace) -> None:
     print(f"questions: {QUESTIONS}; spent ${llm.spent_usd:.4f}")
 
 
+def _key(row: dict[str, object]) -> tuple[str, str]:
+    return str(row["chunk_id"]), str(row["question"])
+
+
+def _merged(
+    old: Sequence[dict[str, object]], fresh: dict[tuple[str, str], dict[str, object]]
+) -> list[dict[str, object]]:
+    """The old answers in their order, each replaced by its fresh one where there is one."""
+    return [fresh.get(_key(row), row) for row in old]
+
+
 def answer(args: argparse.Namespace) -> None:
     """One request per question: price them, and with `--yes` send the first as an ordinary call,
-    which writes the cached prompt, then the rest as a batch in slices that can read it."""
+    which writes the cached prompt, then the rest as a batch in slices that can read it. With
+    `--only`, just the (chunk_id, question) pairs it lists, merged into the answers already there;
+    a listed question whose relabel fails keeps its old answer."""
+    only = None if args.only is None else {_key(r) for r in _rows(args.only)}
     asked = [
         (row, str(question))
         for row in _rows(QUESTIONS)
         for question in cast(list[str], row["questions"])
+        if only is None or (str(row["chunk_id"]), str(question)) in only
     ]
     llm = _llm(args.client)
     cap = max_tokens("FIGURE_ANSWER", spec(llm.client))
@@ -237,31 +263,54 @@ def answer(args: argparse.Namespace) -> None:
     batched = [r for r in results[1:] if isinstance(r, Parsed)]
     hits = sum(1 for r in batched if r.usage.cache_read_tokens)
     print(f"cache read by {hits} of {len(batched)} batched answers")
+    fresh: dict[tuple[str, str], dict[str, object]] = {}
+    for (row, question), result in zip(asked, results, strict=True):
+        if isinstance(result, Failed) or result.parsed is None:
+            continue
+        kept = {k: row[k] for k in ("chunk_id", "source", "passage")}
+        figures = result.parsed.model_dump()["figures"]
+        fresh[(str(row["chunk_id"]), question)] = kept | {"question": question, "figures": figures}
+    rows = list(fresh.values()) if only is None else _merged(_rows(ANSWERS), fresh)
     with ANSWERS.open("w", encoding="utf-8") as out:
-        for (row, question), result in zip(asked, results, strict=True):
-            if isinstance(result, Failed) or result.parsed is None:
-                continue
-            kept = {k: row[k] for k in ("chunk_id", "source", "passage")}
-            figures = result.parsed.model_dump()["figures"]
-            out.write(json.dumps(kept | {"question": question, "figures": figures}) + "\n")
+        for answered in rows:
+            out.write(json.dumps(answered) + "\n")
     print(f"answers: {ANSWERS}; spent ${llm.spent_usd:.4f}")
 
 
 def task() -> dict[str, JsonValue]:
     """The task as underhood builds from it: the system prompt, the user turn as a template, the
-    tool and the metric vocabulary."""
+    tool, the metric vocabulary, the metrics a percentage may be, and the word for a change."""
     _, user = figure_messages("{passage}", "{source}", "{wanted}")
-    return {"system": SYSTEM, "user": user, "tool": TOOL, "metrics": list(METRICS)}
+    return {
+        "system": SYSTEM,
+        "user": user,
+        "tool": TOOL,
+        "metrics": list(METRICS),
+        "rate_metrics": list(RATE_METRICS),
+        "change": CHANGE,
+    }
 
 
-def export(answers: Path, out_dir: Path) -> int:
-    """The labelled answers and the task into `out_dir`, for `underhood-tool-data`; how many
-    answers went."""
+def export(answers: Path, out_dir: Path, adjudications: Path = ADJUDICATIONS) -> tuple[int, int]:
+    """The labelled answers, with each hand-written `answer` in `adjudications` swapped in for its
+    (chunk_id, question), and the task into `out_dir` for `underhood-tool-data`; how many answers
+    went and how many were overridden."""
+    lines = adjudications.read_text(encoding="utf-8").splitlines()
+    rulings = [json.loads(x) for x in lines if x.startswith("{")]
+    written = {_key(r): r["answer"] for r in rulings if "answer" in r}
+    rows: list[dict[str, object]] = []
+    overridden = 0
+    for row in _rows(answers):
+        if _key(row) in written:
+            row = row | {"figures": written[_key(row)]}
+            overridden += 1
+        rows.append(row)
     out_dir.mkdir(parents=True, exist_ok=True)
-    rows = answers.read_text(encoding="utf-8")
-    (out_dir / "answers.jsonl").write_text(rows, encoding="utf-8")
+    (out_dir / "answers.jsonl").write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
+    )
     (out_dir / "task.json").write_text(json.dumps(task(), indent=2, ensure_ascii=False) + "\n")
-    return sum(1 for line in rows.splitlines() if line.strip())
+    return len(rows), overridden
 
 
 def _parse(argv: Sequence[str]) -> argparse.Namespace:
@@ -273,6 +322,10 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         command.add_argument("--client", default=CLIENT, help=f"who is billed (default {CLIENT})")
         if name == "ask":
             command.add_argument("--sample", type=int, metavar="N", help="N chunks, spread out")
+        else:
+            command.add_argument(
+                "--only", type=Path, default=None, help="relabel just these (underhood's dropped)"
+            )
     exporting = commands.add_parser("export", help="write the answers and the task for underhood")
     exporting.add_argument("--out", type=Path, required=True, help="underhood's data directory")
     return parser.parse_args(list(argv))
@@ -285,8 +338,8 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "answer":
         answer(args)
     else:
-        n = export(ANSWERS, args.out)
-        print(f"{n} answers and the task -> {args.out}; build with underhood-tool-data")
+        n, overridden = export(ANSWERS, args.out)
+        print(f"{n} answers ({overridden} overridden by hand) and the task -> {args.out}")
 
 
 if __name__ == "__main__":

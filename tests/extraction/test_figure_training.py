@@ -146,8 +146,8 @@ class FakeLlm:
         ]
 
 
-def _args(yes: bool) -> argparse.Namespace:
-    return argparse.Namespace(yes=yes, sample=None, client="anthropic")
+def _args(yes: bool, only: Path | None = None) -> argparse.Namespace:
+    return argparse.Namespace(yes=yes, sample=None, client="anthropic", only=only)
 
 
 @pytest.fixture
@@ -244,14 +244,60 @@ def test_the_task_renders_the_user_turn_exactly_as_the_fine_tune_is_asked() -> N
     assert user == figure_messages("P", "S {x}", "W")[1]
     assert shipped["system"] == SYSTEM and shipped["tool"] == TOOL
     assert shipped["metrics"] == list(METRICS)
+    assert shipped["rate_metrics"] == ["margin", "roe", "roce", "roa", "market_share"]
+    assert shipped["change"] == "change"
 
 
-def test_export_hands_underhood_the_answers_and_the_task(tmp_path: Path) -> None:
+def test_export_hands_underhood_the_answers_and_the_task_with_overrides_applied(
+    tmp_path: Path,
+) -> None:
     answers = tmp_path / "answers.jsonl"
-    answers.write_text('{"question": "q1"}\n{"question": "q2"}\n\n')
+    rows = [
+        {"chunk_id": "A#1", "question": "q1", "figures": [{"teacher": 1}]},
+        {"chunk_id": "A#1", "question": "q2", "figures": [{"teacher": 2}]},
+    ]
+    answers.write_text("".join(json.dumps(r) + "\n" for r in rows) + "\n")
+    adjudications = tmp_path / "adjudications.jsonl"
+    adjudications.write_text(
+        "// a comment\n"
+        + json.dumps({"id": "va-1", "chunk_id": "A#1", "question": "q2", "answer": [{"hand": 2}]})
+        + "\n"
+        + json.dumps({"id": "va-2", "chunk_id": "A#1", "question": "q1", "verdict": "label"})
+        + "\n"
+    )
 
-    sent = export(answers, tmp_path / "out")
+    sent, overridden = export(answers, tmp_path / "out", adjudications)
 
-    assert sent == 2
-    assert (tmp_path / "out" / "answers.jsonl").read_text() == answers.read_text()
+    assert (sent, overridden) == (2, 1)
+    out = [json.loads(x) for x in (tmp_path / "out" / "answers.jsonl").read_text().splitlines()]
+    assert [r["figures"] for r in out] == [[{"teacher": 1}], [{"hand": 2}]]
     assert json.loads((tmp_path / "out" / "task.json").read_text()) == task()
+
+
+def test_answering_only_the_listed_questions_relabels_them_and_keeps_the_rest(
+    files: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    row = {"chunk_id": "WIPRO-FY25#0001", "source": "Wipro Limited", "passage": SCALED}
+    (files / "questions.jsonl").write_text(
+        json.dumps(row | {"questions": ["q1", "q2", "q3"]}) + "\n"
+    )
+    old = [row | {"question": q, "figures": [{"old": q}]} for q in ("q1", "q2", "q3")]
+    (files / "answers.jsonl").write_text("".join(json.dumps(r) + "\n" for r in old))
+    only = files / "dropped.jsonl"
+    keys = [{"chunk_id": "WIPRO-FY25#0001", "question": q} for q in ("q2", "q3")]
+    only.write_text("".join(json.dumps(k) + "\n" for k in keys))
+    good = Answer.model_validate({"figures": [_taught(12500000000, "1250 * 10**7")]})
+    fake = FakeLlm([good, None])  # q2 relabelled, q3's relabel fails
+    monkeypatch.setattr(figure_training, "_llm", lambda client: fake)
+
+    figure_training.answer(_args(yes=True, only=only))
+
+    rows = [json.loads(x) for x in (files / "answers.jsonl").read_text().splitlines()]
+    assert [r["question"] for r in rows] == ["q1", "q2", "q3"], "order kept"
+    assert rows[0]["figures"] == [{"old": "q1"}], "an unlisted question is untouched"
+    assert rows[1]["figures"][0]["call"] == "1250 * 10**7", "a listed question relabelled"
+    assert rows[2]["figures"] == [{"old": "q3"}], "a failed relabel keeps the old label"
+    assert [str(r.messages[0]["content"]).endswith("<wanted>q2</wanted>") for r in fake.parsed] == [
+        True
+    ]
+    assert fake.batches == [1], "only q3 went in the batch"

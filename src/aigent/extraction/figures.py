@@ -22,12 +22,18 @@ from aigent.tools import CALCULATOR_TOOL
 
 DATASET = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figures.jsonl"
 CURRENCIES = ("INR", "USD", "AUD", "EUR", "GBP")
+CHANGE = "change"
+# The metrics a percentage may be, besides a change in any metric.
+RATE_METRICS = ("margin", "roe", "roce", "roa", "market_share")
 _RUPEE = {"rs", "rs.", "₹", "inr", "rupee", "rupees"}
 _WORD = re.compile(r"[A-Za-z₹%]+\.?")
 
 # Tie-break order, most specific first: the order is the data, so do not sort.
 METRICS = (
     "margin",
+    "roe",
+    "roce",
+    "roa",
     "eps",
     "dividend",
     "ebitda",
@@ -50,12 +56,15 @@ class Figure(BaseModel):
     metric: str = Field(
         description=(
             "Exactly one of: " + ", ".join(METRICS) + ". The first that fits, in that order: "
-            "margin is any percentage of revenue (EBITDA margin is margin); eps and dividend are "
+            "margin is any percentage of revenue (EBITDA margin is margin); roe, roce and roa are "
+            "the returns on equity, capital employed and assets; eps and dividend are "
             "per share; profit is profit after tax, or before tax when no other is stated; "
-            "revenue is revenue from operations, sales or turnover; debt includes borrowings and "
-            "loan facilities; volume is units sold or produced, tonnes or capacity; customers "
-            "includes subscribers and users. A growth rate or other change is other unless it "
-            "is a margin or market share. other is any figure the rest do not name."
+            "revenue is revenue from operations, sales or turnover; debt is what the company owes, "
+            "its borrowings and the loan facilities it took, not the loans and advances it makes; "
+            "volume is units sold or produced, tonnes or capacity; customers "
+            "includes subscribers and users. A change in a named metric, a rise or a fall, as a "
+            "rate or an amount, keeps that metric with description 'change'. other is any "
+            "figure the rest do not name."
         )
     )
     value: float = Field(
@@ -64,26 +73,34 @@ class Figure(BaseModel):
             "12500000000, '3 lakh' is 300000, '4.5 million' is 4500000, '12,34,56,789' is "
             "123456789; a percentage as a fraction, '50%' is 0.5 and '7.25%' is 0.0725; 'over "
             "80' is 80, '60+' is 60, 'eight' is 8. A table heading such as '(Rs in crore)' "
-            "scales every number under it. Negative only when printed so, with a minus sign or "
-            "in parentheses; a fall stated in words stays positive. Always a plain number, never "
+            "scales every number under it. A scale applies only when the passage names it, "
+            "beside the number or in a heading within the passage; otherwise the number stays "
+            "as printed. Negative when printed so, with a minus sign or in "
+            "parentheses, and for a change that is a fall: 'declined 4%' is -0.04; otherwise a "
+            "fall stated in words stays positive. Always a plain number, never "
             "an expression such as 10**6: an expression goes to calculate, its result here."
         )
     )
     unit: str | None = Field(
         description=(
             "For money, the currency code: " + ", ".join(CURRENCIES) + ". The rupee sign may "
-            "appear as C, I or ` in this text. Null for anything else, a percentage included."
+            "appear as C, E, H, I, J, K or ` in this text. Money with no currency shown is INR, "
+            "the report being Indian; an exchange rate beside a subsidiary's amounts is not "
+            "their currency. Null for anything that is not money, a percentage included."
         )
     )
     year: int | None = Field(
         description=(
             "The Indian financial year (April to March) the figure belongs to, as the year it "
-            "ends, when the passage states or dates it: 2025 for FY 2024-25, for 'during the "
-            "year' in a 2024-25 report, for as at 31 March 2025, or for an event on 20 June "
-            "2024. A bare calendar year the report presents as current takes the report's "
-            "year: an award won in 2023, in a 2023-24 report, is 2024. Null for a cumulative or "
-            "'till date' total, 'since inception', a duration such as a three-year term, a year "
-            "that only names something such as Vision 2030, or no period."
+            "ends: 2025 for FY 2024-25, for as at 31 March 2025, or for an event on 20 June "
+            "2024. Read the report's year from source: a figure the passage states as current, "
+            "or 'during the year', takes it, so a headcount in a 2023-24 report is 2024, and "
+            "'previous year' is the year before. A bare calendar year the report presents as "
+            "current takes the report's year: an award won in 2023, in a 2023-24 report, is "
+            "2024. Null only for a cumulative, 'till date' or 'since inception' total, a "
+            "duration such as a three-year term, a fixed term or specification such as the face "
+            "value of a share or a vehicle's seating capacity, or a year that only names "
+            "something such as Vision 2030."
         )
     )
     description: str | None = Field(
@@ -91,7 +108,9 @@ class Figure(BaseModel):
         description=(
             "When metric is other, the word or few words of the passage that name what is "
             "counted or measured, copied verbatim: 'branches', 'retail outlets', 'vessels'. "
-            "Null for every other metric."
+            "For a named metric, 'change' when the figure is its change, else null: only a named "
+            "metric takes 'change', and it takes nothing else. An other figure's description "
+            "names the thing itself, even when the figure is its change."
         ),
     )
 
@@ -115,8 +134,9 @@ def _rules() -> str:
 
 TOOL_RULE = (
     "Do no arithmetic yourself. When an amount carries a scale (thousand, lakh, crore, million, "
-    "billion), beside it or in a table heading, or is a percentage, call calculate with the "
-    "number as printed times its scale, or over 100, and copy the result into value. Every "
+    "billion), beside it or in a table heading in the passage, or is a percentage, call "
+    "calculate with the number as printed times its scale, or over 100, and copy the result "
+    "into value. Every "
     "percentage takes a call: '18%' is calculate('18 / 100') and value 0.18, never 18. A number "
     "already printed in full needs no call."
 )
@@ -177,9 +197,10 @@ def _same(want: Figure, got: Figure) -> bool:
 
 
 def _described(figure: Figure, passage: object) -> bool:
-    """A description iff the metric is other, and verbatim in the passage when there is one."""
+    """A description verbatim from the passage iff the metric is other; on a named metric,
+    none, or exactly `CHANGE` for a change in it."""
     if figure.metric != "other":
-        return figure.description is None
+        return figure.description in (None, CHANGE)
     if not figure.description:
         return False
     return not isinstance(passage, str) or squeeze(figure.description) in squeeze(passage)

@@ -84,14 +84,25 @@ _WANTED = re.compile(r"<wanted>(.*)</wanted>", re.S)
 _EXPRESSION = re.compile(r"\d\s*\*\*\s*\d")
 
 
+def _label_calls(messages: Sequence[dict[str, JsonValue]]) -> list[str]:
+    """The calculate expressions a training conversation's label made."""
+    out: list[str] = []
+    for message in messages:
+        for call in cast(
+            list[dict[str, dict[str, dict[str, str]]]], message.get("tool_calls") or []
+        ):
+            out.append(call["function"]["arguments"]["expression"])
+    return out
+
+
 def from_conversations(
     conversations: Sequence[dict[str, JsonValue]],
     prefix: str = "va",
     originals: set[tuple[str, str]] | None = None,
 ) -> list[dict[str, JsonValue]]:
-    """Training-format conversations as eval rows: the prompt, the passage and the final figures
-    as the label, ids `<prefix>-0000` on by position. With `originals`, the (passage, question)
-    pairs labelled by hand, each row also says whether it is an augmented copy."""
+    """Training-format conversations as eval rows: the prompt, the passage, the final figures as
+    the label and the calls behind them, ids `<prefix>-0000` on by position. With `originals`,
+    the (passage, question) pairs labelled by hand, each row also says whether it is a copy."""
     rows: list[dict[str, JsonValue]] = []
     for i, conversation in enumerate(conversations):
         messages = cast(list[dict[str, JsonValue]], conversation["messages"])
@@ -103,6 +114,7 @@ def from_conversations(
             "tools": conversation["tools"],
             "passage": passage.group(1) if passage else "",
             "expected": json.loads(str(messages[-1]["content"]))["figures"],
+            "calls": cast(JsonValue, _label_calls(messages)),
         }
         if originals is not None:
             asked = (str(row["passage"]), wanted.group(1) if wanted else "")
@@ -200,7 +212,10 @@ def census(
 
 
 def needs_call(case_row: dict[str, JsonValue]) -> bool:
-    """Whether answering a case takes a calculate call: some expected value is not printed as is."""
+    """Whether answering a case takes a calculate call: the label made one, where the row carries
+    its calls; else some expected value is not printed as is."""
+    if "calls" in case_row:
+        return bool(case_row["calls"])
     figures = Figures.model_validate({"figures": case_row["expected"]}).figures
     printed = _printed(str(case_row["passage"]))
     return any(abs(f.value) not in printed for f in figures)
