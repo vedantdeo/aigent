@@ -13,18 +13,18 @@ from pydantic import BaseModel
 
 from aigent.config import FIGURE_ANSWER_CACHE, FIGURE_LABEL_MODEL
 from aigent.extraction import figure_training
-from aigent.extraction.figure_augment import Massage, Swap
 from aigent.extraction.figure_training import (
     QUESTION_SYSTEM,
     Answer,
     Questions,
     answer_request,
     ask_request,
-    build,
+    export,
     select,
     source_of,
+    task,
 )
-from aigent.extraction.figures import METRICS, SYSTEM, TOOL, Labelled
+from aigent.extraction.figures import METRICS, SYSTEM, TOOL, Labelled, figure_messages
 from aigent.llm.core import Request
 from aigent.llm.messages import Failed, Parsed, Usage
 from aigent.retrieval.chunk import Chunk
@@ -237,125 +237,21 @@ def test_answering_warms_the_cache_with_the_first_question_then_batches_the_rest
     assert rows[0]["figures"][0]["call"] == "1250 * 10**7" and rows[0]["passage"] == SCALED
 
 
-def _answer(chunk_id: str, question: str, *figures: dict[str, object]) -> str:
-    passage = f"Capex of Rs 1,250 crore, in {chunk_id}"
-    row = {"chunk_id": chunk_id, "source": "Aaa Limited", "passage": passage}
-    return json.dumps(row | {"question": question, "figures": list(figures)})
+def test_the_task_renders_the_user_turn_exactly_as_the_fine_tune_is_asked() -> None:
+    shipped = task()
+    user = str(shipped["user"]).format(source="S {x}", passage="P", wanted="W")
+
+    assert user == figure_messages("P", "S {x}", "W")[1]
+    assert shipped["system"] == SYSTEM and shipped["tool"] == TOOL
+    assert shipped["metrics"] == list(METRICS)
 
 
-GOOD = _taught(12500000000, "1250 * 10**7")
-STILL = Massage(0.0, (), {}, [])  # no massaged copies
-WRONG = _taught(1250, "1250 * 10**7")
-BROKEN: dict[str, object] = {"metric": "capex", "call": "1250 * 10**7"}
-
-
-def test_build_writes_one_conversation_per_good_answer_and_drops_the_rest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(figure_training, "FIGURE_VALID_FRACTION", 0.5)
+def test_export_hands_underhood_the_answers_and_the_task(tmp_path: Path) -> None:
     answers = tmp_path / "answers.jsonl"
-    answers.write_text(
-        "\n".join(
-            [
-                _answer("AAA#0001", "good", GOOD),
-                _answer("AAA#0001", "a call that does not give the value", WRONG),
-                _answer("AAA#0001", "no figures"),
-                _answer("AAA#0001", "a figure missing fields", BROKEN),
-                _answer("AAA#0002", "good too", GOOD),
-            ]
-        )
-        + "\n"
-    )
+    answers.write_text('{"question": "q1"}\n{"question": "q2"}\n\n')
 
-    built = build(answers, tmp_path / "out", seed=0, how=STILL)
+    sent = export(answers, tmp_path / "out")
 
-    assert (built.train, built.valid, built.dropped) == (1, 1, 3)
-    for name in ("train", "valid"):
-        lines = (tmp_path / "out" / f"{name}.jsonl").read_text().splitlines()
-        rows = [json.loads(x) for x in lines]
-        assert len(rows) == 1 and rows[0]["tools"] == [TOOL]
-        assert rows[0]["messages"][0]["role"] == "system"
-
-
-def test_build_keeps_every_question_of_a_chunk_on_one_side(tmp_path: Path) -> None:
-    answers = tmp_path / "answers.jsonl"
-    rows = [_answer(f"AAA#{i:04d}", q, GOOD) for i in range(20) for q in ("q1", "q2")]
-    answers.write_text("\n".join(rows))
-
-    build(answers, tmp_path / "out", seed=3, how=STILL)
-
-    sides: dict[str, set[str]] = {}
-    for name in ("train", "valid"):
-        for line in (tmp_path / "out" / f"{name}.jsonl").read_text().splitlines():
-            passage = json.loads(line)["messages"][1]["content"].split("<passage>")[1]
-            sides.setdefault(passage, set()).add(name)
-    assert all(len(s) == 1 for s in sides.values())
-
-
-def test_build_adds_augmented_copies_to_train_and_never_to_valid(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(figure_training, "FIGURE_VALID_FRACTION", 0.5)
-    shares = [
-        {
-            "metric": "other",
-            "value": v / 100,
-            "unit": None,
-            "year": 2025,
-            "description": "RE share",
-            "call": f"{v} / 100",
-        }
-        for v in (30, 45)
-    ]
-    rows = [
-        {
-            "chunk_id": cid,
-            "source": "Aaa Limited",
-            "question": "How did the RE share move?",
-            "passage": f"The RE share rose from 30% to 45% at {cid}.",
-            "figures": shares,
-        }
-        for cid in ("AAA#0001", "AAA#0002")
-    ]
-    answers = tmp_path / "answers.jsonl"
-    answers.write_text("".join(json.dumps(r) + "\n" for r in rows))
-
-    built = build(answers, tmp_path / "out", seed=0, how=STILL)
-
-    assert built.valid == 1 and built.augmented >= 1 and built.massaged == 0
-    assert built.train == 1 + built.augmented
-    valid = (tmp_path / "out" / "valid.jsonl").read_text()
-    assert "30%" in valid and "45%" in valid, "the held-out answer stays as labelled"
-
-
-def test_build_adds_massaged_copies_to_train_only(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(figure_training, "FIGURE_VALID_FRACTION", 0.5)
-    rows = [
-        {
-            "chunk_id": cid,
-            "source": "Wipro Limited, Annual Report 2024-25",
-            "question": "What was capex in FY 2024-25?",
-            "passage": f"In FY 2024-25 Wipro spent Rs 1,250 crore at {cid}.",
-            "figures": [GOOD],
-        }
-        for cid in ("AAA#0001", "AAA#0002")
-    ]
-    answers = tmp_path / "answers.jsonl"
-    answers.write_text("".join(json.dumps(r) + "\n" for r in rows))
-    every = Massage(
-        1.0,
-        (-3,),
-        {"Wipro Limited": ["Wipro", "Wipro Limited"]},
-        [Swap("Infosys Limited", "Infosys")],
-    )
-
-    built = build(answers, tmp_path / "out", seed=0, how=every)
-
-    assert (built.train, built.valid, built.massaged) == (2, 1, 1)
-    train = [json.loads(x) for x in (tmp_path / "out" / "train.jsonl").read_text().splitlines()]
-    copy = train[1]["messages"]
-    assert "In FY 2021-22 Infosys spent" in copy[1]["content"]
-    assert json.loads(copy[-1]["content"])["figures"][0]["year"] == 2022
-    assert "Infosys" not in (tmp_path / "out" / "valid.jsonl").read_text()
+    assert sent == 2
+    assert (tmp_path / "out" / "answers.jsonl").read_text() == answers.read_text()
+    assert json.loads((tmp_path / "out" / "task.json").read_text()) == task()

@@ -3,7 +3,7 @@ states that answer what is wanted, as records.
 
 The training rows, the eval and the tool all build their prompt with `figure_messages`, so the
 fine-tune is taught exactly what it is later asked. The model applies scales and percentages by
-calling `calculate`, and `transcript` writes the conversations that teach it to.
+calling `calculate`; underhood's `tooldata` writes the conversations that teach it to.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Sequence
 from pathlib import Path
 
 from pydantic import BaseModel, Field, JsonValue, ValidationError
@@ -19,7 +18,7 @@ from pydantic import BaseModel, Field, JsonValue, ValidationError
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Outcome, Score
 from aigent.retrieval.chunk import squeeze
-from aigent.tools import CALCULATOR_TOOL, calculate
+from aigent.tools import CALCULATOR_TOOL
 
 DATASET = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figures.jsonl"
 CURRENCIES = ("INR", "USD", "AUD", "EUR", "GBP")
@@ -227,8 +226,6 @@ class Labelled(Figure):
     )
 
 
-_CALL = re.compile(r"(-?\d+(?:\.\d+)?) (?:\* 10\*\*(\d+)|/ 100)")
-_POWERS = {3, 5, 6, 7, 9, 12}
 _PRINTED = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _NUMBER_WORDS = {
     name: i
@@ -243,57 +240,3 @@ def _printed(passage: str) -> set[float]:
     numbers = {float(n.replace(",", "")) for n in _PRINTED.findall(passage)}
     words = {float(v) for w, v in _NUMBER_WORDS.items() if re.search(rf"\b{w}\b", passage, re.I)}
     return numbers | words
-
-
-def check_call(label: Labelled, passage: str) -> bool:
-    """Whether a label's value is the passage's own number, scaled by a real scale or made a
-    fraction by its call, and the call gives that value."""
-    if label.call is None:
-        return abs(label.value) in _printed(passage)
-    match = _CALL.fullmatch(label.call.strip())
-    if match is None or (match.group(2) is not None and int(match.group(2)) not in _POWERS):
-        return False
-    if abs(float(match.group(1))) not in _printed(passage):
-        return False
-    return math.isclose(calculate(label.call), label.value, rel_tol=1e-9, abs_tol=1e-12)
-
-
-Message = dict[str, JsonValue]
-
-
-def transcript(
-    passage: str, source: str, wanted: str, labels: Sequence[Labelled]
-) -> list[Message] | None:
-    """The conversation that teaches one question: the prompt, one turn making every calculate
-    call the figures need, the results, then the figures. None when any label fails `check_call`,
-    carries a description the passage does not contain, or names a metric not in `METRICS`."""
-    if not all(check_call(label, passage) and _described(label, passage) for label in labels):
-        return None
-    if any(label.metric not in METRICS for label in labels):
-        return None
-    calls = [label.call for label in labels if label.call is not None]
-    figures: list[JsonValue] = [label.model_dump(exclude={"call"}) for label in labels]
-    system, user = figure_messages(passage, source, wanted)
-    messages: list[Message] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
-    if calls:
-        messages.append(
-            {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "type": "function",
-                        "function": {"name": "calculate", "arguments": {"expression": c}},
-                    }
-                    for c in calls
-                ],
-            }
-        )
-        results: list[Message] = [
-            {"role": "tool", "name": "calculate", "content": str(calculate(c))} for c in calls
-        ]
-        messages.extend(results)
-    messages.append({"role": "assistant", "content": json.dumps({"figures": figures})})
-    return messages
