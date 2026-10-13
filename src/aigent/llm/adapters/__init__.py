@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from aigent.llm.adapters.anthropic import Anthropic
 from aigent.llm.adapters.cfg_anthropic import CLIENT as ANTHROPIC
+from aigent.llm.adapters.cfg_hostllm import CLIENTS as HOSTLLM_CLIENTS
 from aigent.llm.adapters.cfg_local import CLIENTS as LOCAL_CLIENTS
 from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
 from aigent.llm.adapters.client import Client
@@ -90,7 +91,12 @@ WIRES: dict[str, Callable[[Client, object | None], Adapter]] = {
 
 # Client name → its settings, from the `cfg_<name>` module beside this one. Several clients may
 # share a wire; each names exactly one, so the client's name is enough to pick the adapter.
-CLIENTS: dict[str, Client] = {"anthropic": ANTHROPIC, **LOCAL_CLIENTS, "sarvam": SARVAM}
+CLIENTS: dict[str, Client] = {
+    "anthropic": ANTHROPIC,
+    **HOSTLLM_CLIENTS,
+    **LOCAL_CLIENTS,
+    "sarvam": SARVAM,
+}
 
 
 def spec(client: str) -> Client:

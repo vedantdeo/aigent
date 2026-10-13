@@ -115,6 +115,8 @@ CACHE_PARAM: Cache = (
 
 # How many times the agent may go round before giving up.
 MAX_AGENT_TURNS = 25  # a backstop against a loop of cheap turns; the budget ends a real one first
+SPECIALIST_TRIES = 2  # a request the endpoint drops is sent once more, then the task fails
+SPECIALIST_TOOL_TURNS = 3  # calculate calls, their results, the answer: one turn to spare
 MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this much output fits
 
 # How many calls one concurrent batch keeps in flight at once.

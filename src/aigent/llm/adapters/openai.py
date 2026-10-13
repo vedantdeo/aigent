@@ -50,6 +50,9 @@ if TYPE_CHECKING:
 # a record, not because the wire constrains one.
 SUPPORTS = frozenset({"schema", "tools"})
 
+# What an endpoint that did not answer raises: no connection, a timeout, or a 5xx from in front.
+UNREACHABLE: tuple[type[Exception], ...] = (openai.APIConnectionError, openai.InternalServerError)
+
 # Local servers want no credential; a hosted endpoint names the variable holding its key.
 LOCAL_API_KEY = "not-needed"
 
@@ -220,6 +223,7 @@ class OpenAI:
             self._client = openai.OpenAI(
                 base_url=self.settings.base_url,
                 api_key=self._api_key(),
+                default_headers=self._headers(),
                 max_retries=0,
                 timeout=self.settings.timeout,
                 http_client=http_client(
@@ -241,6 +245,16 @@ class OpenAI:
         if not key:
             raise RuntimeError(f"{self.settings.name} needs {variable} set; add it to .env")
         return key
+
+    def _headers(self) -> dict[str, str]:
+        """The client's extra headers, each from the variable it names. Raises if one is unset."""
+        headers: dict[str, str] = {}
+        for header, variable in self.settings.headers_env.items():
+            value = os.environ.get(variable)
+            if not value:
+                raise RuntimeError(f"{self.settings.name} needs {variable} set; add it to .env")
+            headers[header] = value
+        return headers
 
     @property
     def tokenizer(self) -> PreTrainedTokenizerBase:

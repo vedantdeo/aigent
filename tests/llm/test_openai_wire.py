@@ -8,23 +8,21 @@ either side is what is under test. A test that fetched a tokenizer would need th
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Literal, cast
+from typing import cast
 
 import pytest
 from openai import omit
 from openai.types import CompletionUsage
 from openai.types.chat import (
     ChatCompletion,
-    ChatCompletionMessage,
     ChatCompletionMessageFunctionToolCall,
 )
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_message_function_tool_call import Function
 from openai.types.completion_usage import PromptTokensDetails
 from pydantic import BaseModel
 
 from aigent.errors import StepFailed, Unsupported
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
+from aigent.llm.adapters.cfg_hostllm import ANALYST, COLD_START_TIMEOUT, HEADLINE
 from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
 from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
 from aigent.llm.adapters.client import Client
@@ -33,33 +31,14 @@ from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Msg
 from aigent.tools import CALCULATOR_TOOL
 
-Finish = Literal["stop", "length", "tool_calls", "content_filter"]
+from ..conftest import Finish, StubTokenizer
+from ..conftest import calling as _calling
+from ..conftest import completion as _completion
 
 
 class Verdict(BaseModel):
     passed: bool
     reason: str
-
-
-def _completion(
-    text: str, *, prompt: int = 100, completion: int = 20, finish: Finish = "stop"
-) -> ChatCompletion:
-    return ChatCompletion(
-        id="cmpl_fake",
-        object="chat.completion",
-        created=0,
-        model=LOCAL.model,
-        choices=[
-            Choice(
-                index=0,
-                finish_reason=finish,
-                message=ChatCompletionMessage(role="assistant", content=text),
-            )
-        ],
-        usage=CompletionUsage(
-            prompt_tokens=prompt, completion_tokens=completion, total_tokens=prompt + completion
-        ),
-    )
 
 
 class ScriptedCompletions:
@@ -82,28 +61,6 @@ class ScriptedClient:
     @property
     def chat(self) -> ScriptedClient:
         return self
-
-
-class StubTokenizer:
-    """Stands in for the served model's tokenizer, including the shape it answers in.
-
-    transformers v5 hands back a `BatchEncoding` unless `return_dict=False`, so this returns a
-    mapping too — a count taken from its length would be 2 for any prompt, which is the bug this
-    shape exists to catch.
-    """
-
-    def apply_chat_template(
-        self, conversation: object, **kwargs: object
-    ) -> list[int] | dict[str, list[int]]:
-        ids = list(range(42))
-        if kwargs.get("return_dict") is False:
-            return ids
-        return {"input_ids": ids, "attention_mask": [1] * len(ids)}
-
-
-@pytest.fixture
-def offline_tokenizer(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(OpenAI, "tokenizer", property(lambda _: StubTokenizer()))
 
 
 def _wire(text: str = "hello") -> tuple[OpenAI, ScriptedCompletions]:
@@ -330,10 +287,52 @@ def test_a_hosted_client_without_its_key_is_refused_before_anything_is_sent(
         _ = OpenAI(SARVAM).client
 
 
+HOSTLLM_ENV = {
+    "HOSTLLM_API_KEY": "sk_host",
+    "HOSTLLM_MODAL_KEY": "wk-id",
+    "HOSTLLM_MODAL_SECRET": "ws-secret",
+}
+
+
+def test_a_gateway_s_headers_come_from_the_variables_the_client_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name, value in HOSTLLM_ENV.items():
+        monkeypatch.setenv(name, value)
+
+    client = OpenAI(HEADLINE).client
+
+    assert client.api_key == "sk_host" and str(client.base_url).endswith("modal.run/v1/")
+    assert client.default_headers["Modal-Key"] == "wk-id"
+    assert client.default_headers["Modal-Secret"] == "ws-secret"
+    assert "Modal-Key" not in OpenAI(LOCAL).client.default_headers
+
+
+@pytest.mark.parametrize("unset", ["HOSTLLM_MODAL_KEY", "HOSTLLM_MODAL_SECRET"])
+def test_a_client_without_a_header_s_variable_is_refused_before_anything_is_sent(
+    monkeypatch: pytest.MonkeyPatch, unset: str
+) -> None:
+    for name, value in HOSTLLM_ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv(unset)
+
+    with pytest.raises(RuntimeError, match=unset):
+        _ = OpenAI(HEADLINE).client
+
+
+def test_the_two_specialists_share_an_endpoint_and_differ_in_the_adapter_they_name() -> None:
+    assert (HEADLINE.model, ANALYST.model) == ("headline-flavour", "report-analyst")
+    assert replace(ANALYST, name="", model="", small_model="") == replace(
+        HEADLINE, name="", model="", small_model=""
+    )
+    assert HEADLINE.timeout == COLD_START_TIMEOUT >= 180, "a request outlasts a cold start"
+
+
 @pytest.mark.parametrize(
     ("client", "repo"),
     [
         pytest.param(LOCAL, LOCAL.model, id="a local model is its own tokenizer's repo"),
+        pytest.param(HEADLINE, "Qwen/Qwen3-4B", id="an adapter counts on its base's tokenizer"),
         pytest.param(SARVAM, "sarvamai/sarvam-105b", id="a hosted id names the repo apart"),
     ],
 )
@@ -452,21 +451,6 @@ def test_what_this_wire_cannot_do_is_refused_before_anything_is_sent(
 
 
 ASKING = Request("step", [{"role": "user", "content": "18% of what?"}], 64, tools=[CALCULATOR_TOOL])
-
-
-def _calling(*expressions: str, text: str | None = None) -> ChatCompletion:
-    """A completion that asks for calculate once per expression."""
-    made = _completion(text or "", finish="tool_calls")
-    made.choices[0].message.content = text
-    made.choices[0].message.tool_calls = [
-        ChatCompletionMessageFunctionToolCall(
-            id=f"call_{i}",
-            type="function",
-            function=Function(name="calculate", arguments=f'{{"expression": "{expression}"}}'),
-        )
-        for i, expression in enumerate(expressions)
-    ]
-    return made
 
 
 def test_a_tool_is_sent_as_the_function_the_fine_tune_was_trained_on() -> None:

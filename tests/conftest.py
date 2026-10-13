@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import anthropic
 import numpy as np
@@ -32,6 +32,14 @@ from anthropic.types import (
 from anthropic.types.beta import BetaMessage, BetaToolUnionParam
 from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
 from anthropic.types.messages import MessageBatch, MessageBatchIndividualResponse
+from openai.types import CompletionUsage
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessage,
+    ChatCompletionMessageFunctionToolCall,
+)
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message_function_tool_call import Function
 from pydantic import BaseModel
 
 from aigent import tracing
@@ -40,7 +48,9 @@ from aigent.config import CLIENT, JUDGE_MODEL, MAX_USD_PER_TURN, MODEL
 from aigent.evals.judge import LlmJudge, Verdict
 from aigent.llm.adapters import CLIENTS
 from aigent.llm.adapters.cfg_anthropic import CLIENT as ANTHROPIC
+from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
 from aigent.llm.adapters.client import Client
+from aigent.llm.adapters.openai import OpenAI
 from aigent.llm.core import Llm
 from aigent.llm.messages import Usage as NeutralUsage
 from aigent.llm.pricing import PRICES, Budget
@@ -662,3 +672,90 @@ def traces() -> Iterator[Recorder]:
     tracing.use(recorder)
     yield recorder
     tracing.use(None)
+
+
+# --- The OpenAI wire's fakes -------------------------------------------------------------------
+
+Finish = Literal["stop", "length", "tool_calls", "content_filter"]
+
+
+def completion(
+    text: str, *, prompt: int = 100, completion: int = 20, finish: Finish = "stop"
+) -> ChatCompletion:
+    return ChatCompletion(
+        id="cmpl_fake",
+        object="chat.completion",
+        created=0,
+        model=LOCAL.model,
+        choices=[
+            Choice(
+                index=0,
+                finish_reason=finish,
+                message=ChatCompletionMessage(role="assistant", content=text),
+            )
+        ],
+        usage=CompletionUsage(
+            prompt_tokens=prompt, completion_tokens=completion, total_tokens=prompt + completion
+        ),
+    )
+
+
+def calling(*expressions: str, text: str | None = None) -> ChatCompletion:
+    """A completion that asks for calculate once per expression."""
+    made = completion(text or "", finish="tool_calls")
+    made.choices[0].message.content = text
+    made.choices[0].message.tool_calls = [
+        ChatCompletionMessageFunctionToolCall(
+            id=f"call_{i}",
+            type="function",
+            function=Function(name="calculate", arguments=f'{{"expression": "{expression}"}}'),
+        )
+        for i, expression in enumerate(expressions)
+    ]
+    return made
+
+
+class StubTokenizer:
+    """Stands in for the served model's tokenizer, including the shape it answers in.
+
+    transformers v5 hands back a `BatchEncoding` unless `return_dict=False`, so this returns a
+    mapping too — a count taken from its length would be 2 for any prompt, which is the bug this
+    shape exists to catch.
+    """
+
+    def apply_chat_template(
+        self, conversation: object, **kwargs: object
+    ) -> list[int] | dict[str, list[int]]:
+        ids = list(range(42))
+        if kwargs.get("return_dict") is False:
+            return ids
+        return {"input_ids": ids, "attention_mask": [1] * len(ids)}
+
+
+@pytest.fixture
+def offline_tokenizer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(OpenAI, "tokenizer", property(lambda _: StubTokenizer()))
+
+
+class FakeOpenAI:
+    """Stands in for `openai.OpenAI`: each call gets the next scripted completion, the last one
+    repeating, and an exception among them is raised; every call is logged."""
+
+    def __init__(self, *replies: ChatCompletion | Exception) -> None:
+        self._replies = replies
+        self.sent: list[dict[str, object]] = []
+
+    @property
+    def chat(self) -> FakeOpenAI:
+        return self
+
+    @property
+    def completions(self) -> FakeOpenAI:
+        return self
+
+    def create(self, **kwargs: object) -> ChatCompletion:
+        self.sent.append(kwargs)
+        reply = self._replies[min(len(self.sent), len(self._replies)) - 1]
+        if isinstance(reply, Exception):
+            raise reply
+        return reply

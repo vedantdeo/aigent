@@ -203,9 +203,10 @@ needs its own go-ahead.
    adapter that loads a server's tools into the generalist's loop.~~ Done 2026-10-13
    (`mcp_server`, `mcp_client`); wired into the generalist in step 5.
 4. **The router and the specialist contract**, for both specialists, with validation and fallback,
-   tested against fakes before any model runs. The contract, the router and both checks are built
-   (`analyst.specialists`, `analyst.router`, 2026-10-13); the `hostllm` client, the warm-up and the two specialists'
-   prompts wired to models come next.
+   tested against fakes before any model runs. Built 2026-10-13, all against fakes: the contract and both checks
+   (`analyst.specialists`), the router (`analyst.router`), the `hostllm` clients priced at the
+   served rate, and both specialists wired to models with the warm-up (`analyst.served`). Not yet
+   run against the live endpoint.
 5. **The graph:** generalist loop, critic, human gate with a checkpointer — stubs first, prompts
    after.
 6. The 50 tasks, then the first baseline runs.
