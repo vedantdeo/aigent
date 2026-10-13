@@ -13,18 +13,25 @@ from typing import Literal, cast
 import pytest
 from openai import omit
 from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion, ChatCompletionMessage
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessage,
+    ChatCompletionMessageFunctionToolCall,
+)
 from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message_function_tool_call import Function
 from openai.types.completion_usage import PromptTokensDetails
 from pydantic import BaseModel
 
 from aigent.errors import StepFailed, Unsupported
+from aigent.extraction.figures import TOOL as TRAINED_TOOL
 from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
 from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
 from aigent.llm.adapters.client import Client
 from aigent.llm.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
 from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Msg
+from aigent.tools import CALCULATOR_TOOL
 
 Finish = Literal["stop", "length", "tool_calls", "content_filter"]
 
@@ -422,10 +429,10 @@ def test_a_server_that_reports_no_usage_is_billed_as_nothing_rather_than_guessed
                 "step",
                 [{"role": "user", "content": "x"}],
                 64,
-                tools=[{"name": "search", "input_schema": {"type": "object"}}],
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
             ),
-            "tools",
-            id="tools, which no runner here drives yet",
+            "web_search",
+            id="a tool only the provider can run",
         ),
     ],
 )
@@ -442,3 +449,144 @@ def test_what_this_wire_cannot_do_is_refused_before_anything_is_sent(
 
     assert scripted.completions.sent == [], "nothing reached the server"
     assert llm.trace == [] and llm.spent_usd == 0.0
+
+
+ASKING = Request("step", [{"role": "user", "content": "18% of what?"}], 64, tools=[CALCULATOR_TOOL])
+
+
+def _calling(*expressions: str, text: str | None = None) -> ChatCompletion:
+    """A completion that asks for calculate once per expression."""
+    made = _completion(text or "", finish="tool_calls")
+    made.choices[0].message.content = text
+    made.choices[0].message.tool_calls = [
+        ChatCompletionMessageFunctionToolCall(
+            id=f"call_{i}",
+            type="function",
+            function=Function(name="calculate", arguments=f'{{"expression": "{expression}"}}'),
+        )
+        for i, expression in enumerate(expressions)
+    ]
+    return made
+
+
+def test_a_tool_is_sent_as_the_function_the_fine_tune_was_trained_on() -> None:
+    wire, completions = _wire()
+
+    wire.send(ASKING)
+
+    assert completions.sent[0]["tools"] == [TRAINED_TOOL]
+
+
+def test_a_request_with_no_tools_sends_none() -> None:
+    wire, completions = _wire()
+
+    wire.send(REQUEST)
+
+    assert completions.sent[0]["tools"] is omit
+
+
+def test_the_calls_a_reply_asks_for_come_back_as_tool_use_blocks() -> None:
+    reply = reply_of(_calling("18 / 100", "2345 * 10**7"))
+
+    assert reply.stop_reason == "tool_use" and reply.text == ""
+    assert list(reply.blocks) == [
+        {
+            "type": "tool_use",
+            "id": "call_0",
+            "name": "calculate",
+            "input": {"expression": "18 / 100"},
+        },
+        {
+            "type": "tool_use",
+            "id": "call_1",
+            "name": "calculate",
+            "input": {"expression": "2345 * 10**7"},
+        },
+    ]
+
+
+def test_text_beside_a_call_is_kept_ahead_of_it() -> None:
+    reply = reply_of(_calling("18 / 100", text="Converting."))
+
+    assert [block["type"] for block in reply.blocks] == ["text", "tool_use"]
+    assert reply.text == "Converting."
+
+
+def test_a_call_whose_arguments_are_not_json_arrives_with_none() -> None:
+    broken = _calling("18 / 100")
+    calls = broken.choices[0].message.tool_calls
+    assert calls is not None
+    cast(ChatCompletionMessageFunctionToolCall, calls[0]).function.arguments = "{not json"
+
+    assert reply_of(broken).blocks[0]["input"] == {}
+
+
+def test_a_turn_s_calls_and_their_results_go_back_as_the_wire_carries_them() -> None:
+    wire, completions = _wire()
+    asked = reply_of(_calling("18 / 100", text="Converting."))
+    results: Msg = {
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "call_0", "content": "0.18", "is_error": False}
+        ],
+    }
+    messages: list[Msg] = [
+        *ASKING.messages,
+        {"role": "assistant", "content": asked.blocks},
+        results,
+    ]
+
+    wire.send(replace(ASKING, messages=messages))
+
+    assert completions.sent[0]["messages"] == [
+        {"role": "user", "content": "18% of what?"},
+        {
+            "role": "assistant",
+            "content": "Converting.",
+            "tool_calls": [
+                {
+                    "id": "call_0",
+                    "type": "function",
+                    "function": {"name": "calculate", "arguments": '{"expression": "18 / 100"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_0", "content": "0.18"},
+    ]
+
+
+def test_the_count_templates_the_tools_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[object] = []
+
+    class Recording(StubTokenizer):
+        def apply_chat_template(
+            self, conversation: object, **kwargs: object
+        ) -> list[int] | dict[str, list[int]]:
+            seen.append(kwargs.get("tools"))
+            return super().apply_chat_template(conversation, **kwargs)
+
+    monkeypatch.setattr(OpenAI, "tokenizer", property(lambda _: Recording()))
+    wire, _ = _wire()
+
+    wire.count(ASKING)
+    wire.count(REQUEST)
+
+    assert seen == [[TRAINED_TOOL], None]
+
+
+def test_llm_sends_one_tool_turn_on_this_wire_and_bills_it(offline_tokenizer: None) -> None:
+    scripted = ScriptedClient("hi")
+    scripted.completions.create = lambda **kwargs: _calling("18 / 100")  # type: ignore[method-assign]
+    llm = Llm("local", sdk=cast(object, scripted))
+
+    reply = llm.turn(ASKING)
+
+    assert reply.stop_reason == "tool_use" and reply.blocks[0]["name"] == "calculate"
+    assert len(llm.trace) == 1
+
+
+def test_no_runner_drives_tools_on_this_wire_yet(offline_tokenizer: None) -> None:
+    llm = Llm("local", sdk=cast(object, ScriptedClient("hi")))
+
+    with pytest.raises(Unsupported, match="runs no tools yet"):
+        llm.run_tools(ASKING, lambda name, arguments: ("", False))
