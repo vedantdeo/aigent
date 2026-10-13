@@ -40,6 +40,9 @@ FIELDS = ("ticker", "metric", "quarter", "direction", "change_pct")
 
 # Tie-break order for `metric`, most preferred first. Placeholder: asserted, not researched.
 METRICS = ("revenue", "profit", "margin", "orders", "headcount", "guidance", "other", "none")
+# The other two closed vocabularies, as `Extraction`'s descriptions give them to the model.
+QUARTERS = ("Q1", "Q2", "Q3", "Q4", "H1", "H2", "FY", "unknown")
+DIRECTIONS = ("up", "down", "flat", "unknown")
 
 
 class Extraction(BaseModel):

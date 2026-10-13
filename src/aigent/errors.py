@@ -20,6 +20,10 @@ class GuardrailTripped(ValueError):
     """Input a guardrail refused before anything was sent."""
 
 
+class SpecialistUnreachable(RuntimeError):
+    """A specialist's endpoint did not answer, even after the wait a cold start is given."""
+
+
 class StepFailed(RuntimeError):
     """A call came back refused, truncated or unparseable. It was billed all the same."""
 
