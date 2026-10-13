@@ -86,8 +86,8 @@ Behind the card, each specialist is a small contract, in code:
 |---|---|---|
 | render | the zero-shot headline prompt it was trained on (`extraction.headlines`) | `figure_messages(passage, source, wanted)` + the `calculate` tool |
 | model | a PEFT LoRA on Qwen3-4B, retrained from the Week 4 headline data (the Week 4 adapter is MLX on a 4-bit 1.7B base: 41/50, and Apple-only) | the v3 PEFT LoRA on Qwen3-4B |
-| validate | parses as the headline record; the percentage printed in the headline; the mention resolves | parses as `Figures`; every value's number printed in its passage (`check_call`'s rules) |
-| fallback | the same job on the generalist, with the same schema | the same |
+| validate | parses as the headline record, in its three vocabularies; the percentage printed in the headline; the mention, if there is one, resolves | parses as `Figures`; every value's number printed in its passage (`check_call`'s rules), all or nothing: one figure that fails sends the whole call to the generalist |
+| fallback | the same job on the generalist, with the same schema and the same check; an answer that fails it too is an error | the same |
 | log | which path answered, the validation failure if any, tokens and latency | the same |
 
 ## Serving
@@ -144,7 +144,8 @@ citation (a chunk id or a fundamentals key) and the figures behind it, and cavea
 | A critic–generalist loop | revisions capped at two, then the human sees what is still unsupported |
 | Instructions planted in a filing or a web page | tool output fenced as untrusted (invariant 28) |
 | A run that costs too much | `llm.core`'s free count and per-task ceiling on every call |
-| The local server is down | the router falls back, and the run says so |
+| The specialists' endpoint is cold | the call waits for it to start and takes the specialist's answer; a session warms it with one request first |
+| The specialists' endpoint cannot be reached, even after that wait and one retry | the task fails and says so: nothing answers in the specialist's place (Vedant, 2026-10-13, while we are learning) |
 
 ## Eval plan
 
@@ -202,7 +203,10 @@ needs its own go-ahead.
    adapter that loads a server's tools into the generalist's loop.~~ Done 2026-10-13
    (`mcp_server`, `mcp_client`); wired into the generalist in step 5.
 4. **The router and the specialist contract**, for both specialists, with validation and fallback,
-   tested against fakes before any model runs.
+   tested against fakes before any model runs. Built 2026-10-13, all against fakes: the contract and both checks
+   (`analyst.specialists`), the router (`analyst.router`), the `hostllm` clients priced at the
+   served rate, and both specialists wired to models with the warm-up (`analyst.served`). Not yet
+   run against the live endpoint.
 5. **The graph:** generalist loop, critic, human gate with a checkpointer — stubs first, prompts
    after.
 6. The 50 tasks, then the first baseline runs.

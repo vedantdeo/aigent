@@ -51,6 +51,9 @@ class Client:
     judge_client: str | None = None
     # The environment variable holding a hosted endpoint's key; None for a server wanting none.
     api_key_env: str | None = None
+    # Further request headers a gateway in front of the endpoint wants, each named with the
+    # environment variable that holds its value.
+    headers_env: Mapping[str, str] = field(default_factory=dict)
     # The Hugging Face repo whose tokenizer counts for `model`, where the served id is not one.
     tokenizer: str | None = None
     # Whether the server enforces a record's JSON Schema (`response_format`), not just prompts it.

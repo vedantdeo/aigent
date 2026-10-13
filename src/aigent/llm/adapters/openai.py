@@ -23,14 +23,19 @@ from typing import TYPE_CHECKING, cast, get_args, get_origin
 import openai
 from openai import Omit, omit
 from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessageFunctionToolCall,
+    ChatCompletionMessageParam,
+    ChatCompletionToolParam,
+)
 from openai.types.shared_params import ResponseFormatJSONSchema
 from pydantic import BaseModel, ValidationError
 
 from aigent.errors import Unsupported
 from aigent.llm.adapters.client import Client, model_of
 from aigent.llm.adapters.retry import http_client
-from aigent.llm.messages import BatchStatus, Block, Failed, Parsed, Reply, Usage
+from aigent.llm.messages import BatchStatus, Block, Failed, Msg, Parsed, Reply, Tool, Usage
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -43,7 +48,10 @@ if TYPE_CHECKING:
 # What this wire can do. Everything absent from it — caching, thinking, effort, tools, server-side
 # search, streaming — `llm` refuses before sending. `schema` is here because a caller may ask for
 # a record, not because the wire constrains one.
-SUPPORTS = frozenset({"schema"})
+SUPPORTS = frozenset({"schema", "tools"})
+
+# What an endpoint that did not answer raises: no connection, a timeout, or a 5xx from in front.
+UNREACHABLE: tuple[type[Exception], ...] = (openai.APIConnectionError, openai.InternalServerError)
 
 # Local servers want no credential; a hosted endpoint names the variable holding its key.
 LOCAL_API_KEY = "not-needed"
@@ -74,14 +82,68 @@ def reply_of(completion: ChatCompletion) -> Reply:
     """One completion as ours. One choice is asked for, so one is read."""
     choice = completion.choices[0]
     text = choice.message.content or ""
+    calls = [_tool_use(call) for call in choice.message.tool_calls or [] if call.type == "function"]
+    blocks: list[Block] = [{"type": "text", "text": text}] if text or not calls else []
     return Reply(
         text=text,
         usage=usage_of(completion.usage),
         stop_reason=STOP_REASONS.get(choice.finish_reason, choice.finish_reason),
         model=completion.model,
-        blocks=({"type": "text", "text": text},),
+        blocks=(*blocks, *calls),
         raw=completion,
     )
+
+
+def _tool_use(call: ChatCompletionMessageFunctionToolCall) -> Block:
+    """One call as a `tool_use` block; arguments that are not a JSON object arrive as none."""
+    try:
+        arguments = json.loads(call.function.arguments)
+    except json.JSONDecodeError:
+        arguments = {}
+    given = cast(dict[str, object], arguments) if isinstance(arguments, dict) else {}
+    return {"type": "tool_use", "id": call.id, "name": call.function.name, "input": given}
+
+
+def function_tool(tool: Tool) -> dict[str, object]:
+    """A tool as this wire, and a Hugging Face chat template, takes it."""
+    return {
+        "type": "function",
+        "function": {
+            "name": tool["name"],
+            "description": tool.get("description", ""),
+            "parameters": tool["input_schema"],
+        },
+    }
+
+
+def _wire_messages(message: Msg) -> list[dict[str, object]]:
+    """One turn as this wire carries it: a tool result becomes a `tool` message each, and an
+    assistant's calls ride on its message, their arguments as JSON."""
+    content = message["content"]
+    if isinstance(content, str):
+        return [{"role": message["role"], "content": content}]
+    results = [block for block in content if block.get("type") == "tool_result"]
+    if results:
+        return [
+            {
+                "role": "tool",
+                "tool_call_id": block["tool_use_id"],
+                "content": _text_of(cast("str | Sequence[Block]", block.get("content"))),
+            }
+            for block in results
+        ]
+    sent: dict[str, object] = {"role": message["role"], "content": _text_of(content)}
+    calls = [block for block in content if block.get("type") == "tool_use"]
+    if calls:
+        sent["tool_calls"] = [
+            {
+                "id": block["id"],
+                "type": "function",
+                "function": {"name": block["name"], "arguments": json.dumps(block.get("input"))},
+            }
+            for block in calls
+        ]
+    return [sent]
 
 
 def _plainly(annotation: object) -> str:
@@ -161,6 +223,7 @@ class OpenAI:
             self._client = openai.OpenAI(
                 base_url=self.settings.base_url,
                 api_key=self._api_key(),
+                default_headers=self._headers(),
                 max_retries=0,
                 timeout=self.settings.timeout,
                 http_client=http_client(
@@ -182,6 +245,16 @@ class OpenAI:
         if not key:
             raise RuntimeError(f"{self.settings.name} needs {variable} set; add it to .env")
         return key
+
+    def _headers(self) -> dict[str, str]:
+        """The client's extra headers, each from the variable it names. Raises if one is unset."""
+        headers: dict[str, str] = {}
+        for header, variable in self.settings.headers_env.items():
+            value = os.environ.get(variable)
+            if not value:
+                raise RuntimeError(f"{self.settings.name} needs {variable} set; add it to .env")
+            headers[header] = value
+        return headers
 
     @property
     def tokenizer(self) -> PreTrainedTokenizerBase:
@@ -208,13 +281,14 @@ class OpenAI:
         if system:
             sent.append({"role": "system", "content": system})
         for message in request.messages:
-            sent.append(
-                cast(
-                    ChatCompletionMessageParam,
-                    {"role": message["role"], "content": _text_of(message["content"])},
-                )
-            )
+            sent.extend(cast("list[ChatCompletionMessageParam]", _wire_messages(message)))
         return sent
+
+    def _tools(self, request: Request) -> list[ChatCompletionToolParam] | Omit:
+        """The request's tools as functions, or nothing."""
+        if not request.tools:
+            return omit
+        return cast("list[ChatCompletionToolParam]", [function_tool(t) for t in request.tools])
 
     @property
     def _extra_body(self) -> dict[str, object] | None:
@@ -243,8 +317,10 @@ class OpenAI:
         # Cast because the stub names `tools` and `documents` as parameters, which a client's
         # own template arguments would be matched against.
         template = cast("Callable[..., Sequence[int]]", self.tokenizer.apply_chat_template)
+        tools = [function_tool(tool) for tool in request.tools or ()]
         ids = template(
             self.messages(request, schema),
+            tools=tools or None,
             add_generation_prompt=True,
             tokenize=True,
             return_dict=False,
@@ -259,6 +335,7 @@ class OpenAI:
                 model=model_of(request, self.settings),
                 messages=self.messages(request),
                 max_tokens=request.max_tokens,
+                tools=self._tools(request),
                 extra_body=self._extra_body,
             )
         )
@@ -299,7 +376,7 @@ class OpenAI:
         yield  # pragma: no cover - unreachable, and what makes this a generator
 
     def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession:
-        """Refused: this wire has tool calling, but no runner here drives it yet."""
+        """Refused: this wire sends a tool turn (`llm.turn`), but no runner here loops it yet."""
         raise Unsupported(f"{request.step}: the {self.name} wire runs no tools yet")
 
     def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str:
