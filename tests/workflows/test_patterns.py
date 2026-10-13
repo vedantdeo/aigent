@@ -7,6 +7,7 @@ from typing import get_args
 
 import pytest
 
+from aigent.retrieval.corpus import FY25_REPORTS
 from aigent.workflows import (
     chaining,
     evaluator_optimizer,
@@ -19,10 +20,10 @@ from aigent.workflows.reports import REPORTS, DocId
 PATTERNS = (chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer)
 
 
-def test_the_report_type_names_exactly_the_reports_in_the_manifest() -> None:
+def test_the_report_type_names_exactly_the_reports_search_reads() -> None:
     """`DocId` is what holds a model's choice of report to a real one, and it is written out by
-    hand; the manifest is what the corpus is fetched from."""
-    assert list(get_args(DocId)) == list(REPORTS)
+    hand; `FY25_REPORTS` is what the search loads, and every one is in the manifest."""
+    assert list(get_args(DocId)) == list(REPORTS) == list(FY25_REPORTS)
 
 
 @pytest.mark.parametrize("pattern", PATTERNS, ids=lambda module: module.__name__.split(".")[-1])

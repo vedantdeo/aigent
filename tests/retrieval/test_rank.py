@@ -92,6 +92,25 @@ def test_a_scoped_ranking_ranks_within_its_report(
     assert "dividend" in by_id[scoped[0].chunk_id].text
 
 
+@pytest.mark.parametrize("method", METHODS)
+@pytest.mark.parametrize(
+    ("scope", "reports"),
+    [
+        pytest.param(frozenset({"ALPHA"}), {"ALPHA"}, id="a set of one report"),
+        pytest.param(frozenset({"ALPHA", "BETA"}), {"ALPHA", "BETA"}, id="a set of two"),
+    ],
+)
+def test_a_ranking_scoped_to_several_reports_ranks_within_them(
+    embedder: BagOfWordsEmbedder, method: str, scope: frozenset[str], reports: set[str]
+) -> None:
+    indexes = _indexes(embedder)
+    ranker = build_ranker(method, indexes, KeywordReranker())
+
+    scoped = ranker.rank(QUERY, k=4, doc_id=scope)
+
+    assert {indexes.inventory.by_id[hit.chunk_id].doc_id for hit in scoped} == reports
+
+
 def _dense(indexes: Indexes, k: int) -> list[Hit]:
     return indexes.dense.search(indexes.embedder.embed_query(QUERY), k=k)
 

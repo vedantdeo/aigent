@@ -35,7 +35,7 @@ from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Msg
 from aigent.llm.pricing import estimate_eval_usd
 from aigent.retrieval.chunk import Chunk, Inventory, context_block
-from aigent.retrieval.corpus import load_corpus
+from aigent.retrieval.corpus import FY25_REPORTS, load_corpus
 from aigent.retrieval.dense import DenseIndex
 from aigent.retrieval.embed import Embedder, LocalEmbedder, Vectors
 from aigent.retrieval.evaluate import DATASET, STRATEGIES, resolve
@@ -246,7 +246,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.sample is not None:
         cases = spread(cases, args.sample)
 
-    documents = load_corpus(cache=args.cache)
+    documents = load_corpus(cache=args.cache, doc_ids=FY25_REPORTS)
     embedder: Embedder = LocalEmbedder()
     inventory = Inventory.build(args.strategy, documents, STRATEGIES[args.strategy])
     index = (DenseIndex.build_cached if args.cache else DenseIndex.build)(inventory, embedder)

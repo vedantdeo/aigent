@@ -13,6 +13,7 @@ import pytest
 from aigent.config import PAGE_SEPARATOR
 from aigent.retrieval import corpus
 from aigent.retrieval.corpus import (
+    FY25_REPORTS,
     cache_file,
     load_corpus,
     load_pdf,
@@ -207,6 +208,26 @@ def test_the_corpus_is_every_pdf_in_filename_order(tmp_path: Path) -> None:
     assert [document.doc_id for document in documents] == ["INFY-FY25", "TCS-FY25"], (
         "a training report in corpus/training/ must never be retrieved over"
     )
+
+
+def test_a_document_set_loads_exactly_those_reports_in_filename_order(tmp_path: Path) -> None:
+    for doc_id in ("TCS-FY24", "TCS-FY25", "INFY-FY24", "INFY-FY25"):
+        annual_report(tmp_path, doc_id)
+
+    documents = load_corpus(tmp_path, doc_ids=["TCS-FY25", "INFY-FY25"])
+
+    assert [document.doc_id for document in documents] == ["INFY-FY25", "TCS-FY25"]
+
+
+def test_a_document_set_naming_a_missing_report_raises(tmp_path: Path) -> None:
+    annual_report(tmp_path, "TCS-FY25")
+
+    with pytest.raises(ValueError, match="INFY-FY25"):
+        load_corpus(tmp_path, doc_ids=["TCS-FY25", "INFY-FY25"])
+
+
+def test_the_published_evals_read_the_fy25_reports() -> None:
+    assert FY25_REPORTS == ("ITC-FY25", "RELIANCE-FY25", "TATAMOTORS-FY25")
 
 
 def test_a_corpus_with_no_pdfs_raises_rather_than_scoring_zero(tmp_path: Path) -> None:

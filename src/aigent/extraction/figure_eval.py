@@ -47,12 +47,14 @@ from aigent.extraction.figures import (
     unit_key,
 )
 from aigent.retrieval.chunk import Inventory, by_sentence
-from aigent.retrieval.corpus import MANIFEST, load_corpus
+from aigent.retrieval.corpus import FY25_REPORTS, MANIFEST, load_corpus
 
 
 def passages() -> dict[str, str]:
     """Every test-corpus chunk's text by id, under the strategy the test set's ids came from."""
-    inventory = Inventory.build("by_sentence", load_corpus(cache=True), by_sentence())
+    inventory = Inventory.build(
+        "by_sentence", load_corpus(cache=True, doc_ids=FY25_REPORTS), by_sentence()
+    )
     return {chunk.id: chunk.text for chunk in inventory.chunks}
 
 

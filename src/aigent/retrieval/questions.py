@@ -33,7 +33,7 @@ from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Msg
 from aigent.llm.pricing import Budget, estimate_eval_usd, usage_cost
 from aigent.retrieval.chunk import Chunk, Document, Inventory, by_sentence, squeeze
-from aigent.retrieval.corpus import MANIFEST, load_corpus
+from aigent.retrieval.corpus import FY25_REPORTS, MANIFEST, load_corpus
 
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "evals" / "datasets" / "retrieval.jsonl"
@@ -192,7 +192,7 @@ def main(argv: list[str] | None = None) -> None:
     # the cost line this command exists to print.
     logging.getLogger("pypdf").setLevel(logging.ERROR)
 
-    documents = load_corpus()
+    documents = load_corpus(doc_ids=FY25_REPORTS)
     by_doc = {document.doc_id: document for document in documents}
     names = companies()
     inventory = Inventory.build("sentence", documents, by_sentence())
