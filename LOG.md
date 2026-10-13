@@ -1738,3 +1738,14 @@
   after launch, `calculate` and `fundamentals` answered (ITC's FY25 dividend, 14.35, cited to
   `ITC-FY25 p51`), a year the table lacks refused by the schema, closed in 1.0 s. No search was run
   live, so the ~19 s model load behind the first one is unmeasured through the client. $0.00.
+- 10-13: **the specialists answered live through the router, both by the cheap path: ~$0.07 of
+  GPU.** First run of step 4 against the Modal endpoint (`hostllm-headline`, `hostllm-analyst`),
+  from a scratch script: `warm_up`, then one headline and one figures job. The warm-up waited out a
+  30.7 s cold start. `read_headline` on "Infosys Q2 net profit rises 11% on large deal wins" gave
+  profit, Q2, up, 11.0, INFY in 5.1 s; `extract_figures` on a two-sentence passage called
+  `calculate` twice and gave revenue 23,450,000,000 INR and margin 0.18 for 2025 in 19.2 s over two
+  turns. Both passed their checks, so the generalist was never asked ($0.00 on Anthropic). Billed
+  per token: $0.0010 and $0.0037, against $0.0037 and $0.0170 for the same tokens at the
+  generalist's prices. The per-token figures leave out the cold start and idle time: the container
+  ran about five minutes (20:28–20:33 IST), since the first stop command wanted a `--yes` it was
+  not given and the container idled until it was stopped by hand. 0 containers left running.
