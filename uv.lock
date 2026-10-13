@@ -989,6 +989,11 @@ wheels = [
 ]
 
 [[package]]
+name = "hostllm"
+version = "0.1.0"
+source = { git = "https://github.com/vedantdeo/hostllm?branch=main#67d17963a822dc6495864900c80cc9dd39d239f9" }
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -3319,7 +3324,10 @@ wheels = [
 [[package]]
 name = "underhood"
 version = "0.1.0"
-source = { git = "https://github.com/vedantdeo/underhood?branch=main#915cd48adc2a95ed88dbad6dbceca86a780f7752" }
+source = { git = "https://github.com/vedantdeo/underhood?branch=main#85a68adf2145181c667ac3dd0a658f5ff384492a" }
+dependencies = [
+    { name = "hostllm" },
+]
 
 [[package]]
 name = "urllib3"

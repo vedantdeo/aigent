@@ -53,11 +53,15 @@ The generalist gets its tools from **MCP servers through one client adapter** â€
 MCP client: a tool it did not write joins the loop like its own, counted, fenced as untrusted when it
 returns third-party text, and traced.
 
+Built 2026-10-13 as `mcp_client.connect`: a server's listing becomes the schemas the model is shown,
+and its calls go through the same dispatcher type as our own tools. Our own server fences what it
+returns, so it is connected unfenced; any other server's text, errors included, is fenced.
+
 | Tool | Server | Status |
 |---|---|---|
-| `search_filings(query, company, year)` | aigent's MCP server | built (step 1): six filings, scoped by company and financial year |
-| `fundamentals(ticker, metric, year)` | aigent's MCP server | built (step 1): 24 figures, each cited to its page |
-| `calculate(expression)` | aigent's MCP server | built (`underhood.tools`) |
+| `search_filings(query, company, year)` | aigent's MCP server | built (step 1) and served (step 3, 2026-10-13): six filings, scoped by company and financial year |
+| `fundamentals(ticker, metric, year)` | aigent's MCP server | built (step 1) and served (step 3): 24 figures, each cited to its page |
+| `calculate(expression)` | aigent's MCP server | built (`underhood.tools`) and served (step 3) |
 | `read_file`, `write_file` | aigent's MCP server | built, sandboxed |
 | `web_search` | Anthropic's server tool | built; **off in evals**, since a web figure has no frozen ground truth |
 
@@ -194,8 +198,9 @@ needs its own go-ahead.
 2. **Serve the specialists:** retrain the headline reader as a PEFT LoRA on Qwen3-4B and score it
    on the 50 headlines against the Week 4 adapter's 41/50; serve it and the report analyst from one
    vLLM endpoint that scales to zero; check the served outputs match the training-time evals.
-3. **The MCP side:** add `search_filings` and `fundamentals` to aigent's MCP server; the MCP client
-   adapter that loads a server's tools into the generalist's loop.
+3. ~~**The MCP side:** add `search_filings` and `fundamentals` to aigent's MCP server; the MCP client
+   adapter that loads a server's tools into the generalist's loop.~~ Done 2026-10-13
+   (`mcp_server`, `mcp_client`); wired into the generalist in step 5.
 4. **The router and the specialist contract**, for both specialists, with validation and fallback,
    tested against fakes before any model runs.
 5. **The graph:** generalist loop, critic, human gate with a checkpointer â€” stubs first, prompts

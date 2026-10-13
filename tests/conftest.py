@@ -35,6 +35,7 @@ from anthropic.types.messages import MessageBatch, MessageBatchIndividualRespons
 from pydantic import BaseModel
 
 from aigent import tracing
+from aigent.analyst import filings
 from aigent.config import CLIENT, JUDGE_MODEL, MAX_USD_PER_TURN, MODEL
 from aigent.evals.judge import LlmJudge, Verdict
 from aigent.llm.adapters import CLIENTS
@@ -481,6 +482,29 @@ class FakeSearch:
 @pytest.fixture
 def search() -> FakeSearch:
     return FakeSearch()
+
+
+class FakeFilings:
+    """The passages of the reports a company and year pick, refusing a scope as the real search
+    does; every search logged."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, str, str]] = []
+
+    def __call__(self, query: str, /, *, company: str = "all", year: str = "all") -> list[Chunk]:
+        reports = filings.scope(company, year)
+        self.asked.append((query, company, year))
+        return [
+            chunk
+            for doc_id, chunks in PASSAGES.items()
+            if reports is None or doc_id in reports
+            for chunk in chunks
+        ]
+
+
+@pytest.fixture
+def filing_search() -> FakeFilings:
+    return FakeFilings()
 
 
 @pytest.fixture

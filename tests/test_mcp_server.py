@@ -1,8 +1,9 @@
 """The MCP server through the SDK's own client, in process: what it lists, what each tool returns
-and refuses, and that the real search waits for the first call."""
+and refuses, and that the real searches wait for the first call."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import cast
@@ -13,21 +14,30 @@ from mcp import Client
 from mcp.types import CallToolResult, TextContent, Tool
 
 from aigent import mcp_server
+from aigent.analyst import filings
+from aigent.analyst.filings import SEARCH_FILINGS_TOOL
+from aigent.analyst.fundamentals import FUNDAMENTALS_TOOL, load_fundamentals
 from aigent.config import MCP_SERVER_NAME
-from aigent.mcp_server import LazySearch, build_server
+from aigent.mcp_server import LazyFilings, LazySearch, build_server
 from aigent.report_tools import SEARCH_TOOL
 from aigent.retrieval.chunk import Chunk
-from aigent.tools import READ_FILE_TOOL, WRITE_FILE_TOOL, fence
+from aigent.tools import CALCULATOR_TOOL, READ_FILE_TOOL, WRITE_FILE_TOOL, fence
 from aigent.workflows.reports import REPORTS, Search
 
-from .conftest import PASSAGES, FakeSearch
+from .conftest import PASSAGES, FakeFilings, FakeSearch
 
 
 def _with_client[Result](
-    search: Search, use: Callable[[Client], Awaitable[Result]], sandbox: Path | None = None
+    search: Search,
+    use: Callable[[Client], Awaitable[Result]],
+    sandbox: Path | None = None,
+    filing_search: filings.Search | None = None,
 ) -> Result:
     async def run() -> Result:
-        server = build_server(search) if sandbox is None else build_server(search, sandbox)
+        asked = filing_search or FakeFilings()
+        server = (
+            build_server(search, asked) if sandbox is None else build_server(search, asked, sandbox)
+        )
         async with Client(server) as client:
             return await use(client)
 
@@ -39,15 +49,18 @@ def _call(
     arguments: dict[str, object],
     tool: str = "search_reports",
     sandbox: Path | None = None,
+    filing_search: filings.Search | None = None,
 ) -> CallToolResult:
-    return _with_client(search, lambda client: client.call_tool(tool, arguments), sandbox)
+    return _with_client(
+        search, lambda client: client.call_tool(tool, arguments), sandbox, filing_search
+    )
 
 
 def _text(result: CallToolResult) -> str:
     return "".join(cast(TextContent, block).text for block in result.content)
 
 
-def test_the_server_offers_three_tools_described_as_the_agent_sees_them(
+def test_the_server_offers_six_tools_described_as_the_agent_sees_them(
     search: FakeSearch,
 ) -> None:
     async def listed(client: Client) -> tuple[list[Tool], str | None, str]:
@@ -62,12 +75,25 @@ def test_the_server_offers_three_tools_described_as_the_agent_sees_them(
     assert all(company in instructions for company in REPORTS.values()), instructions
     assert {named: tool.description for named, tool in tools.items()} == {
         "search_reports": SEARCH_TOOL.get("description"),
+        "search_filings": SEARCH_FILINGS_TOOL.get("description"),
+        "fundamentals": FUNDAMENTALS_TOOL.get("description"),
+        "calculate": CALCULATOR_TOOL.get("description"),
         "read_file": READ_FILE_TOOL.get("description"),
         "write_file": WRITE_FILE_TOOL.get("description"),
     }
     assert tools["read_file"].annotations and tools["read_file"].annotations.read_only_hint
     assert tools["write_file"].annotations and not tools["write_file"].annotations.read_only_hint
     assert tools["write_file"].input_schema["required"] == ["file_path", "content"]
+    assert tools["search_filings"].input_schema["required"] == ["query"], "scope defaults to all"
+    assert tools["fundamentals"].input_schema["required"] == ["ticker", "metric", "year"]
+    for served, ours in (
+        ("search_filings", SEARCH_FILINGS_TOOL),
+        ("fundamentals", FUNDAMENTALS_TOOL),
+    ):
+        shown = cast(dict[str, dict[str, object]], dict(ours["input_schema"])["properties"])
+        served_as = cast(dict[str, dict[str, object]], tools[served].input_schema["properties"])
+        allowed = {field: spec["enum"] for field, spec in shown.items() if "enum" in spec}
+        assert {field: served_as[field]["enum"] for field in allowed} == allowed, served
     tool = tools["search_reports"]
     properties = cast(dict[str, dict[str, object]], tool.input_schema["properties"])
     assert tool.input_schema["required"] == ["query"], "report defaults to all"
@@ -135,6 +161,152 @@ def test_a_search_that_finds_nothing_says_so() -> None:
         return []
 
     assert _text(_call(nothing, {"query": "q"})) == "No passages matched that query."
+
+
+@pytest.mark.parametrize(
+    ("arguments", "asked", "doc_ids"),
+    [
+        pytest.param({"query": "dividend"}, ("dividend", "all", "all"), set(PASSAGES), id="all"),
+        pytest.param(
+            {"query": " dividend\n", "company": "RELIANCE", "year": "2025"},
+            ("dividend", "RELIANCE", "2025"),
+            {"RELIANCE-FY25"},
+            id="one company and year, the query trimmed",
+        ),
+        pytest.param(
+            {"query": "dividend", "company": "ITC", "year": "2024"},
+            ("dividend", "ITC", "2024"),
+            set[str](),
+            id="a report with no passage",
+        ),
+    ],
+)
+def test_a_filings_search_returns_fenced_passages_from_the_scope_asked(
+    arguments: dict[str, object],
+    asked: tuple[str, str, str],
+    doc_ids: set[str],
+    search: FakeSearch,
+    filing_search: FakeFilings,
+) -> None:
+    result = _call(search, arguments, "search_filings", filing_search=filing_search)
+
+    text = _text(result)
+    assert not result.is_error and filing_search.asked == [asked], text
+    assert text.startswith("<untrusted") and ("No passages matched" in text) is (not doc_ids)
+    cited = {chunk.doc_id for chunks in PASSAGES.values() for chunk in chunks if chunk.id in text}
+    assert cited == doc_ids, text
+
+
+@pytest.mark.parametrize(
+    ("arguments", "says"),
+    [
+        pytest.param({"query": "  "}, "empty", id="an empty query"),
+        pytest.param({"query": "q", "company": "INFY"}, "INFY", id="a company not held"),
+        pytest.param({"query": "q", "year": "2019"}, "2019", id="a year not held"),
+        pytest.param({"query": "q", "year": 2025}, "2025", id="a year sent as a number"),
+    ],
+)
+def test_a_bad_filings_search_is_refused_and_nothing_is_searched(
+    arguments: dict[str, object], says: str, search: FakeSearch, filing_search: FakeFilings
+) -> None:
+    result = _call(search, arguments, "search_filings", filing_search=filing_search)
+
+    assert result.is_error and says in _text(result), _text(result)
+    assert filing_search.asked == []
+
+
+def test_a_filings_search_that_fails_is_an_error_not_an_answer(search: FakeSearch) -> None:
+    def broken(query: str, /, *, company: str = "all", year: str = "all") -> list[Chunk]:
+        raise ValueError("the index is missing")
+
+    result = _call(search, {"query": "q"}, "search_filings", filing_search=broken)
+
+    assert result.is_error and "the index is missing" in _text(result), _text(result)
+    assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
+
+
+def test_a_fundamentals_lookup_returns_the_figure_and_what_to_cite(search: FakeSearch) -> None:
+    arguments: dict[str, object] = {"ticker": "ITC", "metric": "dividend", "year": "2025"}
+
+    result = _call(search, arguments, "fundamentals")
+
+    found = cast(dict[str, object], json.loads(_text(result)))
+    assert not result.is_error and found["cite_as"] == "ITC:2025:dividend", found
+    assert found["value"] == 14.35 and found["source"] == "ITC-FY25 p51", found
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "says"),
+    [
+        pytest.param(
+            "fundamentals",
+            {"ticker": "INFY", "metric": "revenue", "year": "2025"},
+            "INFY",
+            id="a company the table lacks",
+        ),
+        pytest.param(
+            "fundamentals",
+            {"ticker": "ITC", "metric": "ebitda", "year": "2025"},
+            "ebitda",
+            id="a metric the table lacks",
+        ),
+        pytest.param(
+            "fundamentals",
+            {"ticker": "ITC", "metric": "revenue", "year": "2019"},
+            "2019",
+            id="a year the table lacks",
+        ),
+        pytest.param("calculate", {"expression": "__import__('os')"}, "", id="code, not sums"),
+    ],
+)
+def test_a_bad_lookup_or_sum_is_refused_with_its_reason(
+    search: FakeSearch, tool: str, arguments: dict[str, object], says: str
+) -> None:
+    result = _call(search, arguments, tool)
+
+    assert result.is_error and says in _text(result), _text(result)
+    assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
+
+
+def test_a_figure_the_given_table_lacks_is_an_error_not_an_answer(search: FakeSearch) -> None:
+    async def run() -> CallToolResult:
+        only_fy25 = {key: value for key, value in load_fundamentals().items() if key[1] == 2025}
+        async with Client(build_server(search, FakeFilings(), table=only_fy25)) as client:
+            arguments = {"ticker": "ITC", "metric": "eps", "year": "2024"}
+            return await client.call_tool("fundamentals", arguments)
+
+    result = anyio.run(run)
+
+    assert result.is_error and "no 2024 figures for ITC" in _text(result), _text(result)
+    assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
+
+
+def test_calculate_returns_the_result(search: FakeSearch) -> None:
+    result = _call(search, {"expression": "(14.35 - 13.75) / 13.75 * 100"}, "calculate")
+
+    assert not result.is_error and float(_text(result)) == pytest.approx(4.3636, abs=1e-3)
+
+
+def test_the_filings_search_refuses_a_scope_before_building_then_builds_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    built: list[bool] = []
+
+    def build_filings_search(cache: bool) -> filings.Search:
+        built.append(cache)
+        return FakeFilings()
+
+    monkeypatch.setattr(mcp_server, "build_filings_search", build_filings_search)
+    lazy = LazyFilings()
+
+    with pytest.raises(ValueError, match="no company"):
+        lazy("q", company="INFY")
+    assert built == [], "neither starting nor a refused scope loads a model"
+
+    lazy("q")
+    lazy("q", company="ITC", year="2025")
+
+    assert built == [True], "built once, from the cached corpus and vectors"
 
 
 def test_the_real_search_is_built_on_the_first_call_and_only_once(
