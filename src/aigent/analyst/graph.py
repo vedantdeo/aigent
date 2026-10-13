@@ -36,12 +36,19 @@ from aigent.llm.core import Llm, Request
 RESEARCH = (
     "You are a filings analyst answering a question about Indian listed companies from their "
     "annual reports. Find what you need with search_filings, scoped to the company and the "
-    "financial year asked about, and with fundamentals for headline figures. Hand narrow jobs to "
-    "the tools built for them: read_headline for a market headline, extract_figures for the "
-    "figures in passages you have found. Use calculate for every piece of arithmetic. When you "
+    "financial year asked about, and with fundamentals for the headline figures it holds. "
+    "Some of your tools are specialists: narrow models, each built for one job, which its "
+    "tool's description states. Before you do a piece of work yourself, read what every "
+    "specialist at your disposal is for and hand the work to the most applicable one; break a "
+    "task into several specialist calls when it needs more than one. A specialist's answer is "
+    "checked against its source and costs a fraction of what you do, so prefer one wherever it "
+    "fits. Use calculate for every piece of arithmetic. When you "
     "have enough, answer in prose: state each fact with its figure and year, and after it the id "
     "of every source it rests on in square brackets, a passage id or a fundamentals cite_as. Say "
-    f"plainly what the sources do not cover. {guardrails.UNTRUSTED_NOTE}"
+    "plainly what the sources do not cover. End your answer with one line that begins "
+    "'Specialists:' and names each specialist you called and for what; if you decided not to "
+    "call any, explain that decision there, specialist by specialist. Only a tool whose "
+    f"description begins 'Specialist for' is a specialist. {guardrails.UNTRUSTED_NOTE}"
 )
 FINISH = (
     "You are out of turns: do not call any more tools. Answer now from what you have, cite it, "
@@ -50,13 +57,16 @@ FINISH = (
 WRITE = (
     "Turn an analyst's answer into a memo. Keep only facts the answer states with a source id in "
     "square brackets; each becomes one claim citing exactly those ids. Add nothing the answer "
-    "does not say, and move anything it could not establish into the caveats."
+    "does not say. A caveat is something the sources did not cover or could not settle: never a "
+    "remark about the answer itself, its method or an earlier draft. Leave out the answer's "
+    "closing 'Specialists:' line and anything else it says about the tools it used."
 )
 CRITIC = (
     "You check one claim from an analyst's memo against the sources it cites, and nothing else: "
     "you have not seen the analyst's reasoning and must not supply facts of your own. Decide "
     "whether the sources state the claim, do not state it, or contradict it, minding the figure, "
-    "its unit and scale, the financial year and the company. "
+    "its unit and scale, the financial year and the company. Keep the reason to one sentence and "
+    "quote at most a dozen words of a source. "
     f"{guardrails.UNTRUSTED_NOTE}"
 )
 
@@ -77,7 +87,8 @@ class State(TypedDict):
 @dataclass(frozen=True)
 class Analysed:
     """How a run ended: the memo and the critic's verdicts on it, a person's decision if it got
-    that far, every specialist call, and why it stopped early if it did."""
+    that far, every specialist call, why it stopped early if it did, and the generalist's last
+    answer in its own words, which is where it explains calling no specialist."""
 
     memo: Memo | None
     verdicts: dict[str, Judged]
@@ -85,6 +96,7 @@ class Analysed:
     revisions: int
     routed: list[Routing] = field(default_factory=list[Routing])
     stopped: str | None = None
+    draft: str | None = None
 
 
 def unsupported(state: State) -> dict[str, Judged]:
@@ -116,7 +128,11 @@ def _brief(state: State, toolbox: Toolbox) -> str:
             )
     parts += [f"<reviewer>{note}</reviewer>" for note in state["notes"]]
     if len(parts) > 1:
-        parts.append("Research again where needed and answer afresh, fixing what was refused.")
+        parts.append(
+            "Research again where needed and answer afresh, fixing what was refused. Write the "
+            "answer as if for the first time: do not mention the earlier memo or what was wrong "
+            "with it."
+        )
     return "\n\n".join(parts)
 
 
@@ -147,14 +163,12 @@ def build(
             ran = generalist.run_tools(request, dispatch, max_turns=max_turns, finish=FINISH)
         except (BudgetExceeded, TurnsExhausted) as stop:
             return {"draft": None, "stopped": str(stop)}
-        return {"draft": ran.message.text, "stopped": ran.cut_short}
+        # every turn's text, not the last turn's: an answer is often written a turn before the end
+        said = [turn.text.strip() for turn in ran.turns if turn.text.strip()]
+        return {"draft": "\n\n".join(said), "stopped": ran.cut_short}
 
     def write(state: State) -> dict[str, object]:
-        known = ", ".join(sorted(toolbox.evidence)) or "none"
-        prompt = (
-            f"<question>{state['question']}</question>\n\n<answer>{state['draft']}</answer>\n\n"
-            f"<source_ids>{known}</source_ids>"
-        )
+        prompt = f"<question>{state['question']}</question>\n\n<answer>{state['draft']}</answer>"
         request = Request.ask("memo", WRITE, prompt, MAX_TOKENS_MEMO, model=GENERALIST_MODEL)
         parsed = generalist.parse(request, Memo)
         if parsed.parsed is None:
@@ -177,9 +191,10 @@ def build(
             request = Request.ask(
                 f"critic:{claim.id}", CRITIC, prompt, MAX_TOKENS_VERDICT, model=CRITIC_MODEL
             )
-            judged = critic.parse(request, Judged).parsed
-            verdicts[claim.id] = judged or Judged(
-                verdict="unsupported", reason="the critic returned no verdict"
+            told = critic.parse(request, Judged)
+            verdicts[claim.id] = told.parsed or Judged(
+                verdict="unsupported",
+                reason=f"the critic returned no verdict (it stopped on {told.stop_reason})",
             )
         return {"verdicts": verdicts}
 
@@ -257,6 +272,7 @@ def analysed(state: State, toolbox: Toolbox) -> Analysed:
         state["revisions"],
         list(toolbox.route.routed),
         state["stopped"],
+        state["draft"],
     )
 
 

@@ -1752,3 +1752,64 @@
   `config.GENERALIST_MODEL` now does. The per-token figures leave out the cold start and idle time: the container
   ran about five minutes (20:28–20:33 IST), since the first stop command wanted a `--yes` it was
   not given and the container idled until it was stopped by hand. 0 containers left running.
+- 10-13: **the graph's first live run: a memo of five claims, all supported, and no specialist
+  called. ~$0.11.** One question from a scratch script, the gate auto-approving: "How much did
+  ITC's dividend per share grow from FY24 to FY25, and what did its FY25 annual report say about the
+  dividend?" Tools over stdio MCP (`search_filings`, `fundamentals`, `calculate`) beside the two
+  specialists. Research took three turns on Sonnet 5, then the memo: ₹13.75 to ₹14.35, up ₹0.60 or
+  4.36%, from the two fundamentals keys, and four claims from five FY25 passages (final ₹7.85,
+  interim ₹6.50, the ₹17,956.69 crore outflow, shareholder approval pending). Opus 5 judged all five
+  supported on the first draft, so no revision. 96 s including a 35 s warm-up. **Sonnet $0.032, Opus
+  $0.043 — the critic cost more than the generalist** — and about $0.04 of GPU for a warm-up that
+  served nothing: **the generalist read the figures itself and never called `extract_figures`**, so
+  on this question routing saved nothing. Also seen: the writer spent its one caveat remarking on a
+  source id it was shown but the answer never used, and the SDK's parse path warns on every record
+  (`parsed_output`). 0 containers left running.
+- 10-13: **three questions through the graph on the generic specialist prompt: the generalist
+  called a specialist once in three, and only after the critic sent it back. ~$0.56.** Sonnet 5
+  $0.227, Opus 5 critic $0.247, about $0.09 of GPU (a 38 s warm-up, then seven minutes up). Every
+  step was printed (scratch script). **Q1, ITC's dividend:** two `fundamentals` lookups, one search,
+  two `calculate`; nine claims, all supported; no specialist, no explanation of why. **Q2, Reliance's
+  capex:** two searches and a subtraction; the critic returned no verdict on two claims citing
+  segment tables, so it went back, and on the redraft the generalist called `extract_figures` on
+  three passages. The specialist answered all three and all three passed their check, in 19, 26
+  and 22 s, **and were wrong**: from a segment table row it returned one segment's capex per "year"
+  (38,438 as 2025, 25,104 as 2024, 6,142 as 2023), the crore scale unapplied. The check passed them
+  because each number is printed in the passage. The generalist ignored them and used the
+  narrative's ₹1,31,107 crore against ₹1,31,769 crore. Two revisions, 210 s. **Q3, JLR's free cash
+  flow:** one search; the generalist misread a chart's FY24 figure as £269 million, the critic
+  called it wrong (the row reads 2,269) and the redraft fixed it; no specialist. **What it showed:**
+  the sentence asking it to explain calling no specialist was ignored in both runs that called none;
+  **a specialist call can cost more than Sonnet** ($0.0054 against $0.0049 for one passage), since
+  the served rate is $26 a million output tokens against Sonnet's $10; the critic's cap of 256 cut
+  verdicts that quote a table; memos carried caveats about the answer itself and about earlier
+  drafts. Changed after it, untested live: the answer must end with a `Specialists:` line, the
+  critic's cap is 512 with short quotes, a no-verdict reason names its stop reason, and the writer
+  and the redraft are told to leave drafts and method out. 0 containers left running.
+- 10-13: **the same three questions on the third-draft prompt: no specialist called in any of
+  them, each time with a stated reason. ~$0.35.** Sonnet 5 $0.178, Opus 5 critic $0.111, about
+  $0.06 of GPU for a warm-up that served nothing. The closing `Specialists:` line appeared where the
+  log shows the end of an answer (Q2 and Q3, both passes; Q1's print was cut before its end). The
+  reason was the same each time: the figure "was stated directly and unambiguously in the retrieved
+  passage", so `extract_figures` was "unnecessary", and no headline was involved. It also listed
+  `search_filings`, `fundamentals` and `calculate` as specialists. **A graph bug surfaced on Q2:**
+  the redraft wrote its cited answer in a turn that also called `calculate`, then closed with a
+  one-line turn; the draft kept only the last turn's text, so the writer got no cited facts and
+  the gate approved a memo with no claims. The draft is now every turn's text. No critic reply was
+  cut at the 512 cap (four "no verdict" at 256 the run before). Caveats about earlier drafts were
+  gone; caveats about the answer itself were not ("the answer did not provide any bracketed source
+  identifiers"). Q3's redraft dropped the FY24 comparison instead of correcting it. 0 containers
+  left running.
+- 10-13: **Finding: a task that is too trivial does not go to the specialist, even when it is
+  offered and coaxed.** Over seven research passes on three questions and three drafts of the
+  prompt (name the specialists and what each is for; name none and say "use the most applicable
+  one, it is checked and costs a fraction of what you do"; require a closing line justifying a
+  decision to call none), Sonnet 5 called `extract_figures` once, on a redraft, and ignored what it
+  returned. Its reason, each time it gave one: the figure "was stated directly and unambiguously
+  in the retrieved passage". Reading one printed number is no work for the generalist, so it sees
+  nothing to hand over; cost is not something it weighs. Recorded as the day's result at Vedant's
+  call, not worked around: the generalist keeps the decision, and the routed-against-generalist
+  comparison will report how often it routes at all. What it implies for the eval: routing can
+  only save where the narrow job is real work for the generalist, so the tasks have to include
+  jobs of that size (many passages, table-heavy extraction, a batch of headlines) for the
+  comparison to have anything in it.

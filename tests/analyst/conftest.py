@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from pydantic import JsonValue
 
+from aigent.analyst.experts import figures_expert, headline_expert
 from aigent.analyst.router import Router
 from aigent.analyst.specialists import FigureJob, Invalid, Specialist, Told, check_figures
 from aigent.analyst.toolbox import Toolbox
@@ -40,8 +41,10 @@ def box(
         served_tools=[{"name": "search_filings", "input_schema": {"type": "object"}}],
         served=served,
         route=Router(price=lambda i, o: 0.0),
-        read_headline=Specialist("read_headline", headline, never, record),
-        extract_figures=Specialist("extract_figures", figures, never, check_figures),
+        experts=[
+            headline_expert(Specialist("read_headline", headline, never, record)),
+            figures_expert(Specialist("extract_figures", figures, never, check_figures)),
+        ],
     )
 
 

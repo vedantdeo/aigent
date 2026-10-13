@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import cast
 
 import pytest
-from anthropic.types import Message
+from anthropic.types import Message, TextBlock
 from pydantic import BaseModel
 
 pytest.importorskip("langgraph")
@@ -17,7 +17,8 @@ from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from langgraph.types import Command  # noqa: E402
 
 from aigent.analyst import graph as graph_module  # noqa: E402
-from aigent.analyst.graph import State, analysed, begin, build, run  # noqa: E402
+from aigent.analyst.experts import EXTRACT_FIGURES_TOOL, READ_HEADLINE_TOOL  # noqa: E402
+from aigent.analyst.graph import RESEARCH, State, analysed, begin, build, run  # noqa: E402
 from aigent.analyst.memo import Claim, Judged, Memo, Review  # noqa: E402
 from aigent.config import CRITIC_MODEL, GENERALIST_MODEL, MAX_CRITIC_REVISIONS  # noqa: E402
 from aigent.errors import GuardrailTripped  # noqa: E402
@@ -70,6 +71,7 @@ def test_a_supported_memo_reaches_the_gate_and_is_approved(make_llm: MakeLlm) ->
 
     assert done.memo == memo(RIGHT) and done.verdicts == {"c1": SUPPORTED}
     assert done.review == Review(approved=True) and done.revisions == 0 and done.stopped is None
+    assert done.draft == DRAFT, "the generalist's own words, where it explains its choices"
     research, _, writing = sent.sent
     assert asked(research) == f"<question>{QUESTION}</question>", "trimmed by the input guard"
     assert [tool["name"] for tool in cast(list[dict[str, object]], research.tools)] == [
@@ -79,6 +81,34 @@ def test_a_supported_memo_reaches_the_gate_and_is_approved(make_llm: MakeLlm) ->
     ]
     assert writing.schema is Memo and DRAFT in asked(writing) and DIVIDEND in asked(writing)
     assert writing.model == research.model == GENERALIST_MODEL
+
+
+def test_the_draft_is_everything_the_generalist_said_not_only_its_last_turn(
+    make_llm: MakeLlm,
+) -> None:
+    answering = SEARCHING.model_copy(
+        update={"content": [TextBlock(type="text", text=DRAFT), *SEARCHING.content]}
+    )
+    closing = "Specialists: none, the passage prints the figure in full."
+
+    def reply(sent: Sent) -> Message | str | BaseModel | None:
+        if sent.schema is Memo:
+            return memo(RIGHT)
+        return answering if len(sent.messages) == 1 else closing
+
+    writer, sent = make_llm(reply)
+
+    done = run(writer, make_llm(judging)[0], box(search), QUESTION)
+
+    assert done.draft == f"{DRAFT}\n\n{closing}"
+    assert DRAFT in asked(sent.sent[-1]), "the writer is given the answer, not just its last line"
+
+
+def test_the_research_prompt_names_no_specialist_so_a_new_one_needs_only_its_card() -> None:
+    cards = [READ_HEADLINE_TOOL, EXTRACT_FIGURES_TOOL]
+
+    assert "specialist" in RESEARCH and not [c["name"] for c in cards if c["name"] in RESEARCH]
+    assert "Specialists:" in RESEARCH and "explain that decision" in RESEARCH
 
 
 def test_the_critic_is_another_model_shown_only_the_claim_and_what_it_cites(
@@ -151,7 +181,7 @@ def test_a_critic_that_returns_no_verdict_counts_as_unsupported(make_llm: MakeLl
     done = run(writer, critic, box(search), QUESTION)
 
     assert done.verdicts["c1"] == Judged(
-        verdict="unsupported", reason="the critic returned no verdict"
+        verdict="unsupported", reason="the critic returned no verdict (it stopped on end_turn)"
     )
     assert done.revisions == MAX_CRITIC_REVISIONS
 

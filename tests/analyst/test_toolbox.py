@@ -1,27 +1,32 @@
-"""The generalist's toolbox: a server's tools beside the two specialists', evidence kept from each
-search, and a specialist call answered through the router."""
+"""The generalist's toolbox and the list of experts in it: a server's tools beside the
+specialists', evidence kept from each search, and a specialist call answered through the router."""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import cast
 
 import pytest
 
-from aigent.analyst.specialists import FigureJob, Specialist, Told
-from aigent.analyst.toolbox import (
+from aigent.analyst import experts as listed
+from aigent.analyst.experts import (
+    BUILDERS,
     EXTRACT_FIGURES_TOOL,
     READ_HEADLINE_TOOL,
-    Passage,
-    passages_in,
+    experts,
+    headline_expert,
 )
+from aigent.analyst.specialists import FigureJob, Specialist, Told
+from aigent.analyst.toolbox import Passage, Toolbox, passages_in
 from aigent.errors import SpecialistUnreachable
+from aigent.llm.core import Llm
 from aigent.mcp_client import connect
 from aigent.mcp_server import build_server
 from aigent.retrieval.chunk import context_block
 
 from ..conftest import PASSAGES, FakeFilings, FakeSearch
-from .conftest import DIVIDEND, FIGURE, box, record, search, told
+from .conftest import DIVIDEND, FIGURE, box, never, record, search, told
 
 
 def test_a_search_result_s_passages_are_read_back_with_their_ids() -> None:
@@ -41,6 +46,9 @@ def test_the_generalist_is_shown_the_server_s_tools_and_both_specialists() -> No
 
     assert names == ["search_filings", "read_headline", "extract_figures"]
     assert dict(READ_HEADLINE_TOOL["input_schema"])["required"] == ["headline"]
+    for card in (READ_HEADLINE_TOOL, EXTRACT_FIGURES_TOOL):
+        said = card.get("description", "")
+        assert said.startswith("Specialist for ") and "Use it" in said and "Limits:" in said, said
     assert dict(EXTRACT_FIGURES_TOOL["input_schema"])["required"] == ["chunk_ids", "wanted"]
 
 
@@ -115,7 +123,8 @@ def test_an_answer_neither_model_gets_past_its_check_is_an_error_result() -> Non
         return told("")
 
     tools = box(search)
-    tools.read_headline = Specialist("read_headline", lambda job: told(""), generalist, record)
+    failing = Specialist("read_headline", lambda job: told(""), generalist, record)
+    tools.experts = [headline_expert(failing)]
 
     content, is_error = tools("read_headline", {"headline": "Infy Q2 profit rises 11%"})
 
@@ -169,3 +178,46 @@ def test_a_fundamentals_answer_is_kept_as_evidence_under_its_cite_as() -> None:
     assert list(tools.evidence) == ["ITC:2025:dividend"]
     kept = tools.evidence["ITC:2025:dividend"]
     assert (kept.source, kept.text) == ("ITC-FY25 p51", answer)
+
+
+@pytest.mark.parametrize(
+    "served",
+    [
+        pytest.param(
+            ["search_filings", "read_headline"], id="a server's tool named as an expert is"
+        ),
+        pytest.param(["search_filings", "search_filings"], id="a server's tool listed twice"),
+    ],
+)
+def test_two_tools_with_one_name_are_refused(served: list[str]) -> None:
+    tools = box(search)
+
+    with pytest.raises(ValueError, match="two tools are called"):
+        Toolbox(
+            [{"name": name, "input_schema": {"type": "object"}} for name in served],
+            search,
+            tools.route,
+            tools.experts,
+        )
+
+
+def test_the_list_builds_every_specialist_on_its_own_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    built: list[tuple[str, str, str]] = []
+    for name in ("headline_reader", "report_analyst"):
+
+        def build(small: str, big: str, name: str = name) -> Specialist[object, object]:
+            built.append((name, small, big))
+            return Specialist(name, never, never, lambda job, said: said)
+
+        monkeypatch.setattr(listed, name, build)
+
+    made = experts(cast(Llm, "generalist"), cast("Callable[[str], Llm]", lambda client: client))
+
+    assert list(BUILDERS) == sorted(BUILDERS), "the list keeps one canonical order"
+    assert built == [
+        ("report_analyst", "hostllm-analyst", "generalist"),
+        ("headline_reader", "hostllm-headline", "generalist"),
+    ]
+    assert [expert.name for expert in made] == ["extract_figures", "read_headline"]
