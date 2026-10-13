@@ -1698,3 +1698,35 @@
   refused answers were relabelled (`answer --only`), 891 of 1,141 reading the cache: refusals fell
   to 871, unnamed scales 249 → 127 and descriptions on named metrics 44 → 9. Built: 2,966 training
   conversations (1,442 real) and 142 validation. The day's labelling came to $5.7531.
+- 10-12: **v3, trained on the relabelled data: 23/43 on the current test labels, against v2's 20.**
+  Qwen3-4B, bf16 LoRA without gradient checkpointing on a Jarvis A100 40 GB (a probe on the 16
+  longest examples peaked at 26.4 GB), 287 steps in 41 minutes, about ₹66, estimated from the run
+  rather than read from a bill. Eval loss 0.0246. Graded free on a Kaggle T4:
+
+  | Qwen3-4B | clean (of 43) | recall | `calculate` when needed | when not |
+  |---|---|---|---|---|
+  | base | 2 | 0.05 | 0/22 | 0/21 |
+  | v2 | 20 | 0.48 | 17/22 | 0/21 |
+  | **v3** | **23** | **0.59** | **19/22** | **0/21** |
+
+  v2 is regraded on the same labels, the 19 hand overrides included. v3 fixed 7 of v2's cases (5
+  "year dropped") and broke 3 (a metric, a description, a year added); 17 fail under both. "Year
+  dropped" fell from 13 to 6: the relabelling taught most of the year rule, not all.
+- 10-12: **v3's census: clean on 88% of training cases (265/300), 70% of held-out (100/142).** The
+  same gap as v2's 89% and 70%, so v3 learned the new rules about as well as v2 learned the old.
+  Held-out faults are mostly coverage, not reading: missed 24 and extra 18, then metric 12, calls
+  when none was needed 6 and wrong scale 6. Predictions and faults in
+  `underhood/data/figures-v3/eval/`. The first eval kernel mounted nothing: `kaggle datasets
+  status` reports the previous version as ready, so the kernel went out before the new one was
+  processed. underhood now waits on the file listing instead (underhood PR #7).
+- 10-13: **the headline reader retrained for serving: Qwen3-4B QLoRA, 38/50 zero-shot, below the
+  Week 4 1.7B's 41.** Same 180 template rows, `underhood-tool-sft --task headlines` on a free Kaggle
+  T4 in 11 minutes at 9.8 GB; eval loss 0.044 → 0.0053, the last checkpoint the best. Answered on
+  the fp16 base, as serving will, and graded by `extraction.headline_eval`
+  (`headlines-20261013-0627.md`, `-0627-2.md`): base 4B 17/50, tuned 38/50. Tuning fixed the base's
+  invented `change_pct` (28 → 48) as it did in Week 4. The tuned 4B lost on judgement: metric 42
+  against 44 (`orders` or `revenue` for `other`, one `growth` off the vocabulary), quarter and
+  direction 47 against 49. **Two explanations, untested and parked** at Vedant's call to move on to
+  serving: train/serve skew (an adapter learned on an NF4 base, answered on fp16) and
+  undertraining (Kaggle's two T4s doubled the effective batch to 8, so 46 steps over 2 epochs,
+  against Week 4's 200 at batch 4, with eval loss still falling). $0.00.
