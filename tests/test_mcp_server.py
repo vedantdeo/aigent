@@ -16,7 +16,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 from aigent import mcp_server
 from aigent.analyst import filings
 from aigent.analyst.filings import SEARCH_FILINGS_TOOL
-from aigent.analyst.fundamentals import FUNDAMENTALS_TOOL
+from aigent.analyst.fundamentals import FUNDAMENTALS_TOOL, load_fundamentals
 from aigent.config import MCP_SERVER_NAME
 from aigent.mcp_server import LazyFilings, LazySearch, build_server
 from aigent.report_tools import SEARCH_TOOL
@@ -86,6 +86,14 @@ def test_the_server_offers_six_tools_described_as_the_agent_sees_them(
     assert tools["write_file"].input_schema["required"] == ["file_path", "content"]
     assert tools["search_filings"].input_schema["required"] == ["query"], "scope defaults to all"
     assert tools["fundamentals"].input_schema["required"] == ["ticker", "metric", "year"]
+    for served, ours in (
+        ("search_filings", SEARCH_FILINGS_TOOL),
+        ("fundamentals", FUNDAMENTALS_TOOL),
+    ):
+        shown = cast(dict[str, dict[str, object]], dict(ours["input_schema"])["properties"])
+        served_as = cast(dict[str, dict[str, object]], tools[served].input_schema["properties"])
+        allowed = {field: spec["enum"] for field, spec in shown.items() if "enum" in spec}
+        assert {field: served_as[field]["enum"] for field in allowed} == allowed, served
     tool = tools["search_reports"]
     properties = cast(dict[str, dict[str, object]], tool.input_schema["properties"])
     assert tool.input_schema["required"] == ["query"], "report defaults to all"
@@ -166,12 +174,6 @@ def test_a_search_that_finds_nothing_says_so() -> None:
             id="one company and year, the query trimmed",
         ),
         pytest.param(
-            {"query": "dividend", "year": 2025},
-            ("dividend", "all", "2025"),
-            set(PASSAGES),
-            id="a year sent as a number",
-        ),
-        pytest.param(
             {"query": "dividend", "company": "ITC", "year": "2024"},
             ("dividend", "ITC", "2024"),
             set[str](),
@@ -199,10 +201,9 @@ def test_a_filings_search_returns_fenced_passages_from_the_scope_asked(
     ("arguments", "says"),
     [
         pytest.param({"query": "  "}, "empty", id="an empty query"),
-        pytest.param(
-            {"query": "q", "company": "INFY"}, "no company 'INFY'", id="a company not held"
-        ),
-        pytest.param({"query": "q", "year": "2019"}, "no filings for year", id="a year not held"),
+        pytest.param({"query": "q", "company": "INFY"}, "INFY", id="a company not held"),
+        pytest.param({"query": "q", "year": "2019"}, "2019", id="a year not held"),
+        pytest.param({"query": "q", "year": 2025}, "2025", id="a year sent as a number"),
     ],
 )
 def test_a_bad_filings_search_is_refused_and_nothing_is_searched(
@@ -211,16 +212,21 @@ def test_a_bad_filings_search_is_refused_and_nothing_is_searched(
     result = _call(search, arguments, "search_filings", filing_search=filing_search)
 
     assert result.is_error and says in _text(result), _text(result)
-    assert ": Error:" not in _text(result) and filing_search.asked == []
+    assert filing_search.asked == []
 
 
-@pytest.mark.parametrize(
-    "year", [pytest.param("2025", id="as text"), pytest.param(2025, id="as a number")]
-)
-def test_a_fundamentals_lookup_returns_the_figure_and_what_to_cite(
-    search: FakeSearch, year: object
-) -> None:
-    arguments: dict[str, object] = {"ticker": "ITC", "metric": "dividend", "year": year}
+def test_a_filings_search_that_fails_is_an_error_not_an_answer(search: FakeSearch) -> None:
+    def broken(query: str, /, *, company: str = "all", year: str = "all") -> list[Chunk]:
+        raise ValueError("the index is missing")
+
+    result = _call(search, {"query": "q"}, "search_filings", filing_search=broken)
+
+    assert result.is_error and "the index is missing" in _text(result), _text(result)
+    assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
+
+
+def test_a_fundamentals_lookup_returns_the_figure_and_what_to_cite(search: FakeSearch) -> None:
+    arguments: dict[str, object] = {"ticker": "ITC", "metric": "dividend", "year": "2025"}
 
     result = _call(search, arguments, "fundamentals")
 
@@ -235,19 +241,19 @@ def test_a_fundamentals_lookup_returns_the_figure_and_what_to_cite(
         pytest.param(
             "fundamentals",
             {"ticker": "INFY", "metric": "revenue", "year": "2025"},
-            "no company 'INFY'",
+            "INFY",
             id="a company the table lacks",
         ),
         pytest.param(
             "fundamentals",
             {"ticker": "ITC", "metric": "ebitda", "year": "2025"},
-            "no metric 'ebitda'",
+            "ebitda",
             id="a metric the table lacks",
         ),
         pytest.param(
             "fundamentals",
             {"ticker": "ITC", "metric": "revenue", "year": "2019"},
-            "no 2019 figures",
+            "2019",
             id="a year the table lacks",
         ),
         pytest.param("calculate", {"expression": "__import__('os')"}, "", id="code, not sums"),
@@ -259,6 +265,19 @@ def test_a_bad_lookup_or_sum_is_refused_with_its_reason(
     result = _call(search, arguments, tool)
 
     assert result.is_error and says in _text(result), _text(result)
+    assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
+
+
+def test_a_figure_the_given_table_lacks_is_an_error_not_an_answer(search: FakeSearch) -> None:
+    async def run() -> CallToolResult:
+        only_fy25 = {key: value for key, value in load_fundamentals().items() if key[1] == 2025}
+        async with Client(build_server(search, FakeFilings(), table=only_fy25)) as client:
+            arguments = {"ticker": "ITC", "metric": "eps", "year": "2024"}
+            return await client.call_tool("fundamentals", arguments)
+
+    result = anyio.run(run)
+
+    assert result.is_error and "no 2024 figures for ITC" in _text(result), _text(result)
     assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
 
 

@@ -24,8 +24,11 @@ from aigent.analyst import filings
 from aigent.analyst.filings import SEARCH_FILINGS_TOOL, FilingSearch, build_filings_search
 from aigent.analyst.fundamentals import (
     FUNDAMENTALS_TOOL,
+    FinancialYear,
     FundamentalsTool,
+    Metric,
     Table,
+    Ticker,
     load_fundamentals,
 )
 from aigent.config import MCP_SERVER_NAME
@@ -79,22 +82,17 @@ def build_server(
 
     @server.tool(name="search_filings", description=SEARCH_FILINGS_TOOL.get("description", ""))
     def search_filings(
-        query: str, company: str = filings.ALL, year: int | str = filings.ALL
+        query: str, company: filings.Company = "all", year: filings.Year = "all"
     ) -> str:
-        scoped: dict[str, object] = {
-            "query": _guarded(query),
-            "company": company,
-            "year": str(year),
-        }
-        return _answered(run_filings(scoped))
+        return _answered(run_filings({"query": _guarded(query), "company": company, "year": year}))
 
     @server.tool(
         name="fundamentals",
         description=FUNDAMENTALS_TOOL.get("description", ""),
         annotations=ToolAnnotations(read_only_hint=True),
     )
-    def fundamentals(ticker: str, metric: str, year: int | str) -> str:
-        return _answered(run_fundamentals({"ticker": ticker, "metric": metric, "year": str(year)}))
+    def fundamentals(ticker: Ticker, metric: Metric, year: FinancialYear) -> str:
+        return _answered(run_fundamentals({"ticker": ticker, "metric": metric, "year": year}))
 
     def dispatch(name: str, tool_input: dict[str, object]) -> str:
         content, is_error = execute_tool(name, tool_input, sandbox=sandbox, writes=True)

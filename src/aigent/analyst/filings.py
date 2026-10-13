@@ -7,7 +7,7 @@ import json
 import re
 import threading
 from dataclasses import dataclass, field
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
 from anthropic.types import ToolParam
 
@@ -26,6 +26,9 @@ COMPANIES: dict[str, str] = {
 }
 _YEAR = re.compile(r"-FY(\d\d)$")
 ALL = "all"
+# As schema fields these hold a model to a real scope. A test holds them to the manifest.
+Company = Literal["ITC", "RELIANCE", "TATAMOTORS", "all"]
+Year = Literal["2024", "2025", "all"]
 
 
 def year_of(doc_id: str) -> int:

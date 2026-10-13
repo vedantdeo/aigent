@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 from anthropic.types import ToolParam
 
@@ -38,6 +38,10 @@ class Fundamental:
 
 
 Table = dict[tuple[str, int, str], Fundamental]
+# As schema fields these hold a model to what the table holds. A test holds them to it.
+Ticker = Literal["ITC", "RELIANCE", "TATAMOTORS"]
+Metric = Literal["dividend", "eps", "profit", "revenue"]
+FinancialYear = Literal["2024", "2025"]
 
 
 def load_fundamentals(path: Path = FUNDAMENTALS) -> Table:

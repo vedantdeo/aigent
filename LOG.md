@@ -1730,3 +1730,11 @@
   serving: train/serve skew (an adapter learned on an NF4 base, answered on fp16) and
   undertraining (Kaggle's two T4s doubled the effective batch to 8, so 46 steps over 2 epochs,
   against Week 4's 200 at batch 4, with eval loss still falling). $0.00.
+- 10-13: **the MCP server serves the capstone's tools, and the agent can load a server's tools:
+  free.** `search_filings`, `fundamentals` and `calculate` joined the server (six tools), their
+  arguments enumerated so a client's model sees the allowed companies, years and metrics.
+  `mcp_client.connect` lists a server's tools as the schemas a model is shown and calls them through
+  an `llm.Dispatch`. Live over stdio against `python -m aigent.mcp_server`: six tools listed 0.8 s
+  after launch, `calculate` and `fundamentals` answered (ITC's FY25 dividend, 14.35, cited to
+  `ITC-FY25 p51`), a year the table lacks refused by the schema, closed in 1.0 s. No search was run
+  live, so the ~19 s model load behind the first one is unmeasured through the client. $0.00.
