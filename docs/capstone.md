@@ -55,9 +55,9 @@ returns third-party text, and traced.
 
 | Tool | Server | Status |
 |---|---|---|
-| `search_filings(query, company, year)` | aigent's MCP server | built (step 1): six filings, scoped by company and financial year |
-| `fundamentals(ticker, metric, year)` | aigent's MCP server | built (step 1): 24 figures, each cited to its page |
-| `calculate(expression)` | aigent's MCP server | built (`underhood.tools`) |
+| `search_filings(query, company, year)` | aigent's MCP server | built (step 1) and served (step 3, 2026-10-13): six filings, scoped by company and financial year |
+| `fundamentals(ticker, metric, year)` | aigent's MCP server | built (step 1) and served (step 3): 24 figures, each cited to its page |
+| `calculate(expression)` | aigent's MCP server | built (`underhood.tools`) and served (step 3) |
 | `read_file`, `write_file` | aigent's MCP server | built, sandboxed |
 | `web_search` | Anthropic's server tool | built; **off in evals**, since a web figure has no frozen ground truth |
 
