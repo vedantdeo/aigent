@@ -53,12 +53,13 @@ jobs:
         run: uv sync --locked --group compare --group graph --group adk
 
       # Every later step runs with --no-sync, which would otherwise put the locked underhood back.
+      # Its dependencies come with it, at the versions that ref asks for: hostllm, from its main.
       - name: Swap in underhood ${{ inputs.underhood }}
         if: inputs.underhood != ''
         env:
           REF: ${{ inputs.underhood }}
         run: |
-          uv pip install --no-deps --reinstall "underhood @ git+https://github.com/vedantdeo/underhood@$REF"
+          uv pip install --reinstall "underhood @ git+https://github.com/vedantdeo/underhood@$REF"
           echo "checking against underhood $REF"
 
       # Each check reports its own status rather than hiding behind the first
