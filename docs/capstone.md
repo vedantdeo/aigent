@@ -92,7 +92,7 @@ The specialists run on a GPU, not the laptop: local serving loads the machine an
 
 ```
 aigent's router ──HTTP, OpenAI format──▶ vLLM endpoint: Qwen3-4B (loaded once)
-                                          ├─ LoRA: headline-reader
+                                          ├─ LoRA: headline-flavour
                                           └─ LoRA: report-analyst
 ```
 

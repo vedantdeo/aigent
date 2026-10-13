@@ -1719,3 +1719,14 @@
   `underhood/data/figures-v3/eval/`. The first eval kernel mounted nothing: `kaggle datasets
   status` reports the previous version as ready, so the kernel went out before the new one was
   processed. underhood now waits on the file listing instead (underhood PR #7).
+- 10-13: **the headline reader retrained for serving: Qwen3-4B QLoRA, 38/50 zero-shot, below the
+  Week 4 1.7B's 41.** Same 180 template rows, `underhood-tool-sft --task headlines` on a free Kaggle
+  T4 in 11 minutes at 9.8 GB; eval loss 0.044 → 0.0053, the last checkpoint the best. Answered on
+  the fp16 base, as serving will, and graded by `extraction.headline_eval`
+  (`headlines-20261013-0627.md`, `-0627-2.md`): base 4B 17/50, tuned 38/50. Tuning fixed the base's
+  invented `change_pct` (28 → 48) as it did in Week 4. The tuned 4B lost on judgement: metric 42
+  against 44 (`orders` or `revenue` for `other`, one `growth` off the vocabulary), quarter and
+  direction 47 against 49. **Two explanations, untested and parked** at Vedant's call to move on to
+  serving: train/serve skew (an adapter learned on an NF4 base, answered on fp16) and
+  undertraining (Kaggle's two T4s doubled the effective batch to 8, so 46 steps over 2 epochs,
+  against Week 4's 200 at batch 4, with eval loss still falling). $0.00.
