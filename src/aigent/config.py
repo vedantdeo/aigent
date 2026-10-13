@@ -54,6 +54,7 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
     "FIGURE_QUESTIONS": 256,  # three one-line questions
     "HEADLINE": 128,  # a five-field record is ~45 tokens with THINKING_EVAL off
     "JUDGE": 512,  # a verdict is a bool and a sentence or two; Opus reasons at length first
+    "MEMO": 2048,  # the capstone's memo: a summary, up to a dozen cited claims, caveats
     "NOTE": 384,
     "PLAN": 512,  # orchestrator-workers
     "QUESTION": 512,
@@ -62,6 +63,7 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
     "SECTION": 384,  # parallelization
     "SYNTHESIS": 768,
     "TOOL_LOOP": 4096,
+    "VERDICT": 256,  # the capstone's critic: one of three words and a sentence
     "VOTE": 256,
     "WORKER": 384,
 }
@@ -87,6 +89,7 @@ MAX_TOKENS_FIGURE_ANSWER = max_tokens("FIGURE_ANSWER")
 MAX_TOKENS_FIGURE_QUESTIONS = max_tokens("FIGURE_QUESTIONS")
 MAX_TOKENS_HEADLINE = max_tokens("HEADLINE")
 MAX_TOKENS_JUDGE = max_tokens("JUDGE")
+MAX_TOKENS_MEMO = max_tokens("MEMO")
 MAX_TOKENS_NOTE = max_tokens("NOTE")
 MAX_TOKENS_PLAN = max_tokens("PLAN")
 MAX_TOKENS_QUESTION = max_tokens("QUESTION")
@@ -95,6 +98,7 @@ MAX_TOKENS_ROUTED = max_tokens("ROUTED")
 MAX_TOKENS_SECTION = max_tokens("SECTION")
 MAX_TOKENS_SYNTHESIS = max_tokens("SYNTHESIS")
 MAX_TOKENS_TOOL_LOOP = max_tokens("TOOL_LOOP")
+MAX_TOKENS_VERDICT = max_tokens("VERDICT")
 MAX_TOKENS_VOTE = max_tokens("VOTE")
 MAX_TOKENS_WORKER = max_tokens("WORKER")
 
@@ -117,6 +121,9 @@ CACHE_PARAM: Cache = (
 MAX_AGENT_TURNS = 25  # a backstop against a loop of cheap turns; the budget ends a real one first
 SPECIALIST_TRIES = 2  # a request the endpoint drops is sent once more, then the task fails
 SPECIALIST_TOOL_TURNS = 3  # calculate calls, their results, the answer: one turn to spare
+GENERALIST_MODEL = "claude-sonnet-5"  # the capstone's generalist while building
+CRITIC_MODEL = "claude-opus-5"  # its critic: never the generalist's own model
+MAX_CRITIC_REVISIONS = 2  # redrafts the critic may send back before a human sees the memo
 MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this much output fits
 
 # How many calls one concurrent batch keeps in flight at once.

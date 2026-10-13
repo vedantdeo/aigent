@@ -208,7 +208,9 @@ needs its own go-ahead.
    served rate, and both specialists wired to models with the warm-up (`analyst.served`). Not yet
    run against the live endpoint.
 5. **The graph:** generalist loop, critic, human gate with a checkpointer — stubs first, prompts
-   after.
+   after. Built 2026-10-13 against fakes (`analyst.toolbox`, `analyst.memo`, `analyst.graph`): the
+   critic is Opus 5 while building (Vedant's call), and an eval's approver always approves. The
+   prompts are first drafts; no live run yet.
 6. The 50 tasks, then the first baseline runs.
 
 **Week 7:** the routed-vs-generalist comparison, the critic iteration, the judge bake-off, a learned

@@ -13,7 +13,7 @@ from openai.types.chat import ChatCompletion, ChatCompletionMessageFunctionToolC
 from aigent.analyst.router import Router
 from aigent.analyst.served import headline_reader, reaching, report_analyst, warm_up
 from aigent.analyst.specialists import FigureJob
-from aigent.config import SPECIALIST_TOOL_TURNS, SYNTHETIC_CLIENT, max_tokens
+from aigent.config import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS, SYNTHETIC_CLIENT, max_tokens
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
 from aigent.extraction.figures import figure_messages
@@ -62,7 +62,7 @@ def big(make_llm: MakeLlm, reply: object) -> Llm:
 
 
 def router() -> Router:
-    return Router(price=lambda i, o: cost_usd("claude-sonnet-5", i, o))
+    return Router(price=lambda i, o: cost_usd(GENERALIST_MODEL, i, o))
 
 
 def test_a_headline_reaches_the_adapter_as_a_training_row_did(
@@ -94,9 +94,14 @@ def test_a_routed_headline_comes_back_with_its_ticker(
     llm, _ = small("hostllm-headline", completion(served.model_dump_json()))
     route = router()
 
-    record = route(headline_reader(llm, big(make_llm, lambda sent: RECORD)), HEADLINE)
+    generalist, generalist_sdk = make_llm(lambda sent: RECORD)
+
+    record = route(headline_reader(llm, generalist), HEADLINE)
 
     assert (record["ticker"], record["metric"]) == ("INFY", "profit")
+    assert [sent.model for sent in generalist_sdk.sent] == [GENERALIST_MODEL] * (
+        path == "generalist"
+    )
     [logged] = route.routed
     assert logged.path == path and (logged.generalist_usd > 0) is (path == "generalist")
 
@@ -143,6 +148,7 @@ def test_figures_the_passage_does_not_back_go_to_the_generalist(
     assert [f.value for f in figures.figures] == [23450000000.0, 0.18]
     assert route.routed[0].path == "generalist" and "0.19" in str(route.routed[0].failure)
     sent: Sent = sdk.sent[1]
+    assert sent.model == GENERALIST_MODEL
     assert [r["content"] for r in tool_results(sent)] == ["23450000000.0", "0.18"]
 
 
