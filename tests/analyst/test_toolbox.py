@@ -4,19 +4,15 @@ search, and a specialist call answered through the router."""
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from typing import cast
 
 import pytest
-from pydantic import JsonValue
 
-from aigent.analyst.router import Router
-from aigent.analyst.specialists import FigureJob, Invalid, Specialist, Told, check_figures
+from aigent.analyst.specialists import FigureJob, Specialist, Told
 from aigent.analyst.toolbox import (
     EXTRACT_FIGURES_TOOL,
     READ_HEADLINE_TOOL,
     Passage,
-    Toolbox,
     passages_in,
 )
 from aigent.errors import SpecialistUnreachable
@@ -25,42 +21,7 @@ from aigent.mcp_server import build_server
 from aigent.retrieval.chunk import context_block
 
 from ..conftest import PASSAGES, FakeFilings, FakeSearch
-
-DIVIDEND = "RELIANCE-FY25#0001"  # "The Board recommended a dividend of Rs 5.50 per equity share."
-FIGURE = '{"metric": "dividend", "value": 5.5, "unit": "INR", "year": 2025, "description": null}'
-
-
-def told(text: str) -> Told:
-    return Told(text, 0.01, 100, 10)
-
-
-def never(job: object) -> Told:
-    raise AssertionError("the generalist was asked")
-
-
-def record(job: str, said: Told) -> dict[str, JsonValue]:
-    if not said.text:
-        raise Invalid("the reply holds no headline record")
-    return {"ticker": said.text, "headline": job}
-
-
-def box(
-    served: Callable[[str, dict[str, object]], tuple[str, bool]],
-    figures: Callable[[FigureJob], Told] = lambda job: told('{"figures": [' + FIGURE + "]}"),
-    headline: Callable[[str], Told] = lambda job: told("INFY"),
-) -> Toolbox:
-    return Toolbox(
-        served_tools=[{"name": "search_filings", "input_schema": {"type": "object"}}],
-        served=served,
-        route=Router(price=lambda i, o: 0.0),
-        read_headline=Specialist("read_headline", headline, never, record),
-        extract_figures=Specialist("extract_figures", figures, never, check_figures),
-    )
-
-
-def search(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
-    assert name == "search_filings"
-    return context_block([c for chunks in PASSAGES.values() for c in chunks]), False
+from .conftest import DIVIDEND, FIGURE, box, record, search, told
 
 
 def test_a_search_result_s_passages_are_read_back_with_their_ids() -> None:
@@ -195,3 +156,16 @@ def test_over_the_real_server_a_search_feeds_the_figures_call() -> None:
     assert not failed and list(tools.evidence) == [DIVIDEND], found
     assert not is_error and cast(dict[str, list[object]], json.loads(content))["figures"], content
     assert isinstance(tools.evidence[DIVIDEND], Passage)
+
+
+def test_a_fundamentals_answer_is_kept_as_evidence_under_its_cite_as() -> None:
+    answer = '{"cite_as": "ITC:2025:dividend", "value": 14.35, "source": "ITC-FY25 p51"}'
+    replies = iter([(answer, False), ("14.35", False), ("Error: no metric", True), ("{}", False)])
+    tools = box(lambda name, arguments: next(replies))
+
+    for _ in range(4):
+        tools("fundamentals", {"ticker": "ITC", "metric": "dividend", "year": "2025"})
+
+    assert list(tools.evidence) == ["ITC:2025:dividend"]
+    kept = tools.evidence["ITC:2025:dividend"]
+    assert (kept.source, kept.text) == ("ITC-FY25 p51", answer)

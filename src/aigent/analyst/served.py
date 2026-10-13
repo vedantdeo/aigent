@@ -16,7 +16,7 @@ from aigent.analyst.specialists import (
     check_figures,
     check_headline,
 )
-from aigent.config import SPECIALIST_TOOL_TURNS, SPECIALIST_TRIES, max_tokens
+from aigent.config import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS, SPECIALIST_TRIES, max_tokens
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import Figures, figure_messages
 from aigent.extraction.headlines import VARIANTS, Extraction, Resolver, headline_request
@@ -61,12 +61,12 @@ def _told(
     )
 
 
-def _read(llm: Llm) -> Callable[[str], Told]:
+def _read(llm: Llm, model: str | None = None) -> Callable[[str], Told]:
     cap = max_tokens("HEADLINE", spec(llm.client))
 
     def read(headline: str) -> Told:
         before = llm.spent_usd
-        request = headline_request("read_headline", headline, VARIANTS["zero_shot"], cap)
+        request = headline_request("read_headline", headline, VARIANTS["zero_shot"], cap, model)
         reply = llm.parse(request, Extraction)
         text = reply.text or (reply.parsed.model_dump_json() if reply.parsed else "")
         return _told(llm, before, text, [reply])
@@ -78,12 +78,12 @@ def headline_reader(
     small: Llm, big: Llm, resolve: Resolver | None = None
 ) -> Specialist[str, dict[str, JsonValue]]:
     """`read_headline`: a headline to its record, on the zero-shot prompt the adapter was trained
-    on; `small` serves the adapter, `big` is the generalist."""
+    on; `small` serves the adapter, `big` is the generalist, asked as `GENERALIST_MODEL`."""
     served = _read(small)
     return Specialist(
         "read_headline",
         lambda headline: reaching(small, lambda: served(headline)),
-        _read(big),
+        _read(big, GENERALIST_MODEL),
         check_headline(resolve if resolve is not None else Resolver()),
     )
 
@@ -111,7 +111,7 @@ def _calculated(reply: Reply, calls: list[str]) -> Msg:
     return {"role": "user", "content": answered}
 
 
-def _extract(llm: Llm) -> Callable[[FigureJob], Told]:
+def _extract(llm: Llm, model: str | None = None) -> Callable[[FigureJob], Told]:
     cap = max_tokens("FIGURE_ANSWER", spec(llm.client))
 
     def extract(job: FigureJob) -> Told:
@@ -122,7 +122,12 @@ def _extract(llm: Llm) -> Callable[[FigureJob], Told]:
         calls: list[str] = []
         for _ in range(SPECIALIST_TOOL_TURNS):
             request = Request(
-                "extract_figures", messages, cap, system=system, tools=[CALCULATOR_TOOL]
+                "extract_figures",
+                messages,
+                cap,
+                system=system,
+                model=model,
+                tools=[CALCULATOR_TOOL],
             )
             reply = llm.turn(request)
             replies.append(reply)
@@ -142,6 +147,6 @@ def report_analyst(small: Llm, big: Llm) -> Specialist[FigureJob, Figures]:
     return Specialist(
         "extract_figures",
         lambda job: reaching(small, lambda: served(job)),
-        _extract(big),
+        _extract(big, GENERALIST_MODEL),
         check_figures,
     )

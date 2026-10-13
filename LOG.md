@@ -1745,7 +1745,10 @@
   profit, Q2, up, 11.0, INFY in 5.1 s; `extract_figures` on a two-sentence passage called
   `calculate` twice and gave revenue 23,450,000,000 INR and margin 0.18 for 2025 in 19.2 s over two
   turns. Both passed their checks, so the generalist was never asked ($0.00 on Anthropic). Billed
-  per token: $0.0010 and $0.0037, against $0.0037 and $0.0170 for the same tokens at the
-  generalist's prices. The per-token figures leave out the cold start and idle time: the container
+  per token: $0.0010 (567 in, 36 out) and $0.0037 (2,722 in, 136 out over two turns). The same
+  tokens cost $0.0015 and $0.0068 at Sonnet 5's prices, the generalist while building. **Corrected
+  the same day:** the run's log priced that comparison at $0.0037 and $0.0170, which are Opus 5's
+  prices, because the `anthropic` client's default model is Opus and nothing named the generalist's;
+  `config.GENERALIST_MODEL` now does. The per-token figures leave out the cold start and idle time: the container
   ran about five minutes (20:28–20:33 IST), since the first stop command wanted a `--yes` it was
   not given and the container idled until it was stopped by hand. 0 containers left running.

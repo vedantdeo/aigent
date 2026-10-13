@@ -19,7 +19,7 @@ from aigent.analyst.specialists import FigureJob, Invalid, Specialist
 from aigent.extraction.figures import Figures
 from aigent.llm.core import Dispatch
 
-SEARCH = "search_filings"
+SEARCH, LOOKUP = "search_filings", "fundamentals"
 _PASSAGE = re.compile(r'<passage id="([^"]+)" source="([^"]*)">\n(.*?)\n</passage>', re.S)
 
 READ_HEADLINE_TOOL: ToolParam = {
@@ -81,6 +81,18 @@ def passages_in(result: str) -> list[Passage]:
     return [Passage(*found) for found in _PASSAGE.findall(result)]
 
 
+def _lookup(result: str) -> Passage | None:
+    """A fundamentals answer as evidence, cited by its `cite_as`; None if it is not one."""
+    try:
+        found = json.loads(result)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(found, dict) or "cite_as" not in found:
+        return None
+    fields = cast(dict[str, object], found)
+    return Passage(str(fields["cite_as"]), str(fields.get("source", "")), result)
+
+
 @dataclass
 class Toolbox:
     """`tools` is what the generalist is shown; calling the toolbox runs one: a specialist's
@@ -111,6 +123,10 @@ class Toolbox:
         content, is_error = self.served(name, arguments)
         if name == SEARCH:
             self.evidence.update({found.id: found for found in passages_in(content)})
+        if name == LOOKUP:
+            looked_up = _lookup(content)
+            if looked_up is not None:
+                self.evidence[looked_up.id] = looked_up
         return content, is_error
 
     def _headline(self, arguments: dict[str, object]) -> str:
