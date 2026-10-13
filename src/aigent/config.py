@@ -63,7 +63,7 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
     "SECTION": 384,  # parallelization
     "SYNTHESIS": 768,
     "TOOL_LOOP": 4096,
-    "VERDICT": 256,  # the capstone's critic: one of three words and a sentence
+    "VERDICT": 512,  # the capstone's critic: one of three words and a sentence quoting its source
     "VOTE": 256,
     "WORKER": 384,
 }

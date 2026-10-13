@@ -210,13 +210,24 @@ needs its own go-ahead.
 5. **The graph:** generalist loop, critic, human gate with a checkpointer — stubs first, prompts
    after. Built 2026-10-13 against fakes (`analyst.toolbox`, `analyst.memo`, `analyst.graph`): the
    critic is Opus 5 while building (Vedant's call), and an eval's approver always approves. The
-   prompts are first drafts; no live run yet.
+   generalist chooses its specialists from their cards, by a prompt that names none and asks it to
+   explain a decision to call none (Vedant, 2026-10-13, after the first live run called none).
 6. The 50 tasks, then the first baseline runs.
 
 **Week 7:** the routed-vs-generalist comparison, the critic iteration, the judge bake-off, a learned
 router from the eval logs, HTTP and a container, the CI gate.
 
 **Week 8:** README, diagram, walkthrough, write-up, tag.
+
+## Findings so far
+
+- **A task that is too trivial does not go to the specialist, even when offered and coaxed**
+  (2026-10-13, three questions, seven research passes, three drafts of the prompt). Sonnet 5 called
+  `extract_figures` once, on a redraft, and its stated reason for not calling it was always that the
+  figure "was stated directly and unambiguously in the retrieved passage". A generalist does not
+  delegate work it finds trivial, and cost does not enter its choice. The generalist keeps the
+  decision (Vedant); the eval reports how often it routes, and its tasks need narrow jobs big enough
+  to be worth handing over. The runs are in `LOG.md`.
 
 ## Open questions
 
