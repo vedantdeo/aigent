@@ -7,6 +7,7 @@ transcript under `runs/analyst/`. Estimates and exits unless `--yes`.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -38,6 +39,8 @@ from aigent.mcp_client import OWN_SERVER, connect
 from aigent.transcript import FileTracer
 
 RUNS_DIR = Path(__file__).resolve().parents[3] / "runs" / "analyst"
+# Twenty questions written so the specialists have real work: tables, several years, headlines.
+PROBE = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "analyst-probe.jsonl"
 
 # The questions the graph has been run on since 2026-10-13, asked when none is given.
 QUESTIONS = (
@@ -78,6 +81,13 @@ def generalist_of(named: str, thinking: str) -> Generalist:
     else:
         raise ValueError(f"thinking is adaptive, off or a token budget, not {thinking!r}")
     return Generalist(client, model or None, chosen)
+
+
+def load_questions(path: Path) -> list[tuple[str, str]]:
+    """Each row's id and question, in file order; `//` lines are comments."""
+    rows = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    found = [json.loads(line) for line in rows if not line.startswith("//")]
+    return [(str(row["id"]), str(row["question"])) for row in found]
 
 
 def worst_case_usd(questions: int) -> float:
@@ -156,6 +166,9 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         "--question", action="append", help="ask this; repeat for more (default: the three)"
     )
     parser.add_argument(
+        "--questions", type=Path, help=f"a JSONL file of id and question, such as {PROBE.name}"
+    )
+    parser.add_argument(
         "--generalist",
         default=f"anthropic:{GENERALIST_MODEL}",
         help="client[:model] that researches and writes",
@@ -176,7 +189,12 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(str(bad)) from None
     if unpriced := [m for m in (chosen.label, CRITIC_MODEL) if m not in PRICES]:
         raise SystemExit(f"{', '.join(unpriced)} has no price; add it to pricing.PRICES")
-    questions: list[str] = args.question or list(QUESTIONS)
+    if args.question:
+        questions = [(f"q{n}", q) for n, q in enumerate(args.question, 1)]
+    elif args.questions:
+        questions = load_questions(args.questions)
+    else:
+        questions = [(f"q{n}", q) for n, q in enumerate(QUESTIONS, 1)]
     print(
         f"{len(questions)} questions: generalist {chosen.label} ({chosen.client}), thinking "
         f"{chosen.thinking}; critic {CRITIC_MODEL}; specialists on {', '.join(BUILDERS)}"
@@ -192,7 +210,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"specialists warm after {time.monotonic() - began:.0f} s")
     stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{_slug(chosen.label)}"
     with connect(OWN_SERVER, only=ANALYST_SERVED_TOOLS, fenced=False) as served:
-        for number, question in enumerate(questions, 1):
+        for named, question in questions:
             generalist = Llm(chosen.client, budget=Budget(limit_usd=MAX_USD_ANALYST_GENERALIST))
             critic = Llm("anthropic", budget=Budget(limit_usd=MAX_USD_ANALYST_CRITIC))
             toolbox = Toolbox(
@@ -201,9 +219,9 @@ def main(argv: list[str] | None = None) -> None:
                 Router(price=lambda i, o: cost_usd(chosen.label, i, o)),
                 experts(generalist, small=small.__getitem__, model=chosen.model),
             )
-            path = args.out / f"{stamp}-q{number}.md"
+            path = args.out / f"{stamp}-{named}.md"
             done = analyse(question, chosen, generalist, critic, toolbox, path)
-            print(f"q{number}: {_outcome(done)}; ${generalist.spent_usd + critic.spent_usd:.4f}")
+            print(f"{named}: {_outcome(done)}; ${generalist.spent_usd + critic.spent_usd:.4f}")
             print(f"    {path}")
     spent = sum(s.spent_usd for s in small.values())
     print(f"specialists ${spent:.4f}; {time.monotonic() - began:.0f} s in all")

@@ -13,9 +13,11 @@ from aigent import tracing  # noqa: E402
 from aigent.analyst import run as run_module  # noqa: E402
 from aigent.analyst.memo import Claim, Judged, Memo  # noqa: E402
 from aigent.analyst.run import (  # noqa: E402
+    PROBE,
     Generalist,
     analyse,
     generalist_of,
+    load_questions,
     main,
     worst_case_usd,
 )
@@ -93,6 +95,22 @@ def test_without_yes_a_run_estimates_and_sends_nothing(
     printed = capsys.readouterr().out
     assert f"worst case ${worst_case_usd(3):.2f}" in printed and "nothing sent" in printed
     assert list(tmp_path.iterdir()) == []
+
+
+def test_a_questions_file_is_read_in_order_and_names_each_transcript(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    asked = tmp_path / "asked.jsonl"
+    asked.write_text(
+        '// a comment\n{"id": "ap-01", "question": "First?"}\n\n'
+        '{"id": "ap-02", "question": "Second?"}\n'
+    )
+    monkeypatch.setattr(run_module, "warm_up", _never)
+
+    assert load_questions(asked) == [("ap-01", "First?"), ("ap-02", "Second?")]
+    main(["--questions", str(asked)])
+    assert "2 questions" in capsys.readouterr().out
+    assert [row[0] for row in load_questions(PROBE)] == [f"ap-{n:02d}" for n in range(1, 21)]
 
 
 def test_a_model_with_no_price_is_refused_before_anything(monkeypatch: pytest.MonkeyPatch) -> None:
