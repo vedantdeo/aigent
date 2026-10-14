@@ -26,6 +26,10 @@ CLIENT = Client(
     constrains_schema=True,
     # An explicit null turns reasoning off; omitting it means "medium", and "low" filled 2048.
     extra_body={"reasoning_effort": None},
+    # A rate limit outlasted rather than failed: up to six more tries, waits growing to a minute.
+    retries=6,
+    retry_base_seconds=2.0,
+    retry_max_seconds=60.0,
 )
 
 # Every cap a capstone generalist sends, raised for reasoning, which is billed as output.

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from aigent import guardrails
@@ -188,6 +189,7 @@ def masked(*, data: object, **_: object) -> object:
 
 
 _active: Tracer | None = None
+_here: ContextVar[Tracer | None] = ContextVar("tracer_here", default=None)
 
 
 def enabled() -> bool:
@@ -197,7 +199,10 @@ def enabled() -> bool:
 
 
 def tracer() -> Tracer:
-    """The tracer this process traces with, chosen on first use."""
+    """The tracer `using` set in this context, else the process's, chosen on first use."""
+    here = _here.get()
+    if here is not None:
+        return here
     global _active
     if _active is None:
         _active = LangfuseTracer() if enabled() else Silent()
@@ -208,6 +213,17 @@ def use(chosen: Tracer | None) -> None:
     """Trace with `chosen` from now on; None chooses again on next use. For tests."""
     global _active
     _active = chosen
+
+
+@contextmanager
+def using(chosen: Tracer) -> Iterator[None]:
+    """Trace with `chosen` inside the block, in this context only: work on other threads at the
+    same time keeps its own tracer."""
+    token = _here.set(chosen)
+    try:
+        yield
+    finally:
+        _here.reset(token)
 
 
 def traced_tools(dispatch: ToolCall, kinds: Mapping[str, Kind] | None = None) -> ToolCall:

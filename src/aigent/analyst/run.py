@@ -12,7 +12,8 @@ import os
 import re
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from aigent.analyst.served import warm_up
 from aigent.analyst.toolbox import Toolbox
 from aigent.config import (
     ANALYST_SERVED_TOOLS,
+    ANALYST_WORKERS,
     CRITIC_MODEL,
     GENERALIST_MODEL,
     MAX_USD_ANALYST_CRITIC,
@@ -83,11 +85,36 @@ def generalist_of(named: str, thinking: str) -> Generalist:
     return Generalist(client, model or None, chosen)
 
 
+def served_by(client: str, server: str) -> str:
+    """The client that reaches `client`'s specialist on `server` (`hostllm` or `vllm`).
+    ValueError if there is none."""
+    named = client.replace("hostllm-", f"{server}-", 1)
+    if named not in CLIENTS:
+        raise ValueError(f"no client serves {client} on {server}")
+    return named
+
+
 def load_questions(path: Path) -> list[tuple[str, str]]:
     """Each row's id and question, in file order; `//` lines are comments."""
     rows = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     found = [json.loads(line) for line in rows if not line.startswith("//")]
     return [(str(row["id"]), str(row["question"])) for row in found]
+
+
+def in_parallel[Item, Out](
+    items: Sequence[Item], work: Callable[[Item], Out], workers: int
+) -> list[Out | Exception]:
+    """`work` on every item, `workers` at a time on threads of their own; results in item order,
+    with what an item raised in place of its result."""
+
+    def guarded(item: Item) -> Out | Exception:
+        try:
+            return work(item)
+        except Exception as failed:
+            return failed
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(guarded, items))
 
 
 def worst_case_usd(questions: int) -> float:
@@ -149,13 +176,12 @@ def analyse(
         f"Generalist {chosen.label} on the {chosen.client} client, thinking {chosen.thinking}; "
         f"critic {CRITIC_MODEL}; {datetime.now():%Y-%m-%d %H:%M}",
     )
-    tracing.use(tracer)
     try:
-        done = run(generalist, critic, toolbox, question, chosen.model, chosen.thinking)
+        with tracing.using(tracer):
+            done = run(generalist, critic, toolbox, question, chosen.model, chosen.thinking)
         tracer.write(*result(done, generalist, critic))
         return done
     finally:
-        tracing.use(None)
         tracer.close()
 
 
@@ -177,6 +203,15 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
         "--thinking", default="adaptive", help="adaptive, off, or a thinking budget in tokens"
     )
     parser.add_argument("--out", type=Path, default=RUNS_DIR, help="where transcripts go")
+    parser.add_argument(
+        "--workers", type=int, default=ANALYST_WORKERS, help="questions in flight at once"
+    )
+    parser.add_argument(
+        "--specialists",
+        default="hostllm",
+        choices=("hostllm", "vllm"),
+        help="the engine that serves the fine-tunes: our own, or vLLM",
+    )
     return parser.parse_args(list(argv))
 
 
@@ -197,20 +232,25 @@ def main(argv: list[str] | None = None) -> None:
         questions = [(f"q{n}", q) for n, q in enumerate(QUESTIONS, 1)]
     print(
         f"{len(questions)} questions: generalist {chosen.label} ({chosen.client}), thinking "
-        f"{chosen.thinking}; critic {CRITIC_MODEL}; specialists on {', '.join(BUILDERS)}"
+        f"{chosen.thinking}; critic {CRITIC_MODEL}; specialists on {args.specialists}"
     )
-    print(f"worst case ${worst_case_usd(len(questions)):.2f}")
+    print(f"worst case ${worst_case_usd(len(questions)):.2f}; {args.workers} at a time")
     if not args.yes:
         print("estimate only: nothing sent. Add --yes to run.")
         return
 
-    small = {c: Llm(c, budget=Budget(limit_usd=MAX_USD_ANALYST_SPECIALIST)) for c in BUILDERS}
+    small = {
+        c: Llm(served_by(c, args.specialists), budget=Budget(limit_usd=MAX_USD_ANALYST_SPECIALIST))
+        for c in BUILDERS
+    }
     began = time.monotonic()
     warm_up(small["hostllm-headline"])
     print(f"specialists warm after {time.monotonic() - began:.0f} s")
     stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{_slug(chosen.label)}"
     with connect(OWN_SERVER, only=ANALYST_SERVED_TOOLS, fenced=False) as served:
-        for named, question in questions:
+
+        def ask(item: tuple[str, str]) -> Analysed:
+            named, question = item
             generalist = Llm(chosen.client, budget=Budget(limit_usd=MAX_USD_ANALYST_GENERALIST))
             critic = Llm("anthropic", budget=Budget(limit_usd=MAX_USD_ANALYST_CRITIC))
             toolbox = Toolbox(
@@ -220,9 +260,18 @@ def main(argv: list[str] | None = None) -> None:
                 experts(generalist, small=small.__getitem__, model=chosen.model),
             )
             path = args.out / f"{stamp}-{named}.md"
-            done = analyse(question, chosen, generalist, critic, toolbox, path)
-            print(f"{named}: {_outcome(done)}; ${generalist.spent_usd + critic.spent_usd:.4f}")
-            print(f"    {path}")
+            try:
+                done = analyse(question, chosen, generalist, critic, toolbox, path)
+            finally:
+                spent = generalist.spent_usd + critic.spent_usd
+                print(f"{named} done, ${spent:.4f}: {path}", flush=True)
+            print(f"{named}: {_outcome(done)}", flush=True)
+            return done
+
+        answered = in_parallel(questions, ask, args.workers)
+    for (named, _), done in zip(questions, answered, strict=True):
+        if isinstance(done, Exception):
+            print(f"{named} failed: {type(done).__name__}: {done}")
     spent = sum(s.spent_usd for s in small.values())
     print(f"specialists ${spent:.4f}; {time.monotonic() - began:.0f} s in all")
 

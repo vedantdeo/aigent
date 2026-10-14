@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,10 @@ from aigent.analyst.run import (  # noqa: E402
     Generalist,
     analyse,
     generalist_of,
+    in_parallel,
     load_questions,
     main,
+    served_by,
     worst_case_usd,
 )
 from aigent.config import (  # noqa: E402
@@ -75,6 +78,25 @@ def test_a_generalist_that_cannot_be_built_is_refused(named: str, thinking: str)
         generalist_of(named, thinking)
 
 
+@pytest.mark.parametrize(
+    ("client", "server", "expected"),
+    [
+        ("hostllm-analyst", "hostllm", "hostllm-analyst"),
+        ("hostllm-analyst", "vllm", "vllm-analyst"),
+        ("hostllm-headline", "vllm", "vllm-headline"),
+    ],
+)
+def test_each_specialist_is_reached_on_the_engine_asked_for(
+    client: str, server: str, expected: str
+) -> None:
+    assert served_by(client, server) == expected
+
+
+def test_an_engine_with_no_client_for_a_specialist_is_refused() -> None:
+    with pytest.raises(ValueError, match="no client serves"):
+        served_by("hostllm-analyst", "tgi")
+
+
 def test_the_worst_case_is_every_ceiling_a_run_holds() -> None:
     each = MAX_USD_ANALYST_GENERALIST + MAX_USD_ANALYST_CRITIC
     assert worst_case_usd(3) == pytest.approx(3 * each + 2 * MAX_USD_ANALYST_SPECIALIST)
@@ -84,15 +106,36 @@ def _never(*args: object, **kwargs: object) -> None:
     raise AssertionError("something was sent")
 
 
+def test_questions_run_at_once_in_order_with_a_failure_kept_in_its_place() -> None:
+    together = threading.Barrier(3, timeout=5)
+
+    def work(n: int) -> int:
+        together.wait()  # passes only if all three are in flight at once
+        if n == 2:
+            raise RuntimeError("specialist unreachable")
+        return n * 10
+
+    done = in_parallel([1, 2, 3], work, workers=3)
+
+    assert done[0] == 10 and done[2] == 30
+    assert isinstance(done[1], RuntimeError) and str(done[1]) == "specialist unreachable"
+
+
 def test_without_yes_a_run_estimates_and_sends_nothing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     monkeypatch.setattr(run_module, "warm_up", _never)
     monkeypatch.setattr(run_module, "connect", _never)
 
-    main(["--generalist", "sarvam-thinking", "--thinking", "off", "--out", str(tmp_path)])
+    main(
+        [
+            *("--generalist", "sarvam-thinking", "--thinking", "off"),
+            *("--specialists", "vllm", "--out", str(tmp_path)),
+        ]
+    )
 
     printed = capsys.readouterr().out
+    assert "specialists on vllm" in printed
     assert f"worst case ${worst_case_usd(3):.2f}" in printed and "nothing sent" in printed
     assert list(tmp_path.iterdir()) == []
 

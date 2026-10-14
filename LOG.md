@@ -1861,3 +1861,18 @@
     quoted PBT and EBIT instead.
   - Medium sits between the two earlier Sarvam runs: off delegated but wrote no memo; high wrote
     memos but delegated nothing and once answered empty. One run each.
+- 10-14: **the probe set's first five questions on Sarvam at medium reasoning, one at a time;
+  stopped there at Vedant's call, ~$1.05** (Sarvam $0.271, the Opus critic $0.279, the L4 up
+  ~37 min, ~$0.49; the specialists' own total was not printed, the run being stopped).
+  Transcripts in `runs/analyst/20261014-103745-sarvam-105b-ap-0*.md`.
+  - ap-02 (Reliance debt) 4/4 supported after a redraft; ap-03 (JLR) 6/6; ap-04 (ITC payout)
+    6/7 at the redraft cap. 23 specialist jobs over ap-01 to ap-05, two of them sent to the
+    fallback; ap-04 delegated nothing.
+  - **The figures specialist's 256-token cap is too small for a segment table**: on ap-01 it ran
+    its `calculate`s for ITC's four segments and was cut off writing them out. The fallback
+    failed the check too, so the job came back an error.
+  - **Medium reasoning can spend the whole 16,384-token cap and write nothing**: ap-01's third
+    research turn (stopped by the empty-draft check, as built) and ap-05's redrafted memo
+    (16,384 out, no record).
+  - ~9 minutes a question, one specialist job at a time, the GPU idle between them: the reason
+    for running questions in parallel (`--workers`).

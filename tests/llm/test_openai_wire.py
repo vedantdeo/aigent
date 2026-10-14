@@ -22,9 +22,18 @@ from pydantic import BaseModel
 
 from aigent.errors import StepFailed, Unsupported
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
-from aigent.llm.adapters.cfg_hostllm import ANALYST, COLD_START_TIMEOUT, HEADLINE
+from aigent.llm.adapters.cfg_hostllm import (
+    ANALYST,
+    COLD_START_TIMEOUT,
+    HEADLINE,
+    VLLM_ANALYST,
+    VLLM_BASE_URL,
+    VLLM_COLD_START_TIMEOUT,
+    VLLM_HEADLINE,
+)
 from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
 from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
+from aigent.llm.adapters.cfg_sarvam import THINKING as SARVAM_THINKING
 from aigent.llm.adapters.client import Client
 from aigent.llm.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
 from aigent.llm.core import Dispatch, Llm, Request
@@ -322,10 +331,29 @@ def test_a_client_without_a_header_s_variable_is_refused_before_anything_is_sent
 
 def test_the_two_specialists_share_an_endpoint_and_differ_in_the_adapter_they_name() -> None:
     assert (HEADLINE.model, ANALYST.model) == ("headline-flavour", "report-analyst")
-    assert replace(ANALYST, name="", model="", small_model="") == replace(
+    assert replace(ANALYST, name="", model="", small_model="", max_tokens={}) == replace(
         HEADLINE, name="", model="", small_model=""
-    )
+    ), "the analyst differs only in its adapter and its answer cap"
     assert HEADLINE.timeout == COLD_START_TIMEOUT >= 180, "a request outlasts a cold start"
+
+
+def test_both_sarvam_clients_wait_out_a_rate_limit_of_a_minute() -> None:
+    patient = [(c.retries, c.retry_max_seconds) for c in (SARVAM, SARVAM_THINKING)]
+    assert patient == [(6, 60.0)] * 2
+
+
+@pytest.mark.parametrize(
+    ("ours", "theirs"),
+    [(ANALYST, VLLM_ANALYST), (HEADLINE, VLLM_HEADLINE)],
+    ids=["the analyst", "the headline reader"],
+)
+def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_and_how_long_it_waits(
+    ours: Client, theirs: Client
+) -> None:
+    assert theirs.model == ours.model, "vLLM serves each adapter under the same name"
+    assert replace(theirs, name=ours.name, base_url=ours.base_url, timeout=ours.timeout) == ours
+    assert theirs.base_url == VLLM_BASE_URL != ours.base_url
+    assert theirs.timeout == VLLM_COLD_START_TIMEOUT > 349, "outlasts vLLM's slowest cold start"
 
 
 @pytest.mark.parametrize(

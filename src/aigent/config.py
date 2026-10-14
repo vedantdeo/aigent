@@ -131,6 +131,7 @@ MAX_USD_ANALYST_GENERALIST = 0.40
 MAX_USD_ANALYST_CRITIC = 0.30
 MAX_USD_ANALYST_SPECIALIST = 0.30
 ANALYST_SERVED_TOOLS = ("calculate", "fundamentals", "search_filings")
+ANALYST_WORKERS = 4  # questions in flight at once, so the specialists' GPU is shared, not idle
 MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this much output fits
 
 # How many calls one concurrent batch keeps in flight at once.
