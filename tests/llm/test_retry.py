@@ -15,7 +15,7 @@ import anthropic
 import httpx2
 import pytest
 
-from aigent.llm.adapters.retry import Retry, RetryingTransport, wait_for
+from aigent.llm.adapters.retry import Retry, RetryingTransport, http_client, wait_for
 
 URL = "https://api.example/v1/messages"
 Answer = int | tuple[int, dict[str, str]] | Exception
@@ -148,6 +148,26 @@ def test_a_retry_sends_the_same_body_and_is_reported_before_it_waits() -> None:
 
     assert seen[0].content == seen[1].content == b'{"task":"pt-001"}'
     assert reported == [Retry(attempt=1, reason="HTTP 529", delay=2.0)]
+
+
+def test_a_request_modal_redirects_is_followed_to_its_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        seen.append(f"{request.method} {request.url}")
+        if "__modal_function_call_id" not in str(request.url):
+            return httpx2.Response(303, headers={"location": f"{URL}?__modal_function_call_id=fc"})
+        return httpx2.Response(200, json={"done": True})
+
+    monkeypatch.setattr(httpx2, "HTTPTransport", lambda **_: httpx2.MockTransport(handle))
+    client = http_client(timeout=5, keepalive_seconds=1, retries=0, base_seconds=0, max_seconds=0)
+
+    answered = client.post(URL, json={"ask": 1})
+
+    assert answered.json() == {"done": True}
+    assert seen == [f"POST {URL}", f"GET {URL}?__modal_function_call_id=fc"]
 
 
 def test_the_sdk_leaves_the_retrying_to_the_transport() -> None:

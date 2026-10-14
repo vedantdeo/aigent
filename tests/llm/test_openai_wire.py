@@ -37,10 +37,10 @@ from aigent.llm.adapters.cfg_sarvam import THINKING as SARVAM_THINKING
 from aigent.llm.adapters.client import Client
 from aigent.llm.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
 from aigent.llm.core import Dispatch, Llm, Request
-from aigent.llm.messages import Msg
+from aigent.llm.messages import Msg, Thinking
 from aigent.tools import CALCULATOR_TOOL
 
-from ..conftest import FakeOpenAI, Finish, StubTokenizer
+from ..conftest import FakeOpenAI, Finish, MakeLlm, StubTokenizer
 from ..conftest import calling as _calling
 from ..conftest import completion as _completion
 
@@ -689,10 +689,53 @@ def test_a_loop_out_of_turns_is_told_to_answer_after_its_tool_results(
     ]
 
 
+def _reasoning(sent: dict[str, object]) -> object:
+    """The `reasoning_effort` a call sent, or "unset"."""
+    return cast(dict[str, object], sent["extra_body"] or {}).get("reasoning_effort", "unset")
+
+
+@pytest.mark.parametrize(
+    ("thinking", "sent"),
+    [
+        pytest.param(None, "unset", id="no thinking said: the client's own setting"),
+        pytest.param({"type": "disabled"}, None, id="disabled: reasoning off"),
+    ],
+)
+def test_disabled_thinking_switches_a_reasoning_server_off(
+    thinking: Thinking | None, sent: str | None
+) -> None:
+    wire, completions = _wire()
+    calm = replace(REQUEST, thinking=thinking)
+
+    wire.send(calm)
+    wire.parse(calm, Verdict)
+
+    assert [_reasoning(c) for c in completions.sent] == [sent, sent]
+
+
+def test_a_rethought_session_sends_later_turns_and_its_last_answer_as_told() -> None:
+    fake = FakeOpenAI(_calling("18 / 100"), _calling("2 * 3"), _completion("done"))
+    calm: Thinking = {"type": "disabled"}
+    session = OpenAI(LOCAL, fake).tools(ASKING, _dispatch([]), 3, lambda: calm)
+
+    list(session)
+    session.answer(ASKING)
+
+    assert [_reasoning(c) for c in fake.sent] == ["unset", None, None, None]
+
+
+def test_the_anthropic_runner_refuses_to_rethink_per_turn(make_llm: MakeLlm) -> None:
+    llm, sent = make_llm("hi")
+
+    with pytest.raises(Unsupported, match="rethink"):
+        llm.run_tools(ASKING, _dispatch([]), rethink=lambda: None)
+    assert sent.sent == []
+
+
 def test_a_session_stops_asking_at_its_turn_cap() -> None:
     fake = FakeOpenAI(_calling("18 / 100"))
     ran: list[str] = []
 
-    replies = list(OpenAI(LOCAL, fake).tools(ASKING, _dispatch(ran), 3))
+    replies = list(OpenAI(LOCAL, fake).tools(ASKING, _dispatch(ran), 3, None))
 
     assert len(replies) == len(fake.sent) == len(ran) == 3

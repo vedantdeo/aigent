@@ -124,9 +124,10 @@ SPECIALIST_TRIES = 2  # a request the endpoint drops is sent once more, then the
 SPECIALIST_TOOL_TURNS = 3  # calculate calls, their results, the answer: one turn to spare
 GENERALIST_MODEL = "claude-sonnet-5"  # the capstone's generalist while building
 GENERALIST_THINKING: Thinking = {"type": "adaptive"}  # pass None for a model that takes none
+GENERALIST_CALM: Thinking = {"type": "disabled"}  # once a specialist has answered, if asked
 CRITIC_MODEL = "claude-opus-5"  # its critic: never the generalist's own model
 MAX_CRITIC_REVISIONS = 2  # redrafts the critic may send back before a human sees the memo
-# `python -m aigent.analyst.run`: each question's ceilings, a run's per specialist, and its tools.
+# `python -m aigent.analyst.run`: each question's ceilings, its specialists' too, and its tools.
 MAX_USD_ANALYST_GENERALIST = 0.40
 MAX_USD_ANALYST_CRITIC = 0.30
 MAX_USD_ANALYST_SPECIALIST = 0.30

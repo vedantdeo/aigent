@@ -69,6 +69,17 @@ def test_a_generalist_is_a_client_a_model_and_how_it_thinks(
 
 
 @pytest.mark.parametrize(
+    ("named", "calm"),
+    [("sarvam-thinking", True), (f"anthropic:{GENERALIST_MODEL}", False)],
+    ids=["on the OpenAI wire: calm once a specialist answers", "on Anthropic's: unchanged"],
+)
+def test_a_generalist_is_calm_where_its_wire_can_switch_reasoning_off(
+    named: str, calm: bool
+) -> None:
+    assert generalist_of(named, "off").calm is calm
+
+
+@pytest.mark.parametrize(
     ("named", "thinking"),
     [("nobody", "off"), ("sarvam", "lots")],
     ids=["an unknown client", "a budget that is not a number"],
@@ -97,9 +108,9 @@ def test_an_engine_with_no_client_for_a_specialist_is_refused() -> None:
         served_by("hostllm-analyst", "tgi")
 
 
-def test_the_worst_case_is_every_ceiling_a_run_holds() -> None:
+def test_the_worst_case_is_every_ceiling_each_question_holds() -> None:
     each = MAX_USD_ANALYST_GENERALIST + MAX_USD_ANALYST_CRITIC
-    assert worst_case_usd(3) == pytest.approx(3 * each + 2 * MAX_USD_ANALYST_SPECIALIST)
+    assert worst_case_usd(3) == pytest.approx(3 * (each + 2 * MAX_USD_ANALYST_SPECIALIST))
 
 
 def _never(*args: object, **kwargs: object) -> None:

@@ -29,7 +29,7 @@ from aigent.llm.adapters.openai import OpenAI
 from aigent.llm.messages import BatchStatus, Failed, Msg, Parsed, Reply
 
 if TYPE_CHECKING:
-    from aigent.llm.core import Dispatch, Request
+    from aigent.llm.core import Dispatch, Request, Rethink
 
 
 class Streamed(Protocol):
@@ -72,7 +72,9 @@ class Adapter(Protocol):
 
     def streamed(self, request: Request) -> AbstractContextManager[Streamed]: ...
 
-    def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession: ...
+    def tools(
+        self, request: Request, dispatch: Dispatch, max_turns: int, rethink: Rethink | None
+    ) -> ToolSession: ...
 
     def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str: ...
 

@@ -8,7 +8,7 @@ approves the memo or sends it back with a note.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TypedDict, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -23,6 +23,7 @@ from aigent.analyst.toolbox import Toolbox
 from aigent.config import (
     CACHE_PARAM,
     CRITIC_MODEL,
+    GENERALIST_CALM,
     GENERALIST_MODEL,
     GENERALIST_THINKING,
     MAX_AGENT_TURNS,
@@ -151,12 +152,21 @@ def build(
     max_turns: int = MAX_AGENT_TURNS,
     model: str | None = GENERALIST_MODEL,
     thinking: Thinking | None = GENERALIST_THINKING,
+    calm: bool = False,
 ) -> CompiledStateGraph[State, None, State, State]:
     """The graph, compiled. With `approve`, the gate asks it; without, the gate interrupts and
     waits to be resumed with `{"approved": …, "note": …}`, which needs a `checkpointer`. The
-    generalist is asked as `model`, or its client's own if None, thinking as `thinking` says."""
+    generalist is asked as `model`, or its client's own if None, thinking as `thinking` says; with
+    `calm`, it stops thinking once a specialist has answered, for the rest of research and the
+    memo."""
     dispatch = tracing.traced_tools(toolbox, {"search_filings": "retriever"})
     memo_cap = max_tokens("MEMO", spec(generalist.client))
+
+    def answered() -> bool:
+        return any(routed.path == "specialist" for routed in toolbox.route.routed)
+
+    def thinking_now() -> Thinking | None:
+        return GENERALIST_CALM if calm and answered() else thinking
 
     def research(state: State) -> dict[str, object]:
         request = Request(
@@ -166,11 +176,17 @@ def build(
             system=RESEARCH,
             model=model,
             tools=toolbox.tools,
-            thinking=thinking,
+            thinking=thinking_now(),
             cache_control=CACHE_PARAM if "cache" in generalist.supports else None,
         )
         try:
-            ran = generalist.run_tools(request, dispatch, max_turns=max_turns, finish=FINISH)
+            ran = generalist.run_tools(
+                request,
+                dispatch,
+                max_turns=max_turns,
+                finish=FINISH,
+                rethink=thinking_now if calm else None,
+            )
         except (BudgetExceeded, TurnsExhausted) as stop:
             return {"draft": None, "stopped": str(stop)}
         # every turn's text, not the last turn's: an answer is often written a turn before the end
@@ -182,6 +198,8 @@ def build(
     def write(state: State) -> dict[str, object]:
         prompt = f"<question>{state['question']}</question>\n\n<answer>{state['draft']}</answer>"
         request = Request.ask("memo", WRITE, prompt, memo_cap, model=model)
+        if calm and answered():
+            request = replace(request, thinking=GENERALIST_CALM)
         parsed = generalist.parse(request, Memo)
         if parsed.parsed is None:
             return {"memo": None, "stopped": "the generalist's answer could not be read as a memo"}
@@ -300,9 +318,16 @@ def run(
     question: str,
     model: str | None = GENERALIST_MODEL,
     thinking: Thinking | None = GENERALIST_THINKING,
+    calm: bool = False,
 ) -> Analysed:
     """One question through the graph with no one at the gate, as an eval runs it."""
     graph = build(
-        generalist, critic, toolbox, approve=always_approve, model=model, thinking=thinking
+        generalist,
+        critic,
+        toolbox,
+        approve=always_approve,
+        model=model,
+        thinking=thinking,
+        calm=calm,
     )
     return analysed(cast(State, graph.invoke(begin(question))), toolbox)

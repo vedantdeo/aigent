@@ -45,7 +45,7 @@ from anthropic.types.messages.batch_create_params import Request as BatchRequest
 from anthropic.types.tool_param import InputSchema
 from pydantic import BaseModel, ValidationError
 
-from aigent.errors import Unreadable
+from aigent.errors import Unreadable, Unsupported
 from aigent.llm.adapters.client import Client, model_of
 from aigent.llm.adapters.retry import http_client
 from aigent.llm.messages import (
@@ -63,7 +63,7 @@ from aigent.llm.messages import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from aigent.llm.core import Dispatch, Request
+    from aigent.llm.core import Dispatch, Request, Rethink
 
 import os
 from pathlib import Path
@@ -376,8 +376,13 @@ class Anthropic:
         ) as stream:
             yield Streaming(stream)
 
-    def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession:
-        """A tool-using conversation, which `llm` drives one admitted turn at a time."""
+    def tools(
+        self, request: Request, dispatch: Dispatch, max_turns: int, rethink: Rethink | None
+    ) -> ToolSession:
+        """A tool-using conversation, which `llm` drives one admitted turn at a time. Refuses
+        `rethink`: the SDK's runner sends every turn with the thinking it started with."""
+        if rethink is not None:
+            raise Unsupported(f"{request.step}: the {self.name} runner cannot rethink per turn")
         return ToolSession(self.client, self.settings, request, dispatch, max_turns)
 
     def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str:

@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from transformers import PreTrainedTokenizerBase
 
     from aigent.llm.adapters import Streamed
-    from aigent.llm.core import Dispatch, Request
+    from aigent.llm.core import Dispatch, Request, Rethink
 
 # What this wire can do. Everything absent from it — caching, thinking, effort, server-side
 # search, streaming — `llm` refuses before sending. `schema` is here because a caller may ask for
@@ -234,18 +234,27 @@ class ToolSession:
     """A tool-using conversation looped here, this SDK having no runner: turns out, each turn's
     tools run once through `dispatch`, their results back in as one message."""
 
-    def __init__(self, wire: OpenAI, request: Request, dispatch: Dispatch, max_turns: int) -> None:
+    def __init__(
+        self,
+        wire: OpenAI,
+        request: Request,
+        dispatch: Dispatch,
+        max_turns: int,
+        rethink: Rethink | None = None,
+    ) -> None:
         self._wire = wire
         self._request = request
         self._dispatch = dispatch
         self._max_turns = max_turns
+        self._rethink = rethink
         self._asked: Reply | None = None
         self._results: Msg | None = None
 
     def __iter__(self) -> Iterator[Reply]:
         messages: list[Msg] = list(self._request.messages)
-        for _ in range(self._max_turns):
-            reply = self._wire.send(replace(self._request, messages=messages))
+        for turn in range(self._max_turns):
+            sending = replace(self._request, messages=messages)
+            reply = self._wire.send(sending if turn == 0 else self._rethought(sending))
             self._asked, self._results = reply, None
             yield reply
             results = self.tool_results()
@@ -273,8 +282,11 @@ class ToolSession:
         }
 
     def answer(self, request: Request) -> Reply:
-        """A last turn, sent as any other."""
-        return self._wire.send(request)
+        """A last turn, sent as any other after the first."""
+        return self._wire.send(self._rethought(request))
+
+    def _rethought(self, request: Request) -> Request:
+        return request if self._rethink is None else replace(request, thinking=self._rethink())
 
 
 class OpenAI:
@@ -362,11 +374,12 @@ class OpenAI:
             return omit
         return cast("list[ChatCompletionToolParam]", [function_tool(t) for t in request.tools])
 
-    @property
-    def _extra_body(self) -> dict[str, object] | None:
-        """What the server needs beyond the OpenAI fields: how to template this model, and the
-        adapter to apply to it."""
+    def _extra_body(self, request: Request) -> dict[str, object] | None:
+        """What the server needs beyond the OpenAI fields: how to template this model, the
+        adapter to apply to it, and no reasoning when the request disables thinking."""
         body: dict[str, object] = dict(self.settings.extra_body)
+        if request.thinking is not None and request.thinking["type"] == "disabled":
+            body["reasoning_effort"] = None  # an explicit null turns a reasoning server's off
         if self.settings.template_kwargs:
             body["chat_template_kwargs"] = dict(self.settings.template_kwargs)
         if self.settings.adapter is not None:
@@ -408,7 +421,7 @@ class OpenAI:
                 messages=self.messages(request),
                 max_tokens=request.max_tokens,
                 tools=self._tools(request),
-                extra_body=self._extra_body,
+                extra_body=self._extra_body(request),
             )
         )
 
@@ -426,7 +439,7 @@ class OpenAI:
             messages=self.messages(request, schema),
             max_tokens=request.max_tokens,
             response_format=self._response_format(schema),
-            extra_body=self._extra_body,
+            extra_body=self._extra_body(request),
         )
         reply = reply_of(completion)
         return Parsed[Record](
@@ -447,9 +460,11 @@ class OpenAI:
         raise Unsupported(f"{request.step}: the {self.name} wire does not stream yet")
         yield  # pragma: no cover - unreachable, and what makes this a generator
 
-    def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession:
+    def tools(
+        self, request: Request, dispatch: Dispatch, max_turns: int, rethink: Rethink | None
+    ) -> ToolSession:
         """A tool-using conversation, which `llm` drives one admitted turn at a time."""
-        return ToolSession(self, request, dispatch, max_turns)
+        return ToolSession(self, request, dispatch, max_turns, rethink)
 
     def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str:
         """Refused: no server this wire talks to has a batch endpoint wired up here."""

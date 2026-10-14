@@ -3,11 +3,13 @@ and the gate, by an approver and by a person resuming a paused run."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import cast
 
 import pytest
 from anthropic.types import Message, TextBlock
+from openai.types.chat import ChatCompletion, ChatCompletionMessageFunctionToolCall
 from pydantic import BaseModel
 
 pytest.importorskip("langgraph")
@@ -37,6 +39,7 @@ from ..conftest import (  # noqa: E402
     FakeOpenAI,
     MakeLlm,
     Sent,
+    calling,
     completion,
     tool_turn,
 )
@@ -124,6 +127,53 @@ def test_a_generalist_on_a_wire_with_no_cache_runs_as_its_client_s_own_model(
 
     assert done.memo == memo(RIGHT) and done.review == Review(approved=True)
     assert [sent["model"] for sent in fake.sent] == [LOCAL.model] * 2
+
+
+def _figures_call() -> ChatCompletion:
+    """A turn asking the figures specialist for the dividend passage."""
+    asked = calling("0")
+    calls = asked.choices[0].message.tool_calls
+    assert calls is not None
+    call = cast(ChatCompletionMessageFunctionToolCall, calls[0])
+    call.function.name = "extract_figures"
+    call.function.arguments = json.dumps({"chunk_ids": [DIVIDEND], "wanted": "dividend"})
+    return asked
+
+
+@pytest.mark.parametrize(
+    ("calm", "figures", "expected"),
+    [
+        pytest.param(
+            True,
+            True,
+            [False, True, True],
+            id="calm after a specialist answered",
+        ),
+        pytest.param(
+            True, False, [False, False], id="calm but no specialist asked: thinks throughout"
+        ),
+        pytest.param(False, True, [False, False, False], id="not calm: thinks throughout"),
+    ],
+)
+def test_a_calm_generalist_stops_reasoning_once_a_specialist_has_answered(
+    make_llm: MakeLlm,
+    offline_tokenizer: None,
+    calm: bool,
+    figures: bool,
+    expected: list[bool],
+) -> None:
+    turns = [_figures_call()] if figures else []
+    fake = FakeOpenAI(*turns, completion(DRAFT), completion(memo(RIGHT).model_dump_json()))
+    writer = Llm("local", sdk=cast(object, fake))
+    tools = box(search)
+    tools("search_filings", {})
+
+    done = run(writer, make_llm(judging)[0], tools, QUESTION, None, None, calm)
+
+    assert done.memo == memo(RIGHT), done.stopped
+    bodies = [cast(dict[str, object], s["extra_body"]) for s in fake.sent]
+    assert [body.get("reasoning_effort", "on") is None for body in bodies] == expected
+    assert [r.path for r in done.routed] == ["specialist"] * figures
 
 
 def test_each_model_is_capped_as_its_own_client_says(

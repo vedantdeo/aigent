@@ -1876,3 +1876,20 @@
     (16,384 out, no record).
   - ~9 minutes a question, one specialist job at a time, the GPU idle between them: the reason
     for running questions in parallel (`--workers`).
+- 10-14: **the probe set in parallel, 4 at a time, specialists on vLLM: 11 questions in ~14 min,
+  then stopped, ~$1.30** (Sarvam and the Opus critic $1.06 across the transcripts, the L4 ~18 min
+  with a false start, ~$0.24). Transcripts `runs/analyst/20261014-114114-sarvam-105b-ap-*.md`.
+  - **Parallel on vLLM is ~7x faster**: ap-01 to ap-11 in ~14 min against ~9 min a question one
+    at a time on hostllm. vLLM answered the warm-up in 5 s, having started on the false start.
+  - **The false start**: vLLM's cold start ran past 150 s, Modal answered with a 303 to poll,
+    and the HTTP client did not follow redirects. It does now, for every wire.
+  - **Stopped at ap-13 to ap-15 failing on the specialists' budget**: one $0.30 per specialist
+    was shared by the whole run and priced at hostllm's one-at-a-time rate, so 66 jobs used it
+    up. Each question now has its own specialist budgets.
+  - **Supported memos on 5 of 11** (ap-02 4/4, ap-03 7/7, ap-05 4/5, ap-09 4/4, ap-11 6/7).
+    **Five had no memo, every one the same way**: the memo step spent all 16,384 output tokens
+    reasoning (ap-01, 04, 06, 07, 08). Sarvam has no separate reasoning cap, only
+    `reasoning_effort`. Hence calm thinking: a Sarvam generalist stops reasoning once a
+    specialist has answered, for the rest of research and the memo.
+  - ap-10 cited sources by description ("fundamentals cite_as TATAMOTORS:2025:profit",
+    "read_headline") rather than by id, so every claim was refused as never retrieved.

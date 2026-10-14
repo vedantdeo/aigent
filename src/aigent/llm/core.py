@@ -121,6 +121,8 @@ class ToolRun:
 
 # Runs one tool call: `(name, input)` in, `(content, is_error)` out, as `tools.execute_tool` does.
 Dispatch = Callable[[str, dict[str, object]], tuple[str, bool]]
+# Asked before each turn of a tool run after the first: the thinking that turn is sent with.
+Rethink = Callable[[], Thinking | None]
 
 
 class Rehearsed(Exception):
@@ -314,12 +316,14 @@ class Llm:
         *,
         max_turns: int = MAX_AGENT_TURNS,
         finish: str | None = None,
+        rethink: Rethink | None = None,
     ) -> ToolRun:
         """Run a tool-using conversation on the SDK's tool runner until the model stops asking for
         tools. Each turn is admitted against the per-turn ceiling before it is sent, billed after.
 
         With `finish`, a conversation about to run out of turns or budget is sent one last turn with
         `finish` after its tool results, to answer from what it has, if enough output still fits.
+        With `rethink`, every turn after the first thinks as it says, on a wire that allows it.
         """
         request = self._bound(request)
         if not request.tools:
@@ -329,7 +333,7 @@ class Llm:
         first = replace(request, step=f"{request.step}:1", messages=messages)
         held = self._admit([first], limit_usd=MAX_USD_PER_TURN, scope="turn")
         try:
-            session = self._adapter.tools(first, dispatch, max_turns)
+            session = self._adapter.tools(first, dispatch, max_turns, rethink)
             replies = iter(session)
             sending = first
             turns: list[Reply] = []

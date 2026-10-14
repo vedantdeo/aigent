@@ -66,6 +66,12 @@ class Generalist:
     def label(self) -> str:
         return self.model or spec(self.client).model
 
+    @property
+    def calm(self) -> bool:
+        """Whether it stops reasoning once a specialist has answered: on the OpenAI wire, where a
+        reasoning server's reasoning can be switched off per turn."""
+        return spec(self.client).wire == "openai"
+
 
 def generalist_of(named: str, thinking: str) -> Generalist:
     """`client[:model]` and `adaptive`, `off` or a token budget, as a Generalist. ValueError for
@@ -118,9 +124,9 @@ def in_parallel[Item, Out](
 
 
 def worst_case_usd(questions: int) -> float:
-    """The most a run can spend: every question's ceilings, and every specialist's."""
+    """The most a run can spend: every question's ceilings, its specialists' included."""
     each = MAX_USD_ANALYST_GENERALIST + MAX_USD_ANALYST_CRITIC
-    return questions * each + len(BUILDERS) * MAX_USD_ANALYST_SPECIALIST
+    return questions * (each + len(BUILDERS) * MAX_USD_ANALYST_SPECIALIST)
 
 
 def _slug(text: str) -> str:
@@ -178,7 +184,9 @@ def analyse(
     )
     try:
         with tracing.using(tracer):
-            done = run(generalist, critic, toolbox, question, chosen.model, chosen.thinking)
+            done = run(
+                generalist, critic, toolbox, question, chosen.model, chosen.thinking, chosen.calm
+            )
         tracer.write(*result(done, generalist, critic))
         return done
     finally:
@@ -239,12 +247,8 @@ def main(argv: list[str] | None = None) -> None:
         print("estimate only: nothing sent. Add --yes to run.")
         return
 
-    small = {
-        c: Llm(served_by(c, args.specialists), budget=Budget(limit_usd=MAX_USD_ANALYST_SPECIALIST))
-        for c in BUILDERS
-    }
     began = time.monotonic()
-    warm_up(small["hostllm-headline"])
+    warm_up(Llm(served_by("hostllm-headline", args.specialists)))
     print(f"specialists warm after {time.monotonic() - began:.0f} s")
     stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{_slug(chosen.label)}"
     with connect(OWN_SERVER, only=ANALYST_SERVED_TOOLS, fenced=False) as served:
@@ -252,6 +256,13 @@ def main(argv: list[str] | None = None) -> None:
         def ask(item: tuple[str, str]) -> Analysed:
             named, question = item
             generalist = Llm(chosen.client, budget=Budget(limit_usd=MAX_USD_ANALYST_GENERALIST))
+            small = {
+                c: Llm(
+                    served_by(c, args.specialists),
+                    budget=Budget(limit_usd=MAX_USD_ANALYST_SPECIALIST),
+                )
+                for c in BUILDERS
+            }
             critic = Llm("anthropic", budget=Budget(limit_usd=MAX_USD_ANALYST_CRITIC))
             toolbox = Toolbox(
                 served.tools,
@@ -264,7 +275,8 @@ def main(argv: list[str] | None = None) -> None:
                 done = analyse(question, chosen, generalist, critic, toolbox, path)
             finally:
                 spent = generalist.spent_usd + critic.spent_usd
-                print(f"{named} done, ${spent:.4f}: {path}", flush=True)
+                fees = sum(s.spent_usd for s in small.values())
+                print(f"{named} done, ${spent:.4f}, specialists ${fees:.4f}: {path}", flush=True)
             print(f"{named}: {_outcome(done)}", flush=True)
             return done
 
@@ -272,8 +284,7 @@ def main(argv: list[str] | None = None) -> None:
     for (named, _), done in zip(questions, answered, strict=True):
         if isinstance(done, Exception):
             print(f"{named} failed: {type(done).__name__}: {done}")
-    spent = sum(s.spent_usd for s in small.values())
-    print(f"specialists ${spent:.4f}; {time.monotonic() - began:.0f} s in all")
+    print(f"{time.monotonic() - began:.0f} s in all")
 
 
 if __name__ == "__main__":

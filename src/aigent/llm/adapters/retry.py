@@ -134,9 +134,10 @@ def http_client(
     max_seconds: float,
 ) -> httpx2.Client:
     """The HTTP client a wire's SDK client sends through: this module's retries, its connection
-    reuse and its timeout."""
+    reuse and its timeout. It follows redirects: Modal answers a request still running after 150 s
+    with a 303 to poll for its result."""
     inner = httpx2.HTTPTransport(limits=httpx2.Limits(keepalive_expiry=keepalive_seconds))
     transport = RetryingTransport(
         inner, retries=retries, base_seconds=base_seconds, max_seconds=max_seconds
     )
-    return httpx2.Client(transport=transport, timeout=timeout)
+    return httpx2.Client(transport=transport, timeout=timeout, follow_redirects=True)
