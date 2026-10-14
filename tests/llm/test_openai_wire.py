@@ -496,6 +496,24 @@ def test_text_beside_a_call_is_kept_ahead_of_it() -> None:
     assert reply.text == "Converting."
 
 
+def test_a_reasoning_server_s_trace_is_kept_as_thinking_and_never_sent_back() -> None:
+    reasoned = _calling("18 / 100", text="Converting.")
+    message = reasoned.choices[0].message
+    assert message.model_extra is not None
+    message.model_extra["reasoning_content"] = "18% is 0.18."
+    reply = reply_of(reasoned)
+    wire, completions = _wire()
+
+    wire.send(
+        replace(ASKING, messages=[*ASKING.messages, {"role": "assistant", "content": reply.blocks}])
+    )
+
+    assert reply.blocks[0] == {"type": "thinking", "thinking": "18% is 0.18."}
+    assert reply.text == "Converting."
+    sent = cast(list[dict[str, object]], completions.sent[0]["messages"])[-1]
+    assert sent["content"] == "Converting.", "the thought stays out of what is sent"
+
+
 def test_a_call_whose_arguments_are_not_json_arrives_with_none() -> None:
     broken = _calling("18 / 100")
     calls = broken.choices[0].message.tool_calls

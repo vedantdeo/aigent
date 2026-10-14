@@ -19,6 +19,9 @@ wheels/
 corpus/**
 !corpus/README.md
 
+# Live runs' transcripts: read locally, quoting filings that are not ours to redistribute.
+runs/
+
 # Temporary files
 sandbox/**
 !sandbox/README.md

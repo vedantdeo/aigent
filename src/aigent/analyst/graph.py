@@ -61,7 +61,11 @@ WRITE = (
     "square brackets; each becomes one claim citing exactly those ids. Add nothing the answer "
     "does not say. A caveat is something the sources did not cover or could not settle: never a "
     "remark about the answer itself, its method or an earlier draft. Leave out the answer's "
-    "closing 'Specialists:' line and anything else it says about the tools it used."
+    "closing 'Specialists:' line and anything else it says about the tools it used. The memo "
+    "is a JSON object with three keys: summary, two sentences answering the question; claims, a "
+    "list of objects, each with an id (c1, c2, … in order), a text (one sentence stating one "
+    "fact, with its figure and year) and citations (a list of the ids the fact rests on, at "
+    "least one); and caveats, a list of sentences."
 )
 CRITIC = (
     "You check one claim from an analyst's memo against the sources it cites, and nothing else: "
@@ -171,6 +175,8 @@ def build(
             return {"draft": None, "stopped": str(stop)}
         # every turn's text, not the last turn's: an answer is often written a turn before the end
         said = [turn.text.strip() for turn in ran.turns if turn.text.strip()]
+        if not said:
+            return {"draft": None, "stopped": "the generalist's answer was empty"}
         return {"draft": "\n\n".join(said), "stopped": ran.cut_short}
 
     def write(state: State) -> dict[str, object]:

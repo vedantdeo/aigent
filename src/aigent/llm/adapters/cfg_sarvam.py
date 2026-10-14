@@ -1,5 +1,5 @@
 """Settings for the `sarvam` clients: Sarvam AI's hosted API, over the OpenAI wire; `sarvam`
-with reasoning off, `sarvam-thinking` with it on high.
+with reasoning off, `sarvam-thinking` with it at medium.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ THINKING = replace(
     CLIENT,
     name="sarvam-thinking",
     max_tokens=THOUGHT,
-    extra_body={"reasoning_effort": "high"},
+    extra_body={},  # no reasoning_effort: Sarvam reasons at medium, which its enum does not list
 )
 
 CLIENTS = {client.name: client for client in (CLIENT, THINKING)}

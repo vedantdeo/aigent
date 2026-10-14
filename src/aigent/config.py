@@ -125,6 +125,11 @@ GENERALIST_MODEL = "claude-sonnet-5"  # the capstone's generalist while building
 GENERALIST_THINKING: Thinking = {"type": "adaptive"}  # pass None for a model that takes none
 CRITIC_MODEL = "claude-opus-5"  # its critic: never the generalist's own model
 MAX_CRITIC_REVISIONS = 2  # redrafts the critic may send back before a human sees the memo
+# `python -m aigent.analyst.run`: each question's ceilings, a run's per specialist, and its tools.
+MAX_USD_ANALYST_GENERALIST = 0.40
+MAX_USD_ANALYST_CRITIC = 0.30
+MAX_USD_ANALYST_SPECIALIST = 0.30
+ANALYST_SERVED_TOOLS = ("calculate", "fundamentals", "search_filings")
 MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this much output fits
 
 # How many calls one concurrent batch keeps in flight at once.

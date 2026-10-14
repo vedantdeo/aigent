@@ -85,12 +85,15 @@ def reply_of(completion: ChatCompletion) -> Reply:
     text = choice.message.content or ""
     calls = [_tool_use(call) for call in choice.message.tool_calls or [] if call.type == "function"]
     blocks: list[Block] = [{"type": "text", "text": text}] if text or not calls else []
+    # a reasoning server's trace, kept as a thinking block: shown, never sent back
+    reasoning = (choice.message.model_extra or {}).get("reasoning_content")
+    thought: list[Block] = [{"type": "thinking", "thinking": reasoning}] if reasoning else []
     return Reply(
         text=text,
         usage=usage_of(completion.usage),
         stop_reason=STOP_REASONS.get(choice.finish_reason, choice.finish_reason),
         model=completion.model,
-        blocks=(*blocks, *calls),
+        blocks=(*thought, *blocks, *calls),
         raw=completion,
     )
 

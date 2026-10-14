@@ -1833,3 +1833,15 @@
     `search_filings` as a specialist.
   - Refines the 10-13 finding: what counts as too trivial to delegate depends on the generalist.
     One run each, so a direction rather than a rate.
+- 10-14: **Sarvam 105B again, reasoning on high (`sarvam-thinking`, 16,384-token caps) and the
+  memo prompt spelling out a claim's fields: memos on all three, ~$0.16** (Sarvam $0.0272, the
+  Opus critic $0.0582, the hostllm L4 ~5 min, ~$0.07; no specialist tokens).
+  - **ITC and JLR: right memos, every claim supported** (five and two claims, no redrafts). The
+    memo step took 10,711 and 5,014 output tokens, most of it reasoning, against Sonnet's few
+    hundred; at $0.77 a million that is still under a cent.
+  - **Reliance: an empty answer approved.** Research searched both years and ran two
+    `calculate`s, then its last turn carried no text, so the draft was empty; the memo said the
+    answer stated nothing, had no claims, and the critic had nothing to check, so the gate
+    approved it. The graph stops on a missing draft but not on an empty one.
+  - **No specialist called on any question** this time, where reasoning-off Sarvam had sent six
+    jobs on Reliance. One run each: a direction, not a rate.

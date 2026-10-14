@@ -137,7 +137,7 @@ def test_each_model_is_capped_as_its_own_client_says(
     run(writer, make_llm(judging)[0], tools, QUESTION, None, None)
 
     assert [sent["max_tokens"] for sent in fake.sent] == [THOUGHT["TOOL_LOOP"], THOUGHT["MEMO"]]
-    assert all(sent["extra_body"] == {"reasoning_effort": "high"} for sent in fake.sent)
+    assert all(sent["extra_body"] is None for sent in fake.sent), "reasoning left at medium"
 
 
 def test_the_draft_is_everything_the_generalist_said_not_only_its_last_turn(
@@ -251,6 +251,23 @@ def test_an_answer_that_cannot_be_read_as_a_memo_stops_the_run(make_llm: MakeLlm
 
     assert done.memo is None and done.review is None and "could not be read" in str(done.stopped)
     assert judged.sent == []
+
+
+def test_an_empty_answer_stops_the_run_before_a_memo_is_written(make_llm: MakeLlm) -> None:
+    def reply(sent: Sent) -> Message | str | BaseModel | None:
+        return memo(RIGHT) if sent.schema is Memo else SEARCHING if len(sent.messages) == 1 else ""
+
+    writer, sent = make_llm(reply)
+    critic, judged = make_llm(judging)
+
+    done = run(writer, critic, box(search), QUESTION)
+
+    assert (
+        done.memo is None
+        and done.review is None
+        and done.stopped == ("the generalist's answer was empty")
+    )
+    assert [s.schema for s in sent.sent] == [None, None] and judged.sent == []
 
 
 def test_research_with_no_room_even_to_answer_stops_the_run(make_llm: MakeLlm) -> None:
