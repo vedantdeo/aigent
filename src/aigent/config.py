@@ -122,6 +122,7 @@ MAX_AGENT_TURNS = 25  # a backstop against a loop of cheap turns; the budget end
 SPECIALIST_TRIES = 2  # a request the endpoint drops is sent once more, then the task fails
 SPECIALIST_TOOL_TURNS = 3  # calculate calls, their results, the answer: one turn to spare
 GENERALIST_MODEL = "claude-sonnet-5"  # the capstone's generalist while building
+GENERALIST_THINKING: Thinking = {"type": "adaptive"}  # pass None for a model that takes none
 CRITIC_MODEL = "claude-opus-5"  # its critic: never the generalist's own model
 MAX_CRITIC_REVISIONS = 2  # redrafts the critic may send back before a human sees the memo
 MIN_TOKENS_FINAL_ANSWER = 1024  # a tool loop out of room answers only if this much output fits

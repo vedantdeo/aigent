@@ -24,14 +24,16 @@ from aigent.config import (
     CACHE_PARAM,
     CRITIC_MODEL,
     GENERALIST_MODEL,
+    GENERALIST_THINKING,
     MAX_AGENT_TURNS,
     MAX_CRITIC_REVISIONS,
-    MAX_TOKENS_MEMO,
-    MAX_TOKENS_TOOL_LOOP,
     MAX_TOKENS_VERDICT,
+    max_tokens,
 )
 from aigent.errors import BudgetExceeded, TurnsExhausted
+from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
+from aigent.llm.messages import Thinking
 
 RESEARCH = (
     "You are a filings analyst answering a question about Indian listed companies from their "
@@ -143,21 +145,25 @@ def build(
     approve: Approve | None = None,
     checkpointer: BaseCheckpointSaver[str] | None = None,
     max_turns: int = MAX_AGENT_TURNS,
+    model: str | None = GENERALIST_MODEL,
+    thinking: Thinking | None = GENERALIST_THINKING,
 ) -> CompiledStateGraph[State, None, State, State]:
     """The graph, compiled. With `approve`, the gate asks it; without, the gate interrupts and
-    waits to be resumed with `{"approved": …, "note": …}`, which needs a `checkpointer`."""
+    waits to be resumed with `{"approved": …, "note": …}`, which needs a `checkpointer`. The
+    generalist is asked as `model`, or its client's own if None, thinking as `thinking` says."""
     dispatch = tracing.traced_tools(toolbox, {"search_filings": "retriever"})
+    memo_cap = max_tokens("MEMO", spec(generalist.client))
 
     def research(state: State) -> dict[str, object]:
         request = Request(
             "research",
             [{"role": "user", "content": _brief(state, toolbox)}],
-            MAX_TOKENS_TOOL_LOOP,
+            max_tokens("TOOL_LOOP", spec(generalist.client)),
             system=RESEARCH,
-            model=GENERALIST_MODEL,
+            model=model,
             tools=toolbox.tools,
-            thinking={"type": "adaptive"},
-            cache_control=CACHE_PARAM,
+            thinking=thinking,
+            cache_control=CACHE_PARAM if "cache" in generalist.supports else None,
         )
         try:
             ran = generalist.run_tools(request, dispatch, max_turns=max_turns, finish=FINISH)
@@ -169,7 +175,7 @@ def build(
 
     def write(state: State) -> dict[str, object]:
         prompt = f"<question>{state['question']}</question>\n\n<answer>{state['draft']}</answer>"
-        request = Request.ask("memo", WRITE, prompt, MAX_TOKENS_MEMO, model=GENERALIST_MODEL)
+        request = Request.ask("memo", WRITE, prompt, memo_cap, model=model)
         parsed = generalist.parse(request, Memo)
         if parsed.parsed is None:
             return {"memo": None, "stopped": "the generalist's answer could not be read as a memo"}
@@ -281,7 +287,16 @@ def always_approve(memo: Memo, verdicts: dict[str, Judged]) -> Review:
     return Review(approved=True)
 
 
-def run(generalist: Llm, critic: Llm, toolbox: Toolbox, question: str) -> Analysed:
+def run(
+    generalist: Llm,
+    critic: Llm,
+    toolbox: Toolbox,
+    question: str,
+    model: str | None = GENERALIST_MODEL,
+    thinking: Thinking | None = GENERALIST_THINKING,
+) -> Analysed:
     """One question through the graph with no one at the gate, as an eval runs it."""
-    graph = build(generalist, critic, toolbox, approve=always_approve)
+    graph = build(
+        generalist, critic, toolbox, approve=always_approve, model=model, thinking=thinking
+    )
     return analysed(cast(State, graph.invoke(begin(question))), toolbox)

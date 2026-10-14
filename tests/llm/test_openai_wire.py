@@ -27,11 +27,11 @@ from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
 from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
 from aigent.llm.adapters.client import Client
 from aigent.llm.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
-from aigent.llm.core import Llm, Request
+from aigent.llm.core import Dispatch, Llm, Request
 from aigent.llm.messages import Msg
 from aigent.tools import CALCULATOR_TOOL
 
-from ..conftest import Finish, StubTokenizer
+from ..conftest import FakeOpenAI, Finish, StubTokenizer
 from ..conftest import calling as _calling
 from ..conftest import completion as _completion
 
@@ -558,6 +558,34 @@ def test_the_count_templates_the_tools_too(monkeypatch: pytest.MonkeyPatch) -> N
     assert seen == [[TRAINED_TOOL], None]
 
 
+def test_the_count_hands_a_template_each_call_s_arguments_as_a_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[object] = []
+
+    class Recording(StubTokenizer):
+        def apply_chat_template(
+            self, conversation: object, **kwargs: object
+        ) -> list[int] | dict[str, list[int]]:
+            seen.extend(cast(list[object], conversation))
+            return super().apply_chat_template(conversation, **kwargs)
+
+    monkeypatch.setattr(OpenAI, "tokenizer", property(lambda _: Recording()))
+    wire, completions = _wire()
+    asked: Msg = {"role": "assistant", "content": reply_of(_calling("18 / 100")).blocks}
+    request = replace(ASKING, messages=[*ASKING.messages, asked])
+
+    wire.count(request)
+    wire.send(request)
+
+    [_, counted] = cast(list[dict[str, list[dict[str, dict[str, object]]]]], seen)
+    assert counted["tool_calls"][0]["function"]["arguments"] == {"expression": "18 / 100"}
+    [_, sent] = cast(
+        list[dict[str, list[dict[str, dict[str, object]]]]], completions.sent[0]["messages"]
+    )
+    assert sent["tool_calls"][0]["function"]["arguments"] == '{"expression": "18 / 100"}'
+
+
 def test_llm_sends_one_tool_turn_on_this_wire_and_bills_it(offline_tokenizer: None) -> None:
     scripted = ScriptedClient("hi")
     scripted.completions.create = lambda **kwargs: _calling("18 / 100")  # type: ignore[method-assign]
@@ -569,8 +597,56 @@ def test_llm_sends_one_tool_turn_on_this_wire_and_bills_it(offline_tokenizer: No
     assert len(llm.trace) == 1
 
 
-def test_no_runner_drives_tools_on_this_wire_yet(offline_tokenizer: None) -> None:
-    llm = Llm("local", sdk=cast(object, ScriptedClient("hi")))
+def _dispatch(ran: list[str]) -> Dispatch:
+    """A calculate that logs each expression and answers with its length; `1 / 0` is an error."""
 
-    with pytest.raises(Unsupported, match="runs no tools yet"):
-        llm.run_tools(ASKING, lambda name, arguments: ("", False))
+    def dispatch(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
+        expression = str(arguments["expression"])
+        ran.append(expression)
+        return str(len(expression)), expression == "1 / 0"
+
+    return dispatch
+
+
+def test_llm_loops_tools_on_this_wire_running_each_call_once(offline_tokenizer: None) -> None:
+    fake = FakeOpenAI(_calling("18 / 100", "1 / 0"), _completion("It is 0.18."))
+    llm = Llm("local", sdk=cast(object, fake))
+    ran: list[str] = []
+
+    done = llm.run_tools(ASKING, _dispatch(ran))
+
+    assert done.message.text == "It is 0.18." and done.cut_short is None and len(done.turns) == 2
+    assert ran == ["18 / 100", "1 / 0"], "each call run once, not again when the loop resumes"
+    assert len(llm.trace) == 2 and len(fake.sent) == 2, "every turn sent once and billed"
+    first, second = (cast(list[dict[str, object]], sent["messages"]) for sent in fake.sent)
+    assert [m["role"] for m in second] == ["user", "assistant", "tool", "tool"]
+    assert second[0] == first[0] and second[2:] == [
+        {"role": "tool", "tool_call_id": "call_0", "content": "8"},
+        {"role": "tool", "tool_call_id": "call_1", "content": "5"},
+    ]
+    assert all(sent["tools"] == [TRAINED_TOOL] for sent in fake.sent)
+
+
+def test_a_loop_out_of_turns_is_told_to_answer_after_its_tool_results(
+    offline_tokenizer: None,
+) -> None:
+    fake = FakeOpenAI(_calling("18 / 100"), _completion("About 0.18."))
+    llm = Llm("local", sdk=cast(object, fake))
+    roomy = replace(ASKING, max_tokens=2048)
+
+    done = llm.run_tools(roomy, _dispatch([]), max_turns=2, finish="Answer now.")
+
+    assert done.message.text == "About 0.18." and done.cut_short is not None
+    assert cast(list[dict[str, object]], fake.sent[1]["messages"])[-2:] == [
+        {"role": "tool", "tool_call_id": "call_0", "content": "8"},
+        {"role": "user", "content": "Answer now."},
+    ]
+
+
+def test_a_session_stops_asking_at_its_turn_cap() -> None:
+    fake = FakeOpenAI(_calling("18 / 100"))
+    ran: list[str] = []
+
+    replies = list(OpenAI(LOCAL, fake).tools(ASKING, _dispatch(ran), 3))
+
+    assert len(replies) == len(fake.sent) == len(ran) == 3

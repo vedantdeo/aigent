@@ -173,6 +173,11 @@ class Llm:
         return self._client
 
     @property
+    def supports(self) -> frozenset[str]:
+        """What its wire can do: a request asking for anything else is refused."""
+        return self._adapter.supports
+
+    @property
     def sdk(self) -> object:
         """Its vendor client, to hand to another `Llm` so the two share one connection."""
         return self._adapter.client

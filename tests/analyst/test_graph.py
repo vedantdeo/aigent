@@ -20,10 +20,26 @@ from aigent.analyst import graph as graph_module  # noqa: E402
 from aigent.analyst.experts import EXTRACT_FIGURES_TOOL, READ_HEADLINE_TOOL  # noqa: E402
 from aigent.analyst.graph import RESEARCH, State, analysed, begin, build, run  # noqa: E402
 from aigent.analyst.memo import Claim, Judged, Memo, Review  # noqa: E402
-from aigent.config import CRITIC_MODEL, GENERALIST_MODEL, MAX_CRITIC_REVISIONS  # noqa: E402
+from aigent.config import (  # noqa: E402
+    CACHE_PARAM,
+    CRITIC_MODEL,
+    GENERALIST_MODEL,
+    GENERALIST_THINKING,
+    MAX_CRITIC_REVISIONS,
+)
 from aigent.errors import GuardrailTripped  # noqa: E402
+from aigent.llm.adapters.cfg_local import CLIENT as LOCAL  # noqa: E402
+from aigent.llm.adapters.cfg_sarvam import THOUGHT  # noqa: E402
+from aigent.llm.core import Llm  # noqa: E402
 
-from ..conftest import PASSAGES, MakeLlm, Sent, tool_turn  # noqa: E402
+from ..conftest import (  # noqa: E402
+    PASSAGES,
+    FakeOpenAI,
+    MakeLlm,
+    Sent,
+    completion,
+    tool_turn,
+)
 from .conftest import DIVIDEND, box, search  # noqa: E402
 
 QUESTION = "What dividend did Reliance recommend for FY25?"
@@ -81,6 +97,47 @@ def test_a_supported_memo_reaches_the_gate_and_is_approved(make_llm: MakeLlm) ->
     ]
     assert writing.schema is Memo and DRAFT in asked(writing) and DIVIDEND in asked(writing)
     assert writing.model == research.model == GENERALIST_MODEL
+    assert research.thinking == GENERALIST_THINKING and research.cache_control == CACHE_PARAM
+
+
+def test_the_generalist_is_asked_as_the_model_and_the_thinking_it_is_given(
+    make_llm: MakeLlm,
+) -> None:
+    writer, sent = make_llm(generalist(memo(RIGHT)))
+
+    run(writer, make_llm(judging)[0], box(search), QUESTION, "claude-haiku-4-5", None)
+
+    research, _, writing = sent.sent
+    assert writing.model == research.model == "claude-haiku-4-5"
+    assert not research.thinking, research.thinking
+
+
+def test_a_generalist_on_a_wire_with_no_cache_runs_as_its_client_s_own_model(
+    make_llm: MakeLlm, offline_tokenizer: None
+) -> None:
+    fake = FakeOpenAI(completion(DRAFT), completion(memo(RIGHT).model_dump_json()))
+    writer = Llm("local", sdk=cast(object, fake))
+    tools = box(search)
+    tools("search_filings", {})  # the passage the memo cites, already retrieved
+
+    done = run(writer, make_llm(judging)[0], tools, QUESTION, None, None)
+
+    assert done.memo == memo(RIGHT) and done.review == Review(approved=True)
+    assert [sent["model"] for sent in fake.sent] == [LOCAL.model] * 2
+
+
+def test_each_model_is_capped_as_its_own_client_says(
+    make_llm: MakeLlm, offline_tokenizer: None
+) -> None:
+    fake = FakeOpenAI(completion(DRAFT), completion(memo(RIGHT).model_dump_json()))
+    writer = Llm("sarvam-thinking", sdk=cast(object, fake))
+    tools = box(search)
+    tools("search_filings", {})
+
+    run(writer, make_llm(judging)[0], tools, QUESTION, None, None)
+
+    assert [sent["max_tokens"] for sent in fake.sent] == [THOUGHT["TOOL_LOOP"], THOUGHT["MEMO"]]
+    assert all(sent["extra_body"] == {"reasoning_effort": "high"} for sent in fake.sent)
 
 
 def test_the_draft_is_everything_the_generalist_said_not_only_its_last_turn(

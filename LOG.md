@@ -1813,3 +1813,23 @@
   only save where the narrow job is real work for the generalist, so the tasks have to include
   jobs of that size (many passages, table-heavy extraction, a batch of headlines) for the
   comparison to have anything in it.
+- 10-14: **the same three questions on weaker generalists: Haiku 4.5 (2,048 thinking tokens a
+  turn) and Sarvam 105B (reasoning off), critic still Opus 5; ~$0.24 in all** (Haiku $0.0426,
+  its critic $0.0915; Sarvam $0.0165, no critic ran; the hostllm L4 ~6.5 min, ~$0.09, engine-time
+  price of the specialists' tokens $0.0266). Needed first: a tool loop on the OpenAI wire, the
+  generalist's model as a parameter, and token counts that hand Sarvam's template a call's
+  arguments as a mapping (its template crashed on a JSON string; caught by a free count).
+  - **Haiku delegated where Sonnet had not**: on the Reliance capex question it sent both
+    passages to `extract_figures` (two jobs, both passed by the specialist, $0.0046 against
+    $0.0075 for Haiku's own tokens). On ITC and JLR it called none, saying the figure was stated
+    directly. All ten claims supported, no redrafts, $0.13 for three questions against Sonnet's
+    $0.29 on 10-13.
+  - **Sarvam delegated most**: on Reliance one call over six passages, five answered by the
+    specialist and one sent to the fallback (a capex figure the passage did not back). Its drafts
+    were right, but **no memo was written on any question**: the write step's reply was never
+    read as a `Memo`, so the critic never ran. Likely cause, not yet confirmed: the OpenAI wire's
+    schema instruction says `claims (array of Claims)` without saying what a claim's fields are.
+    It also pasted retrieved passages, `<untrusted>` tags and all, into a draft, and listed
+    `search_filings` as a specialist.
+  - Refines the 10-13 finding: what counts as too trivial to delegate depends on the generalist.
+    One run each, so a direction rather than a rate.

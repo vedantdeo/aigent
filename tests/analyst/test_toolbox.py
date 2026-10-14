@@ -207,17 +207,20 @@ def test_the_list_builds_every_specialist_on_its_own_client(
     built: list[tuple[str, str, str]] = []
     for name in ("headline_reader", "report_analyst"):
 
-        def build(small: str, big: str, name: str = name) -> Specialist[object, object]:
-            built.append((name, small, big))
+        def build(
+            small: str, big: str, model: str | None = "unset", name: str = name
+        ) -> Specialist[object, object]:
+            built.append((name, small, f"{big} as {model}"))
             return Specialist(name, never, never, lambda job, said: said)
 
         monkeypatch.setattr(listed, name, build)
 
-    made = experts(cast(Llm, "generalist"), cast("Callable[[str], Llm]", lambda client: client))
+    small = cast("Callable[[str], Llm]", lambda client: client)
+    made = experts(cast(Llm, "generalist"), small, model="claude-haiku-4-5")
 
     assert list(BUILDERS) == sorted(BUILDERS), "the list keeps one canonical order"
     assert built == [
-        ("report_analyst", "hostllm-analyst", "generalist"),
-        ("headline_reader", "hostllm-headline", "generalist"),
+        ("report_analyst", "hostllm-analyst", "generalist as claude-haiku-4-5"),
+        ("headline_reader", "hostllm-headline", "generalist as claude-haiku-4-5"),
     ]
     assert [expert.name for expert in made] == ["extract_figures", "read_headline"]

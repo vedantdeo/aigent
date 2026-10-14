@@ -18,6 +18,7 @@ import os
 import re
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast, get_args, get_origin
 
 import openai
@@ -42,10 +43,10 @@ if TYPE_CHECKING:
 
     from transformers import PreTrainedTokenizerBase
 
-    from aigent.llm.adapters import Streamed, ToolSession
+    from aigent.llm.adapters import Streamed
     from aigent.llm.core import Dispatch, Request
 
-# What this wire can do. Everything absent from it — caching, thinking, effort, tools, server-side
+# What this wire can do. Everything absent from it — caching, thinking, effort, server-side
 # search, streaming — `llm` refuses before sending. `schema` is here because a caller may ask for
 # a record, not because the wire constrains one.
 SUPPORTS = frozenset({"schema", "tools"})
@@ -124,7 +125,7 @@ def _wire_messages(message: Msg) -> list[dict[str, object]]:
         return [{"role": message["role"], "content": content}]
     results = [block for block in content if block.get("type") == "tool_result"]
     if results:
-        return [
+        answered: list[dict[str, object]] = [
             {
                 "role": "tool",
                 "tool_call_id": block["tool_use_id"],
@@ -132,6 +133,9 @@ def _wire_messages(message: Msg) -> list[dict[str, object]]:
             }
             for block in results
         ]
+        # text sent with the results, as a last-answer instruction is, follows them as a turn
+        said = _text_of([block for block in content if block.get("type") != "tool_result"])
+        return [*answered, {"role": "user", "content": said}] if said else answered
     sent: dict[str, object] = {"role": message["role"], "content": _text_of(content)}
     calls = [block for block in content if block.get("type") == "tool_use"]
     if calls:
@@ -144,6 +148,24 @@ def _wire_messages(message: Msg) -> list[dict[str, object]]:
             for block in calls
         ]
     return [sent]
+
+
+def _templated(message: ChatCompletionMessageParam) -> dict[str, object]:
+    """A wire message as a chat template reads it: each call's arguments a mapping, not JSON."""
+    shown = dict(cast("dict[str, object]", message))
+    calls = cast("list[dict[str, dict[str, object]]] | None", shown.get("tool_calls"))
+    if calls:
+        shown["tool_calls"] = [
+            {
+                **call,
+                "function": {
+                    **(f := call["function"]),
+                    "arguments": json.loads(str(f["arguments"])),
+                },
+            }
+            for call in calls
+        ]
+    return shown
 
 
 def _plainly(annotation: object) -> str:
@@ -203,6 +225,53 @@ def record_in[Record: BaseModel](text: str, schema: type[Record]) -> Record | No
         return schema.model_validate(inside)
     except ValidationError:
         return None
+
+
+class ToolSession:
+    """A tool-using conversation looped here, this SDK having no runner: turns out, each turn's
+    tools run once through `dispatch`, their results back in as one message."""
+
+    def __init__(self, wire: OpenAI, request: Request, dispatch: Dispatch, max_turns: int) -> None:
+        self._wire = wire
+        self._request = request
+        self._dispatch = dispatch
+        self._max_turns = max_turns
+        self._asked: Reply | None = None
+        self._results: Msg | None = None
+
+    def __iter__(self) -> Iterator[Reply]:
+        messages: list[Msg] = list(self._request.messages)
+        for _ in range(self._max_turns):
+            reply = self._wire.send(replace(self._request, messages=messages))
+            self._asked, self._results = reply, None
+            yield reply
+            results = self.tool_results()
+            if results is None:
+                return
+            messages = [*messages, Msg(role="assistant", content=reply.blocks), results]
+
+    def tool_results(self) -> Msg | None:
+        """Run the tools the last turn asked for, once; None if it asked for none."""
+        if self._results is None and self._asked is not None:
+            calls = [block for block in self._asked.blocks if block.get("type") == "tool_use"]
+            if calls:
+                self._results = Msg(role="user", content=[self._run(call) for call in calls])
+        return self._results
+
+    def _run(self, call: Block) -> Block:
+        content, is_error = self._dispatch(
+            str(call["name"]), cast("dict[str, object]", call.get("input") or {})
+        )
+        return {
+            "type": "tool_result",
+            "tool_use_id": call["id"],
+            "content": content,
+            "is_error": is_error,
+        }
+
+    def answer(self, request: Request) -> Reply:
+        """A last turn, sent as any other."""
+        return self._wire.send(request)
 
 
 class OpenAI:
@@ -319,7 +388,7 @@ class OpenAI:
         template = cast("Callable[..., Sequence[int]]", self.tokenizer.apply_chat_template)
         tools = [function_tool(tool) for tool in request.tools or ()]
         ids = template(
-            self.messages(request, schema),
+            [_templated(message) for message in self.messages(request, schema)],
             tools=tools or None,
             add_generation_prompt=True,
             tokenize=True,
@@ -376,8 +445,8 @@ class OpenAI:
         yield  # pragma: no cover - unreachable, and what makes this a generator
 
     def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession:
-        """Refused: this wire sends a tool turn (`llm.turn`), but no runner here loops it yet."""
-        raise Unsupported(f"{request.step}: the {self.name} wire runs no tools yet")
+        """A tool-using conversation, which `llm` drives one admitted turn at a time."""
+        return ToolSession(self, request, dispatch, max_turns)
 
     def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str:
         """Refused: no server this wire talks to has a batch endpoint wired up here."""

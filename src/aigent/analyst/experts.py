@@ -16,6 +16,7 @@ from aigent.analyst.router import Router
 from aigent.analyst.served import headline_reader, report_analyst
 from aigent.analyst.specialists import FigureJob, Invalid, Specialist
 from aigent.analyst.toolbox import Expert, Passage
+from aigent.config import GENERALIST_MODEL
 from aigent.extraction.figures import Figures
 from aigent.llm.core import Llm
 
@@ -99,15 +100,19 @@ def figures_expert(specialist: Specialist[FigureJob, Figures]) -> Expert:
     return Expert(EXTRACT_FIGURES_TOOL, answer)
 
 
-# The client that serves each specialist's fine-tune, and how its expert is built from that client
-# and the generalist. Sorted by client.
-BUILDERS: dict[str, Callable[[Llm, Llm], Expert]] = {
-    "hostllm-analyst": lambda small, big: figures_expert(report_analyst(small, big)),
-    "hostllm-headline": lambda small, big: headline_expert(headline_reader(small, big)),
+# The client that serves each specialist's fine-tune, and how its expert is built from that
+# client, the generalist and the model it is asked as. Sorted by client.
+BUILDERS: dict[str, Callable[[Llm, Llm, str | None], Expert]] = {
+    "hostllm-analyst": lambda small, big, model: figures_expert(report_analyst(small, big, model)),
+    "hostllm-headline": lambda small, big, model: headline_expert(
+        headline_reader(small, big, model=model)
+    ),
 }
 
 
-def experts(big: Llm, small: Callable[[str], Llm] = Llm) -> list[Expert]:
-    """Every specialist in `BUILDERS`, each on its own client's `Llm` from `small`, with `big` as
-    the generalist they fall back to."""
-    return [build(small(client), big) for client, build in BUILDERS.items()]
+def experts(
+    big: Llm, small: Callable[[str], Llm] = Llm, model: str | None = GENERALIST_MODEL
+) -> list[Expert]:
+    """Every specialist in `BUILDERS`, each on its own client's `Llm` from `small`, with `big`,
+    asked as `model`, as the generalist they fall back to."""
+    return [build(small(client), big, model) for client, build in BUILDERS.items()]

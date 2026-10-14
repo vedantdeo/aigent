@@ -23,7 +23,7 @@ from aigent.llm.adapters.anthropic import Anthropic
 from aigent.llm.adapters.cfg_anthropic import CLIENT as ANTHROPIC
 from aigent.llm.adapters.cfg_hostllm import CLIENTS as HOSTLLM_CLIENTS
 from aigent.llm.adapters.cfg_local import CLIENTS as LOCAL_CLIENTS
-from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
+from aigent.llm.adapters.cfg_sarvam import CLIENTS as SARVAM_CLIENTS
 from aigent.llm.adapters.client import Client
 from aigent.llm.adapters.openai import OpenAI
 from aigent.llm.messages import BatchStatus, Failed, Msg, Parsed, Reply
@@ -95,7 +95,7 @@ CLIENTS: dict[str, Client] = {
     "anthropic": ANTHROPIC,
     **HOSTLLM_CLIENTS,
     **LOCAL_CLIENTS,
-    "sarvam": SARVAM,
+    **SARVAM_CLIENTS,
 }
 
 

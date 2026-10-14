@@ -152,6 +152,30 @@ def test_figures_the_passage_does_not_back_go_to_the_generalist(
     assert [r["content"] for r in tool_results(sent)] == ["23450000000.0", "0.18"]
 
 
+def test_a_fallback_asks_the_generalist_as_the_model_it_was_given(
+    make_llm: MakeLlm, offline_tokenizer: None
+) -> None:
+    headlines, _ = small("hostllm-headline", completion(GARBLED.model_dump_json()))
+    figures, _ = small("hostllm-analyst", completion(FIGURES.replace("0.18", "0.19")))
+    calculating = turns(
+        tool_turn(
+            ("c1", "calculate", {"expression": "2345 * 10**7"}),
+            ("c2", "calculate", {"expression": "18 / 100"}),
+        ),
+        FIGURES,
+    )
+    generalist, sdk = make_llm(
+        lambda sent: RECORD if sent.schema is Extraction else calculating(sent)
+    )
+    route = router()
+
+    route(headline_reader(headlines, generalist, model="claude-haiku-4-5"), HEADLINE)
+    route(report_analyst(figures, generalist, model="claude-haiku-4-5"), JOB)
+
+    assert [logged.path for logged in route.routed] == ["generalist", "generalist"]
+    assert [sent.model for sent in sdk.sent] == ["claude-haiku-4-5"] * 3
+
+
 def test_a_call_to_any_tool_but_calculate_is_refused_and_runs_nothing(
     make_llm: MakeLlm, offline_tokenizer: None
 ) -> None:

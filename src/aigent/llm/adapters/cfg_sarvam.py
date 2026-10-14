@@ -1,6 +1,10 @@
-"""Settings for the `sarvam` client: Sarvam AI's hosted API, over the OpenAI wire."""
+"""Settings for the `sarvam` clients: Sarvam AI's hosted API, over the OpenAI wire; `sarvam`
+with reasoning off, `sarvam-thinking` with it on high.
+"""
 
 from __future__ import annotations
+
+from dataclasses import replace
 
 from aigent.llm.adapters.client import Client
 
@@ -23,3 +27,15 @@ CLIENT = Client(
     # An explicit null turns reasoning off; omitting it means "medium", and "low" filled 2048.
     extra_body={"reasoning_effort": None},
 )
+
+# Every cap a capstone generalist sends, raised for reasoning, which is billed as output.
+THOUGHT = {site: 16384 for site in ("FIGURE_ANSWER", "HEADLINE", "MEMO", "TOOL_LOOP")}
+
+THINKING = replace(
+    CLIENT,
+    name="sarvam-thinking",
+    max_tokens=THOUGHT,
+    extra_body={"reasoning_effort": "high"},
+)
+
+CLIENTS = {client.name: client for client in (CLIENT, THINKING)}
