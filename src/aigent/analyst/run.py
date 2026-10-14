@@ -7,6 +7,7 @@ transcript under `runs/analyst/`. Estimates and exits unless `--yes`.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import time
@@ -167,6 +168,7 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> None:
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")  # a tokenizer's load notes
     args = _parse(sys.argv[1:] if argv is None else argv)
     try:
         chosen = generalist_of(args.generalist, args.thinking)

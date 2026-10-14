@@ -3,7 +3,7 @@
 A map of what exists in this repo, what it does, and how the pieces point at each other. Written for
 a future session that needs orientation before touching code.
 
-**Verified against commit `c1d5d3f` plus the OpenAI wire's tool loop, the generalist's model as a parameter and the `sarvam-thinking` client (`75785b2`), plus the memo prompt's keys, the stop on an empty draft, Sarvam's reasoning kept as thinking, `transcript` and `analyst.run`, landing in this commit (2026-10-14). 1552 tests pass; pyright and ruff are clean.**
+**Verified against commit `c1d5d3f` plus the OpenAI wire's tool loop, the generalist's model as a parameter and the `sarvam-thinking` client (`75785b2`), plus the memo prompt's keys, the stop on an empty draft, Sarvam's reasoning kept as thinking, `transcript` and `analyst.run` (`8e67275`), plus a quiet console for live runs (`MCP_SERVER_LOG_LEVEL`, no progress bars or tokenizer notes, no serializer warning on parsed blocks), landing in this commit (2026-10-14). 1552 tests pass; pyright and ruff are clean.**
 
 > **The package is organised by capability, not by week.** `week01/` became `extraction/`
 > (Project 1a) and `week02/` became `retrieval/`; the test tree mirrors it. Roadmap weeks still

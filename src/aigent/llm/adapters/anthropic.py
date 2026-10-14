@@ -101,7 +101,10 @@ def reply_of(message: Message | BetaMessage) -> Reply:
         stop_reason=message.stop_reason,
         model=message.model,
         # Unset fields dropped: echoed back as nulls, the API refuses `server_tool_use.caller`.
-        blocks=tuple(cast(Block, block.model_dump(exclude_none=True)) for block in message.content),
+        blocks=tuple(
+            cast(Block, block.model_dump(exclude_none=True, warnings=False))
+            for block in message.content
+        ),
         raw=message,
     )
 

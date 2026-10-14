@@ -6,6 +6,7 @@ Values only, plus the one function that builds a client. Pricing and enforcement
 from __future__ import annotations
 
 import os
+from typing import Final
 
 from dotenv import load_dotenv
 
@@ -169,6 +170,7 @@ MAX_ANSWER_CHARS = 8000
 # --- MCP server ------------------------------------------------------------------------------
 
 MCP_SERVER_NAME = "aigent-reports"  # what an MCP client lists the server as
+MCP_SERVER_LOG_LEVEL: Final = "WARNING"  # its stderr is the client's console: no per-request lines
 MCP_CALL_TIMEOUT_SECONDS = 120.0  # one tool call; our server's first search loads its models
 MCP_MAX_RESULT_CHARS = 20_000  # of a tool's text, before it reaches a model
 

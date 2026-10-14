@@ -11,6 +11,7 @@ uv run python -m aigent.mcp_server
 
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 from typing import Literal
@@ -31,7 +32,7 @@ from aigent.analyst.fundamentals import (
     Ticker,
     load_fundamentals,
 )
-from aigent.config import MCP_SERVER_NAME
+from aigent.config import MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME
 from aigent.errors import GuardrailTripped
 from aigent.report_tools import SEARCH_TOOL, ReportSearch
 from aigent.retrieval.chunk import Chunk
@@ -71,6 +72,7 @@ def build_server(
             "Search their FY24 reports too, by company and year, look up their headline figures, "
             "and calculate. Read files from, and create new files in, aigent's sandbox directory."
         ),
+        log_level=MCP_SERVER_LOG_LEVEL,
     )
     run = ReportSearch(search)
     run_filings = FilingSearch(filing_search)
@@ -159,6 +161,7 @@ class LazyFilings:
 
 
 def main() -> None:
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")  # read when a model first loads
     build_server(LazySearch(), LazyFilings()).run()
 
 

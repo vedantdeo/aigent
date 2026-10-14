@@ -1845,3 +1845,19 @@
     approved it. The graph stops on a missing draft but not on an empty one.
   - **No specialist called on any question** this time, where reasoning-off Sarvam had sent six
     jobs on Reliance. One run each: a direction, not a rate.
+- 10-14: **Sarvam 105B at medium reasoning, through `python -m aigent.analyst.run`: every claim
+  supported on all three questions, and the specialist used on every one; ~$0.53** (Sarvam
+  $0.0842, the Opus critic $0.2330, specialists' tokens $0.0887 at the served price; the L4 up
+  ~16 min, ~$0.21, which is most of the gap to the $0.15-0.25 estimate). Transcripts in
+  `runs/analyst/20261014-101117-sarvam-105b-q*.md` (git-ignored).
+  - ITC 8/8 claims, Reliance 5/5 after one redraft, JLR 2/2. `extract_figures` took 4, 14 and 2
+    jobs; 19 answered by the specialist, 1 sent to the fallback (no figures in the reply). The
+    first time any generalist has delegated on all three questions.
+  - Slow and the dearest Sarvam run: 921 s, the Reliance question alone ~9 min, mostly 11-48 s
+    specialist calls one after another. The critic's share grew because claims cite up to five
+    sources each, and it reads all of them per claim.
+  - One verdict right for the wrong reason: JLR c2 ("the figure is repeated in the metrics
+    table") was supported, and the table does list £1,478 million, but the critic's reason
+    quoted PBT and EBIT instead.
+  - Medium sits between the two earlier Sarvam runs: off delegated but wrote no memo; high wrote
+    memos but delegated nothing and once answered empty. One run each.
