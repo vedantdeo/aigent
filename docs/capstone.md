@@ -252,6 +252,33 @@ capstone runs its specialists on vLLM.
 
 **Parked:** hostllm inference optimisation; the learned router.
 
+## Final results (2026-10-14)
+
+The capstone closes at this revision (Vedant). Generalist Sarvam 105B at medium reasoning, calm once
+a specialist has answered; critic Opus 5; specialists on vLLM, four questions at a time, with ap-16
+and ap-18 rerun on hostllm after ITC joined the headline directory, ap-16 once more after each
+engine got its own figures-answer cap. Over the 20 probe questions:
+
+| Outcome | Questions |
+|---|---|
+| Every claim supported (16) | ap-02, 03, 05, 06, 07, 08, 09, 10, 11, 12, 13, 15, 16, 17, 19, 20 |
+| Most claims supported (3) | ap-04 3/4, ap-14 12/14, ap-18 2/3 |
+| No memo (1) | ap-01, its last research turn all reasoning with no specialist called |
+
+**19 of 20 with a supported memo**, from 5 of 11 before Phase 1 and calm thinking. Every refused
+claim was the generalist's: a standalone figure called consolidated, a growth rate across a restated
+basis, a ratio the sources do not state. The specialists answered most jobs that reached them; the
+fallback, and a check that refuses what a passage does not print, caught the rest.
+
+**What it cost:** about $3.55 for the 20 on vLLM, of which the Opus critic is the largest share and
+the GPU about $0.47 for 35 minutes. Every run of the day, from the first Haiku pass, is in `LOG.md`
+(about $9.90 in all).
+
+**Left open:** the ground-truth eval (step 6), the generalist comparison, and pricing vLLM's tokens;
+Modal's 150 s per request, which no setting raises: hostllm's figures answers are capped at 512
+tokens to end inside it, and long answers want Modal's spawn-and-poll pattern; a generalist that reasons through its cap with
+no specialist to calm it fails, by decision.
+
 ## Findings so far
 
 - **A task that is too trivial does not go to the specialist, even when offered and coaxed**

@@ -21,7 +21,7 @@ from aigent.extraction.figures import figure_messages
 from aigent.extraction.headlines import VARIANTS, Extraction, headline_request
 from aigent.extraction.synthetic import wire_for
 from aigent.llm.adapters import spec
-from aigent.llm.adapters.cfg_hostllm import ANALYST
+from aigent.llm.adapters.cfg_hostllm import ANALYST, FIGURE_ANSWER_HOSTLLM
 from aigent.llm.core import Llm
 from aigent.llm.pricing import cost_usd
 
@@ -125,7 +125,7 @@ def test_figures_reach_the_adapter_on_its_trained_prompt_and_its_calls_are_run(
         {"role": "user", "content": user},
     ]
     assert first["tools"] == [TRAINED_TOOL] and first["model"] == "report-analyst"
-    assert first["max_tokens"] == ANALYST.max_tokens["FIGURE_ANSWER"] == 1024
+    assert first["max_tokens"] == ANALYST.max_tokens["FIGURE_ANSWER"] == FIGURE_ANSWER_HOSTLLM
     results = [m for m in cast(list[dict[str, object]], second["messages"]) if m["role"] == "tool"]
     assert [m["content"] for m in results] == ["23450000000.0", "0.18"]
     assert [f.value for f in figures.figures] == [23450000000.0, 0.18]

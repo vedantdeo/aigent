@@ -20,6 +20,10 @@ PROXY_AUTH = {"Modal-Key": "HOSTLLM_MODAL_KEY", "Modal-Secret": "HOSTLLM_MODAL_S
 
 # A request may find the endpoint cold and has to outlast its start: 34 to 110 s when measured.
 COLD_START_TIMEOUT = 180.0
+# Modal ends one request at 150 s. A figures answer's room, per engine: hostllm writes ~4-8 tokens
+# a second, so 512 ends inside it; vLLM writes 15+, and fits a segment table's figures in 1024.
+FIGURE_ANSWER_HOSTLLM = 512
+FIGURE_ANSWER_VLLM = 1024
 VLLM_COLD_START_TIMEOUT = 600.0  # vLLM profiles memory and captures CUDA graphs: 183 to 349 s
 
 HEADLINE = Client(
@@ -42,13 +46,15 @@ ANALYST = replace(
     name="hostllm-analyst",
     model="report-analyst",
     small_model="report-analyst",
-    max_tokens={
-        "FIGURE_ANSWER": 1024
-    },  # room for a segment table's figures; the server allows 4096
+    max_tokens={"FIGURE_ANSWER": FIGURE_ANSWER_HOSTLLM},
 )
 
 VLLM_ANALYST = replace(
-    ANALYST, name="vllm-analyst", base_url=VLLM_BASE_URL, timeout=VLLM_COLD_START_TIMEOUT
+    ANALYST,
+    name="vllm-analyst",
+    base_url=VLLM_BASE_URL,
+    timeout=VLLM_COLD_START_TIMEOUT,
+    max_tokens={"FIGURE_ANSWER": FIGURE_ANSWER_VLLM},
 )
 VLLM_HEADLINE = replace(
     HEADLINE, name="vllm-headline", base_url=VLLM_BASE_URL, timeout=VLLM_COLD_START_TIMEOUT

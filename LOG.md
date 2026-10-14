@@ -1911,3 +1911,33 @@
        the check does not recognise (it takes `N * 10**k`, the form the fine-tune learned);
     3. one refused passage fails the whole call, so the six that passed were thrown away and the
        generalist, calm by then, sent the same call again with nothing to change it.
+- 10-14: **Phase 2: the 20 probe questions after Phase 1, in parallel on vLLM: a memo on 18 of
+  20, every claim supported on 15, most on 2; ~$3.55** (Sarvam and the Opus critic $3.06, the L4
+  ~35 min with a 244 s cold start, ~$0.47; over the $2.50 estimate). Transcripts
+  `runs/analyst/20261014-142147-sarvam-105b-ap-*.md`.
+  - Every claim supported: ap-02, 03, 05, 06, 07, 08, 09, 10, 11, 12, 13, 15, 17, 19, 20. Most:
+    ap-04 (3/4), ap-14 (12/14). Weak: ap-18 (1/3). Up from 13 of 19 with any supported memo.
+    ap-06, which looped last time, passed 8/8; ap-04, 12, 15 and 17, which had no memo, passed.
+  - **ap-01: an empty answer**, its last research turn 16,384 tokens of reasoning with no
+    specialist called; a failure, as decided (no extra tries).
+  - **ap-16: Sarvam's account ran out of credits** (HTTP 402, "No credits available"), mid-run.
+  - **ITC is missing from the headline directory** (`evals/reference/nse-tickers.json`, 45
+    companies), so `read_headline` refuses every ITC headline; Reliance's and Tata Motors' read.
+  - The refused claims: ap-18 mislabelled Reliance's standalone revenue as consolidated and wrote
+    ITC's ₹70,105 crore as ₹7,01,052.90 crore; ap-04 and ap-14 drew conclusions the sources do not
+    state (a payout ratio, a growth rate across a restated basis); one ap-14 verdict still hit the
+    critic's 1,024-token cap.
+- 10-14: **ap-16 and ap-18 rerun on hostllm after ITC joined the headline directory (Sarvam
+  topped up): ap-18 2/3, ap-16 failed again; ~$0.22** (Sarvam and the critic $0.15, the L4
+  ~5 min). Transcripts `runs/analyst/20261014-150012-sarvam-105b-ap-1[68].md`.
+  - ap-18: all nine headline reads went to the specialist, ITC's included; the one refused claim
+    is ITC's growth across a restated basis, as before.
+  - **ap-16: Modal dropped a specialist request** ("Missing request, possibly due to expiry or
+    cancellation"): with `FIGURE_ANSWER` at 1,024, an answer from hostllm at ~6 tokens a second
+    can run past Modal's 150 s, and the result Modal's 303 points to had gone. vLLM answers well
+    inside it. Not retried (not an `UNREACHABLE` error), so the question failed.
+- 10-14: **ap-16 once more on hostllm, its figures answers capped at 512 tokens (vLLM keeps 1,024):
+  7/7 supported, no redrafts; ~$0.27** (Sarvam and the critic $0.14, the L4 ~10 min). Modal's
+  150 s per request cannot be raised (its docs: enforced for every web endpoint); a request past
+  it gets a 303 to a result URL, which for ap-16's earlier attempt answered "Missing request". The
+  capstone closes at **19 of 20 with a supported memo** (`docs/capstone.md`, Final results).

@@ -25,6 +25,8 @@ from aigent.extraction.figures import TOOL as TRAINED_TOOL
 from aigent.llm.adapters.cfg_hostllm import (
     ANALYST,
     COLD_START_TIMEOUT,
+    FIGURE_ANSWER_HOSTLLM,
+    FIGURE_ANSWER_VLLM,
     HEADLINE,
     VLLM_ANALYST,
     VLLM_BASE_URL,
@@ -344,6 +346,15 @@ def test_the_two_specialists_share_an_endpoint_and_differ_in_the_adapter_they_na
     assert HEADLINE.timeout == COLD_START_TIMEOUT >= 180, "a request outlasts a cold start"
 
 
+def test_each_engine_gives_a_figures_answer_the_room_it_can_write_inside_modal_s_limit() -> None:
+    caps = (ANALYST.max_tokens["FIGURE_ANSWER"], VLLM_ANALYST.max_tokens["FIGURE_ANSWER"])
+    assert caps == (FIGURE_ANSWER_HOSTLLM, FIGURE_ANSWER_VLLM)
+    assert FIGURE_ANSWER_HOSTLLM / 4 < 150, (
+        "hostllm's answer ends inside 150 s at 4 tokens a second"
+    )
+    assert FIGURE_ANSWER_VLLM > FIGURE_ANSWER_HOSTLLM
+
+
 def test_both_sarvam_clients_wait_out_a_rate_limit_of_a_minute() -> None:
     patient = [(c.retries, c.retry_max_seconds) for c in (SARVAM, SARVAM_THINKING)]
     assert patient == [(6, 60.0)] * 2
@@ -358,7 +369,14 @@ def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_and_how_long_it
     ours: Client, theirs: Client
 ) -> None:
     assert theirs.model == ours.model, "vLLM serves each adapter under the same name"
-    assert replace(theirs, name=ours.name, base_url=ours.base_url, timeout=ours.timeout) == ours
+    same = replace(
+        theirs,
+        name=ours.name,
+        base_url=ours.base_url,
+        timeout=ours.timeout,
+        max_tokens=ours.max_tokens,
+    )
+    assert same == ours
     assert theirs.base_url == VLLM_BASE_URL != ours.base_url
     assert theirs.timeout == VLLM_COLD_START_TIMEOUT > 349, "outlasts vLLM's slowest cold start"
 
