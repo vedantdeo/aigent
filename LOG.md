@@ -1813,3 +1813,131 @@
   only save where the narrow job is real work for the generalist, so the tasks have to include
   jobs of that size (many passages, table-heavy extraction, a batch of headlines) for the
   comparison to have anything in it.
+- 10-14: **the same three questions on weaker generalists: Haiku 4.5 (2,048 thinking tokens a
+  turn) and Sarvam 105B (reasoning off), critic still Opus 5; ~$0.24 in all** (Haiku $0.0426,
+  its critic $0.0915; Sarvam $0.0165, no critic ran; the hostllm L4 ~6.5 min, ~$0.09, engine-time
+  price of the specialists' tokens $0.0266). Needed first: a tool loop on the OpenAI wire, the
+  generalist's model as a parameter, and token counts that hand Sarvam's template a call's
+  arguments as a mapping (its template crashed on a JSON string; caught by a free count).
+  - **Haiku delegated where Sonnet had not**: on the Reliance capex question it sent both
+    passages to `extract_figures` (two jobs, both passed by the specialist, $0.0046 against
+    $0.0075 for Haiku's own tokens). On ITC and JLR it called none, saying the figure was stated
+    directly. All ten claims supported, no redrafts, $0.13 for three questions against Sonnet's
+    $0.29 on 10-13.
+  - **Sarvam delegated most**: on Reliance one call over six passages, five answered by the
+    specialist and one sent to the fallback (a capex figure the passage did not back). Its drafts
+    were right, but **no memo was written on any question**: the write step's reply was never
+    read as a `Memo`, so the critic never ran. Likely cause, not yet confirmed: the OpenAI wire's
+    schema instruction says `claims (array of Claims)` without saying what a claim's fields are.
+    It also pasted retrieved passages, `<untrusted>` tags and all, into a draft, and listed
+    `search_filings` as a specialist.
+  - Refines the 10-13 finding: what counts as too trivial to delegate depends on the generalist.
+    One run each, so a direction rather than a rate.
+- 10-14: **Sarvam 105B again, reasoning on high (`sarvam-thinking`, 16,384-token caps) and the
+  memo prompt spelling out a claim's fields: memos on all three, ~$0.16** (Sarvam $0.0272, the
+  Opus critic $0.0582, the hostllm L4 ~5 min, ~$0.07; no specialist tokens).
+  - **ITC and JLR: right memos, every claim supported** (five and two claims, no redrafts). The
+    memo step took 10,711 and 5,014 output tokens, most of it reasoning, against Sonnet's few
+    hundred; at $0.77 a million that is still under a cent.
+  - **Reliance: an empty answer approved.** Research searched both years and ran two
+    `calculate`s, then its last turn carried no text, so the draft was empty; the memo said the
+    answer stated nothing, had no claims, and the critic had nothing to check, so the gate
+    approved it. The graph stops on a missing draft but not on an empty one.
+  - **No specialist called on any question** this time, where reasoning-off Sarvam had sent six
+    jobs on Reliance. One run each: a direction, not a rate.
+- 10-14: **Sarvam 105B at medium reasoning, through `python -m aigent.analyst.run`: every claim
+  supported on all three questions, and the specialist used on every one; ~$0.53** (Sarvam
+  $0.0842, the Opus critic $0.2330, specialists' tokens $0.0887 at the served price; the L4 up
+  ~16 min, ~$0.21, which is most of the gap to the $0.15-0.25 estimate). Transcripts in
+  `runs/analyst/20261014-101117-sarvam-105b-q*.md` (git-ignored).
+  - ITC 8/8 claims, Reliance 5/5 after one redraft, JLR 2/2. `extract_figures` took 4, 14 and 2
+    jobs; 19 answered by the specialist, 1 sent to the fallback (no figures in the reply). The
+    first time any generalist has delegated on all three questions.
+  - Slow and the dearest Sarvam run: 921 s, the Reliance question alone ~9 min, mostly 11-48 s
+    specialist calls one after another. The critic's share grew because claims cite up to five
+    sources each, and it reads all of them per claim.
+  - One verdict right for the wrong reason: JLR c2 ("the figure is repeated in the metrics
+    table") was supported, and the table does list £1,478 million, but the critic's reason
+    quoted PBT and EBIT instead.
+  - Medium sits between the two earlier Sarvam runs: off delegated but wrote no memo; high wrote
+    memos but delegated nothing and once answered empty. One run each.
+- 10-14: **the probe set's first five questions on Sarvam at medium reasoning, one at a time;
+  stopped there at Vedant's call, ~$1.05** (Sarvam $0.271, the Opus critic $0.279, the L4 up
+  ~37 min, ~$0.49; the specialists' own total was not printed, the run being stopped).
+  Transcripts in `runs/analyst/20261014-103745-sarvam-105b-ap-0*.md`.
+  - ap-02 (Reliance debt) 4/4 supported after a redraft; ap-03 (JLR) 6/6; ap-04 (ITC payout)
+    6/7 at the redraft cap. 23 specialist jobs over ap-01 to ap-05, two of them sent to the
+    fallback; ap-04 delegated nothing.
+  - **The figures specialist's 256-token cap is too small for a segment table**: on ap-01 it ran
+    its `calculate`s for ITC's four segments and was cut off writing them out. The fallback
+    failed the check too, so the job came back an error.
+  - **Medium reasoning can spend the whole 16,384-token cap and write nothing**: ap-01's third
+    research turn (stopped by the empty-draft check, as built) and ap-05's redrafted memo
+    (16,384 out, no record).
+  - ~9 minutes a question, one specialist job at a time, the GPU idle between them: the reason
+    for running questions in parallel (`--workers`).
+- 10-14: **the probe set in parallel, 4 at a time, specialists on vLLM: 11 questions in ~14 min,
+  then stopped, ~$1.30** (Sarvam and the Opus critic $1.06 across the transcripts, the L4 ~18 min
+  with a false start, ~$0.24). Transcripts `runs/analyst/20261014-114114-sarvam-105b-ap-*.md`.
+  - **Parallel on vLLM is ~7x faster**: ap-01 to ap-11 in ~14 min against ~9 min a question one
+    at a time on hostllm. vLLM answered the warm-up in 5 s, having started on the false start.
+  - **The false start**: vLLM's cold start ran past 150 s, Modal answered with a 303 to poll,
+    and the HTTP client did not follow redirects. It does now, for every wire.
+  - **Stopped at ap-13 to ap-15 failing on the specialists' budget**: one $0.30 per specialist
+    was shared by the whole run and priced at hostllm's one-at-a-time rate, so 66 jobs used it
+    up. Each question now has its own specialist budgets.
+  - **Supported memos on 5 of 11** (ap-02 4/4, ap-03 7/7, ap-05 4/5, ap-09 4/4, ap-11 6/7).
+    **Five had no memo, every one the same way**: the memo step spent all 16,384 output tokens
+    reasoning (ap-01, 04, 06, 07, 08). Sarvam has no separate reasoning cap, only
+    `reasoning_effort`. Hence calm thinking: a Sarvam generalist stops reasoning once a
+    specialist has answered, for the rest of research and the memo.
+  - ap-10 cited sources by description ("fundamentals cite_as TATAMOTORS:2025:profit",
+    "read_headline") rather than by id, so every claim was refused as never retrieved.
+- 10-14: **all 20 probe questions in parallel on vLLM with calm thinking: 13 supported memos
+  of 19 finished, ap-06 stopped by hand as a failure; ~$2.60** (Sarvam and the Opus critic
+  $2.17, the L4 ~30 min with a 190 s cold start, ~$0.40). Transcripts
+  `runs/analyst/20261014-120750-sarvam-105b-ap-*.md`.
+  - Every claim supported on 9 (ap-01, 02, 03, 05, 10, 11, 13, 19, 20), most on 4 (ap-07, 08,
+    09, 18); a memo of no claims on ap-16; empty answers on ap-12 and ap-15; unreadable memos
+    on ap-04, ap-14 and ap-17. Up from 5 of 11 before calm thinking: ap-01, 07, 08 and 10 now
+    pass.
+  - **ap-06 looped: 13 identical `extract_figures` calls over seven passages**, each refused
+    with "the passage does not back 3309430000000.0 for revenue". The value is right: FY25#0338
+    prints "C 330,943 crore". Three faults compound:
+    1. the specialist, asked for "FY25 FY24" from an FY25 passage, also derived an FY24 revenue
+       from the growth rate (multiplying by 1.079 instead of dividing), which no passage prints,
+       so the check refused its whole reply;
+    2. the fallback, Sarvam, read the figure right but scaled it as `330943 * 10000000`, a call
+       the check does not recognise (it takes `N * 10**k`, the form the fine-tune learned);
+    3. one refused passage fails the whole call, so the six that passed were thrown away and the
+       generalist, calm by then, sent the same call again with nothing to change it.
+- 10-14: **Phase 2: the 20 probe questions after Phase 1, in parallel on vLLM: a memo on 18 of
+  20, every claim supported on 15, most on 2; ~$3.55** (Sarvam and the Opus critic $3.06, the L4
+  ~35 min with a 244 s cold start, ~$0.47; over the $2.50 estimate). Transcripts
+  `runs/analyst/20261014-142147-sarvam-105b-ap-*.md`.
+  - Every claim supported: ap-02, 03, 05, 06, 07, 08, 09, 10, 11, 12, 13, 15, 17, 19, 20. Most:
+    ap-04 (3/4), ap-14 (12/14). Weak: ap-18 (1/3). Up from 13 of 19 with any supported memo.
+    ap-06, which looped last time, passed 8/8; ap-04, 12, 15 and 17, which had no memo, passed.
+  - **ap-01: an empty answer**, its last research turn 16,384 tokens of reasoning with no
+    specialist called; a failure, as decided (no extra tries).
+  - **ap-16: Sarvam's account ran out of credits** (HTTP 402, "No credits available"), mid-run.
+  - **ITC is missing from the headline directory** (`evals/reference/nse-tickers.json`, 45
+    companies), so `read_headline` refuses every ITC headline; Reliance's and Tata Motors' read.
+  - The refused claims: ap-18 mislabelled Reliance's standalone revenue as consolidated and wrote
+    ITC's ₹70,105 crore as ₹7,01,052.90 crore; ap-04 and ap-14 drew conclusions the sources do not
+    state (a payout ratio, a growth rate across a restated basis); one ap-14 verdict still hit the
+    critic's 1,024-token cap.
+- 10-14: **ap-16 and ap-18 rerun on hostllm after ITC joined the headline directory (Sarvam
+  topped up): ap-18 2/3, ap-16 failed again; ~$0.22** (Sarvam and the critic $0.15, the L4
+  ~5 min). Transcripts `runs/analyst/20261014-150012-sarvam-105b-ap-1[68].md`.
+  - ap-18: all nine headline reads went to the specialist, ITC's included; the one refused claim
+    is ITC's growth across a restated basis, as before.
+  - **ap-16: Modal dropped a specialist request** ("Missing request, possibly due to expiry or
+    cancellation"): with `FIGURE_ANSWER` at 1,024, an answer from hostllm at ~6 tokens a second
+    can run past Modal's 150 s, and the result Modal's 303 points to had gone. vLLM answers well
+    inside it. Not retried (not an `UNREACHABLE` error), so the question failed.
+- 10-14: **ap-16 once more on hostllm, its figures answers capped at 512 tokens (vLLM keeps 1,024):
+  7/7 supported, no redrafts; ~$0.27** (Sarvam and the critic $0.14, the L4 ~10 min). Modal's
+  150 s per request cannot be raised (its docs: enforced for every web endpoint); a request past
+  it gets a 303 to a result URL, which for ap-16's earlier attempt answered "Missing request". The
+  capstone closes at **19 of 20 with a supported memo** (`docs/capstone.md`, Final results).

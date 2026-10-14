@@ -16,8 +16,9 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast, get_args, get_origin
 
 import openai
@@ -38,14 +39,12 @@ from aigent.llm.adapters.retry import http_client
 from aigent.llm.messages import BatchStatus, Block, Failed, Msg, Parsed, Reply, Tool, Usage
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from transformers import PreTrainedTokenizerBase
 
-    from aigent.llm.adapters import Streamed, ToolSession
-    from aigent.llm.core import Dispatch, Request
+    from aigent.llm.adapters import Streamed
+    from aigent.llm.core import Dispatch, Request, Rethink
 
-# What this wire can do. Everything absent from it — caching, thinking, effort, tools, server-side
+# What this wire can do. Everything absent from it — caching, thinking, effort, server-side
 # search, streaming — `llm` refuses before sending. `schema` is here because a caller may ask for
 # a record, not because the wire constrains one.
 SUPPORTS = frozenset({"schema", "tools"})
@@ -78,18 +77,89 @@ def usage_of(usage: CompletionUsage | None) -> Usage:
 STOP_REASONS = {"content_filter": "refusal", "length": "max_tokens", "tool_calls": "tool_use"}
 
 
+# Tool-call markup a server failed to parse, left in a reply's text: one row per format, the
+# pattern of one complete call and how its name and arguments are read from the match.
+_LEAKS: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], tuple[str, str]]], ...] = (
+    (  # Sarvam's and Kimi's: functions.NAME:N, then the arguments
+        re.compile(
+            r"<\|tool_call_begin\|>\s*(?:functions\.)?([\w.-]+?)(?::\d+)?\s*"
+            r"<\|tool_call_argument_begin\|>(.*?)<\|tool_call_end\|>",
+            re.DOTALL,
+        ),
+        lambda m: (m.group(1), m.group(2)),
+    ),
+    (  # Qwen's and Hermes': {"name": ..., "arguments": ...} between tags
+        re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL),
+        lambda m: _hermes(m.group(1)),
+    ),
+)
+_LEAK_FRAMES = re.compile(r"<\|tool_calls_section_(?:begin|end)\|>")
+
+
+def _hermes(body: str) -> tuple[str, str]:
+    """A Hermes call's name and its arguments as JSON text; nothing where it is not one."""
+    try:
+        call = json.loads(body)
+    except json.JSONDecodeError:
+        return "", ""
+    if not isinstance(call, dict):
+        return "", ""
+    fields = cast(dict[str, object], call)
+    arguments = fields.get("arguments", {})
+    return str(fields.get("name", "")), arguments if isinstance(arguments, str) else json.dumps(
+        arguments
+    )
+
+
+def salvaged(reply: Reply, offered: Collection[str]) -> Reply:
+    """`reply` with any complete tool call its text leaked as markup, for a tool `offered`, read
+    back into a `tool_use` block marked `salvaged`. A reply already calling tools, or with nothing
+    to salvage, comes back as it was."""
+    if any(block.get("type") == "tool_use" for block in reply.blocks):
+        return reply
+    text, calls = reply.text, list[Block]()
+    for pattern, read in _LEAKS:
+        for found in pattern.finditer(reply.text):
+            name, arguments = read(found)
+            try:
+                given = json.loads(arguments)
+            except json.JSONDecodeError:
+                continue
+            if name not in offered or not isinstance(given, dict):
+                continue
+            calls.append(
+                {
+                    "type": "tool_use",
+                    "id": f"salvaged_{len(calls)}",
+                    "name": name,
+                    "input": cast(dict[str, object], given),
+                    "salvaged": True,
+                }
+            )
+            text = text.replace(found.group(0), "")
+    if not calls:
+        return reply
+    text = _LEAK_FRAMES.sub("", text).strip()
+    kept = [block for block in reply.blocks if block.get("type") == "thinking"]
+    said: list[Block] = [{"type": "text", "text": text}] if text else []
+    return replace(reply, text=text, stop_reason="tool_use", blocks=(*kept, *said, *calls))
+
+
 def reply_of(completion: ChatCompletion) -> Reply:
     """One completion as ours. One choice is asked for, so one is read."""
     choice = completion.choices[0]
     text = choice.message.content or ""
     calls = [_tool_use(call) for call in choice.message.tool_calls or [] if call.type == "function"]
     blocks: list[Block] = [{"type": "text", "text": text}] if text or not calls else []
+    # a reasoning server's trace, kept as a thinking block: shown, never sent back
+    reasoning = (choice.message.model_extra or {}).get("reasoning_content")
+    thought: list[Block] = [{"type": "thinking", "thinking": reasoning}] if reasoning else []
     return Reply(
         text=text,
         usage=usage_of(completion.usage),
         stop_reason=STOP_REASONS.get(choice.finish_reason, choice.finish_reason),
         model=completion.model,
-        blocks=(*blocks, *calls),
+        blocks=(*thought, *blocks, *calls),
         raw=completion,
     )
 
@@ -124,7 +194,7 @@ def _wire_messages(message: Msg) -> list[dict[str, object]]:
         return [{"role": message["role"], "content": content}]
     results = [block for block in content if block.get("type") == "tool_result"]
     if results:
-        return [
+        answered: list[dict[str, object]] = [
             {
                 "role": "tool",
                 "tool_call_id": block["tool_use_id"],
@@ -132,6 +202,9 @@ def _wire_messages(message: Msg) -> list[dict[str, object]]:
             }
             for block in results
         ]
+        # text sent with the results, as a last-answer instruction is, follows them as a turn
+        said = _text_of([block for block in content if block.get("type") != "tool_result"])
+        return [*answered, {"role": "user", "content": said}] if said else answered
     sent: dict[str, object] = {"role": message["role"], "content": _text_of(content)}
     calls = [block for block in content if block.get("type") == "tool_use"]
     if calls:
@@ -144,6 +217,24 @@ def _wire_messages(message: Msg) -> list[dict[str, object]]:
             for block in calls
         ]
     return [sent]
+
+
+def _templated(message: ChatCompletionMessageParam) -> dict[str, object]:
+    """A wire message as a chat template reads it: each call's arguments a mapping, not JSON."""
+    shown = dict(cast("dict[str, object]", message))
+    calls = cast("list[dict[str, dict[str, object]]] | None", shown.get("tool_calls"))
+    if calls:
+        shown["tool_calls"] = [
+            {
+                **call,
+                "function": {
+                    **(f := call["function"]),
+                    "arguments": json.loads(str(f["arguments"])),
+                },
+            }
+            for call in calls
+        ]
+    return shown
 
 
 def _plainly(annotation: object) -> str:
@@ -203,6 +294,65 @@ def record_in[Record: BaseModel](text: str, schema: type[Record]) -> Record | No
         return schema.model_validate(inside)
     except ValidationError:
         return None
+
+
+class ToolSession:
+    """A tool-using conversation looped here, this SDK having no runner: turns out, each turn's
+    tools run once through `dispatch`, their results back in as one message."""
+
+    def __init__(
+        self,
+        wire: OpenAI,
+        request: Request,
+        dispatch: Dispatch,
+        max_turns: int,
+        rethink: Rethink | None = None,
+    ) -> None:
+        self._wire = wire
+        self._request = request
+        self._dispatch = dispatch
+        self._max_turns = max_turns
+        self._rethink = rethink
+        self._asked: Reply | None = None
+        self._results: Msg | None = None
+
+    def __iter__(self) -> Iterator[Reply]:
+        messages: list[Msg] = list(self._request.messages)
+        for turn in range(self._max_turns):
+            sending = replace(self._request, messages=messages)
+            reply = self._wire.send(sending if turn == 0 else self._rethought(sending))
+            self._asked, self._results = reply, None
+            yield reply
+            results = self.tool_results()
+            if results is None:
+                return
+            messages = [*messages, Msg(role="assistant", content=reply.blocks), results]
+
+    def tool_results(self) -> Msg | None:
+        """Run the tools the last turn asked for, once; None if it asked for none."""
+        if self._results is None and self._asked is not None:
+            calls = [block for block in self._asked.blocks if block.get("type") == "tool_use"]
+            if calls:
+                self._results = Msg(role="user", content=[self._run(call) for call in calls])
+        return self._results
+
+    def _run(self, call: Block) -> Block:
+        content, is_error = self._dispatch(
+            str(call["name"]), cast("dict[str, object]", call.get("input") or {})
+        )
+        return {
+            "type": "tool_result",
+            "tool_use_id": call["id"],
+            "content": content,
+            "is_error": is_error,
+        }
+
+    def answer(self, request: Request) -> Reply:
+        """A last turn, sent as any other after the first."""
+        return self._wire.send(self._rethought(request))
+
+    def _rethought(self, request: Request) -> Request:
+        return request if self._rethink is None else replace(request, thinking=self._rethink())
 
 
 class OpenAI:
@@ -290,11 +440,12 @@ class OpenAI:
             return omit
         return cast("list[ChatCompletionToolParam]", [function_tool(t) for t in request.tools])
 
-    @property
-    def _extra_body(self) -> dict[str, object] | None:
-        """What the server needs beyond the OpenAI fields: how to template this model, and the
-        adapter to apply to it."""
+    def _extra_body(self, request: Request) -> dict[str, object] | None:
+        """What the server needs beyond the OpenAI fields: how to template this model, the
+        adapter to apply to it, and no reasoning when the request disables thinking."""
         body: dict[str, object] = dict(self.settings.extra_body)
+        if request.thinking is not None and request.thinking["type"] == "disabled":
+            body["reasoning_effort"] = None  # an explicit null turns a reasoning server's off
         if self.settings.template_kwargs:
             body["chat_template_kwargs"] = dict(self.settings.template_kwargs)
         if self.settings.adapter is not None:
@@ -319,7 +470,7 @@ class OpenAI:
         template = cast("Callable[..., Sequence[int]]", self.tokenizer.apply_chat_template)
         tools = [function_tool(tool) for tool in request.tools or ()]
         ids = template(
-            self.messages(request, schema),
+            [_templated(message) for message in self.messages(request, schema)],
             tools=tools or None,
             add_generation_prompt=True,
             tokenize=True,
@@ -328,17 +479,20 @@ class OpenAI:
         )
         return len(ids)
 
-    def send(self, request: Request) -> Reply:
-        """One request, one reply."""
-        return reply_of(
-            self.client.chat.completions.create(
-                model=model_of(request, self.settings),
-                messages=self.messages(request),
-                max_tokens=request.max_tokens,
-                tools=self._tools(request),
-                extra_body=self._extra_body,
-            )
+    def _create(self, request: Request, schema: type[BaseModel] | None = None) -> ChatCompletion:
+        return self.client.chat.completions.create(
+            model=model_of(request, self.settings),
+            messages=self.messages(request, schema),
+            max_tokens=request.max_tokens,
+            tools=self._tools(request) if schema is None else omit,
+            response_format=omit if schema is None else self._response_format(schema),
+            extra_body=self._extra_body(request),
         )
+
+    def send(self, request: Request) -> Reply:
+        """One request, one reply, with any tool call it leaked as text read back."""
+        offered = [str(tool["name"]) for tool in request.tools or ()]
+        return salvaged(reply_of(self._create(request)), offered)
 
     def parse[Record: BaseModel](
         self, request: Request, schema: type[Record], cache_body: dict[str, object] | None = None
@@ -349,13 +503,7 @@ class OpenAI:
         `cache_body` is ignored: this wire has no prompt caching, and `llm` has already refused any
         request that asked for it.
         """
-        completion = self.client.chat.completions.create(
-            model=model_of(request, self.settings),
-            messages=self.messages(request, schema),
-            max_tokens=request.max_tokens,
-            response_format=self._response_format(schema),
-            extra_body=self._extra_body,
-        )
+        completion = self._create(request, schema)
         reply = reply_of(completion)
         return Parsed[Record](
             text=reply.text,
@@ -375,9 +523,11 @@ class OpenAI:
         raise Unsupported(f"{request.step}: the {self.name} wire does not stream yet")
         yield  # pragma: no cover - unreachable, and what makes this a generator
 
-    def tools(self, request: Request, dispatch: Dispatch, max_turns: int) -> ToolSession:
-        """Refused: this wire sends a tool turn (`llm.turn`), but no runner here loops it yet."""
-        raise Unsupported(f"{request.step}: the {self.name} wire runs no tools yet")
+    def tools(
+        self, request: Request, dispatch: Dispatch, max_turns: int, rethink: Rethink | None
+    ) -> ToolSession:
+        """A tool-using conversation, which `llm` drives one admitted turn at a time."""
+        return ToolSession(self, request, dispatch, max_turns, rethink)
 
     def submit(self, batch: Sequence[tuple[str, Request]], schema: type[BaseModel]) -> str:
         """Refused: no server this wire talks to has a batch endpoint wired up here."""

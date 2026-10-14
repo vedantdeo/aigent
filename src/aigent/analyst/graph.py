@@ -8,7 +8,7 @@ approves the memo or sends it back with a note.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TypedDict, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -17,21 +17,22 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
 from aigent import guardrails, tracing
+from aigent.analyst.cfg_analyst import (
+    CRITIC_MODEL,
+    GENERALIST_CALM,
+    GENERALIST_MODEL,
+    GENERALIST_THINKING,
+    MAX_CRITIC_REVISIONS,
+    max_tokens,
+)
 from aigent.analyst.memo import Judged, Memo, Review
 from aigent.analyst.router import Routing
 from aigent.analyst.toolbox import Toolbox
-from aigent.config import (
-    CACHE_PARAM,
-    CRITIC_MODEL,
-    GENERALIST_MODEL,
-    MAX_AGENT_TURNS,
-    MAX_CRITIC_REVISIONS,
-    MAX_TOKENS_MEMO,
-    MAX_TOKENS_TOOL_LOOP,
-    MAX_TOKENS_VERDICT,
-)
+from aigent.config import CACHE_PARAM, MAX_AGENT_TURNS
 from aigent.errors import BudgetExceeded, TurnsExhausted
+from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
+from aigent.llm.messages import Thinking
 
 RESEARCH = (
     "You are a filings analyst answering a question about Indian listed companies from their "
@@ -59,7 +60,11 @@ WRITE = (
     "square brackets; each becomes one claim citing exactly those ids. Add nothing the answer "
     "does not say. A caveat is something the sources did not cover or could not settle: never a "
     "remark about the answer itself, its method or an earlier draft. Leave out the answer's "
-    "closing 'Specialists:' line and anything else it says about the tools it used."
+    "closing 'Specialists:' line and anything else it says about the tools it used. The memo "
+    "is a JSON object with three keys: summary, two sentences answering the question; claims, a "
+    "list of objects, each with an id (c1, c2, … in order), a text (one sentence stating one "
+    "fact, with its figure and year) and citations (a list of the ids the fact rests on, at "
+    "least one); and caveats, a list of sentences."
 )
 CRITIC = (
     "You check one claim from an analyst's memo against the sources it cites, and nothing else: "
@@ -143,36 +148,62 @@ def build(
     approve: Approve | None = None,
     checkpointer: BaseCheckpointSaver[str] | None = None,
     max_turns: int = MAX_AGENT_TURNS,
+    model: str | None = GENERALIST_MODEL,
+    thinking: Thinking | None = GENERALIST_THINKING,
+    calm: bool = False,
 ) -> CompiledStateGraph[State, None, State, State]:
     """The graph, compiled. With `approve`, the gate asks it; without, the gate interrupts and
-    waits to be resumed with `{"approved": …, "note": …}`, which needs a `checkpointer`."""
+    waits to be resumed with `{"approved": …, "note": …}`, which needs a `checkpointer`. The
+    generalist is asked as `model`, or its client's own if None, thinking as `thinking` says; with
+    `calm`, it stops thinking once a specialist has answered, for the rest of research, and never
+    thinks writing the memo."""
     dispatch = tracing.traced_tools(toolbox, {"search_filings": "retriever"})
+    memo_cap = max_tokens("MEMO", spec(generalist.client))
+    verdict_cap = max_tokens("VERDICT", spec(critic.client))
+
+    def answered() -> bool:
+        return any(routed.path == "specialist" for routed in toolbox.route.routed)
+
+    def thinking_now() -> Thinking | None:
+        return GENERALIST_CALM if calm and answered() else thinking
 
     def research(state: State) -> dict[str, object]:
         request = Request(
             "research",
             [{"role": "user", "content": _brief(state, toolbox)}],
-            MAX_TOKENS_TOOL_LOOP,
+            max_tokens("TOOL_LOOP", spec(generalist.client)),
             system=RESEARCH,
-            model=GENERALIST_MODEL,
+            model=model,
             tools=toolbox.tools,
-            thinking={"type": "adaptive"},
-            cache_control=CACHE_PARAM,
+            thinking=thinking_now(),
+            cache_control=CACHE_PARAM if "cache" in generalist.supports else None,
         )
         try:
-            ran = generalist.run_tools(request, dispatch, max_turns=max_turns, finish=FINISH)
+            ran = generalist.run_tools(
+                request,
+                dispatch,
+                max_turns=max_turns,
+                finish=FINISH,
+                rethink=thinking_now if calm else None,
+            )
         except (BudgetExceeded, TurnsExhausted) as stop:
             return {"draft": None, "stopped": str(stop)}
         # every turn's text, not the last turn's: an answer is often written a turn before the end
         said = [turn.text.strip() for turn in ran.turns if turn.text.strip()]
+        if not said:
+            return {"draft": None, "stopped": "the generalist's answer was empty"}
         return {"draft": "\n\n".join(said), "stopped": ran.cut_short}
 
     def write(state: State) -> dict[str, object]:
         prompt = f"<question>{state['question']}</question>\n\n<answer>{state['draft']}</answer>"
-        request = Request.ask("memo", WRITE, prompt, MAX_TOKENS_MEMO, model=GENERALIST_MODEL)
+        request = Request.ask("memo", WRITE, prompt, memo_cap, model=model)
+        if calm:  # writing a memo from a draft is formatting: no reasoning to spend on it
+            request = replace(request, thinking=GENERALIST_CALM)
         parsed = generalist.parse(request, Memo)
         if parsed.parsed is None:
             return {"memo": None, "stopped": "the generalist's answer could not be read as a memo"}
+        if not parsed.parsed.claims:
+            return {"memo": None, "stopped": "the memo has no claims"}
         return {"memo": parsed.parsed, "verdicts": {}}
 
     def criticise(state: State) -> dict[str, object]:
@@ -189,7 +220,7 @@ def build(
                 continue
             prompt = f"<claim>{claim.text}</claim>\n\n{_sources(toolbox, claim.citations)}"
             request = Request.ask(
-                f"critic:{claim.id}", CRITIC, prompt, MAX_TOKENS_VERDICT, model=CRITIC_MODEL
+                f"critic:{claim.id}", CRITIC, prompt, verdict_cap, model=CRITIC_MODEL
             )
             told = critic.parse(request, Judged)
             verdicts[claim.id] = told.parsed or Judged(
@@ -281,7 +312,23 @@ def always_approve(memo: Memo, verdicts: dict[str, Judged]) -> Review:
     return Review(approved=True)
 
 
-def run(generalist: Llm, critic: Llm, toolbox: Toolbox, question: str) -> Analysed:
+def run(
+    generalist: Llm,
+    critic: Llm,
+    toolbox: Toolbox,
+    question: str,
+    model: str | None = GENERALIST_MODEL,
+    thinking: Thinking | None = GENERALIST_THINKING,
+    calm: bool = False,
+) -> Analysed:
     """One question through the graph with no one at the gate, as an eval runs it."""
-    graph = build(generalist, critic, toolbox, approve=always_approve)
+    graph = build(
+        generalist,
+        critic,
+        toolbox,
+        approve=always_approve,
+        model=model,
+        thinking=thinking,
+        calm=calm,
+    )
     return analysed(cast(State, graph.invoke(begin(question))), toolbox)

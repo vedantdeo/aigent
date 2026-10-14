@@ -8,6 +8,7 @@ from aigent.analyst.specialists import (
     FigureJob,
     Invalid,
     Told,
+    canonical,
     check_figures,
     check_headline,
 )
@@ -70,6 +71,23 @@ def figures(*rows: tuple[str, float]) -> str:
 
 
 @pytest.mark.parametrize(
+    ("call", "expected"),
+    [
+        ("330943 * 10**7", "330943 * 10**7"),
+        ("330943 * 10000000", "330943 * 10**7"),
+        ("330943*1e7", "330943 * 10**7"),
+        ("(330943 * 10000000)", "330943 * 10**7"),
+        ("-12.5 * 1000", "-12.5 * 10**3"),
+        pytest.param("330943 * 100", "330943 * 100", id="a hundred is not a scale"),
+        pytest.param("330943 / 1.079", "330943 / 1.079", id="arithmetic is left alone"),
+        pytest.param("7.9 / 100", "7.9 / 100", id="a percentage is left alone"),
+    ],
+)
+def test_a_scaling_call_is_read_in_its_one_form(call: str, expected: str) -> None:
+    assert canonical(call) == expected
+
+
+@pytest.mark.parametrize(
     ("reply", "calls", "values"),
     [
         pytest.param(figures(("other", 2345.0)), (), [2345.0], id="a number as printed"),
@@ -80,6 +98,12 @@ def figures(*rows: tuple[str, float]) -> str:
             id="a named scale and a percentage, each through a call",
         ),
         pytest.param(figures(), (), [], id="nothing wanted is in the passage"),
+        pytest.param(
+            figures(("revenue", 23450000000.0)),
+            ("(2345 * 10000000)",),
+            [23450000000.0],
+            id="a scale written out in full",
+        ),
     ],
 )
 def test_figures_whose_every_value_is_the_passage_s_own_pass(

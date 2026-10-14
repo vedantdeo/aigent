@@ -10,16 +10,18 @@ import openai
 import pytest
 from openai.types.chat import ChatCompletion, ChatCompletionMessageFunctionToolCall
 
+from aigent.analyst.cfg_analyst import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS
 from aigent.analyst.router import Router
 from aigent.analyst.served import headline_reader, reaching, report_analyst, warm_up
 from aigent.analyst.specialists import FigureJob
-from aigent.config import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS, SYNTHETIC_CLIENT, max_tokens
+from aigent.config import SYNTHETIC_CLIENT, max_tokens
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
 from aigent.extraction.figures import figure_messages
 from aigent.extraction.headlines import VARIANTS, Extraction, headline_request
 from aigent.extraction.synthetic import wire_for
 from aigent.llm.adapters import spec
+from aigent.llm.adapters.cfg_hostllm import ANALYST, FIGURE_ANSWER_HOSTLLM
 from aigent.llm.core import Llm
 from aigent.llm.pricing import cost_usd
 
@@ -123,6 +125,7 @@ def test_figures_reach_the_adapter_on_its_trained_prompt_and_its_calls_are_run(
         {"role": "user", "content": user},
     ]
     assert first["tools"] == [TRAINED_TOOL] and first["model"] == "report-analyst"
+    assert first["max_tokens"] == ANALYST.max_tokens["FIGURE_ANSWER"] == FIGURE_ANSWER_HOSTLLM
     results = [m for m in cast(list[dict[str, object]], second["messages"]) if m["role"] == "tool"]
     assert [m["content"] for m in results] == ["23450000000.0", "0.18"]
     assert [f.value for f in figures.figures] == [23450000000.0, 0.18]
@@ -150,6 +153,30 @@ def test_figures_the_passage_does_not_back_go_to_the_generalist(
     sent: Sent = sdk.sent[1]
     assert sent.model == GENERALIST_MODEL
     assert [r["content"] for r in tool_results(sent)] == ["23450000000.0", "0.18"]
+
+
+def test_a_fallback_asks_the_generalist_as_the_model_it_was_given(
+    make_llm: MakeLlm, offline_tokenizer: None
+) -> None:
+    headlines, _ = small("hostllm-headline", completion(GARBLED.model_dump_json()))
+    figures, _ = small("hostllm-analyst", completion(FIGURES.replace("0.18", "0.19")))
+    calculating = turns(
+        tool_turn(
+            ("c1", "calculate", {"expression": "2345 * 10**7"}),
+            ("c2", "calculate", {"expression": "18 / 100"}),
+        ),
+        FIGURES,
+    )
+    generalist, sdk = make_llm(
+        lambda sent: RECORD if sent.schema is Extraction else calculating(sent)
+    )
+    route = router()
+
+    route(headline_reader(headlines, generalist, model="claude-haiku-4-5"), HEADLINE)
+    route(report_analyst(figures, generalist, model="claude-haiku-4-5"), JOB)
+
+    assert [logged.path for logged in route.routed] == ["generalist", "generalist"]
+    assert [sent.model for sent in sdk.sent] == ["claude-haiku-4-5"] * 3
 
 
 def test_a_call_to_any_tool_but_calculate_is_refused_and_runs_nothing(

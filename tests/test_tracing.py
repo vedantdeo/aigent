@@ -7,6 +7,7 @@ export into memory and never touch the network.
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Iterator, Sequence
 from typing import cast
 
@@ -58,6 +59,29 @@ def test_without_keys_the_tracer_is_silent(monkeypatch: pytest.MonkeyPatch) -> N
     assert isinstance(tracing.tracer(), tracing.Silent)
     with tracing.tracer().observe("anything") as seen:
         seen.finish("ignored")
+
+
+def test_a_tracer_set_with_using_holds_in_its_own_context_only(traces: Recorder) -> None:
+    together = threading.Barrier(2, timeout=5)
+    mine = [Recorder(), Recorder()]
+    after: list[bool] = []
+
+    def work(n: int) -> None:
+        with tracing.using(mine[n]):
+            together.wait()  # both threads inside their blocks at once
+            with tracing.tracer().observe(f"q{n}"):
+                pass
+        after.append(tracing.tracer() is traces)
+
+    threads = [threading.Thread(target=work, args=(n,)) for n in (0, 1)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert [[o.name for o in r.roots] for r in mine] == [["q0"], ["q1"]]
+    assert after == [True, True], "each thread is back on the process's tracer after its block"
+    assert tracing.tracer() is traces and traces.roots == [], "the process's tracer is untouched"
 
 
 @pytest.fixture

@@ -212,12 +212,72 @@ needs its own go-ahead.
    critic is Opus 5 while building (Vedant's call), and an eval's approver always approves. The
    generalist chooses its specialists from their cards, by a prompt that names none and asks it to
    explain a decision to call none (Vedant, 2026-10-13, after the first live run called none).
-6. The 50 tasks, then the first baseline runs.
+6. The 50 tasks, then the first baseline runs. Before them, the plan of 2026-10-14 (below).
 
 **Week 7:** the routed-vs-generalist comparison, the critic iteration, the judge bake-off, a learned
 router from the eval logs, HTTP and a container, the CI gate.
 
 **Week 8:** README, diagram, walkthrough, write-up, tag.
+
+## Plan from 2026-10-14
+
+Drawn up after the 20 probe questions (`evals/datasets/analyst-probe.jsonl`) ran in parallel on
+vLLM with Sarvam as the generalist: 13 of 19 finished with supported memos. The failures and their
+causes are in `LOG.md`.
+
+**Phase 1, robustness** (built 2026-10-14, against fakes):
+
+1. `extract_figures` returns the passages that passed and lists each that failed, with why.
+2. A tool call repeating one that failed is refused unrun, with the first failure.
+3. A calm generalist never reasons writing the memo.
+4. Dropped (Vedant): a reply that reasoned through its whole cap is not asked again; a generalist
+   that never calls a specialist gets no extra tries, and its empty answer is a failure.
+5. Tool calls a server leaked as text are read back on every OpenAI-wire reply.
+6. A memo of no claims stops the run, counted a failure (Vedant: no redraft).
+7. The critic's verdict cap is 1024.
+8. A read headline carries a `cite_as` and is evidence.
+9. The figure check reads `N * 10000000`, `N*1e7` and `(N * 10**7)` as `N * 10**7`.
+
+Also: the analyst's settings moved to `analyst/cfg_analyst.py` (Vedant).
+
+**Phase 2:** the 20 probe questions again, in parallel on vLLM, to measure Phase 1 (target: 18+ of
+20 with supported memos).
+
+**Phase 3, step 6:** ground truth for the probe questions, grown to the 50 tasks; correctness,
+routing rate, cost and latency, across Sonnet, Haiku and Sarvam as generalists, each with and
+without specialists; vLLM's tokens priced from its bench.
+
+**Phase 4:** findings into this file; the commits to `main` by PR; hostllm's docs note that the
+capstone runs its specialists on vLLM.
+
+**Parked:** hostllm inference optimisation; the learned router.
+
+## Final results (2026-10-14)
+
+The capstone closes at this revision (Vedant). Generalist Sarvam 105B at medium reasoning, calm once
+a specialist has answered; critic Opus 5; specialists on vLLM, four questions at a time, with ap-16
+and ap-18 rerun on hostllm after ITC joined the headline directory, ap-16 once more after each
+engine got its own figures-answer cap. Over the 20 probe questions:
+
+| Outcome | Questions |
+|---|---|
+| Every claim supported (16) | ap-02, 03, 05, 06, 07, 08, 09, 10, 11, 12, 13, 15, 16, 17, 19, 20 |
+| Most claims supported (3) | ap-04 3/4, ap-14 12/14, ap-18 2/3 |
+| No memo (1) | ap-01, its last research turn all reasoning with no specialist called |
+
+**19 of 20 with a supported memo**, from 5 of 11 before Phase 1 and calm thinking. Every refused
+claim was the generalist's: a standalone figure called consolidated, a growth rate across a restated
+basis, a ratio the sources do not state. The specialists answered most jobs that reached them; the
+fallback, and a check that refuses what a passage does not print, caught the rest.
+
+**What it cost:** about $3.55 for the 20 on vLLM, of which the Opus critic is the largest share and
+the GPU about $0.47 for 35 minutes. Every run of the day, from the first Haiku pass, is in `LOG.md`
+(about $9.90 in all).
+
+**Left open:** the ground-truth eval (step 6), the generalist comparison, and pricing vLLM's tokens;
+Modal's 150 s per request, which no setting raises: hostllm's figures answers are capped at 512
+tokens to end inside it, and long answers want Modal's spawn-and-poll pattern; a generalist that reasons through its cap with
+no specialist to calm it fails, by decision.
 
 ## Findings so far
 

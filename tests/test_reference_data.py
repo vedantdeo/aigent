@@ -18,6 +18,7 @@ import pytest
 
 from aigent import errors
 from aigent.analyst.fundamentals import FUNDAMENTALS
+from aigent.analyst.run import PROBE
 from aigent.extraction.headlines import DIRECTORY
 from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
@@ -88,6 +89,7 @@ ORDERED_FILES = [
     Ordered(DATASET, key="id", load=jsonl_ids("id")),
     Ordered(PARAPHRASED, key="id", load=jsonl_ids("id")),
     Ordered(INJECTIONS, key="id", load=jsonl_ids("id")),
+    Ordered(PROBE, key="id", load=jsonl_ids("id")),
     Ordered(TASKS, key="id", load=jsonl_ids("id")),
     Ordered(FIGURES, key="id", load=jsonl_ids("id")),
     Ordered(ADJUDICATIONS, key="id", load=jsonl_ids("id")),

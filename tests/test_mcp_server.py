@@ -17,7 +17,7 @@ from aigent import mcp_server
 from aigent.analyst import filings
 from aigent.analyst.filings import SEARCH_FILINGS_TOOL
 from aigent.analyst.fundamentals import FUNDAMENTALS_TOOL, load_fundamentals
-from aigent.config import MCP_SERVER_NAME
+from aigent.config import MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME
 from aigent.mcp_server import LazyFilings, LazySearch, build_server
 from aigent.report_tools import SEARCH_TOOL
 from aigent.retrieval.chunk import Chunk
@@ -72,6 +72,7 @@ def test_the_server_offers_six_tools_described_as_the_agent_sees_them(
     tools = {tool.name: tool for tool in listing}
 
     assert name == MCP_SERVER_NAME
+    assert build_server(search, FakeFilings()).settings.log_level == MCP_SERVER_LOG_LEVEL
     assert all(company in instructions for company in REPORTS.values()), instructions
     assert {named: tool.description for named, tool in tools.items()} == {
         "search_reports": SEARCH_TOOL.get("description"),

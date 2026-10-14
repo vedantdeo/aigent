@@ -22,16 +22,34 @@ from pydantic import BaseModel
 
 from aigent.errors import StepFailed, Unsupported
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
-from aigent.llm.adapters.cfg_hostllm import ANALYST, COLD_START_TIMEOUT, HEADLINE
+from aigent.llm.adapters.cfg_hostllm import (
+    ANALYST,
+    COLD_START_TIMEOUT,
+    FIGURE_ANSWER_HOSTLLM,
+    FIGURE_ANSWER_VLLM,
+    HEADLINE,
+    VLLM_ANALYST,
+    VLLM_BASE_URL,
+    VLLM_COLD_START_TIMEOUT,
+    VLLM_HEADLINE,
+)
 from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
 from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
+from aigent.llm.adapters.cfg_sarvam import THINKING as SARVAM_THINKING
 from aigent.llm.adapters.client import Client
-from aigent.llm.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
-from aigent.llm.core import Llm, Request
-from aigent.llm.messages import Msg
+from aigent.llm.adapters.openai import (
+    LOCAL_API_KEY,
+    OpenAI,
+    record_in,
+    reply_of,
+    salvaged,
+    usage_of,
+)
+from aigent.llm.core import Dispatch, Llm, Request
+from aigent.llm.messages import Msg, Thinking
 from aigent.tools import CALCULATOR_TOOL
 
-from ..conftest import Finish, StubTokenizer
+from ..conftest import FakeOpenAI, Finish, MakeLlm, StubTokenizer
 from ..conftest import calling as _calling
 from ..conftest import completion as _completion
 
@@ -322,10 +340,45 @@ def test_a_client_without_a_header_s_variable_is_refused_before_anything_is_sent
 
 def test_the_two_specialists_share_an_endpoint_and_differ_in_the_adapter_they_name() -> None:
     assert (HEADLINE.model, ANALYST.model) == ("headline-flavour", "report-analyst")
-    assert replace(ANALYST, name="", model="", small_model="") == replace(
+    assert replace(ANALYST, name="", model="", small_model="", max_tokens={}) == replace(
         HEADLINE, name="", model="", small_model=""
-    )
+    ), "the analyst differs only in its adapter and its answer cap"
     assert HEADLINE.timeout == COLD_START_TIMEOUT >= 180, "a request outlasts a cold start"
+
+
+def test_each_engine_gives_a_figures_answer_the_room_it_can_write_inside_modal_s_limit() -> None:
+    caps = (ANALYST.max_tokens["FIGURE_ANSWER"], VLLM_ANALYST.max_tokens["FIGURE_ANSWER"])
+    assert caps == (FIGURE_ANSWER_HOSTLLM, FIGURE_ANSWER_VLLM)
+    assert FIGURE_ANSWER_HOSTLLM / 4 < 150, (
+        "hostllm's answer ends inside 150 s at 4 tokens a second"
+    )
+    assert FIGURE_ANSWER_VLLM > FIGURE_ANSWER_HOSTLLM
+
+
+def test_both_sarvam_clients_wait_out_a_rate_limit_of_a_minute() -> None:
+    patient = [(c.retries, c.retry_max_seconds) for c in (SARVAM, SARVAM_THINKING)]
+    assert patient == [(6, 60.0)] * 2
+
+
+@pytest.mark.parametrize(
+    ("ours", "theirs"),
+    [(ANALYST, VLLM_ANALYST), (HEADLINE, VLLM_HEADLINE)],
+    ids=["the analyst", "the headline reader"],
+)
+def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_and_how_long_it_waits(
+    ours: Client, theirs: Client
+) -> None:
+    assert theirs.model == ours.model, "vLLM serves each adapter under the same name"
+    same = replace(
+        theirs,
+        name=ours.name,
+        base_url=ours.base_url,
+        timeout=ours.timeout,
+        max_tokens=ours.max_tokens,
+    )
+    assert same == ours
+    assert theirs.base_url == VLLM_BASE_URL != ours.base_url
+    assert theirs.timeout == VLLM_COLD_START_TIMEOUT > 349, "outlasts vLLM's slowest cold start"
 
 
 @pytest.mark.parametrize(
@@ -496,6 +549,24 @@ def test_text_beside_a_call_is_kept_ahead_of_it() -> None:
     assert reply.text == "Converting."
 
 
+def test_a_reasoning_server_s_trace_is_kept_as_thinking_and_never_sent_back() -> None:
+    reasoned = _calling("18 / 100", text="Converting.")
+    message = reasoned.choices[0].message
+    assert message.model_extra is not None
+    message.model_extra["reasoning_content"] = "18% is 0.18."
+    reply = reply_of(reasoned)
+    wire, completions = _wire()
+
+    wire.send(
+        replace(ASKING, messages=[*ASKING.messages, {"role": "assistant", "content": reply.blocks}])
+    )
+
+    assert reply.blocks[0] == {"type": "thinking", "thinking": "18% is 0.18."}
+    assert reply.text == "Converting."
+    sent = cast(list[dict[str, object]], completions.sent[0]["messages"])[-1]
+    assert sent["content"] == "Converting.", "the thought stays out of what is sent"
+
+
 def test_a_call_whose_arguments_are_not_json_arrives_with_none() -> None:
     broken = _calling("18 / 100")
     calls = broken.choices[0].message.tool_calls
@@ -558,6 +629,34 @@ def test_the_count_templates_the_tools_too(monkeypatch: pytest.MonkeyPatch) -> N
     assert seen == [[TRAINED_TOOL], None]
 
 
+def test_the_count_hands_a_template_each_call_s_arguments_as_a_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[object] = []
+
+    class Recording(StubTokenizer):
+        def apply_chat_template(
+            self, conversation: object, **kwargs: object
+        ) -> list[int] | dict[str, list[int]]:
+            seen.extend(cast(list[object], conversation))
+            return super().apply_chat_template(conversation, **kwargs)
+
+    monkeypatch.setattr(OpenAI, "tokenizer", property(lambda _: Recording()))
+    wire, completions = _wire()
+    asked: Msg = {"role": "assistant", "content": reply_of(_calling("18 / 100")).blocks}
+    request = replace(ASKING, messages=[*ASKING.messages, asked])
+
+    wire.count(request)
+    wire.send(request)
+
+    [_, counted] = cast(list[dict[str, list[dict[str, dict[str, object]]]]], seen)
+    assert counted["tool_calls"][0]["function"]["arguments"] == {"expression": "18 / 100"}
+    [_, sent] = cast(
+        list[dict[str, list[dict[str, dict[str, object]]]]], completions.sent[0]["messages"]
+    )
+    assert sent["tool_calls"][0]["function"]["arguments"] == '{"expression": "18 / 100"}'
+
+
 def test_llm_sends_one_tool_turn_on_this_wire_and_bills_it(offline_tokenizer: None) -> None:
     scripted = ScriptedClient("hi")
     scripted.completions.create = lambda **kwargs: _calling("18 / 100")  # type: ignore[method-assign]
@@ -569,8 +668,158 @@ def test_llm_sends_one_tool_turn_on_this_wire_and_bills_it(offline_tokenizer: No
     assert len(llm.trace) == 1
 
 
-def test_no_runner_drives_tools_on_this_wire_yet(offline_tokenizer: None) -> None:
-    llm = Llm("local", sdk=cast(object, ScriptedClient("hi")))
+def _dispatch(ran: list[str]) -> Dispatch:
+    """A calculate that logs each expression and answers with its length; `1 / 0` is an error."""
 
-    with pytest.raises(Unsupported, match="runs no tools yet"):
-        llm.run_tools(ASKING, lambda name, arguments: ("", False))
+    def dispatch(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
+        expression = str(arguments["expression"])
+        ran.append(expression)
+        return str(len(expression)), expression == "1 / 0"
+
+    return dispatch
+
+
+def test_llm_loops_tools_on_this_wire_running_each_call_once(offline_tokenizer: None) -> None:
+    fake = FakeOpenAI(_calling("18 / 100", "1 / 0"), _completion("It is 0.18."))
+    llm = Llm("local", sdk=cast(object, fake))
+    ran: list[str] = []
+
+    done = llm.run_tools(ASKING, _dispatch(ran))
+
+    assert done.message.text == "It is 0.18." and done.cut_short is None and len(done.turns) == 2
+    assert ran == ["18 / 100", "1 / 0"], "each call run once, not again when the loop resumes"
+    assert len(llm.trace) == 2 and len(fake.sent) == 2, "every turn sent once and billed"
+    first, second = (cast(list[dict[str, object]], sent["messages"]) for sent in fake.sent)
+    assert [m["role"] for m in second] == ["user", "assistant", "tool", "tool"]
+    assert second[0] == first[0] and second[2:] == [
+        {"role": "tool", "tool_call_id": "call_0", "content": "8"},
+        {"role": "tool", "tool_call_id": "call_1", "content": "5"},
+    ]
+    assert all(sent["tools"] == [TRAINED_TOOL] for sent in fake.sent)
+
+
+def test_a_loop_out_of_turns_is_told_to_answer_after_its_tool_results(
+    offline_tokenizer: None,
+) -> None:
+    fake = FakeOpenAI(_calling("18 / 100"), _completion("About 0.18."))
+    llm = Llm("local", sdk=cast(object, fake))
+    roomy = replace(ASKING, max_tokens=2048)
+
+    done = llm.run_tools(roomy, _dispatch([]), max_turns=2, finish="Answer now.")
+
+    assert done.message.text == "About 0.18." and done.cut_short is not None
+    assert cast(list[dict[str, object]], fake.sent[1]["messages"])[-2:] == [
+        {"role": "tool", "tool_call_id": "call_0", "content": "8"},
+        {"role": "user", "content": "Answer now."},
+    ]
+
+
+def _reasoning(sent: dict[str, object]) -> object:
+    """The `reasoning_effort` a call sent, or "unset"."""
+    return cast(dict[str, object], sent["extra_body"] or {}).get("reasoning_effort", "unset")
+
+
+@pytest.mark.parametrize(
+    ("thinking", "sent"),
+    [
+        pytest.param(None, "unset", id="no thinking said: the client's own setting"),
+        pytest.param({"type": "disabled"}, None, id="disabled: reasoning off"),
+    ],
+)
+def test_disabled_thinking_switches_a_reasoning_server_off(
+    thinking: Thinking | None, sent: str | None
+) -> None:
+    wire, completions = _wire()
+    calm = replace(REQUEST, thinking=thinking)
+
+    wire.send(calm)
+    wire.parse(calm, Verdict)
+
+    assert [_reasoning(c) for c in completions.sent] == [sent, sent]
+
+
+def test_a_rethought_session_sends_later_turns_and_its_last_answer_as_told() -> None:
+    fake = FakeOpenAI(_calling("18 / 100"), _calling("2 * 3"), _completion("done"))
+    calm: Thinking = {"type": "disabled"}
+    session = OpenAI(LOCAL, fake).tools(ASKING, _dispatch([]), 3, lambda: calm)
+
+    list(session)
+    session.answer(ASKING)
+
+    assert [_reasoning(c) for c in fake.sent] == ["unset", None, None, None]
+
+
+def test_the_anthropic_runner_refuses_to_rethink_per_turn(make_llm: MakeLlm) -> None:
+    llm, sent = make_llm("hi")
+
+    with pytest.raises(Unsupported, match="rethink"):
+        llm.run_tools(ASKING, _dispatch([]), rethink=lambda: None)
+    assert sent.sent == []
+
+
+SARVAM_LEAK = (
+    "<|tool_calls_section_begin|><|tool_call_begin|>functions.calculate:18"
+    '<|tool_call_argument_begin|>{"expression": "18 / 100"}<|tool_call_end|>'
+    "<|tool_calls_section_end|>"
+)
+HERMES_LEAK = (
+    '<tool_call>\n{"name": "calculate", "arguments": {"expression": "18 / 100"}}\n</tool_call>'
+)
+CALLED = {"expression": "18 / 100"}
+
+
+@pytest.mark.parametrize(
+    ("text", "said", "inputs"),
+    [
+        pytest.param(SARVAM_LEAK, "", [CALLED], id="Sarvam's markup"),
+        pytest.param(HERMES_LEAK, "", [CALLED], id="Qwen's markup"),
+        pytest.param(f"Converting. {HERMES_LEAK}", "Converting.", [CALLED], id="prose kept"),
+        pytest.param(
+            SARVAM_LEAK.replace("calculate", "read_file"), None, [], id="a tool not offered"
+        ),
+        pytest.param(SARVAM_LEAK.replace("<|tool_call_end|>", ""), None, [], id="cut off"),
+        pytest.param(SARVAM_LEAK.replace('"18 / 100"', "18 / 100"), None, [], id="broken JSON"),
+        pytest.param("The answer is 0.18.", None, [], id="an ordinary answer"),
+    ],
+)
+def test_a_tool_call_leaked_as_text_is_read_back_when_it_is_whole_and_offered(
+    text: str, said: str | None, inputs: list[dict[str, object]]
+) -> None:
+    reply = reply_of(_completion(text))
+
+    read = salvaged(reply, ["calculate"])
+
+    calls = [b for b in read.blocks if b.get("type") == "tool_use"]
+    assert [c["input"] for c in calls] == inputs
+    if not inputs:
+        assert read is reply, "nothing salvaged: the reply as it came"
+        return
+    assert read.stop_reason == "tool_use" and read.text == said and calls[0]["salvaged"] is True
+    assert read.usage == reply.usage, "billed as the server reported it"
+
+
+def test_a_reply_already_calling_tools_is_not_salvaged() -> None:
+    reply = reply_of(_calling("2 * 3", text=HERMES_LEAK))
+
+    assert salvaged(reply, ["calculate"]) is reply
+
+
+def test_a_leaked_call_is_run_by_the_tool_loop(offline_tokenizer: None) -> None:
+    fake = FakeOpenAI(_completion(SARVAM_LEAK), _completion("It is 0.18."))
+    llm = Llm("local", sdk=cast(object, fake))
+    ran: list[str] = []
+
+    done = llm.run_tools(ASKING, _dispatch(ran))
+
+    assert ran == ["18 / 100"] and done.message.text == "It is 0.18."
+    sent = cast(list[dict[str, object]], fake.sent[1]["messages"])
+    assert sent[-1] == {"role": "tool", "tool_call_id": "salvaged_0", "content": "8"}
+
+
+def test_a_session_stops_asking_at_its_turn_cap() -> None:
+    fake = FakeOpenAI(_calling("18 / 100"))
+    ran: list[str] = []
+
+    replies = list(OpenAI(LOCAL, fake).tools(ASKING, _dispatch(ran), 3, None))
+
+    assert len(replies) == len(fake.sent) == len(ran) == 3
