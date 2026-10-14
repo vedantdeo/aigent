@@ -60,6 +60,22 @@ def test_a_turn_and_the_tool_it_called_are_written_nested_as_they_happen(tmp_pat
     assert text.index("### retriever") < text.index("**Thought:**"), "in the order it happened"
 
 
+def test_a_salvaged_call_is_marked_as_one(tmp_path: Path) -> None:
+    tracer = FileTracer(tmp_path / "q.md")
+    leaked = {
+        "type": "tool_use",
+        "id": "salvaged_0",
+        "name": "calculate",
+        "input": {},
+        "salvaged": True,
+    }
+
+    with tracer.observe("research", "generation") as seen:
+        seen.finish({"content": [leaked], "stop_reason": "tool_use"})
+
+    assert "*(salvaged from leaked text)*" in written(tmp_path / "q.md")
+
+
 def test_a_system_prompt_is_written_once_and_tool_results_are_not_retold(tmp_path: Path) -> None:
     tracer = FileTracer(tmp_path / "q.md")
     results = {

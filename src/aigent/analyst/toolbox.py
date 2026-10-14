@@ -1,6 +1,6 @@
 """The generalist's tools in one place: a server's tools over MCP, and every specialist as a tool
 whose calls go through the router. Passages a search returns are kept as evidence, so a later call
-can name them by id.
+can name them by id, as are a fundamentals answer and any specialist's that carries a `cite_as`.
 """
 
 from __future__ import annotations
@@ -70,13 +70,15 @@ def _lookup(result: str) -> Passage | None:
 class Toolbox:
     """`tools` is what the generalist is shown; calling the toolbox runs one: an expert's through
     `route`, any other through `served`. Never raises for a bad call; a specialist that cannot be
-    reached still fails the task. ValueError if two tools share a name."""
+    reached still fails the task. A call repeating one that failed is refused unrun, with the first
+    failure. ValueError if two tools share a name."""
 
     served_tools: Sequence[ToolParam]
     served: Dispatch
     route: Router
     experts: Sequence[Expert]
     evidence: dict[str, Passage] = field(default_factory=dict[str, Passage])
+    failed: dict[str, str] = field(default_factory=dict[str, str])
 
     def __post_init__(self) -> None:
         names = [tool["name"] for tool in self.tools]
@@ -89,12 +91,29 @@ class Toolbox:
         return [*self.served_tools, *(expert.card for expert in self.experts)]
 
     def __call__(self, name: str, arguments: dict[str, object]) -> tuple[str, bool]:
+        call = f"{name} {json.dumps(arguments, sort_keys=True, default=str)}"
+        if call in self.failed:
+            return (
+                f"Error: this exact call already failed ({self.failed[call]}). Change its "
+                "arguments or answer without it.",
+                True,
+            )
+        content, is_error = self._run(name, arguments)
+        if is_error:
+            self.failed[call] = content.removeprefix("Error: ")
+        return content, is_error
+
+    def _run(self, name: str, arguments: dict[str, object]) -> tuple[str, bool]:
         for expert in self.experts:
             if expert.name == name:
                 try:
-                    return expert.answer(arguments, self.evidence, self.route), False
+                    content = expert.answer(arguments, self.evidence, self.route)
                 except Invalid as refused:
                     return f"Error: {refused}", True
+                cited = _lookup(content)  # an answer that names its own cite_as is evidence
+                if cited is not None:
+                    self.evidence[cited.id] = cited
+                return content, False
         content, is_error = self.served(name, arguments)
         if name == SEARCH:
             self.evidence.update({found.id: found for found in passages_in(content)})

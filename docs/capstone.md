@@ -212,12 +212,45 @@ needs its own go-ahead.
    critic is Opus 5 while building (Vedant's call), and an eval's approver always approves. The
    generalist chooses its specialists from their cards, by a prompt that names none and asks it to
    explain a decision to call none (Vedant, 2026-10-13, after the first live run called none).
-6. The 50 tasks, then the first baseline runs.
+6. The 50 tasks, then the first baseline runs. Before them, the plan of 2026-10-14 (below).
 
 **Week 7:** the routed-vs-generalist comparison, the critic iteration, the judge bake-off, a learned
 router from the eval logs, HTTP and a container, the CI gate.
 
 **Week 8:** README, diagram, walkthrough, write-up, tag.
+
+## Plan from 2026-10-14
+
+Drawn up after the 20 probe questions (`evals/datasets/analyst-probe.jsonl`) ran in parallel on
+vLLM with Sarvam as the generalist: 13 of 19 finished with supported memos. The failures and their
+causes are in `LOG.md`.
+
+**Phase 1, robustness** (built 2026-10-14, against fakes):
+
+1. `extract_figures` returns the passages that passed and lists each that failed, with why.
+2. A tool call repeating one that failed is refused unrun, with the first failure.
+3. A calm generalist never reasons writing the memo.
+4. Dropped (Vedant): a reply that reasoned through its whole cap is not asked again; a generalist
+   that never calls a specialist gets no extra tries, and its empty answer is a failure.
+5. Tool calls a server leaked as text are read back on every OpenAI-wire reply.
+6. A memo of no claims stops the run, counted a failure (Vedant: no redraft).
+7. The critic's verdict cap is 1024.
+8. A read headline carries a `cite_as` and is evidence.
+9. The figure check reads `N * 10000000`, `N*1e7` and `(N * 10**7)` as `N * 10**7`.
+
+Also: the analyst's settings moved to `analyst/cfg_analyst.py` (Vedant).
+
+**Phase 2:** the 20 probe questions again, in parallel on vLLM, to measure Phase 1 (target: 18+ of
+20 with supported memos).
+
+**Phase 3, step 6:** ground truth for the probe questions, grown to the 50 tasks; correctness,
+routing rate, cost and latency, across Sonnet, Haiku and Sarvam as generalists, each with and
+without specialists; vLLM's tokens priced from its bench.
+
+**Phase 4:** findings into this file; the commits to `main` by PR; hostllm's docs note that the
+capstone runs its specialists on vLLM.
+
+**Parked:** hostllm inference optimisation; the learned router.
 
 ## Findings so far
 

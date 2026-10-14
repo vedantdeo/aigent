@@ -92,6 +92,10 @@ this machine. Edit both, or neither.
   whoever answers: the spending ceilings, the loop caps, and `DEFAULT_MAX_TOKENS`, the one table a
   client overrides by key. A client that is happy with a default restates nothing, and
   `tests/test_config.py` holds the table and the `MAX_TOKENS_*` names it derives together.
+- *Split by concern, one file per subsystem:* `analyst/cfg_analyst.py` (2026-10-14, Vedant's call)
+  holds the capstone analyst's models, loop caps, run ceilings and its own output caps (`MEMO`,
+  `VERDICT`). Its `max_tokens` reads a client's cap first, then the analyst's, then
+  `config.DEFAULT_MAX_TOKENS`, so the analyst overrides the shared table without restating it.
 - Staying put: `report.REPORTS_DIR`, a location computed from `__file__` rather than a knob.
 
 ## Tests

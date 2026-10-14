@@ -12,6 +12,12 @@ pytest.importorskip("langgraph")
 
 from aigent import tracing  # noqa: E402
 from aigent.analyst import run as run_module  # noqa: E402
+from aigent.analyst.cfg_analyst import (  # noqa: E402
+    GENERALIST_MODEL,
+    MAX_USD_ANALYST_CRITIC,
+    MAX_USD_ANALYST_GENERALIST,
+    MAX_USD_ANALYST_SPECIALIST,
+)
 from aigent.analyst.memo import Claim, Judged, Memo  # noqa: E402
 from aigent.analyst.run import (  # noqa: E402
     PROBE,
@@ -23,12 +29,6 @@ from aigent.analyst.run import (  # noqa: E402
     main,
     served_by,
     worst_case_usd,
-)
-from aigent.config import (  # noqa: E402
-    GENERALIST_MODEL,
-    MAX_USD_ANALYST_CRITIC,
-    MAX_USD_ANALYST_GENERALIST,
-    MAX_USD_ANALYST_SPECIALIST,
 )
 
 from ..conftest import MakeLlm, Sent, tool_turn  # noqa: E402

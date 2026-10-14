@@ -17,20 +17,18 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
 from aigent import guardrails, tracing
-from aigent.analyst.memo import Judged, Memo, Review
-from aigent.analyst.router import Routing
-from aigent.analyst.toolbox import Toolbox
-from aigent.config import (
-    CACHE_PARAM,
+from aigent.analyst.cfg_analyst import (
     CRITIC_MODEL,
     GENERALIST_CALM,
     GENERALIST_MODEL,
     GENERALIST_THINKING,
-    MAX_AGENT_TURNS,
     MAX_CRITIC_REVISIONS,
-    MAX_TOKENS_VERDICT,
     max_tokens,
 )
+from aigent.analyst.memo import Judged, Memo, Review
+from aigent.analyst.router import Routing
+from aigent.analyst.toolbox import Toolbox
+from aigent.config import CACHE_PARAM, MAX_AGENT_TURNS
 from aigent.errors import BudgetExceeded, TurnsExhausted
 from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
@@ -157,10 +155,11 @@ def build(
     """The graph, compiled. With `approve`, the gate asks it; without, the gate interrupts and
     waits to be resumed with `{"approved": …, "note": …}`, which needs a `checkpointer`. The
     generalist is asked as `model`, or its client's own if None, thinking as `thinking` says; with
-    `calm`, it stops thinking once a specialist has answered, for the rest of research and the
-    memo."""
+    `calm`, it stops thinking once a specialist has answered, for the rest of research, and never
+    thinks writing the memo."""
     dispatch = tracing.traced_tools(toolbox, {"search_filings": "retriever"})
     memo_cap = max_tokens("MEMO", spec(generalist.client))
+    verdict_cap = max_tokens("VERDICT", spec(critic.client))
 
     def answered() -> bool:
         return any(routed.path == "specialist" for routed in toolbox.route.routed)
@@ -198,11 +197,13 @@ def build(
     def write(state: State) -> dict[str, object]:
         prompt = f"<question>{state['question']}</question>\n\n<answer>{state['draft']}</answer>"
         request = Request.ask("memo", WRITE, prompt, memo_cap, model=model)
-        if calm and answered():
+        if calm:  # writing a memo from a draft is formatting: no reasoning to spend on it
             request = replace(request, thinking=GENERALIST_CALM)
         parsed = generalist.parse(request, Memo)
         if parsed.parsed is None:
             return {"memo": None, "stopped": "the generalist's answer could not be read as a memo"}
+        if not parsed.parsed.claims:
+            return {"memo": None, "stopped": "the memo has no claims"}
         return {"memo": parsed.parsed, "verdicts": {}}
 
     def criticise(state: State) -> dict[str, object]:
@@ -219,7 +220,7 @@ def build(
                 continue
             prompt = f"<claim>{claim.text}</claim>\n\n{_sources(toolbox, claim.citations)}"
             request = Request.ask(
-                f"critic:{claim.id}", CRITIC, prompt, MAX_TOKENS_VERDICT, model=CRITIC_MODEL
+                f"critic:{claim.id}", CRITIC, prompt, verdict_cap, model=CRITIC_MODEL
             )
             told = critic.parse(request, Judged)
             verdicts[claim.id] = told.parsed or Judged(

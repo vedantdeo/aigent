@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast, get_args, get_origin
@@ -39,8 +39,6 @@ from aigent.llm.adapters.retry import http_client
 from aigent.llm.messages import BatchStatus, Block, Failed, Msg, Parsed, Reply, Tool, Usage
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from transformers import PreTrainedTokenizerBase
 
     from aigent.llm.adapters import Streamed
@@ -77,6 +75,74 @@ def usage_of(usage: CompletionUsage | None) -> Usage:
 
 # The OpenAI finish reasons `llm` acts on, under the names it checks; the rest pass through.
 STOP_REASONS = {"content_filter": "refusal", "length": "max_tokens", "tool_calls": "tool_use"}
+
+
+# Tool-call markup a server failed to parse, left in a reply's text: one row per format, the
+# pattern of one complete call and how its name and arguments are read from the match.
+_LEAKS: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], tuple[str, str]]], ...] = (
+    (  # Sarvam's and Kimi's: functions.NAME:N, then the arguments
+        re.compile(
+            r"<\|tool_call_begin\|>\s*(?:functions\.)?([\w.-]+?)(?::\d+)?\s*"
+            r"<\|tool_call_argument_begin\|>(.*?)<\|tool_call_end\|>",
+            re.DOTALL,
+        ),
+        lambda m: (m.group(1), m.group(2)),
+    ),
+    (  # Qwen's and Hermes': {"name": ..., "arguments": ...} between tags
+        re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL),
+        lambda m: _hermes(m.group(1)),
+    ),
+)
+_LEAK_FRAMES = re.compile(r"<\|tool_calls_section_(?:begin|end)\|>")
+
+
+def _hermes(body: str) -> tuple[str, str]:
+    """A Hermes call's name and its arguments as JSON text; nothing where it is not one."""
+    try:
+        call = json.loads(body)
+    except json.JSONDecodeError:
+        return "", ""
+    if not isinstance(call, dict):
+        return "", ""
+    fields = cast(dict[str, object], call)
+    arguments = fields.get("arguments", {})
+    return str(fields.get("name", "")), arguments if isinstance(arguments, str) else json.dumps(
+        arguments
+    )
+
+
+def salvaged(reply: Reply, offered: Collection[str]) -> Reply:
+    """`reply` with any complete tool call its text leaked as markup, for a tool `offered`, read
+    back into a `tool_use` block marked `salvaged`. A reply already calling tools, or with nothing
+    to salvage, comes back as it was."""
+    if any(block.get("type") == "tool_use" for block in reply.blocks):
+        return reply
+    text, calls = reply.text, list[Block]()
+    for pattern, read in _LEAKS:
+        for found in pattern.finditer(reply.text):
+            name, arguments = read(found)
+            try:
+                given = json.loads(arguments)
+            except json.JSONDecodeError:
+                continue
+            if name not in offered or not isinstance(given, dict):
+                continue
+            calls.append(
+                {
+                    "type": "tool_use",
+                    "id": f"salvaged_{len(calls)}",
+                    "name": name,
+                    "input": cast(dict[str, object], given),
+                    "salvaged": True,
+                }
+            )
+            text = text.replace(found.group(0), "")
+    if not calls:
+        return reply
+    text = _LEAK_FRAMES.sub("", text).strip()
+    kept = [block for block in reply.blocks if block.get("type") == "thinking"]
+    said: list[Block] = [{"type": "text", "text": text}] if text else []
+    return replace(reply, text=text, stop_reason="tool_use", blocks=(*kept, *said, *calls))
 
 
 def reply_of(completion: ChatCompletion) -> Reply:
@@ -413,17 +479,20 @@ class OpenAI:
         )
         return len(ids)
 
-    def send(self, request: Request) -> Reply:
-        """One request, one reply."""
-        return reply_of(
-            self.client.chat.completions.create(
-                model=model_of(request, self.settings),
-                messages=self.messages(request),
-                max_tokens=request.max_tokens,
-                tools=self._tools(request),
-                extra_body=self._extra_body(request),
-            )
+    def _create(self, request: Request, schema: type[BaseModel] | None = None) -> ChatCompletion:
+        return self.client.chat.completions.create(
+            model=model_of(request, self.settings),
+            messages=self.messages(request, schema),
+            max_tokens=request.max_tokens,
+            tools=self._tools(request) if schema is None else omit,
+            response_format=omit if schema is None else self._response_format(schema),
+            extra_body=self._extra_body(request),
         )
+
+    def send(self, request: Request) -> Reply:
+        """One request, one reply, with any tool call it leaked as text read back."""
+        offered = [str(tool["name"]) for tool in request.tools or ()]
+        return salvaged(reply_of(self._create(request)), offered)
 
     def parse[Record: BaseModel](
         self, request: Request, schema: type[Record], cache_body: dict[str, object] | None = None
@@ -434,13 +503,7 @@ class OpenAI:
         `cache_body` is ignored: this wire has no prompt caching, and `llm` has already refused any
         request that asked for it.
         """
-        completion = self.client.chat.completions.create(
-            model=model_of(request, self.settings),
-            messages=self.messages(request, schema),
-            max_tokens=request.max_tokens,
-            response_format=self._response_format(schema),
-            extra_body=self._extra_body(request),
-        )
+        completion = self._create(request, schema)
         reply = reply_of(completion)
         return Parsed[Record](
             text=reply.text,

@@ -46,7 +46,8 @@ def rendered(blocks: Sequence[Mapping[str, object]]) -> list[str]:
         elif kind == "text" and str(block.get("text", "")).strip():
             out.append(f"**Said:**\n\n{str(block['text']).strip()}")
         elif kind == "tool_use":
-            out.append(f"**Asked for** `{block.get('name')}` `{_json(block.get('input'))}`")
+            leaked = " *(salvaged from leaked text)*" if block.get("salvaged") else ""
+            out.append(f"**Asked for** `{block.get('name')}` `{_json(block.get('input'))}`{leaked}")
     return out
 
 

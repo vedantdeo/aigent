@@ -4,6 +4,7 @@ was trained on, with the generalist as the other model that can do it. `analyst.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -77,6 +78,19 @@ class FigureJob:
     wanted: str
 
 
+_SCALED = re.compile(r"\(?\s*(-?\d+(?:\.\d+)?)\s*\*\s*(?:10\s*\*\*\s*(\d+)|1e(\d+)|1(0{3,}))\s*\)?")
+
+
+def canonical(call: str) -> str:
+    """A scaling call in the one form the check reads, `N * 10**k`: `N * 10000000`, `N*1e7` and
+    `(N * 10**7)` all become `N * 10**7`. Any other call is returned as it came."""
+    found = _SCALED.fullmatch(call.strip())
+    if found is None:
+        return call
+    number, power, exponent, zeros = found.groups()
+    return f"{number} * 10**{power or exponent or len(zeros)}"
+
+
 def check_figures(job: FigureJob, told: Told) -> Figures:
     """The report analyst's check, all or nothing: the reply is `Figures`, and every value is a
     number the passage prints, as printed or through one of the reply's calculate calls."""
@@ -86,7 +100,7 @@ def check_figures(job: FigureJob, told: Told) -> Figures:
     for figure in figures.figures:
         backed = any(
             check_call(Label(**figure.model_dump(), call=call), job.passage, CHANGE)
-            for call in (None, *told.calls)
+            for call in (None, *(canonical(c) for c in told.calls))
         )
         if not backed:
             raise Invalid(f"the passage does not back {figure.value} for {figure.metric}")

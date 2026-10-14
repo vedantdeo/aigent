@@ -10,10 +10,11 @@ import openai
 import pytest
 from openai.types.chat import ChatCompletion, ChatCompletionMessageFunctionToolCall
 
+from aigent.analyst.cfg_analyst import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS
 from aigent.analyst.router import Router
 from aigent.analyst.served import headline_reader, reaching, report_analyst, warm_up
 from aigent.analyst.specialists import FigureJob
-from aigent.config import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS, SYNTHETIC_CLIENT, max_tokens
+from aigent.config import SYNTHETIC_CLIENT, max_tokens
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
 from aigent.extraction.figures import figure_messages

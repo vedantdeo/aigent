@@ -19,16 +19,17 @@ from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from langgraph.types import Command  # noqa: E402
 
 from aigent.analyst import graph as graph_module  # noqa: E402
-from aigent.analyst.experts import EXTRACT_FIGURES_TOOL, READ_HEADLINE_TOOL  # noqa: E402
-from aigent.analyst.graph import RESEARCH, State, analysed, begin, build, run  # noqa: E402
-from aigent.analyst.memo import Claim, Judged, Memo, Review  # noqa: E402
-from aigent.config import (  # noqa: E402
-    CACHE_PARAM,
+from aigent.analyst.cfg_analyst import (  # noqa: E402
     CRITIC_MODEL,
     GENERALIST_MODEL,
     GENERALIST_THINKING,
     MAX_CRITIC_REVISIONS,
+    MAX_TOKENS,
 )
+from aigent.analyst.experts import EXTRACT_FIGURES_TOOL, READ_HEADLINE_TOOL  # noqa: E402
+from aigent.analyst.graph import RESEARCH, State, analysed, begin, build, run  # noqa: E402
+from aigent.analyst.memo import Claim, Judged, Memo, Review  # noqa: E402
+from aigent.config import CACHE_PARAM  # noqa: E402
 from aigent.errors import GuardrailTripped  # noqa: E402
 from aigent.llm.adapters.cfg_local import CLIENT as LOCAL  # noqa: E402
 from aigent.llm.adapters.cfg_sarvam import THOUGHT  # noqa: E402
@@ -150,7 +151,7 @@ def _figures_call() -> ChatCompletion:
             id="calm after a specialist answered",
         ),
         pytest.param(
-            True, False, [False, False], id="calm but no specialist asked: thinks throughout"
+            True, False, [False, True], id="calm, no specialist asked: thinks in research only"
         ),
         pytest.param(False, True, [False, False, False], id="not calm: thinks throughout"),
     ],
@@ -230,6 +231,7 @@ def test_the_critic_is_another_model_shown_only_the_claim_and_what_it_cites(
 
     [request] = judged.sent
     assert request.model == "claude-haiku-4-5" and request.schema is Judged
+    assert request.max_tokens == MAX_TOKENS["VERDICT"] >= 1024, "room to reason and still rule"
     assert RIGHT.text in asked(request) and PASSAGE in asked(request)
     assert OTHER not in asked(request), "a passage the claim does not cite"
     assert DRAFT not in asked(request) and QUESTION not in asked(request)
@@ -300,6 +302,16 @@ def test_an_answer_that_cannot_be_read_as_a_memo_stops_the_run(make_llm: MakeLlm
     done = run(writer, critic, box(search), QUESTION)
 
     assert done.memo is None and done.review is None and "could not be read" in str(done.stopped)
+    assert judged.sent == []
+
+
+def test_a_memo_with_no_claims_stops_the_run_as_a_failure(make_llm: MakeLlm) -> None:
+    writer, _ = make_llm(generalist(Memo(summary="Nothing found.", claims=[], caveats=["x"])))
+    critic, judged = make_llm(judging)
+
+    done = run(writer, critic, box(search), QUESTION)
+
+    assert done.memo is None and done.review is None and done.stopped == "the memo has no claims"
     assert judged.sent == []
 
 

@@ -9,6 +9,12 @@ from typing import cast
 
 from pydantic import JsonValue
 
+from aigent.analyst.cfg_analyst import (
+    GENERALIST_MODEL,
+    SPECIALIST_TOOL_TURNS,
+    SPECIALIST_TRIES,
+    max_tokens,
+)
 from aigent.analyst.specialists import (
     FigureJob,
     Specialist,
@@ -16,7 +22,6 @@ from aigent.analyst.specialists import (
     check_figures,
     check_headline,
 )
-from aigent.config import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS, SPECIALIST_TRIES, max_tokens
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import Figures, figure_messages
 from aigent.extraction.headlines import VARIANTS, Extraction, Resolver, headline_request

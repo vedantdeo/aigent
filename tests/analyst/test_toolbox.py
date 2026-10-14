@@ -4,6 +4,7 @@ specialists', evidence kept from each search, and a specialist call answered thr
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from typing import cast
 
@@ -15,9 +16,10 @@ from aigent.analyst.experts import (
     EXTRACT_FIGURES_TOOL,
     READ_HEADLINE_TOOL,
     experts,
+    figures_expert,
     headline_expert,
 )
-from aigent.analyst.specialists import FigureJob, Specialist, Told
+from aigent.analyst.specialists import FigureJob, Specialist, Told, check_figures
 from aigent.analyst.toolbox import Passage, Toolbox, passages_in
 from aigent.errors import SpecialistUnreachable
 from aigent.llm.core import Llm
@@ -76,16 +78,94 @@ def test_figures_are_extracted_from_passages_a_search_returned_each_tagged_with_
     assert [r.specialist for r in tools.route.routed] == ["extract_figures"] * 2
 
 
+WRONG = FIGURE.replace("5.5", "9.9")  # a dividend no passage prints
+
+
+def _figures_expert(reads: Callable[[FigureJob], Told]) -> Toolbox:
+    """A toolbox whose figures specialist and fallback both answer with `reads`."""
+    tools = box(search)
+    tools.experts = [figures_expert(Specialist("extract_figures", reads, reads, check_figures))]
+    tools("search_filings", {"query": "dividend"})
+    return tools
+
+
+def test_a_passage_neither_model_can_read_is_listed_and_the_rest_come_back() -> None:
+    def reads(job: FigureJob) -> Told:
+        right = "dividend" in job.passage
+        return told('{"figures": [' + (FIGURE if right else WRONG) + "]}")
+
+    tools = _figures_expert(reads)
+
+    content, is_error = tools(
+        "extract_figures", {"chunk_ids": [DIVIDEND, "ITC-FY25#0001"], "wanted": "the dividend"}
+    )
+
+    assert not is_error, content
+    assert json.loads(content) == {
+        "figures": [{**json.loads(FIGURE), "chunk_id": DIVIDEND}],
+        "failed": [
+            {"chunk_id": "ITC-FY25#0001", "reason": "the passage does not back 9.9 for dividend"}
+        ],
+    }
+
+
+def test_a_call_whose_every_passage_failed_is_an_error_naming_each() -> None:
+    tools = _figures_expert(lambda job: told('{"figures": [' + WRONG + "]}"))
+
+    content, is_error = tools(
+        "extract_figures", {"chunk_ids": [DIVIDEND, "ITC-FY25#0001"], "wanted": "the dividend"}
+    )
+
+    assert is_error and f"{DIVIDEND}: the passage" in content, content
+    assert "ITC-FY25#0001: the passage" in content
+
+
+def test_an_exact_repeat_of_a_failed_call_is_refused_unrun() -> None:
+    tools = _figures_expert(lambda job: told('{"figures": [' + WRONG + "]}"))
+    failing = {"chunk_ids": [DIVIDEND], "wanted": "the dividend"}
+
+    first, _ = tools("extract_figures", failing)
+    ran = len(tools.route.routed)
+    again, is_error = tools("extract_figures", dict(reversed(failing.items())))
+    other, _ = tools("extract_figures", {**failing, "wanted": "the final dividend"})
+
+    assert (
+        is_error
+        and again.startswith("Error: this exact call already failed (")
+        and (first.removeprefix("Error: ") in again)
+    ), again
+    assert len(tools.route.routed) == ran + 1, "the repeat ran nothing; the changed call ran"
+    assert not other.startswith("Error: this exact call")
+
+
+def test_a_call_that_succeeded_may_be_made_again() -> None:
+    tools = box(search)
+    tools("search_filings", {"query": "dividend"})
+
+    for _ in range(2):
+        _, is_error = tools("read_headline", {"headline": "Infy Q2 profit rises 11%"})
+        assert not is_error
+    assert len(tools.route.routed) == 2
+
+
 def test_a_headline_is_read_through_the_router() -> None:
     tools = box(search)
 
     content, is_error = tools("read_headline", {"headline": "  Infy Q2 profit rises 11%\n"})
 
-    assert not is_error and json.loads(content) == {
+    read = json.loads(content)
+    assert not is_error and read == {
         "ticker": "INFY",
         "headline": "Infy Q2 profit rises 11%",
+        "cite_as": read["cite_as"],
+        "source": "headline",
     }
+    assert re.fullmatch(r"headline:[0-9a-f]{8}", read["cite_as"]), read["cite_as"]
     assert [r.path for r in tools.route.routed] == ["specialist"]
+    cited = tools.evidence[read["cite_as"]]
+    assert "Infy Q2 profit rises 11%" in cited.text, "a claim about the headline can cite it"
+    again, _ = tools("read_headline", {"headline": "Infy Q2 profit rises 11%"})
+    assert json.loads(again)["cite_as"] == read["cite_as"], "one headline, one id"
 
 
 @pytest.mark.parametrize(

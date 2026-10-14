@@ -35,7 +35,14 @@ from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
 from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
 from aigent.llm.adapters.cfg_sarvam import THINKING as SARVAM_THINKING
 from aigent.llm.adapters.client import Client
-from aigent.llm.adapters.openai import LOCAL_API_KEY, OpenAI, record_in, reply_of, usage_of
+from aigent.llm.adapters.openai import (
+    LOCAL_API_KEY,
+    OpenAI,
+    record_in,
+    reply_of,
+    salvaged,
+    usage_of,
+)
 from aigent.llm.core import Dispatch, Llm, Request
 from aigent.llm.messages import Msg, Thinking
 from aigent.tools import CALCULATOR_TOOL
@@ -730,6 +737,65 @@ def test_the_anthropic_runner_refuses_to_rethink_per_turn(make_llm: MakeLlm) -> 
     with pytest.raises(Unsupported, match="rethink"):
         llm.run_tools(ASKING, _dispatch([]), rethink=lambda: None)
     assert sent.sent == []
+
+
+SARVAM_LEAK = (
+    "<|tool_calls_section_begin|><|tool_call_begin|>functions.calculate:18"
+    '<|tool_call_argument_begin|>{"expression": "18 / 100"}<|tool_call_end|>'
+    "<|tool_calls_section_end|>"
+)
+HERMES_LEAK = (
+    '<tool_call>\n{"name": "calculate", "arguments": {"expression": "18 / 100"}}\n</tool_call>'
+)
+CALLED = {"expression": "18 / 100"}
+
+
+@pytest.mark.parametrize(
+    ("text", "said", "inputs"),
+    [
+        pytest.param(SARVAM_LEAK, "", [CALLED], id="Sarvam's markup"),
+        pytest.param(HERMES_LEAK, "", [CALLED], id="Qwen's markup"),
+        pytest.param(f"Converting. {HERMES_LEAK}", "Converting.", [CALLED], id="prose kept"),
+        pytest.param(
+            SARVAM_LEAK.replace("calculate", "read_file"), None, [], id="a tool not offered"
+        ),
+        pytest.param(SARVAM_LEAK.replace("<|tool_call_end|>", ""), None, [], id="cut off"),
+        pytest.param(SARVAM_LEAK.replace('"18 / 100"', "18 / 100"), None, [], id="broken JSON"),
+        pytest.param("The answer is 0.18.", None, [], id="an ordinary answer"),
+    ],
+)
+def test_a_tool_call_leaked_as_text_is_read_back_when_it_is_whole_and_offered(
+    text: str, said: str | None, inputs: list[dict[str, object]]
+) -> None:
+    reply = reply_of(_completion(text))
+
+    read = salvaged(reply, ["calculate"])
+
+    calls = [b for b in read.blocks if b.get("type") == "tool_use"]
+    assert [c["input"] for c in calls] == inputs
+    if not inputs:
+        assert read is reply, "nothing salvaged: the reply as it came"
+        return
+    assert read.stop_reason == "tool_use" and read.text == said and calls[0]["salvaged"] is True
+    assert read.usage == reply.usage, "billed as the server reported it"
+
+
+def test_a_reply_already_calling_tools_is_not_salvaged() -> None:
+    reply = reply_of(_calling("2 * 3", text=HERMES_LEAK))
+
+    assert salvaged(reply, ["calculate"]) is reply
+
+
+def test_a_leaked_call_is_run_by_the_tool_loop(offline_tokenizer: None) -> None:
+    fake = FakeOpenAI(_completion(SARVAM_LEAK), _completion("It is 0.18."))
+    llm = Llm("local", sdk=cast(object, fake))
+    ran: list[str] = []
+
+    done = llm.run_tools(ASKING, _dispatch(ran))
+
+    assert ran == ["18 / 100"] and done.message.text == "It is 0.18."
+    sent = cast(list[dict[str, object]], fake.sent[1]["messages"])
+    assert sent[-1] == {"role": "tool", "tool_call_id": "salvaged_0", "content": "8"}
 
 
 def test_a_session_stops_asking_at_its_turn_cap() -> None:

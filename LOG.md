@@ -1893,3 +1893,21 @@
     specialist has answered, for the rest of research and the memo.
   - ap-10 cited sources by description ("fundamentals cite_as TATAMOTORS:2025:profit",
     "read_headline") rather than by id, so every claim was refused as never retrieved.
+- 10-14: **all 20 probe questions in parallel on vLLM with calm thinking: 13 supported memos
+  of 19 finished, ap-06 stopped by hand as a failure; ~$2.60** (Sarvam and the Opus critic
+  $2.17, the L4 ~30 min with a 190 s cold start, ~$0.40). Transcripts
+  `runs/analyst/20261014-120750-sarvam-105b-ap-*.md`.
+  - Every claim supported on 9 (ap-01, 02, 03, 05, 10, 11, 13, 19, 20), most on 4 (ap-07, 08,
+    09, 18); a memo of no claims on ap-16; empty answers on ap-12 and ap-15; unreadable memos
+    on ap-04, ap-14 and ap-17. Up from 5 of 11 before calm thinking: ap-01, 07, 08 and 10 now
+    pass.
+  - **ap-06 looped: 13 identical `extract_figures` calls over seven passages**, each refused
+    with "the passage does not back 3309430000000.0 for revenue". The value is right: FY25#0338
+    prints "C 330,943 crore". Three faults compound:
+    1. the specialist, asked for "FY25 FY24" from an FY25 passage, also derived an FY24 revenue
+       from the growth rate (multiplying by 1.079 instead of dividing), which no passage prints,
+       so the check refused its whole reply;
+    2. the fallback, Sarvam, read the figure right but scaled it as `330943 * 10000000`, a call
+       the check does not recognise (it takes `N * 10**k`, the form the fine-tune learned);
+    3. one refused passage fails the whole call, so the six that passed were thrown away and the
+       generalist, calm by then, sent the same call again with nothing to change it.
