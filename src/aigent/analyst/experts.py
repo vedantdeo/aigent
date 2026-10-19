@@ -5,7 +5,6 @@ its card, its `…_expert` and a row in `BUILDERS`; nothing else names a special
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Callable, Mapping
 from typing import cast
@@ -15,7 +14,7 @@ from pydantic import JsonValue
 
 from aigent.analyst.cfg_analyst import GENERALIST_MODEL
 from aigent.analyst.router import Router
-from aigent.analyst.served import headline_reader, report_analyst
+from aigent.analyst.served import report_analyst
 from aigent.analyst.specialists import FigureJob, Invalid, Specialist
 from aigent.analyst.toolbox import Expert, Passage
 from aigent.extraction.figures import Figures
@@ -23,24 +22,6 @@ from aigent.llm.core import Llm
 
 # A card's description is the generalist's whole knowledge of a specialist: what it is for, when
 # to use it, and its limits, in that order.
-READ_HEADLINE_TOOL: ToolParam = {
-    "name": "read_headline",
-    "description": (
-        "Specialist for market results headlines. Use it for any headline about an Indian "
-        "listed company's results, rather than interpreting the headline yourself. It returns a "
-        "record: the company as an NSE ticker, the metric, the quarter, the direction and the "
-        "percentage change the headline states, with a cite_as to cite the headline by. Limits: "
-        "one headline at a time; a company the directory does not list is an error."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {"headline": {"type": "string", "description": "The headline, one line."}},
-        "required": ["headline"],
-        "additionalProperties": False,
-    },
-    "strict": True,
-}
-
 EXTRACT_FIGURES_TOOL: ToolParam = {
     "name": "extract_figures",
     "description": (
@@ -66,22 +47,6 @@ EXTRACT_FIGURES_TOOL: ToolParam = {
     },
     "strict": True,
 }
-
-
-def headline_expert(specialist: Specialist[str, dict[str, JsonValue]]) -> Expert:
-    """`read_headline` over `specialist`: one headline, trimmed, to its record as JSON, with the
-    headline and a `cite_as` a claim about it can cite."""
-
-    def answer(arguments: dict[str, object], evidence: Mapping[str, Passage], route: Router) -> str:
-        headline = arguments.get("headline")
-        if not isinstance(headline, str) or not headline.strip():
-            raise Invalid("headline must be one line of text")
-        given = headline.strip()
-        cite_as = f"headline:{hashlib.sha256(given.encode()).hexdigest()[:8]}"
-        record = route(specialist, given)
-        return json.dumps({**record, "headline": given, "cite_as": cite_as, "source": "headline"})
-
-    return Expert(READ_HEADLINE_TOOL, answer)
 
 
 def figures_expert(specialist: Specialist[FigureJob, Figures]) -> Expert:
@@ -118,9 +83,6 @@ def figures_expert(specialist: Specialist[FigureJob, Figures]) -> Expert:
 # client, the generalist and the model it is asked as. Sorted by client.
 BUILDERS: dict[str, Callable[[Llm, Llm, str | None], Expert]] = {
     "hostllm-analyst": lambda small, big, model: figures_expert(report_analyst(small, big, model)),
-    "hostllm-headline": lambda small, big, model: headline_expert(
-        headline_reader(small, big, model=model)
-    ),
 }
 
 

@@ -1,6 +1,6 @@
 """The generalist's tools in one place: a server's tools over MCP, and every specialist as a tool
 whose calls go through the router. Passages a search returns are kept as evidence, so a later call
-can name them by id, as are a fundamentals answer and any specialist's that carries a `cite_as`.
+can name them by id, as is a fundamentals answer, by its `cite_as`.
 """
 
 from __future__ import annotations
@@ -110,9 +110,6 @@ class Toolbox:
                     content = expert.answer(arguments, self.evidence, self.route)
                 except Invalid as refused:
                     return f"Error: {refused}", True
-                cited = _lookup(content)  # an answer that names its own cite_as is evidence
-                if cited is not None:
-                    self.evidence[cited.id] = cited
                 return content, False
         content, is_error = self.served(name, arguments)
         if name == SEARCH:

@@ -94,7 +94,6 @@ def test_a_generalist_that_cannot_be_built_is_refused(named: str, thinking: str)
     [
         ("hostllm-analyst", "hostllm", "hostllm-analyst"),
         ("hostllm-analyst", "vllm", "vllm-analyst"),
-        ("hostllm-headline", "vllm", "vllm-headline"),
     ],
 )
 def test_each_specialist_is_reached_on_the_engine_asked_for(
@@ -110,7 +109,9 @@ def test_an_engine_with_no_client_for_a_specialist_is_refused() -> None:
 
 def test_the_worst_case_is_every_ceiling_each_question_holds() -> None:
     each = MAX_USD_ANALYST_GENERALIST + MAX_USD_ANALYST_CRITIC
-    assert worst_case_usd(3) == pytest.approx(3 * (each + 2 * MAX_USD_ANALYST_SPECIALIST))
+    assert worst_case_usd(3) == pytest.approx(3 * (each + MAX_USD_ANALYST_SPECIALIST)), (
+        "one specialist"
+    )
 
 
 def _never(*args: object, **kwargs: object) -> None:

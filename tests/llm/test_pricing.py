@@ -281,10 +281,9 @@ def test_every_model_any_client_names_is_priced() -> None:
 
 
 def test_a_served_specialist_costs_what_hostllm_measured() -> None:
-    for adapter in ("headline-flavour", "report-analyst"):
-        assert (PRICES[adapter].input, PRICES[adapter].output) == (SERVED.input, SERVED.output)
-    # 574 prompt tokens and 36 of answer, a headline call: about a tenth of a cent.
-    assert cost_usd("headline-flavour", 574, 36) == pytest.approx(served_usd(574, 36))
+    served = PRICES["report-analyst"]
+    assert (served.input, served.output) == (SERVED.input, SERVED.output)
+    assert cost_usd("report-analyst", 574, 36) == pytest.approx(served_usd(574, 36))
 
 
 def test_no_client_lets_the_judge_grade_the_model_it_is() -> None:

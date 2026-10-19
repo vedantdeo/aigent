@@ -8,12 +8,9 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from pydantic import JsonValue
-from underhood.tooldata.labels import Label, check_call, printed
+from underhood.tooldata.labels import Label, check_call
 
 from aigent.extraction.figures import CHANGE, Figures, parse_figures
-from aigent.extraction.headlines import DIRECTIONS, METRICS, QUARTERS, Extraction, Resolver
-from aigent.llm.adapters.openai import record_in
 
 
 class Invalid(ValueError):
@@ -41,32 +38,6 @@ class Specialist[Job, Out]:
     ask: Callable[[Job], Told]
     fallback: Callable[[Job], Told]
     check: Callable[[Job, Told], Out]
-
-
-def check_headline(resolve: Resolver) -> Callable[[str, Told], dict[str, JsonValue]]:
-    """The headline reader's check: a record in the three vocabularies, its percentage printed in
-    the headline, and its company, if it names one, resolved to a ticker the record then carries."""
-
-    def check(headline: str, told: Told) -> dict[str, JsonValue]:
-        record = record_in(told.text, Extraction)
-        if record is None:
-            raise Invalid("the reply holds no headline record")
-        named = (
-            ("metric", record.metric, METRICS),
-            ("quarter", record.quarter, QUARTERS),
-            ("direction", record.direction, DIRECTIONS),
-        )
-        for name, value, vocabulary in named:
-            if value not in vocabulary:
-                raise Invalid(f"{name} {value!r} is not one of {', '.join(vocabulary)}")
-        if record.change_pct is not None and abs(record.change_pct) not in printed(headline):
-            raise Invalid(f"the headline prints no {record.change_pct}")
-        ticker = resolve(record.company) if record.company else None
-        if record.company and ticker is None:
-            raise Invalid(f"{record.company!r} is not a company the directory lists")
-        return {**record.model_dump(), "ticker": ticker}
-
-    return check
 
 
 @dataclass(frozen=True)

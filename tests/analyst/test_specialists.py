@@ -1,58 +1,14 @@
-"""What each specialist's check accepts and refuses."""
+"""What the report analyst's check accepts and refuses."""
 
 from __future__ import annotations
 
 import pytest
 
-from aigent.analyst.specialists import (
-    FigureJob,
-    Invalid,
-    Told,
-    canonical,
-    check_figures,
-    check_headline,
-)
-from aigent.extraction.headlines import Resolver
-
-RECORD = (
-    '{"company": "Infy", "metric": "profit", "quarter": "Q2", "direction": "up", '
-    '"change_pct": 11.0}'
-)
-HEADLINE = "Infy Q2 profit rises 11% on deal wins"
+from aigent.analyst.specialists import FigureJob, Invalid, Told, canonical, check_figures
 
 
 def told(text: str, *calls: str) -> Told:
     return Told(text, 0.0, 0, 0, calls)
-
-
-def test_a_headline_record_that_passes_carries_its_ticker() -> None:
-    record = check_headline(Resolver())(HEADLINE, told(f"Here it is: {RECORD}"))
-
-    assert record["ticker"] == "INFY" and record["change_pct"] == 11.0, record
-
-
-def test_a_headline_naming_no_company_passes_with_no_ticker() -> None:
-    sector = RECORD.replace('"Infy"', "null")
-
-    assert (
-        check_headline(Resolver())("IT sector Q2 profit rises 11%", told(sector))["ticker"] is None
-    )
-
-
-@pytest.mark.parametrize(
-    ("reply", "reason"),
-    [
-        pytest.param("I could not tell.", "no headline record", id="no JSON"),
-        pytest.param(RECORD.replace("profit", "growth"), "metric 'growth'", id="a metric made up"),
-        pytest.param(RECORD.replace("Q2", "Q5"), "quarter 'Q5'", id="a quarter made up"),
-        pytest.param(RECORD.replace('"up"', '"rising"'), "direction 'rising'", id="a direction"),
-        pytest.param(RECORD.replace("11.0", "12.5"), "12.5", id="a percentage not printed"),
-        pytest.param(RECORD.replace("Infy", "Infoworks"), "'Infoworks'", id="an unknown company"),
-    ],
-)
-def test_a_headline_record_that_cannot_be_trusted_is_refused(reply: str, reason: str) -> None:
-    with pytest.raises(Invalid, match=reason):
-        check_headline(Resolver())(HEADLINE, told(reply))
 
 
 JOB = FigureJob(

@@ -4,7 +4,6 @@ specialists', evidence kept from each search, and a specialist call answered thr
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from typing import cast
 
@@ -14,10 +13,8 @@ from aigent.analyst import experts as listed
 from aigent.analyst.experts import (
     BUILDERS,
     EXTRACT_FIGURES_TOOL,
-    READ_HEADLINE_TOOL,
     experts,
     figures_expert,
-    headline_expert,
 )
 from aigent.analyst.specialists import FigureJob, Specialist, Told, check_figures
 from aigent.analyst.toolbox import Passage, Toolbox, passages_in
@@ -28,7 +25,7 @@ from aigent.mcp_server import build_server
 from aigent.retrieval.chunk import context_block
 
 from ..conftest import PASSAGES, FakeFilings, FakeSearch
-from .conftest import DIVIDEND, FIGURE, box, never, record, search, told
+from .conftest import DIVIDEND, FIGURE, box, never, search, told
 
 
 def test_a_search_result_s_passages_are_read_back_with_their_ids() -> None:
@@ -43,14 +40,12 @@ def test_a_search_result_s_passages_are_read_back_with_their_ids() -> None:
     assert passages_in("No passages matched that query.") == []
 
 
-def test_the_generalist_is_shown_the_server_s_tools_and_both_specialists() -> None:
+def test_the_generalist_is_shown_the_server_s_tools_and_the_specialist() -> None:
     names = [tool["name"] for tool in box(search).tools]
 
-    assert names == ["search_filings", "read_headline", "extract_figures"]
-    assert dict(READ_HEADLINE_TOOL["input_schema"])["required"] == ["headline"]
-    for card in (READ_HEADLINE_TOOL, EXTRACT_FIGURES_TOOL):
-        said = card.get("description", "")
-        assert said.startswith("Specialist for ") and "Use it" in said and "Limits:" in said, said
+    assert names == ["search_filings", "extract_figures"]
+    said = EXTRACT_FIGURES_TOOL.get("description", "")
+    assert said.startswith("Specialist for ") and "Use it" in said and "Limits:" in said, said
     assert dict(EXTRACT_FIGURES_TOOL["input_schema"])["required"] == ["chunk_ids", "wanted"]
 
 
@@ -143,35 +138,14 @@ def test_a_call_that_succeeded_may_be_made_again() -> None:
     tools("search_filings", {"query": "dividend"})
 
     for _ in range(2):
-        _, is_error = tools("read_headline", {"headline": "Infy Q2 profit rises 11%"})
+        _, is_error = tools("extract_figures", {"chunk_ids": [DIVIDEND], "wanted": "dividend"})
         assert not is_error
     assert len(tools.route.routed) == 2
-
-
-def test_a_headline_is_read_through_the_router() -> None:
-    tools = box(search)
-
-    content, is_error = tools("read_headline", {"headline": "  Infy Q2 profit rises 11%\n"})
-
-    read = json.loads(content)
-    assert not is_error and read == {
-        "ticker": "INFY",
-        "headline": "Infy Q2 profit rises 11%",
-        "cite_as": read["cite_as"],
-        "source": "headline",
-    }
-    assert re.fullmatch(r"headline:[0-9a-f]{8}", read["cite_as"]), read["cite_as"]
-    assert [r.path for r in tools.route.routed] == ["specialist"]
-    cited = tools.evidence[read["cite_as"]]
-    assert "Infy Q2 profit rises 11%" in cited.text, "a claim about the headline can cite it"
-    again, _ = tools("read_headline", {"headline": "Infy Q2 profit rises 11%"})
-    assert json.loads(again)["cite_as"] == read["cite_as"], "one headline, one id"
 
 
 @pytest.mark.parametrize(
     ("name", "arguments", "says"),
     [
-        pytest.param("read_headline", {"headline": "  "}, "one line of text", id="no headline"),
         pytest.param(
             "extract_figures", {"chunk_ids": [], "wanted": "x"}, "at least one", id="no passages"
         ),
@@ -199,25 +173,23 @@ def test_a_bad_specialist_call_is_an_error_result_and_reaches_no_model(
 
 
 def test_an_answer_neither_model_gets_past_its_check_is_an_error_result() -> None:
-    def generalist(job: str) -> Told:
-        return told("")
+    tools = _figures_expert(lambda job: told(""))
 
-    tools = box(search)
-    failing = Specialist("read_headline", lambda job: told(""), generalist, record)
-    tools.experts = [headline_expert(failing)]
+    content, is_error = tools("extract_figures", {"chunk_ids": [DIVIDEND], "wanted": "dividend"})
 
-    content, is_error = tools("read_headline", {"headline": "Infy Q2 profit rises 11%"})
-
-    assert is_error and "no headline record" in content
+    assert is_error and "no figures" in content, content
     assert tools.route.routed[0].path is None
 
 
 def test_an_unreachable_specialist_fails_the_task_rather_than_the_call() -> None:
-    def down(job: str) -> Told:
-        raise SpecialistUnreachable("hostllm-headline did not answer in 2 tries")
+    def down(job: FigureJob) -> Told:
+        raise SpecialistUnreachable("hostllm-analyst did not answer in 2 tries")
+
+    tools = box(search, down)
+    tools("search_filings", {"query": "dividend"})
 
     with pytest.raises(SpecialistUnreachable):
-        box(search, headline=down)("read_headline", {"headline": "Infy Q2 profit rises 11%"})
+        tools("extract_figures", {"chunk_ids": [DIVIDEND], "wanted": "dividend"})
 
 
 def test_a_failed_search_adds_no_evidence_and_other_tools_pass_straight_through() -> None:
@@ -264,7 +236,7 @@ def test_a_fundamentals_answer_is_kept_as_evidence_under_its_cite_as() -> None:
     "served",
     [
         pytest.param(
-            ["search_filings", "read_headline"], id="a server's tool named as an expert is"
+            ["search_filings", "extract_figures"], id="a server's tool named as an expert is"
         ),
         pytest.param(["search_filings", "search_filings"], id="a server's tool listed twice"),
     ],
@@ -285,7 +257,7 @@ def test_the_list_builds_every_specialist_on_its_own_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     built: list[tuple[str, str, str]] = []
-    for name in ("headline_reader", "report_analyst"):
+    for name in ("report_analyst",):
 
         def build(
             small: str, big: str, model: str | None = "unset", name: str = name
@@ -301,6 +273,5 @@ def test_the_list_builds_every_specialist_on_its_own_client(
     assert list(BUILDERS) == sorted(BUILDERS), "the list keeps one canonical order"
     assert built == [
         ("report_analyst", "hostllm-analyst", "generalist as claude-haiku-4-5"),
-        ("headline_reader", "hostllm-headline", "generalist as claude-haiku-4-5"),
     ]
-    assert [expert.name for expert in made] == ["extract_figures", "read_headline"]
+    assert [expert.name for expert in made] == ["extract_figures"]

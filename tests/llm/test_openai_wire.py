@@ -27,11 +27,9 @@ from aigent.llm.adapters.cfg_hostllm import (
     COLD_START_TIMEOUT,
     FIGURE_ANSWER_HOSTLLM,
     FIGURE_ANSWER_VLLM,
-    HEADLINE,
     VLLM_ANALYST,
     VLLM_BASE_URL,
     VLLM_COLD_START_TIMEOUT,
-    VLLM_HEADLINE,
 )
 from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
 from aigent.llm.adapters.cfg_sarvam import CLIENT as SARVAM
@@ -318,7 +316,7 @@ def test_a_gateway_s_headers_come_from_the_variables_the_client_names(
     for name, value in HOSTLLM_ENV.items():
         monkeypatch.setenv(name, value)
 
-    client = OpenAI(HEADLINE).client
+    client = OpenAI(ANALYST).client
 
     assert client.api_key == "sk_host" and str(client.base_url).endswith("modal.run/v1/")
     assert client.default_headers["Modal-Key"] == "wk-id"
@@ -335,15 +333,12 @@ def test_a_client_without_a_header_s_variable_is_refused_before_anything_is_sent
     monkeypatch.delenv(unset)
 
     with pytest.raises(RuntimeError, match=unset):
-        _ = OpenAI(HEADLINE).client
+        _ = OpenAI(ANALYST).client
 
 
-def test_the_two_specialists_share_an_endpoint_and_differ_in_the_adapter_they_name() -> None:
-    assert (HEADLINE.model, ANALYST.model) == ("headline-flavour", "report-analyst")
-    assert replace(ANALYST, name="", model="", small_model="", max_tokens={}) == replace(
-        HEADLINE, name="", model="", small_model=""
-    ), "the analyst differs only in its adapter and its answer cap"
-    assert HEADLINE.timeout == COLD_START_TIMEOUT >= 180, "a request outlasts a cold start"
+def test_the_analyst_names_its_adapter_and_outlasts_a_cold_start() -> None:
+    assert ANALYST.model == ANALYST.small_model == "report-analyst"
+    assert ANALYST.timeout == COLD_START_TIMEOUT >= 180, "a request outlasts a cold start"
 
 
 def test_each_engine_gives_a_figures_answer_the_room_it_can_write_inside_modal_s_limit() -> None:
@@ -360,14 +355,8 @@ def test_both_sarvam_clients_wait_out_a_rate_limit_of_a_minute() -> None:
     assert patient == [(6, 60.0)] * 2
 
 
-@pytest.mark.parametrize(
-    ("ours", "theirs"),
-    [(ANALYST, VLLM_ANALYST), (HEADLINE, VLLM_HEADLINE)],
-    ids=["the analyst", "the headline reader"],
-)
-def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_and_how_long_it_waits(
-    ours: Client, theirs: Client
-) -> None:
+def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_and_how_long_it_waits() -> None:
+    ours, theirs = ANALYST, VLLM_ANALYST
     assert theirs.model == ours.model, "vLLM serves each adapter under the same name"
     same = replace(
         theirs,
@@ -385,7 +374,7 @@ def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_and_how_long_it
     ("client", "repo"),
     [
         pytest.param(LOCAL, LOCAL.model, id="a local model is its own tokenizer's repo"),
-        pytest.param(HEADLINE, "Qwen/Qwen3-4B", id="an adapter counts on its base's tokenizer"),
+        pytest.param(ANALYST, "Qwen/Qwen3-4B", id="an adapter counts on its base's tokenizer"),
         pytest.param(SARVAM, "sarvamai/sarvam-105b", id="a hosted id names the repo apart"),
     ],
 )

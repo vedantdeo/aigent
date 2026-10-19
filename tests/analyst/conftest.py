@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from pydantic import JsonValue
-
-from aigent.analyst.experts import figures_expert, headline_expert
+from aigent.analyst.experts import figures_expert
 from aigent.analyst.router import Router
-from aigent.analyst.specialists import FigureJob, Invalid, Specialist, Told, check_figures
+from aigent.analyst.specialists import FigureJob, Specialist, Told, check_figures
 from aigent.analyst.toolbox import Toolbox
 from aigent.retrieval.chunk import context_block
 
@@ -26,23 +24,15 @@ def never(job: object) -> Told:
     raise AssertionError("the generalist was asked")
 
 
-def record(job: str, said: Told) -> dict[str, JsonValue]:
-    if not said.text:
-        raise Invalid("the reply holds no headline record")
-    return {"ticker": said.text, "headline": job}
-
-
 def box(
     served: Callable[[str, dict[str, object]], tuple[str, bool]],
     figures: Callable[[FigureJob], Told] = lambda job: told('{"figures": [' + FIGURE + "]}"),
-    headline: Callable[[str], Told] = lambda job: told("INFY"),
 ) -> Toolbox:
     return Toolbox(
         served_tools=[{"name": "search_filings", "input_schema": {"type": "object"}}],
         served=served,
         route=Router(price=lambda i, o: 0.0),
         experts=[
-            headline_expert(Specialist("read_headline", headline, never, record)),
             figures_expert(Specialist("extract_figures", figures, never, check_figures)),
         ],
     )

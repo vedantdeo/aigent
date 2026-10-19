@@ -1,4 +1,4 @@
-"""The two specialists on scripted models: the prompt each adapter was trained on, the generalist as
+"""The report analyst on scripted models: the prompt its adapter was trained on, the generalist as
 the fallback, a dropped request sent once more, and the warm-up."""
 
 from __future__ import annotations
@@ -12,15 +12,11 @@ from openai.types.chat import ChatCompletion, ChatCompletionMessageFunctionToolC
 
 from aigent.analyst.cfg_analyst import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS
 from aigent.analyst.router import Router
-from aigent.analyst.served import headline_reader, reaching, report_analyst, warm_up
+from aigent.analyst.served import reaching, report_analyst, warm_up
 from aigent.analyst.specialists import FigureJob
-from aigent.config import SYNTHETIC_CLIENT, max_tokens
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
 from aigent.extraction.figures import figure_messages
-from aigent.extraction.headlines import VARIANTS, Extraction, headline_request
-from aigent.extraction.synthetic import wire_for
-from aigent.llm.adapters import spec
 from aigent.llm.adapters.cfg_hostllm import ANALYST, FIGURE_ANSWER_HOSTLLM
 from aigent.llm.core import Llm
 from aigent.llm.pricing import cost_usd
@@ -36,9 +32,6 @@ from ..conftest import (
     turns,
 )
 
-HEADLINE = "Infy Q2 profit rises 11% on deal wins"
-RECORD = Extraction(company="Infy", metric="profit", quarter="Q2", direction="up", change_pct=11.0)
-GARBLED = RECORD.model_copy(update={"metric": "growth"})
 JOB = FigureJob(
     passage="Revenue from operations stood at ₹ 2,345 crore; the EBITDA margin was 18%.",
     source="ITC-FY25",
@@ -65,47 +58,6 @@ def big(make_llm: MakeLlm, reply: object) -> Llm:
 
 def router() -> Router:
     return Router(price=lambda i, o: cost_usd(GENERALIST_MODEL, i, o))
-
-
-def test_a_headline_reaches_the_adapter_as_a_training_row_did(
-    make_llm: MakeLlm, offline_tokenizer: None
-) -> None:
-    llm, fake = small("hostllm-headline", completion(RECORD.model_dump_json()))
-
-    told = headline_reader(llm, big(make_llm, "unused")).ask(HEADLINE)
-
-    [sent] = fake.sent
-    trained = headline_request("row", HEADLINE, VARIANTS["zero_shot"], 0)
-    assert sent["messages"] == wire_for(SYNTHETIC_CLIENT).messages(trained, Extraction)
-    assert sent["model"] == "headline-flavour"
-    assert sent["max_tokens"] == max_tokens("HEADLINE", spec("hostllm-headline"))
-    assert (told.input_tokens, told.output_tokens) == (100, 20)
-    assert told.usd == pytest.approx(cost_usd("headline-flavour", 100, 20)) and told.usd > 0
-
-
-@pytest.mark.parametrize(
-    ("served", "path"),
-    [
-        pytest.param(RECORD, "specialist", id="a record that passes is the adapter's"),
-        pytest.param(GARBLED, "generalist", id="one off the vocabulary goes to the generalist"),
-    ],
-)
-def test_a_routed_headline_comes_back_with_its_ticker(
-    make_llm: MakeLlm, offline_tokenizer: None, served: Extraction, path: str
-) -> None:
-    llm, _ = small("hostllm-headline", completion(served.model_dump_json()))
-    route = router()
-
-    generalist, generalist_sdk = make_llm(lambda sent: RECORD)
-
-    record = route(headline_reader(llm, generalist), HEADLINE)
-
-    assert (record["ticker"], record["metric"]) == ("INFY", "profit")
-    assert [sent.model for sent in generalist_sdk.sent] == [GENERALIST_MODEL] * (
-        path == "generalist"
-    )
-    [logged] = route.routed
-    assert logged.path == path and (logged.generalist_usd > 0) is (path == "generalist")
 
 
 def test_figures_reach_the_adapter_on_its_trained_prompt_and_its_calls_are_run(
@@ -158,7 +110,6 @@ def test_figures_the_passage_does_not_back_go_to_the_generalist(
 def test_a_fallback_asks_the_generalist_as_the_model_it_was_given(
     make_llm: MakeLlm, offline_tokenizer: None
 ) -> None:
-    headlines, _ = small("hostllm-headline", completion(GARBLED.model_dump_json()))
     figures, _ = small("hostllm-analyst", completion(FIGURES.replace("0.18", "0.19")))
     calculating = turns(
         tool_turn(
@@ -167,16 +118,13 @@ def test_a_fallback_asks_the_generalist_as_the_model_it_was_given(
         ),
         FIGURES,
     )
-    generalist, sdk = make_llm(
-        lambda sent: RECORD if sent.schema is Extraction else calculating(sent)
-    )
+    generalist, sdk = make_llm(calculating)
     route = router()
 
-    route(headline_reader(headlines, generalist, model="claude-haiku-4-5"), HEADLINE)
     route(report_analyst(figures, generalist, model="claude-haiku-4-5"), JOB)
 
-    assert [logged.path for logged in route.routed] == ["generalist", "generalist"]
-    assert [sent.model for sent in sdk.sent] == ["claude-haiku-4-5"] * 3
+    assert [logged.path for logged in route.routed] == ["generalist"]
+    assert [sent.model for sent in sdk.sent] == ["claude-haiku-4-5"] * 2
 
 
 def test_a_call_to_any_tool_but_calculate_is_refused_and_runs_nothing(
@@ -224,17 +172,7 @@ def test_a_model_still_calculating_after_its_turns_has_no_answer_to_check(
 def test_a_request_the_endpoint_drops_is_sent_once_more(
     make_llm: MakeLlm, offline_tokenizer: None, dropped: Exception
 ) -> None:
-    llm, fake = small("hostllm-headline", dropped, completion(RECORD.model_dump_json()))
-
-    told = headline_reader(llm, big(make_llm, "unused")).ask(HEADLINE)
-
-    assert len(fake.sent) == 2 and '"Infy"' in told.text
-
-
-def test_figures_whose_request_is_dropped_are_asked_for_once_more(
-    make_llm: MakeLlm, offline_tokenizer: None
-) -> None:
-    llm, fake = small("hostllm-analyst", DROPPED, completion('{"figures": []}'))
+    llm, fake = small("hostllm-analyst", dropped, completion('{"figures": []}'))
 
     told = report_analyst(llm, big(make_llm, "unused")).ask(JOB)
 
@@ -244,12 +182,12 @@ def test_figures_whose_request_is_dropped_are_asked_for_once_more(
 def test_an_endpoint_that_stays_down_is_unreachable_and_the_generalist_is_not_asked(
     make_llm: MakeLlm, offline_tokenizer: None
 ) -> None:
-    llm, fake = small("hostllm-headline", DROPPED)
-    generalist, sdk = make_llm(lambda sent: RECORD)
+    llm, fake = small("hostllm-analyst", DROPPED)
+    generalist, sdk = make_llm(FIGURES)
     route = router()
 
-    with pytest.raises(SpecialistUnreachable, match="hostllm-headline did not answer in 2 tries"):
-        route(headline_reader(llm, generalist), HEADLINE)
+    with pytest.raises(SpecialistUnreachable, match="hostllm-analyst did not answer in 2 tries"):
+        route(report_analyst(llm, generalist), JOB)
     assert len(fake.sent) == 2 and sdk.sent == []
     assert route.routed[0].path is None and "unreachable" in str(route.routed[0].failure)
 
@@ -260,20 +198,20 @@ def test_a_refusal_that_is_not_the_endpoint_being_down_is_not_retried(
     denied = openai.AuthenticationError(
         "bad proxy token", response=httpx.Response(401, request=REQUEST), body=None
     )
-    llm, fake = small("hostllm-headline", denied)
+    llm, fake = small("hostllm-analyst", denied)
 
     with pytest.raises(openai.AuthenticationError):
-        headline_reader(llm, big(make_llm, "unused")).ask(HEADLINE)
+        report_analyst(llm, big(make_llm, "unused")).ask(JOB)
     assert len(fake.sent) == 1
 
 
 def test_the_warm_up_asks_the_endpoint_for_one_token(offline_tokenizer: None) -> None:
-    llm, fake = small("hostllm-headline", DROPPED, completion("ok", completion=1))
+    llm, fake = small("hostllm-analyst", DROPPED, completion("ok", completion=1))
 
     warm_up(llm)
 
     assert [sent["max_tokens"] for sent in fake.sent] == [1, 1], "sent again after a drop"
-    assert fake.sent[0]["model"] == "headline-flavour" and llm.spent_usd > 0
+    assert fake.sent[0]["model"] == "report-analyst" and llm.spent_usd > 0
 
 
 def test_reaching_gives_up_after_its_tries(offline_tokenizer: None) -> None:

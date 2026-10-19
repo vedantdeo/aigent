@@ -1,4 +1,4 @@
-"""The two specialists wired to models: each job on the prompt its fine-tune was trained on, put to
+"""The report analyst wired to models: each job on the prompt its fine-tune was trained on, put to
 the served adapter and, as its fallback, to the generalist; and the request that warms the endpoint.
 """
 
@@ -7,24 +7,15 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import cast
 
-from pydantic import JsonValue
-
 from aigent.analyst.cfg_analyst import (
     GENERALIST_MODEL,
     SPECIALIST_TOOL_TURNS,
     SPECIALIST_TRIES,
     max_tokens,
 )
-from aigent.analyst.specialists import (
-    FigureJob,
-    Specialist,
-    Told,
-    check_figures,
-    check_headline,
-)
+from aigent.analyst.specialists import FigureJob, Specialist, Told, check_figures
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import Figures, figure_messages
-from aigent.extraction.headlines import VARIANTS, Extraction, Resolver, headline_request
 from aigent.llm.adapters import spec
 from aigent.llm.adapters.openai import UNREACHABLE
 from aigent.llm.core import Llm, Request
@@ -63,33 +54,6 @@ def _told(
         sum(reply.usage.input_tokens for reply in replies),
         sum(reply.usage.output_tokens for reply in replies),
         tuple(calls),
-    )
-
-
-def _read(llm: Llm, model: str | None = None) -> Callable[[str], Told]:
-    cap = max_tokens("HEADLINE", spec(llm.client))
-
-    def read(headline: str) -> Told:
-        before = llm.spent_usd
-        request = headline_request("read_headline", headline, VARIANTS["zero_shot"], cap, model)
-        reply = llm.parse(request, Extraction)
-        text = reply.text or (reply.parsed.model_dump_json() if reply.parsed else "")
-        return _told(llm, before, text, [reply])
-
-    return read
-
-
-def headline_reader(
-    small: Llm, big: Llm, resolve: Resolver | None = None, model: str | None = GENERALIST_MODEL
-) -> Specialist[str, dict[str, JsonValue]]:
-    """`read_headline`: a headline to its record, on the zero-shot prompt the adapter was trained
-    on; `small` serves the adapter, `big` is the generalist, asked as `model`."""
-    served = _read(small)
-    return Specialist(
-        "read_headline",
-        lambda headline: reaching(small, lambda: served(headline)),
-        _read(big, model),
-        check_headline(resolve if resolve is not None else Resolver()),
     )
 
 
