@@ -40,9 +40,10 @@ class SourcedFigure(Figure):
     basis: str | None = Field(
         default=None,
         description=(
-            "consolidated or standalone for a company-wide figure, as the passage's statement or "
-            "heading says; for one segment's figure, the segment's name copied from the passage; "
-            "null for a figure that has no basis, such as a headcount."
+            "Only for a figure from the financial statements or segment information: "
+            "consolidated or standalone, as the statement or its heading says, or for one "
+            "segment's figure the segment's name copied from the passage. Null for anything "
+            "else, such as a count, customers or business an initiative sourced."
         ),
     )
     chunk_id: str = Field(description="The id of the passage the figure is printed in.")
@@ -73,7 +74,8 @@ SYSTEM = (
     "the current one, so both years usually come from one passage. When two searches find "
     "nothing, answer with no figures rather than guess.\n"
     "Reading. The question may also ask about other companies or other reports: answer only for "
-    "the company and report named below. Take figures on the basis the question names "
+    "the company and report named in <company> and <report>, and never search for another "
+    "company; the rest of the question is not yours. Take figures on the basis the question names "
     "(consolidated, standalone or a segment) and, when it names none, consolidated. In a table, "
     "read each number by its row and its column heading: a column is a year only when its "
     "heading says so, and a segment table's columns are segments. When the question asks for "

@@ -67,8 +67,9 @@ class Figure(BaseModel):
             "never a tax asset or liability; "
             "revenue is revenue from operations, sales or turnover; debt is what the company owes, "
             "its borrowings and the loan facilities it took, not the loans and advances it makes; "
-            "receivables are what customers owe the company; equity is total equity, net worth, "
-            "shareholders' funds or share capital, as an amount; assets are total assets or a "
+            "receivables are what customers owe the company; equity is an amount of money, total "
+            "equity, net worth, shareholders' funds or share capital, and a count of shares is "
+            "other; assets are total assets or a "
             "class of them the rest do not name, such as segment, current or fixed assets; "
             "volume is units sold or produced, tonnes or capacity; customers "
             "includes subscribers and users. A change in a named metric, a rise or a fall, as a "
@@ -115,11 +116,11 @@ class Figure(BaseModel):
     description: str | None = Field(
         default=None,
         description=(
-            "When metric is other, the word or few words of the passage that name what is "
-            "counted or measured, copied verbatim: 'branches', 'retail outlets', 'vessels'. "
-            "For a named metric, 'change' when the figure is its change, else null: only a named "
-            "metric takes 'change', and it takes nothing else. An other figure's description "
-            "names the thing itself, even when the figure is its change."
+            "When metric is other, the word or few words of the passage, five at most, that name "
+            "what is counted or measured, copied verbatim: 'branches', 'retail outlets', "
+            "'vessels'. For a named metric, 'change' when the figure is its change, else null: "
+            "only a named metric takes 'change', and it takes nothing else. An other figure's "
+            "description names the thing itself, even when the figure is its change."
         ),
     )
 
@@ -206,7 +207,7 @@ def same_figure(want: Figure, got: Figure) -> bool:
     )
 
 
-def _described(figure: Figure, passage: object) -> bool:
+def described(figure: Figure, passage: object) -> bool:
     """A description verbatim from the passage iff the metric is other; on a named metric,
     none, or exactly `CHANGE` for a change in it."""
     if figure.metric != "other":
@@ -233,7 +234,7 @@ def figures_match(case: Case, outcome: Outcome) -> Score:
         else:
             left.remove(hit)
     found = len(want) - len(missed)
-    undescribed = [f for f in got if not _described(f, case.input.get("passage"))]
+    undescribed = [f for f in got if not described(f, case.input.get("passage"))]
     detail = "; ".join(
         [f"missed {f.metric} {f.value:g} {f.unit} {f.year}" for f in missed]
         + [f"extra {f.metric} {f.value:g} {f.unit} {f.year}" for f in left]

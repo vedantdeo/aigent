@@ -4,6 +4,7 @@ time, a trajectory kept or refused, the rows in one order, the estimate, the run
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import cast
 
@@ -12,6 +13,7 @@ from pydantic import JsonValue
 
 from aigent.analyst import teach as module
 from aigent.analyst.served import research
+from aigent.analyst.specialists import Found, Invalid, Passage, Told
 from aigent.analyst.teach import (
     Asked,
     estimate,
@@ -27,11 +29,14 @@ from aigent.analyst.teach import (
     select,
     task,
     teach,
+    undescribed,
+    worked,
     write_rows,
 )
-from aigent.extraction.figures import Figure
+from aigent.extraction.figures import Labelled
 from aigent.extraction.research import SourcedFigure
 from aigent.llm.core import Dispatch, Llm
+from aigent.llm.messages import Msg
 from aigent.llm.pricing import cost_usd
 from aigent.retrieval.chunk import Chunk
 
@@ -45,14 +50,19 @@ CHUNK = Chunk(
     start=0,
     page=8,
 )
-REVENUE = Figure(metric="revenue", value=446850000000.0, unit="INR", year=2024)
-UNSCALED = Figure(metric="revenue", value=44685.0, unit="INR", year=2024)
-GROWTH = Figure(metric="revenue", value=0.23, unit=None, year=2024, description="change")
+REVENUE = Labelled(
+    metric="revenue", value=446850000000.0, unit="INR", year=2024, call="44685 * 10**7"
+)
+UNSCALED = Labelled(metric="revenue", value=44685.0, unit="INR", year=2024, call=None)
+GROWTH = Labelled(
+    metric="revenue", value=0.23, unit=None, year=2024, description="change", call="23 / 100"
+)
 ASKED = Asked(CHUNK.id, "What was Bajaj Auto's revenue in FY2023-24?", (REVENUE,))
 NAMES = {"BAJAJ-AUTO": "Bajaj Auto Limited"}
 
 
-def sourced(*figures: Figure, cited: str = CHUNK.id) -> str:
+def sourced(*figures: Labelled, cited: str = CHUNK.id) -> str:
+    """A teacher's answer: each figure with its call and the passage it cites."""
     rows = [{**f.model_dump(), "chunk_id": cited} for f in figures]
     return json.dumps({"figures": rows})
 
@@ -66,14 +76,8 @@ def searched(asked: list[tuple[str, str]]) -> Dispatch:
 
 
 def teacher(make_llm: MakeLlm, answer: str) -> tuple[Llm, FakeMessages]:
-    """A teacher that searches, calculates the crore, then answers `answer`."""
-    return make_llm(
-        turns(
-            tool_turn(("s1", "search_report", {"query": "revenue"})),
-            tool_turn(("c1", "calculate", {"expression": "44685 * 10**7"})),
-            answer,
-        )
-    )
+    """A teacher that searches, then answers `answer`, writing its calls for code to make."""
+    return make_llm(turns(tool_turn(("s1", "search_report", {"query": "revenue"})), answer))
 
 
 @pytest.mark.parametrize(
@@ -93,7 +97,9 @@ def test_a_question_s_job_is_its_chunk_s_report(chunk_id: str, ticker: str, year
 def test_only_questions_with_a_labelled_figure_are_asked_in_the_current_vocabulary(
     tmp_path: Path,
 ) -> None:
-    equity = Figure(metric="other", value=5.0, unit="INR", year=2024, description="Total equity")
+    equity = Labelled(
+        metric="other", value=5.0, unit="INR", year=2024, description="Total equity", call=None
+    )
     rows = [
         {"chunk_id": CHUNK.id, "question": "a", "figures": [REVENUE.model_dump()]},
         {"chunk_id": CHUNK.id, "question": "b", "figures": []},
@@ -107,7 +113,9 @@ def test_only_questions_with_a_labelled_figure_are_asked_in_the_current_vocabula
     assert c.labels[0].metric == "equity", "a v3 other label read as the metric it now is"
 
 
-OTHER = Figure(metric="other", value=95.0, unit=None, year=2024, description="countries")
+OTHER = Labelled(
+    metric="other", value=95.0, unit=None, year=2024, description="countries", call=None
+)
 
 
 def _many(others: int = 5) -> list[Asked]:
@@ -216,7 +224,9 @@ def test_a_v3_other_label_is_read_in_the_current_vocabulary(
     label: tuple[str, str | None], metric: str
 ) -> None:
     description, unit = label
-    old = Figure(metric="other", value=1.0, unit=unit, year=2024, description=description)
+    old = Labelled(
+        metric="other", value=1.0, unit=unit, year=2024, description=description, call=None
+    )
 
     now = relabelled(old)
 
@@ -276,7 +286,7 @@ def test_a_training_search_reads_one_report_and_refuses_the_rest_as_data(
     ],
 )
 def test_a_label_is_found_on_metric_value_unit_and_year(
-    figures: list[Figure], lost: list[Figure]
+    figures: list[Labelled], lost: list[Labelled]
 ) -> None:
     answered = [SourcedFigure(**f.model_dump(), chunk_id=CHUNK.id) for f in figures]
 
@@ -292,7 +302,8 @@ def test_a_trajectory_that_passes_and_finds_its_labels_is_kept_with_every_turn(
     row = teach(ASKED, research(llm, searched(asked), "claude-sonnet-5", NAMES))
 
     assert row["kept"] is True and row["why"] is None, row["why"]
-    assert row["figures"] == [{**REVENUE.model_dump(), "basis": None, "chunk_id": CHUNK.id}]
+    figure = {**REVENUE.model_dump(exclude={"call"}), "basis": None, "chunk_id": CHUNK.id}
+    assert row["figures"] == [figure], "the answer as trained: no call in it"
     assert (row["ticker"], row["year"]) == ("BAJAJ-AUTO", 2024)
     roles = [m["role"] for m in cast(list[dict[str, object]], row["conversation"])]
     assert roles == ["user", "assistant", "user", "assistant", "user", "assistant"]
@@ -312,6 +323,11 @@ def test_a_trajectory_that_passes_and_finds_its_labels_is_kept_with_every_turn(
             id="a figure from a passage never read",
         ),
         pytest.param("I could not find it.", "no figures", id="no figures at all"),
+        pytest.param(
+            sourced(UNSCALED.model_copy(update={"metric": "other", "description": "sales"})),
+            "described 'sales'",
+            id="checked, but a description not in its passage",
+        ),
     ],
 )
 def test_a_trajectory_that_fails_is_kept_out_with_why(
@@ -322,6 +338,107 @@ def test_a_trajectory_that_fails_is_kept_out_with_why(
     row = teach(ASKED, research(llm, searched([]), "claude-sonnet-5", NAMES))
 
     assert row["kept"] is False and why in str(row["why"]), row["why"]
+
+
+PRINTED = Labelled(metric="profit", value=132180.0, unit="INR", year=2025, call=None)
+SCALED = PRINTED.model_copy(update={"value": 132180.0 * 10**7, "call": "132180 * 10**7"})
+
+
+@pytest.mark.parametrize(
+    ("label", "value", "found"),
+    [
+        pytest.param(PRINTED, 132180.0, True, id="the value as printed"),
+        pytest.param(PRINTED, 132180.0 * 10**6, True, id="a printed label, scaled by millions"),
+        pytest.param(PRINTED, 132180.0 * 10**5, True, id="a printed label, scaled by lakhs"),
+        pytest.param(PRINTED, 132180.0 * 10**4, False, id="ten thousand is no named scale"),
+        pytest.param(SCALED, 132180.0 * 10**7 * 10**3, False, id="a label already scaled"),
+    ],
+)
+def test_a_label_written_as_printed_is_found_at_any_named_scale(
+    label: Labelled, value: float, found: bool
+) -> None:
+    answered = SourcedFigure(**label.model_copy(update={"value": value}).model_dump(), chunk_id="x")
+
+    assert (missed([label], [answered]) == []) is found
+
+
+def _told(text: str, turns_before: int = 1) -> Told:
+    """A teacher's reply after `turns_before` search turns."""
+    searching: list[Msg] = [{"role": "user", "content": "q"}]
+    for n in range(turns_before):
+        asked: Msg = {"role": "assistant", "content": [{"type": "tool_use", "id": f"s{n}"}]}
+        result: Msg = {"role": "user", "content": [{"type": "tool_result", "tool_use_id": f"s{n}"}]}
+        searching += [asked, result]
+    final: Msg = {"role": "assistant", "content": [{"type": "text", "text": text}]}
+    return Told(text, 0.0, 0, 0, (), (), (*searching, final))
+
+
+def test_the_teacher_s_calls_become_one_calculate_turn_before_the_answer() -> None:
+    told = worked(_told("Here they are: " + sourced(REVENUE, GROWTH)))
+
+    *_, asking, results, answer = told.conversation
+    uses = cast(list[dict[str, object]], asking["content"])
+    assert [u["input"] for u in uses] == [
+        {"expression": "44685 * 10**7"},
+        {"expression": "23 / 100"},
+    ]
+    assert [r["content"] for r in cast(list[dict[str, object]], results["content"])] == [
+        "446850000000.0",
+        "0.23",
+    ]
+    assert told.calls == ("44685 * 10**7", "23 / 100")
+    assert "call" not in told.text and told.text.startswith('{"figures"'), "the answer, no prose"
+    assert cast(list[dict[str, str]], answer["content"])[0]["text"] == told.text
+
+
+def test_figures_printed_in_full_take_no_calculate_turn() -> None:
+    told = worked(_told(sourced(UNSCALED)))
+
+    assert [m["role"] for m in told.conversation] == ["user", "assistant", "user", "assistant"]
+    assert told.calls == ()
+
+
+@pytest.mark.parametrize(
+    ("text", "searches", "why"),
+    [
+        pytest.param(
+            sourced(REVENUE.model_copy(update={"call": "44685 * 10**6"})),
+            1,
+            "44685 * 10**6 gives 44685000000.0, not 446850000000.0",
+            id="a call that does not give its value",
+        ),
+        pytest.param("I could not find it.", 1, "no figures", id="no figures"),
+        pytest.param(sourced(REVENUE), 5, "more than the loop's 6 turns", id="too many turns"),
+    ],
+)
+def test_a_teacher_s_answer_that_cannot_be_worked_is_refused(
+    text: str, searches: int, why: str
+) -> None:
+    with pytest.raises(Invalid, match=re.escape(why)):
+        worked(_told(text, searches))
+
+
+@pytest.mark.parametrize(
+    ("figure", "bad"),
+    [
+        pytest.param(OTHER.model_copy(update={"description": "Revenue"}), False, id="verbatim"),
+        pytest.param(
+            OTHER.model_copy(update={"description": "an all-time high at ₹ 44,685"}),
+            True,
+            id="six words, though verbatim",
+        ),
+        pytest.param(OTHER.model_copy(update={"description": "sales"}), True, id="not in it"),
+        pytest.param(UNSCALED.model_copy(update={"description": "growth"}), True, id="named, said"),
+        pytest.param(GROWTH, False, id="a named metric's change"),
+    ],
+)
+def test_a_description_keeps_its_rule_or_the_trajectory_is_dropped(
+    figure: Labelled, bad: bool
+) -> None:
+    sourced_figure = SourcedFigure(**figure.model_dump(), chunk_id=CHUNK.id)
+    read = Passage(CHUNK.id, "", CHUNK.text)
+
+    assert bool(undescribed(Found([sourced_figure], {CHUNK.id: read}))) is bad
 
 
 def test_rows_are_written_in_one_order_and_a_missing_file_is_none(tmp_path: Path) -> None:
@@ -386,7 +503,10 @@ def test_a_run_writes_its_rows_and_a_second_run_skips_what_is_done(
     main(["run", "--yes", "--workers", "1", "--out", str(out)])
 
     [row] = read_rows(out)
-    assert row["kept"] is True and sent == 3
+    assert row["kept"] is True and sent == 2, "a search and the answer: code makes the call"
+    first = sdk.sent[0]
+    assert [t["name"] for t in cast(list[dict[str, object]], first.tools)] == ["search_report"]
+    assert module.TEACHER_NOTE in str(first.system), "the teacher is told to write its calls"
     assert len(sdk.sent) == sent, "nothing sent for a question already done"
 
 

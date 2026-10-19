@@ -1,7 +1,9 @@
 """v4's training trajectories: the teacher runs the report analyst's own loop over the held-out
-training reports, on the questions written for v3, and a trajectory is kept when it passes the
-specialist's check and finds every figure labelled for its question. `export` hands the kept ones
-to underhood. Estimates and exits unless `--yes`; a run skips the questions its file already holds.
+training reports, on the questions written for v3, writing each figure's calculate call for code
+to make, as v3's teacher did; a trajectory is kept when it passes the specialist's check, its
+descriptions keep their rule, and it finds every figure labelled for its question. `export` hands
+the kept ones to underhood. Estimates and exits unless `--yes`; a run skips the questions its file
+already holds.
 
 uv run python -m aigent.analyst.teach run --sample 20
 uv run python -m aigent.analyst.teach run --yes
@@ -12,24 +14,26 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import re
 import sys
 import threading
 from collections.abc import Callable, Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
-from pydantic import JsonValue
+from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from aigent.analyst.cfg_analyst import SPECIALIST_TOOL_TURNS, max_tokens
 from aigent.analyst.run import in_parallel
 from aigent.analyst.served import opening, research, turn_request
-from aigent.analyst.specialists import FigureJob, Invalid, Told, check_figures
+from aigent.analyst.specialists import FigureJob, Found, Invalid, Told, check_figures
 from aigent.analyst.toolbox import SEARCH
 from aigent.config import (
     CLIENT,
+    FIGURE_DESCRIPTION_WORDS,
     MAX_USD_RESEARCH_TEACH,
     RESEARCH_TEACH_CACHE,
     RESEARCH_TEACH_NAMED_SHARE,
@@ -44,21 +48,31 @@ from aigent.config import (
     SEARCH_RESULT_TOKENS,
 )
 from aigent.extraction.figures import TOOL as CALCULATE_FUNCTION
-from aigent.extraction.figures import Figure, same_figure
+from aigent.extraction.figures import Figure, Labelled, described, same_figure
 from aigent.extraction.research import REPORT_SEARCH_TOOL, SourcedFigure, research_messages
 from aigent.llm.adapters import spec
 from aigent.llm.adapters.cfg_hostllm import ANALYST
 from aigent.llm.adapters.openai import OpenAI, function_tool
 from aigent.llm.core import Dispatch, Llm, Request
-from aigent.llm.messages import Msg
+from aigent.llm.messages import Block, Msg, Tool
 from aigent.llm.pricing import Budget, cost_usd
 from aigent.retrieval.chunk import Chunk, Inventory, by_sentence, context_block
 from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
 from aigent.retrieval.rank import Indexes, build_ranker
-from aigent.tools import fence
+from aigent.tools import CALCULATOR_TOOL, execute_tool, fence
 
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"
 TRAJECTORIES = TRAINING_DIR / "research-trajectories.jsonl"
+SCALE_POWERS = (3, 5, 6, 7, 9)  # thousand, lakh, million, crore, billion
+# What the teacher is told beyond the trained prompt: it writes each call, and code makes it.
+TEACHER_NOTE = (
+    "You are writing a worked example of this job and have no calculate tool here. Give each "
+    "figure a call instead: the calculate expression behind its value, the number as printed "
+    "times its scale or over 100, '1,250 crore' is '1250 * 10**7' and '7.25%' is '7.25 / 100', "
+    "or null when the number is printed in full. Never write a scaled amount or a fraction "
+    "without its call."
+)
+TEACHER_TOOLS: tuple[Tool, ...] = (REPORT_SEARCH_TOOL,)
 
 # The metrics added on 2026-10-19 and the v3 `other` descriptions each reads back, METRICS order.
 RELABEL: dict[str, re.Pattern[str]] = {
@@ -79,7 +93,7 @@ class Asked:
 
     chunk_id: str
     question: str
-    labels: tuple[Figure, ...]
+    labels: tuple[Labelled, ...]
     paired: bool = False
 
     @property
@@ -99,7 +113,7 @@ def companies(manifest: Path = TRAINING_MANIFEST) -> dict[str, str]:
     return {entry["ticker"]: entry["company"] for entry in documents.values()}
 
 
-def relabelled(label: Figure) -> Figure:
+def relabelled(label: Labelled) -> Labelled:
     """A v3 label in the current vocabulary: an `other` whose description names an added metric
     becomes that metric, money only, but for the tax rate."""
     if label.metric != "other" or not label.description:
@@ -117,7 +131,7 @@ def load_asked(answers: Path = ANSWERS) -> list[Asked]:
     found: list[Asked] = []
     for line in answers.read_text(encoding="utf-8").splitlines():
         row = json.loads(line)
-        labels = tuple(relabelled(Figure.model_validate(f)) for f in row["figures"])
+        labels = tuple(relabelled(Labelled.model_validate(f)) for f in row["figures"])
         if labels:
             found.append(Asked(row["chunk_id"], row["question"], labels))
     return found
@@ -251,25 +265,103 @@ def training_search(cache: bool = True) -> Dispatch:
     return report_search(find, {document.doc_id for document in documents})
 
 
-def missed(labels: Sequence[Figure], figures: Sequence[SourcedFigure]) -> list[Figure]:
-    """The labelled figures no answered figure matches on metric, value, unit and year."""
-    return [label for label in labels if not any(same_figure(label, f) for f in figures)]
+def found_as(label: Labelled, figure: Figure) -> bool:
+    """Whether `figure` is `label`: the same metric, value, unit and year, or, for a label written
+    as printed, the value a named scale gives it, which the label's chunk may not have shown."""
+    if same_figure(label, figure):
+        return True
+    scaled = (label.model_copy(update={"value": label.value * 10**k}) for k in SCALE_POWERS)
+    return label.call is None and any(same_figure(s, figure) for s in scaled)
+
+
+def missed(labels: Sequence[Labelled], figures: Sequence[Figure]) -> list[Labelled]:
+    """The labelled figures no answered figure is."""
+    return [label for label in labels if not any(found_as(label, f) for f in figures)]
+
+
+class TaughtFigure(SourcedFigure):
+    """A teacher's figure: with the calculate call behind its value, which code then makes."""
+
+    call: str | None = Field(description=Labelled.model_fields["call"].description)
+
+
+class Taught(BaseModel):
+    figures: list[TaughtFigure]
+
+
+def _taught(text: str) -> Taught | None:
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        return Taught.model_validate(json.loads(text[start : end + 1]))
+    except (ValueError, ValidationError):
+        return None
+
+
+def worked(told: Told) -> Told:
+    """The teacher's trajectory as the specialist runs it: its searches, then every figure's call
+    made as one calculate turn, then the answer without the calls. Invalid for a reply holding no
+    figures, a call that does not give its figure's value, or more turns than the loop allows."""
+    taught = _taught(told.text)
+    if taught is None:
+        raise Invalid("the reply holds no figures")
+    called = [f for f in taught.figures if f.call]
+    turns: list[Msg] = []
+    if called:
+        uses: list[Block] = []
+        results: list[Block] = []
+        for n, figure in enumerate(called):
+            expression = str(figure.call)
+            content, is_error = execute_tool(CALCULATOR_TOOL["name"], {"expression": expression})
+            try:
+                gives = float(content)
+            except ValueError:
+                is_error, gives = True, math.nan
+            if is_error or not math.isclose(gives, figure.value, rel_tol=1e-9, abs_tol=1e-12):
+                raise Invalid(f"{expression} gives {content}, not {figure.value}")
+            use = {"type": "tool_use", "id": f"calc_{n}", "name": "calculate"}
+            uses.append({**use, "input": {"expression": expression}})
+            results.append({"type": "tool_result", "tool_use_id": f"calc_{n}", "content": content})
+        turns = [{"role": "assistant", "content": uses}, {"role": "user", "content": results}]
+    answer = json.dumps({"figures": [f.model_dump(exclude={"call"}) for f in taught.figures]})
+    final: Msg = {"role": "assistant", "content": [{"type": "text", "text": answer}]}
+    conversation = (*told.conversation[:-1], *turns, final)
+    if sum(m["role"] == "assistant" for m in conversation) > SPECIALIST_TOOL_TURNS:
+        raise Invalid(f"more than the loop's {SPECIALIST_TOOL_TURNS} turns")
+    calls = tuple(str(f.call) for f in called)
+    return replace(told, text=answer, calls=calls, conversation=conversation)
+
+
+def undescribed(found: Found) -> list[str]:
+    """The figures whose description breaks its rule: verbatim from the passage and at most
+    `FIGURE_DESCRIPTION_WORDS` words for an other figure, none or 'change' for a named one."""
+    bad: list[str] = []
+    for f in found.figures:
+        long = f.metric == "other" and len((f.description or "").split()) > FIGURE_DESCRIPTION_WORDS
+        if long or not described(f, found.passages[f.chunk_id].text):
+            bad.append(f"{f.metric} {f.value:g} described {f.description!r}")
+    return bad
 
 
 def teach(asked: Asked, run: Callable[[FigureJob], Told]) -> dict[str, JsonValue]:
-    """One trajectory as a row: the question, every turn, the figures, and whether it is kept —
-    passing the specialist's check and finding every label — or why not."""
+    """One trajectory as a row: the question, every turn as the specialist would take them, the
+    figures, and whether it is kept — worked, passing the specialist's check, every description
+    to its rule and every label found — or why not."""
     job = asked.job
     told = run(job)
     why: str | None = None
     figures: list[JsonValue] = []
     try:
+        told = worked(told)
         found = check_figures(job, told)
     except Invalid as refused:
         why = str(refused)
     else:
         figures = [cast(JsonValue, f.model_dump()) for f in found.figures]
-        if lost := missed(asked.labels, found.figures):
+        if bad := undescribed(found):
+            why = "; ".join(bad)
+        elif lost := missed(asked.labels, found.figures):
             why = "missed " + "; ".join(f"{f.metric} {f.value:g} {f.year}" for f in lost)
     return {
         "chunk_id": asked.chunk_id,
@@ -354,7 +446,10 @@ def _run(args: argparse.Namespace) -> None:
     if not todo:
         return
     longest = max(todo, key=lambda one: len(one.question))
-    first = turn_request(opening(longest.job, names), cap, RESEARCH_TEACHER_MODEL, None)
+    system = f"{research_messages('', '', '')[0]}\n{TEACHER_NOTE}"
+    first = turn_request(
+        opening(longest.job, names), cap, RESEARCH_TEACHER_MODEL, None, system, TEACHER_TOOLS
+    )
     tokens = teacher.count(first)
     typical, worst = estimate(tokens, len(todo), RESEARCH_TEACHER_MODEL, cap)
     print(f"teacher {RESEARCH_TEACHER_MODEL}; first turn {tokens} tokens, a free count")
@@ -364,7 +459,9 @@ def _run(args: argparse.Namespace) -> None:
         print("estimate only: nothing sent. Add --yes to run.")
         return
     search = training_search()
-    loop = research(teacher, search, RESEARCH_TEACHER_MODEL, names, RESEARCH_TEACH_CACHE)
+    loop = research(
+        teacher, search, RESEARCH_TEACHER_MODEL, names, RESEARCH_TEACH_CACHE, system, TEACHER_TOOLS
+    )
     finished = in_parallel(todo, lambda one: teach(one, loop), args.workers)
     rows = [row for row in finished if not isinstance(row, Exception)]
     for one, row in zip(todo, finished, strict=True):

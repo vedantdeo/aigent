@@ -301,6 +301,19 @@ no specialist to calm it fails, by decision.
   decision (Vedant); the eval reports how often it routes, and its tasks need narrow jobs big enough
   to be worth handing over. The runs are in `LOG.md`.
 
+## Parked, to try later
+
+- **A structure-aware index of the filings** (Vedant, 2026-10-19). Sentence chunking cuts a table
+  from its heading, so a chunk can print a number without the scale its table states: in the first
+  v4 smoke run the teacher knew Wipro reports in millions but no passage it cited said so, and a Sun
+  Pharma table's "(in Million)" sat two chunks before the number. Wipro, Sun Pharma and HDFC state a
+  scale once per statement section (15 to 24 of 1,300 to 2,000 chunks name one), Bajaj Auto and Power
+  Grid once per table. Extracting tables as tables, labelled with their scale, unit, period columns
+  and basis, would fix this at the source, and likely the segment-table and standalone/consolidated
+  misreads too. Considered and set aside for now: a second citation for the heading's passage
+  (`scale_id`), with a `read_before` tool to fetch the chunks before a table. Until then a figure
+  cites one passage that prints both its number and its scale, or gives the number as printed.
+
 ## Open questions
 
 - **Is the specialist good enough to be worth routing to?** v2 passed 28/43 on the old labels; v3's

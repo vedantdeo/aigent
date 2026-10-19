@@ -30,7 +30,7 @@ from aigent.extraction.research import REPORT_SEARCH_TOOL, research_messages
 from aigent.llm.adapters import spec
 from aigent.llm.adapters.openai import UNREACHABLE
 from aigent.llm.core import Dispatch, Llm, Request
-from aigent.llm.messages import Block, Cache, Msg, Reply
+from aigent.llm.messages import Block, Cache, Msg, Reply, Tool
 from aigent.tools import CALCULATOR_TOOL, execute_tool
 
 
@@ -117,18 +117,27 @@ def opening(job: FigureJob, names: Mapping[str, str] = COMPANIES) -> list[Msg]:
     return [{"role": "user", "content": user}]
 
 
+TOOLS: tuple[Tool, ...] = (REPORT_SEARCH_TOOL, CALCULATOR_TOOL)
+
+
 def turn_request(
-    messages: Sequence[Msg], cap: int, model: str | None = None, cache: Cache | None = None
+    messages: Sequence[Msg],
+    cap: int,
+    model: str | None = None,
+    cache: Cache | None = None,
+    system: str | None = None,
+    tools: Sequence[Tool] = TOOLS,
 ) -> Request:
-    """One turn of the report analyst's loop: the trained prompt, the search and calculate."""
-    system, _ = research_messages("", "", "")
+    """One turn of the report analyst's loop: the trained prompt, the search and calculate, unless
+    a teacher's `system` and `tools` are given."""
+    trained, _ = research_messages("", "", "")
     return Request(
         "extract_figures",
         messages,
         cap,
-        system=system,
+        system=system or trained,
         model=model,
-        tools=[REPORT_SEARCH_TOOL, CALCULATOR_TOOL],
+        tools=list(tools),
         cache_control=cache,
     )
 
@@ -139,10 +148,13 @@ def research(
     model: str | None = None,
     names: Mapping[str, str] = COMPANIES,
     cache: Cache | None = None,
+    system: str | None = None,
+    tools: Sequence[Tool] = TOOLS,
 ) -> Callable[[FigureJob], Told]:
     """The report analyst's loop on `llm`, asked as `model`: a job's question about the company
     `names` gives its ticker, searched through `search` and calculated, every turn of it kept in
-    `Told.conversation`; `cache` marks each turn for a prompt cache, where the wire has one."""
+    `Told.conversation`; `cache` marks each turn for a prompt cache, where the wire has one, and a
+    teacher's `system` and `tools` replace the trained ones."""
     cap = max_tokens("RESEARCH_TURN", spec(llm.client))
 
     def answer(job: FigureJob) -> Told:
@@ -152,7 +164,7 @@ def research(
         calls: list[str] = []
         read: list[Passage] = []
         for _ in range(SPECIALIST_TOOL_TURNS):
-            reply = llm.turn(turn_request(messages, cap, model, cache))
+            reply = llm.turn(turn_request(messages, cap, model, cache, system, tools))
             replies.append(reply)
             asked: Msg = {"role": "assistant", "content": reply.blocks}
             if reply.stop_reason != "tool_use":
