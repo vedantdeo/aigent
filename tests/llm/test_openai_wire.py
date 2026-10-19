@@ -25,8 +25,8 @@ from aigent.extraction.figures import TOOL as TRAINED_TOOL
 from aigent.llm.adapters.cfg_hostllm import (
     ANALYST,
     COLD_START_TIMEOUT,
-    FIGURE_ANSWER_HOSTLLM,
-    FIGURE_ANSWER_VLLM,
+    RESEARCH_TURN_HOSTLLM,
+    RESEARCH_TURN_VLLM,
     VLLM_ANALYST,
     VLLM_BASE_URL,
     VLLM_COLD_START_TIMEOUT,
@@ -343,12 +343,12 @@ def test_the_analyst_names_its_adapter_and_outlasts_a_cold_start() -> None:
 
 
 def test_each_engine_gives_a_figures_answer_the_room_it_can_write_inside_modal_s_limit() -> None:
-    caps = (ANALYST.max_tokens["FIGURE_ANSWER"], VLLM_ANALYST.max_tokens["FIGURE_ANSWER"])
-    assert caps == (FIGURE_ANSWER_HOSTLLM, FIGURE_ANSWER_VLLM)
-    assert FIGURE_ANSWER_HOSTLLM / 4 < 150, (
+    caps = (ANALYST.max_tokens["RESEARCH_TURN"], VLLM_ANALYST.max_tokens["RESEARCH_TURN"])
+    assert caps == (RESEARCH_TURN_HOSTLLM, RESEARCH_TURN_VLLM)
+    assert RESEARCH_TURN_HOSTLLM / 4 < 150, (
         "hostllm's answer ends inside 150 s at 4 tokens a second"
     )
-    assert FIGURE_ANSWER_VLLM > FIGURE_ANSWER_HOSTLLM
+    assert RESEARCH_TURN_VLLM > RESEARCH_TURN_HOSTLLM
 
 
 def test_both_sarvam_clients_wait_out_a_rate_limit_of_a_minute() -> None:

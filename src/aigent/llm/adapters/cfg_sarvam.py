@@ -33,7 +33,7 @@ CLIENT = Client(
 )
 
 # Every cap a capstone generalist sends, raised for reasoning, which is billed as output.
-THOUGHT = {site: 16384 for site in ("FIGURE_ANSWER", "HEADLINE", "MEMO", "TOOL_LOOP")}
+THOUGHT = {site: 16384 for site in ("HEADLINE", "MEMO", "RESEARCH_TURN", "TOOL_LOOP")}
 
 THINKING = replace(
     CLIENT,

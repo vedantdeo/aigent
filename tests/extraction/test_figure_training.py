@@ -244,7 +244,7 @@ def test_the_task_renders_the_user_turn_exactly_as_the_fine_tune_is_asked() -> N
     assert user == figure_messages("P", "S {x}", "W")[1]
     assert shipped["system"] == SYSTEM and shipped["tool"] == TOOL
     assert shipped["metrics"] == list(METRICS)
-    assert shipped["rate_metrics"] == ["margin", "roe", "roce", "roa", "market_share"]
+    assert shipped["rate_metrics"] == ["margin", "roe", "roce", "roa", "tax", "market_share"]
     assert shipped["change"] == "change"
 
 

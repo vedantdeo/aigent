@@ -82,7 +82,7 @@ def test_a_call_is_one_job_whose_figures_come_back_with_the_passages_they_cite_a
 
     assert not is_error, content
     assert asked == [FigureJob("What dividend did Reliance recommend for FY25?", "RELIANCE", 2025)]
-    assert json.loads(content) == {"figures": [json.loads(FIGURE)]}
+    assert json.loads(content) == {"figures": [{**json.loads(FIGURE), "basis": None}]}
     assert list(tools.evidence) == [DIVIDEND], "a claim can cite the passage it was read from"
     assert tools.evidence[DIVIDEND].text == PASSAGES["RELIANCE-FY25"][0].text
     assert [r.specialist for r in tools.route.routed] == ["extract_figures"]

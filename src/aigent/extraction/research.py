@@ -31,9 +31,20 @@ REPORT_SEARCH_TOOL: ToolParam = {
 }
 
 
-class SourcedFigure(Figure):
-    """A figure and the passage that prints it."""
+BASES = ("consolidated", "standalone")
 
+
+class SourcedFigure(Figure):
+    """A figure, the basis it is reported on, and the passage that prints it."""
+
+    basis: str | None = Field(
+        default=None,
+        description=(
+            "consolidated or standalone for a company-wide figure, as the passage's statement or "
+            "heading says; for one segment's figure, the segment's name copied from the passage; "
+            "null for a figure that has no basis, such as a headcount."
+        ),
+    )
     chunk_id: str = Field(description="The id of the passage the figure is printed in.")
 
 
@@ -53,12 +64,28 @@ def _rules() -> str:
 
 
 SYSTEM = (
-    "You answer a question about one Indian company's annual report with the figures it needs. "
-    "Search the report with search_report, as often as the question needs, then return only the "
-    "figures that answer it, each from a passage a search returned, as JSON of the form "
+    "You answer a question about one Indian company's annual report with the figures it needs, "
+    "found by searching that report. You have six turns: search, calculate, then answer.\n"
+    "Searching. Query in the report's own words, naming the statement or table that would "
+    "print the figure: 'Consolidated Statement of Profit and Loss', 'Revenue from operations', "
+    "'segment results'. Search again with other words when the passages do not print every "
+    "figure the question asks for, each year included; a report prints the previous year beside "
+    "the current one, so both years usually come from one passage. When two searches find "
+    "nothing, answer with no figures rather than guess.\n"
+    "Reading. The question may also ask about other companies or other reports: answer only for "
+    "the company and report named below. Take figures on the basis the question names "
+    "(consolidated, standalone or a segment) and, when it names none, consolidated. In a table, "
+    "read each number by its row and its column heading: a column is a year only when its "
+    "heading says so, and a segment table's columns are segments. When the question asks for "
+    "something the report does not print, such as a ratio or a growth rate, return the figures "
+    "it rests on and do not compute it.\n"
+    "Answering. Return only the figures that answer the question, each from a passage a search "
+    "returned, as JSON of the form "
     '{"figures": [{"metric": ..., "value": ..., "unit": ..., "year": ..., "description": ..., '
-    '"chunk_id": ...}]}, and nothing else. A report states the previous year beside the current '
-    "one, so both years' figures may come from it. " + TOOL_RULE + " Each figure:\n" + _rules()
+    '"basis": ..., "chunk_id": ...}]}, and nothing else. '
+    + TOOL_RULE
+    + " Each figure:\n"
+    + _rules()
 )
 
 

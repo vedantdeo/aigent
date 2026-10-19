@@ -24,7 +24,7 @@ DATASET = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figures.
 CURRENCIES = ("INR", "USD", "AUD", "EUR", "GBP")
 CHANGE = "change"
 # The metrics a percentage may be, besides a change in any metric.
-RATE_METRICS = ("margin", "roe", "roce", "roa", "market_share")
+RATE_METRICS = ("margin", "roe", "roce", "roa", "tax", "market_share")
 _RUPEE = {"rs", "rs.", "₹", "inr", "rupee", "rupees"}
 _WORD = re.compile(r"[A-Za-z₹%]+\.?")
 
@@ -38,10 +38,14 @@ METRICS = (
     "dividend",
     "ebitda",
     "profit",
+    "tax",
     "revenue",
     "cash_flow",
     "capex",
     "debt",
+    "receivables",
+    "equity",
+    "assets",
     "market_share",
     "volume",
     "customers",
@@ -58,9 +62,14 @@ class Figure(BaseModel):
             "Exactly one of: " + ", ".join(METRICS) + ". The first that fits, in that order: "
             "margin is any percentage of revenue (EBITDA margin is margin); roe, roce and roa are "
             "the returns on equity, capital employed and assets; eps and dividend are "
-            "per share; profit is profit after tax, or before tax when no other is stated; "
+            "per share; profit is profit after tax, or before tax when no other is stated; tax is "
+            "the income tax expense for a period, current or deferred, or the effective tax rate, "
+            "never a tax asset or liability; "
             "revenue is revenue from operations, sales or turnover; debt is what the company owes, "
             "its borrowings and the loan facilities it took, not the loans and advances it makes; "
+            "receivables are what customers owe the company; equity is total equity, net worth, "
+            "shareholders' funds or share capital, as an amount; assets are total assets or a "
+            "class of them the rest do not name, such as segment, current or fixed assets; "
             "volume is units sold or produced, tonnes or capacity; customers "
             "includes subscribers and users. A change in a named metric, a rise or a fall, as a "
             "rate or an amount, keeps that metric with description 'change'. other is any "
@@ -92,15 +101,15 @@ class Figure(BaseModel):
     year: int | None = Field(
         description=(
             "The Indian financial year (April to March) the figure belongs to, as the year it "
-            "ends: 2025 for FY 2024-25, for as at 31 March 2025, or for an event on 20 June "
-            "2024. Read the report's year from source: a figure the passage states as current, "
-            "or 'during the year', takes it, so a headcount in a 2023-24 report is 2024, and "
-            "'previous year' is the year before. A bare calendar year the report presents as "
-            "current takes the report's year: an award won in 2023, in a 2023-24 report, is "
-            "2024. Null only for a cumulative, 'till date' or 'since inception' total, a "
-            "duration such as a three-year term, a fixed term or specification such as the face "
-            "value of a share or a vehicle's seating capacity, or a year that only names "
-            "something such as Vision 2030."
+            "ends: 2025 for FY 2024-25, for as at 31 March 2025, or for an event on 20 June 2024. "
+            "Read the report's year from the report the prompt names: a figure the passage states "
+            "as current, or 'during the year', takes it, so a headcount in a 2023-24 report is "
+            "2024, and 'previous year' is the year before. A bare calendar year the report "
+            "presents as current takes the report's year: an award won in 2023, in a 2023-24 "
+            "report, is 2024. Null only for a cumulative, 'till date' or 'since inception' total, "
+            "a duration such as a three-year term, a fixed term or specification such as the face "
+            "value of a share or a vehicle's seating capacity, or a year that only names something "
+            "such as Vision 2030."
         )
     )
     description: str | None = Field(
@@ -187,7 +196,8 @@ def unit_key(unit: str | None) -> str | None:
     return currency or unit.strip()
 
 
-def _same(want: Figure, got: Figure) -> bool:
+def same_figure(want: Figure, got: Figure) -> bool:
+    """Whether two figures agree on metric, value, unit and year."""
     return (
         want.metric == got.metric
         and math.isclose(want.value, got.value, rel_tol=1e-9, abs_tol=1e-9)
@@ -217,7 +227,7 @@ def figures_match(case: Case, outcome: Outcome) -> Score:
     left = list(got)
     missed: list[Figure] = []
     for figure in want:
-        hit = next((g for g in left if _same(figure, g)), None)
+        hit = next((g for g in left if same_figure(figure, g)), None)
         if hit is None:
             missed.append(figure)
         else:
