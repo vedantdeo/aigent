@@ -3,13 +3,12 @@ and the gate, by an approver and by a person resuming a paused run."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from typing import cast
 
 import pytest
 from anthropic.types import Message, TextBlock
-from openai.types.chat import ChatCompletion, ChatCompletionMessageFunctionToolCall
+from openai.types.chat import ChatCompletion
 from pydantic import BaseModel
 
 pytest.importorskip("langgraph")
@@ -26,7 +25,7 @@ from aigent.analyst.cfg_analyst import (  # noqa: E402
     MAX_CRITIC_REVISIONS,
     MAX_TOKENS,
 )
-from aigent.analyst.experts import EXTRACT_FIGURES_TOOL, READ_HEADLINE_TOOL  # noqa: E402
+from aigent.analyst.experts import EXTRACT_FIGURES_TOOL  # noqa: E402
 from aigent.analyst.graph import RESEARCH, State, analysed, begin, build, run  # noqa: E402
 from aigent.analyst.memo import Claim, Judged, Memo, Review  # noqa: E402
 from aigent.config import CACHE_PARAM  # noqa: E402
@@ -40,7 +39,7 @@ from ..conftest import (  # noqa: E402
     FakeOpenAI,
     MakeLlm,
     Sent,
-    calling,
+    asking,
     completion,
     tool_turn,
 )
@@ -96,7 +95,6 @@ def test_a_supported_memo_reaches_the_gate_and_is_approved(make_llm: MakeLlm) ->
     assert asked(research) == f"<question>{QUESTION}</question>", "trimmed by the input guard"
     assert [tool["name"] for tool in cast(list[dict[str, object]], research.tools)] == [
         "search_filings",
-        "read_headline",
         "extract_figures",
     ]
     assert writing.schema is Memo and DRAFT in asked(writing) and DIVIDEND in asked(writing)
@@ -131,14 +129,8 @@ def test_a_generalist_on_a_wire_with_no_cache_runs_as_its_client_s_own_model(
 
 
 def _figures_call() -> ChatCompletion:
-    """A turn asking the figures specialist for the dividend passage."""
-    asked = calling("0")
-    calls = asked.choices[0].message.tool_calls
-    assert calls is not None
-    call = cast(ChatCompletionMessageFunctionToolCall, calls[0])
-    call.function.name = "extract_figures"
-    call.function.arguments = json.dumps({"chunk_ids": [DIVIDEND], "wanted": "dividend"})
-    return asked
+    """A turn asking the figures specialist for the question's figures."""
+    return asking(("extract_figures", {"question": QUESTION, "ticker": "RELIANCE", "year": "2025"}))
 
 
 @pytest.mark.parametrize(
@@ -213,7 +205,7 @@ def test_the_draft_is_everything_the_generalist_said_not_only_its_last_turn(
 
 
 def test_the_research_prompt_names_no_specialist_so_a_new_one_needs_only_its_card() -> None:
-    cards = [READ_HEADLINE_TOOL, EXTRACT_FIGURES_TOOL]
+    cards = [EXTRACT_FIGURES_TOOL]
 
     assert "specialist" in RESEARCH and not [c["name"] for c in cards if c["name"] in RESEARCH]
     assert "Specialists:" in RESEARCH and "explain that decision" in RESEARCH

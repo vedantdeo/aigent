@@ -45,7 +45,7 @@ from aigent.errors import (
     Unsupported,
 )
 from aigent.llm.adapters import Streamed, ToolSession, build, spec
-from aigent.llm.adapters.client import model_of
+from aigent.llm.adapters.client import model_of, priced_as
 from aigent.llm.messages import (
     Block,
     Cache,
@@ -434,7 +434,7 @@ class Llm:
         left = self.budget.limit_usd - self.budget.spent_usd - self.budget.held_usd
         room = min(MAX_USD_PER_TURN, left)
         fits = affordable_output_tokens(
-            model_of(answer, self._spec),
+            priced_as(answer, self._spec),
             self.count(answer),
             room,
             cached=_writes_cache(answer),
@@ -480,7 +480,7 @@ class Llm:
             searches = _web_searches(request)
             tokens = self.count(request, schema)
             cost = assert_request_within_budget(
-                model_of(request, self._spec),
+                priced_as(request, self._spec),
                 tokens,
                 request.max_tokens,
                 limit_usd,
@@ -579,7 +579,7 @@ class Llm:
     ) -> None:
         model = model_of(request, self._spec)
         with self._lock:
-            usd = self.budget.charge(model, usage)
+            usd = self.budget.charge(priced_as(request, self._spec), usage)
             self.trace.append(Call(request.step, model, usage, usd))
         if seen is not None:
             seen.bill(model, usage, usd)

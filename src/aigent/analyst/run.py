@@ -248,7 +248,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     began = time.monotonic()
-    warm_up(Llm(served_by("hostllm-headline", args.specialists)))
+    warm_up(Llm(served_by("hostllm-analyst", args.specialists)))
     print(f"specialists warm after {time.monotonic() - began:.0f} s")
     stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{_slug(chosen.label)}"
     with connect(OWN_SERVER, only=ANALYST_SERVED_TOOLS, fenced=False) as served:
@@ -268,7 +268,7 @@ def main(argv: list[str] | None = None) -> None:
                 served.tools,
                 served.dispatch,
                 Router(price=lambda i, o: cost_usd(chosen.label, i, o)),
-                experts(generalist, small=small.__getitem__, model=chosen.model),
+                experts(generalist, served.dispatch, small=small.__getitem__, model=chosen.model),
             )
             path = args.out / f"{stamp}-{named}.md"
             try:

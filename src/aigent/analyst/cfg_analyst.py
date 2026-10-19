@@ -18,7 +18,7 @@ CRITIC_MODEL = "claude-opus-5"  # never the generalist's own model
 # The loops.
 MAX_CRITIC_REVISIONS = 2  # redrafts the critic may send back before a human sees the memo
 SPECIALIST_TRIES = 2  # a request the endpoint drops is sent once more, then the task fails
-SPECIALIST_TOOL_TURNS = 3  # calculate calls, their results, the answer: one turn to spare
+SPECIALIST_TOOL_TURNS = 6  # two searches, two calculate turns, the answer, one to spare
 
 # `python -m aigent.analyst.run`: each question's ceilings, its specialists' too, and its tools.
 MAX_USD_ANALYST_GENERALIST = 0.40

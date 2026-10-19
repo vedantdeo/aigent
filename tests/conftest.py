@@ -8,6 +8,7 @@ than one module needs each, and two copies of a fake drift.
 from __future__ import annotations
 
 import contextvars
+import json
 import threading
 import zlib
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -700,19 +701,27 @@ def completion(
     )
 
 
-def calling(*expressions: str, text: str | None = None) -> ChatCompletion:
-    """A completion that asks for calculate once per expression."""
+def asking(*calls: tuple[str, dict[str, object]], text: str | None = None) -> ChatCompletion:
+    """A completion that asks for each `(tool, arguments)` in turn."""
     made = completion(text or "", finish="tool_calls")
     made.choices[0].message.content = text
     made.choices[0].message.tool_calls = [
         ChatCompletionMessageFunctionToolCall(
             id=f"call_{i}",
             type="function",
-            function=Function(name="calculate", arguments=f'{{"expression": "{expression}"}}'),
+            function=Function(name=name, arguments=json.dumps(arguments)),
         )
-        for i, expression in enumerate(expressions)
+        for i, (name, arguments) in enumerate(calls)
     ]
     return made
+
+
+def calling(*expressions: str, text: str | None = None) -> ChatCompletion:
+    """A completion that asks for calculate once per expression."""
+    calls: list[tuple[str, dict[str, object]]] = [
+        ("calculate", {"expression": e}) for e in expressions
+    ]
+    return asking(*calls, text=text)
 
 
 class StubTokenizer:

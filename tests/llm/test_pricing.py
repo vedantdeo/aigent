@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextlib import AbstractContextManager, nullcontext
 
 import pytest
-from underhood.gpu.pricing import SERVED, served_usd
+from underhood.gpu.pricing import SERVED, VLLM_SERVED, served_usd
 
 from aigent.config import (
     WEB_SEARCH_RESULT_TOKENS,
@@ -276,15 +276,17 @@ def test_every_model_any_client_names_is_priced() -> None:
     # .env and very wrong for a typo in a client's config: every cost line would read $0.00000.
     # A local model is priced too, at what its hour of machine costs — free is a price, not a gap.
     for client in CLIENTS.values():
-        for model in (client.model, client.judge_model, client.small_model):
-            assert model in PRICES, f"{client.name} names {model}, which would report as free"
+        for model in (client.model, client.judge_model, client.small_model, client.priced_as):
+            if model is not None:
+                assert model in PRICES, f"{client.name} names {model}, which would report as free"
 
 
 def test_a_served_specialist_costs_what_hostllm_measured() -> None:
-    for adapter in ("headline-flavour", "report-analyst"):
-        assert (PRICES[adapter].input, PRICES[adapter].output) == (SERVED.input, SERVED.output)
-    # 574 prompt tokens and 36 of answer, a headline call: about a tenth of a cent.
-    assert cost_usd("headline-flavour", 574, 36) == pytest.approx(served_usd(574, 36))
+    served = PRICES["report-analyst"]
+    assert (served.input, served.output) == (SERVED.input, SERVED.output)
+    assert cost_usd("report-analyst", 574, 36) == pytest.approx(served_usd(574, 36))
+    on_vllm = PRICES["report-analyst@vllm"]
+    assert (on_vllm.input, on_vllm.output) == (VLLM_SERVED.input, VLLM_SERVED.output)
 
 
 def test_no_client_lets_the_judge_grade_the_model_it_is() -> None:

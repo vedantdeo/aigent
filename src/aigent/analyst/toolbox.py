@@ -1,53 +1,34 @@
 """The generalist's tools in one place: a server's tools over MCP, and every specialist as a tool
-whose calls go through the router. Passages a search returns are kept as evidence, so a later call
-can name them by id, as are a fundamentals answer and any specialist's that carries a `cite_as`.
+whose calls go through the router. Passages a search returns, and those a specialist's answer
+cites, are kept as evidence by id, as is a fundamentals answer, by its `cite_as`, so the critic can
+read what a claim rests on.
 """
 
 from __future__ import annotations
 
 import json
-import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
 from anthropic.types import ToolParam
 
 from aigent.analyst.router import Router
-from aigent.analyst.specialists import Invalid
+from aigent.analyst.specialists import Invalid, Passage, passages_in
 from aigent.llm.core import Dispatch
 
 SEARCH, LOOKUP = "search_filings", "fundamentals"
-_PASSAGE = re.compile(r'<passage id="([^"]+)" source="([^"]*)">\n(.*?)\n</passage>', re.S)
-
-
-@dataclass(frozen=True)
-class Passage:
-    """One passage a search returned: the id it is cited by, where it is from, and its text."""
-
-    id: str
-    source: str
-    text: str
-
-    @property
-    def report(self) -> str:
-        """The report it is from: ITC-FY25 for ITC-FY25#0412."""
-        return self.id.split("#")[0]
-
-
-def passages_in(result: str) -> list[Passage]:
-    """Every passage in a search result's text, in order."""
-    return [Passage(*found) for found in _PASSAGE.findall(result)]
 
 
 @dataclass(frozen=True)
 class Expert:
     """A specialist as one of the generalist's tools: the card it is shown, and `answer`, which
-    turns a call's arguments into the tool's result, putting each job through the router and
-    raising `Invalid` for arguments it cannot use. `analyst.experts` lists them."""
+    turns a call's arguments into the tool's result, putting each job through the router, adding
+    what its answer cites to the evidence, and raising `Invalid` for arguments it cannot use.
+    `analyst.experts` lists them."""
 
     card: ToolParam
-    answer: Callable[[dict[str, object], Mapping[str, Passage], Router], str]
+    answer: Callable[[dict[str, object], MutableMapping[str, Passage], Router], str]
 
     @property
     def name(self) -> str:
@@ -110,9 +91,6 @@ class Toolbox:
                     content = expert.answer(arguments, self.evidence, self.route)
                 except Invalid as refused:
                     return f"Error: {refused}", True
-                cited = _lookup(content)  # an answer that names its own cite_as is evidence
-                if cited is not None:
-                    self.evidence[cited.id] = cited
                 return content, False
         content, is_error = self.served(name, arguments)
         if name == SEARCH:

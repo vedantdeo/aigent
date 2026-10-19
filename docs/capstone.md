@@ -42,7 +42,7 @@ flowchart TD
 | Part | Does | Model |
 |---|---|---|
 | **generalist** | Plans, calls tools and specialists, writes claims and the memo, each claim citing its sources | Sonnet 5 while building, Opus 5 for reported numbers |
-| **specialists** | Narrow jobs, each behind a tool: the **headline reader** (`read_headline`: a market headline → `{ticker, metric, quarter, direction, change_pct}`) and the **report analyst** (`extract_figures`: filing passages → `{metric, value, unit, year}` records) | LoRA fine-tunes of Qwen3-4B, both served from one GPU endpoint |
+| **specialists** | Narrow jobs, each behind a tool: the **report analyst** (`extract_figures`: filing passages → `{metric, value, unit, year}` records). The headline reader was removed on 2026-10-19 (below) | LoRA fine-tunes of Qwen3-4B, served from one GPU endpoint |
 | **router** | Per specialist call: try the specialist, validate its output, fall back to the generalist on failure; log both | Code, not a model (a learned router is a Week 7 experiment) |
 | **critic** | Checks each claim against exactly the sources it cites: supported, unsupported, or wrong (figure, year, company). Never sees the generalist's reasoning | A different model from the generalist |
 | **human gate** | Approves the memo, or rejects it with a note that becomes a constraint | — |
@@ -73,22 +73,23 @@ as a tool with **structured arguments**, and the adapter renders the exact train
 
 What the generalist sees is a **specialist card** — the tool's description and schema:
 
-| Field | Headline reader: `read_headline` | Report analyst: `extract_figures` |
-|---|---|---|
-| good at | an Indian market headline's company, metric, quarter, direction and percentage change | the figures a filing passage states that answer a question: metric, value with any named scale applied, unit, financial year |
-| arguments | `headline` (one line of text) | `chunk_ids` (passages from `search_filings`), `wanted` (what to extract) |
-| returns | one record; the company resolved to an NSE ticker in code, by `Resolver` | `[Figure]` with each figure's `chunk_id` |
-| limits | one headline at a time; a company the directory lacks resolves to none | one passage's worth at a time; no arithmetic across passages; per-₹-crore intensities are a known weakness |
+| Field | Report analyst: `extract_figures` (since 2026-10-19) |
+|---|---|
+| good at | the figures a question needs from one company's annual report: metric, value with any named scale applied, unit, financial year |
+| arguments | `question` (word for word, as the generalist was asked it), `ticker`, `year` (the financial year the report ends) |
+| does | searches that report itself (`search_report`, scoped in code to the ticker and year), calculates scales and percentages, answers |
+| returns | `[Figure]`, each with the `chunk_id` of the passage it is printed in; the generalist never reads the passages, the critic does |
+| limits | one company's report for one year a call, though a report also states the year before; no arithmetic across figures; a figure the report does not state is left out |
 
-Behind the card, each specialist is a small contract, in code:
+Behind the card, the specialist is a small contract, in code:
 
-| Piece | Headline reader | Report analyst |
-|---|---|---|
-| render | the zero-shot headline prompt it was trained on (`extraction.headlines`) | `figure_messages(passage, source, wanted)` + the `calculate` tool |
-| model | a PEFT LoRA on Qwen3-4B, retrained from the Week 4 headline data (the Week 4 adapter is MLX on a 4-bit 1.7B base: 41/50, and Apple-only) | the v3 PEFT LoRA on Qwen3-4B |
-| validate | parses as the headline record, in its three vocabularies; the percentage printed in the headline; the mention, if there is one, resolves | parses as `Figures`; every value's number printed in its passage (`check_call`'s rules), all or nothing: one figure that fails sends the whole call to the generalist |
-| fallback | the same job on the generalist, with the same schema and the same check; an answer that fails it too is an error | the same |
-| log | which path answered, the validation failure if any, tokens and latency | the same |
+| Piece | Report analyst |
+|---|---|
+| render | `research_messages(question, company, report)` + `search_report` and `calculate` (`extraction.research`) |
+| model | **v4**, to be trained on that prompt (step 3 of the 2026-10-19 plan); the served v3 knows only the per-passage prompt |
+| validate | parses as `SourcedFigures`; every figure's passage is one its searches returned, and its value is a number that passage prints (`check_call`'s rules), all or nothing |
+| fallback | the same job on the generalist: the same prompt, tools and check; an answer that fails it too is an error |
+| log | which path answered, the validation failure if any, tokens and latency |
 
 ## Serving
 
@@ -96,13 +97,12 @@ The specialists run on a GPU, not the laptop: local serving loads the machine an
 
 ```
 aigent's router ──HTTP, OpenAI format──▶ vLLM endpoint: Qwen3-4B (loaded once)
-                                          ├─ LoRA: headline-flavour
                                           └─ LoRA: report-analyst
 ```
 
 - **One endpoint per base model, many adapters per endpoint.** vLLM serves one base per process and
-  applies whichever LoRA a request names (multi-LoRA), batching across adapters. Both specialists are
-  Qwen3-4B fine-tunes, so they share one endpoint. A future specialist on another base is a second
+  applies whichever LoRA a request names (multi-LoRA), batching across adapters. Every specialist so far
+  is a Qwen3-4B fine-tune, so they share one endpoint. A future specialist on another base is a second
   endpoint; aigent's client table already maps a specialist to a URL and a model name.
 - **Scale to zero.** The endpoint is serverless: it starts on the first call and stops when idle, so
   cost follows use. The price is a cold start, which the latency numbers report.
@@ -280,6 +280,18 @@ tokens to end inside it, and long answers want Modal's spawn-and-poll pattern; a
 no specialist to calm it fails, by decision.
 
 ## Findings so far
+
+- **A specialist saves money only if the generalist never reads what the specialist reads**
+  (2026-10-19). Served prompt tokens cost $0.066/M, about a thirtieth of Sonnet's, but served
+  answer tokens cost $26/M, above Sonnet's $10/M. The headline reader read a line the generalist
+  had already read and wrote a dozen tokens, so every call cost more than the generalist doing it:
+  it was removed (Vedant), and its adapter, rows, prompt and training setup are kept in underhood's
+  `finetunes/headline-flavour/` for a later use. `extract_figures` as built reads passages `search_filings` already put in
+  the generalist's context ($0.0085 a call against $0.0013 for the same tokens on the generalist, on
+  2026-10-14). So since 2026-10-19 (Vedant) the generalist sends the question word for word with
+  a ticker and a filing year, and the specialist searches and reads for itself; the generalist
+  keeps `search_filings` for when it does the job itself. The card states no price: the generalist
+  does not weigh cost to delegate (Vedant); the eval measures what routing saves.
 
 - **A task that is too trivial does not go to the specialist, even when offered and coaxed**
   (2026-10-13, three questions, seven research passes, three drafts of the prompt). Sonnet 5 called

@@ -60,8 +60,17 @@ class Client:
     constrains_schema: bool = False
     # Provider-specific request fields sent with every call, such as `reasoning_effort`.
     extra_body: Mapping[str, object] = field(default_factory=dict)
+    # The `pricing.PRICES` row `model` bills at, where this engine's rate is not the model's own.
+    priced_as: str | None = None
 
 
 def model_of(request: Request, settings: Client) -> str:
     """The model a request names, or — the usual case — the one its client serves."""
     return request.model or settings.model
+
+
+def priced_as(request: Request, settings: Client) -> str:
+    """The `PRICES` row a request bills at: its client's `priced_as` for the client's own model,
+    else the model itself."""
+    model = model_of(request, settings)
+    return settings.priced_as if settings.priced_as and model == settings.model else model
