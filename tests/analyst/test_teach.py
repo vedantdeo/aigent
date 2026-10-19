@@ -18,12 +18,14 @@ from aigent.analyst.teach import (
     Asked,
     estimate,
     export,
+    inferred_call,
     load_asked,
     main,
     missed,
     mix,
     named,
     read_rows,
+    regrade,
     relabelled,
     report_search,
     select,
@@ -282,10 +284,17 @@ def test_a_training_search_reads_one_report_and_refuses_the_rest_as_data(
         pytest.param(
             [REVENUE.model_copy(update={"year": 2025})], [REVENUE], id="the right value, wrong year"
         ),
-        pytest.param([REVENUE.model_copy(update={"unit": "Rs"})], [], id="Rs is INR"),
+        pytest.param(
+            [REVENUE.model_copy(update={"unit": "Rs"})], [], id="the unit is the teacher's"
+        ),
+        pytest.param(
+            [REVENUE.model_copy(update={"metric": "other", "description": "payout"})],
+            [],
+            id="the metric is the teacher's to file",
+        ),
     ],
 )
-def test_a_label_is_found_on_metric_value_unit_and_year(
+def test_a_label_is_found_by_its_value_and_year(
     figures: list[Labelled], lost: list[Labelled]
 ) -> None:
     answered = [SourcedFigure(**f.model_dump(), chunk_id=CHUNK.id) for f in figures]
@@ -324,9 +333,9 @@ def test_a_trajectory_that_passes_and_finds_its_labels_is_kept_with_every_turn(
         ),
         pytest.param("I could not find it.", "no figures", id="no figures at all"),
         pytest.param(
-            sourced(UNSCALED.model_copy(update={"metric": "other", "description": "sales"})),
-            "described 'sales'",
-            id="checked, but a description not in its passage",
+            sourced(UNSCALED.model_copy(update={"metric": "other", "description": None})),
+            "described None",
+            id="checked, but an other figure described by nothing",
         ),
     ],
 )
@@ -338,6 +347,14 @@ def test_a_trajectory_that_fails_is_kept_out_with_why(
     row = teach(ASKED, research(llm, searched([]), "claude-sonnet-5", NAMES))
 
     assert row["kept"] is False and why in str(row["why"]), row["why"]
+
+
+def test_a_label_with_no_year_is_found_in_any() -> None:
+    undated = REVENUE.model_copy(update={"year": None})
+    answered = SourcedFigure(**REVENUE.model_copy(update={"year": 2025}).model_dump(), chunk_id="x")
+
+    assert missed([undated], [answered]) == []
+    assert missed([REVENUE], [answered]) == [REVENUE], "a dated label holds its year"
 
 
 PRINTED = Labelled(metric="profit", value=132180.0, unit="INR", year=2025, call=None)
@@ -362,7 +379,7 @@ def test_a_label_written_as_printed_is_found_at_any_named_scale(
     assert (missed([label], [answered]) == []) is found
 
 
-def _told(text: str, turns_before: int = 1) -> Told:
+def _told(text: str, turns_before: int = 1, read: tuple[Passage, ...] = ()) -> Told:
     """A teacher's reply after `turns_before` search turns."""
     searching: list[Msg] = [{"role": "user", "content": "q"}]
     for n in range(turns_before):
@@ -370,7 +387,7 @@ def _told(text: str, turns_before: int = 1) -> Told:
         result: Msg = {"role": "user", "content": [{"type": "tool_result", "tool_use_id": f"s{n}"}]}
         searching += [asked, result]
     final: Msg = {"role": "assistant", "content": [{"type": "text", "text": text}]}
-    return Told(text, 0.0, 0, 0, (), (), (*searching, final))
+    return Told(text, 0.0, 0, 0, (), read, (*searching, final))
 
 
 def test_the_teacher_s_calls_become_one_calculate_turn_before_the_answer() -> None:
@@ -398,6 +415,59 @@ def test_figures_printed_in_full_take_no_calculate_turn() -> None:
     assert told.calls == ()
 
 
+def test_a_named_metric_is_described_only_by_a_change_and_a_missing_call_is_worked_out() -> None:
+    profit = REVENUE.model_copy(update={"description": "Revenue from operations", "call": None})
+    read = (Passage(CHUNK.id, "", "Revenue (H In Crore) 44,685 crores, up 23% year-on-year."),)
+
+    told = worked(_told(sourced(profit, GROWTH), read=read))
+
+    figures = json.loads(told.text)["figures"]
+    assert [f["description"] for f in figures] == [None, "change"]
+    assert told.calls == ("44685 * 10**7", "23 / 100"), "its own call kept, the other worked out"
+
+
+@pytest.mark.parametrize(
+    ("passage", "value", "call"),
+    [
+        pytest.param("Revenue 44,685 this year.", 44685.0, None, id="printed as it is"),
+        pytest.param(
+            "(in thousand) Units 44.685; sold 44,685.",
+            44685.0,
+            None,
+            id="printed as it is, though a scale would also give it",
+        ),
+        pytest.param("Share rose to 18.2%.", 0.182, "18.2 / 100", id="a percentage"),
+        pytest.param("(H In Crore) Profit 704.05", 7040500000.0, "704.05 * 10**7", id="crore"),
+        pytest.param("Profit 704.05", 7040500000.0, None, id="a scale the passage never names"),
+        pytest.param(
+            "(H In Crore) Dividend paid (3,960.20)",
+            -39602000000.0,
+            "-3960.2 * 10**7",
+            id="printed negative",
+        ),
+        pytest.param("(H In Crore) Profit 704.05", 7040600000.0, None, id="no number gives it"),
+    ],
+)
+def test_a_missing_call_is_the_printed_number_scaled_as_the_passage_names(
+    passage: str, value: float, call: str | None
+) -> None:
+    figure = SourcedFigure(metric="profit", value=value, unit="INR", year=2024, chunk_id="x")
+
+    assert inferred_call(figure, passage) == call
+
+
+def test_a_saved_row_is_judged_again_from_the_teacher_s_own_turns(make_llm: MakeLlm) -> None:
+    llm, _ = teacher(make_llm, sourced(REVENUE))
+    row = teach(ASKED, research(llm, searched([]), "claude-sonnet-5", NAMES))
+    old = {k: v for k, v in row.items() if k not in ("taught", "labels")}  # a row saved before
+
+    again = regrade(row, [])
+    older = regrade(old, [ASKED])
+
+    assert again["kept"] is older["kept"] is True
+    assert again["conversation"] == older["conversation"] == row["conversation"], "no turn twice"
+
+
 @pytest.mark.parametrize(
     ("text", "searches", "why"),
     [
@@ -423,11 +493,16 @@ def test_a_teacher_s_answer_that_cannot_be_worked_is_refused(
     [
         pytest.param(OTHER.model_copy(update={"description": "Revenue"}), False, id="verbatim"),
         pytest.param(
-            OTHER.model_copy(update={"description": "an all-time high at ₹ 44,685"}),
-            True,
-            id="six words, though verbatim",
+            OTHER.model_copy(update={"description": "business sourced through the festive drive"}),
+            False,
+            id="its own words, under ten",
         ),
-        pytest.param(OTHER.model_copy(update={"description": "sales"}), True, id="not in it"),
+        pytest.param(
+            OTHER.model_copy(update={"description": " ".join(["word"] * 11)}),
+            True,
+            id="eleven words",
+        ),
+        pytest.param(OTHER.model_copy(update={"description": ""}), True, id="empty"),
         pytest.param(UNSCALED.model_copy(update={"description": "growth"}), True, id="named, said"),
         pytest.param(GROWTH, False, id="a named metric's change"),
     ],

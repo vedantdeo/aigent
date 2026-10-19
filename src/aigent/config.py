@@ -255,7 +255,7 @@ FIGURE_ANSWER_SLICE = 300
 # v4's trajectories (analyst.teach): the teacher, how many questions and how they are drawn, how
 # many run at once, the run's ceiling, and what a typical trajectory holds, for the estimate.
 RESEARCH_TEACHER_MODEL = "claude-sonnet-5"
-RESEARCH_TEACH_QUESTIONS = 330  # Vedant: ~200 kept first, at v3's ~60% keep rate
+RESEARCH_TEACH_QUESTIONS = 310  # Vedant: ~200 kept first; the 10-19 smoke run kept 13 of 20
 RESEARCH_TEACH_SEED = 0
 RESEARCH_TEACH_NAMED_SHARE = 0.8  # of the single questions (Vedant): named metrics, the rest other
 RESEARCH_TEACH_PAIRED_SHARE = 0.33  # Vedant: about a third ask about two companies
@@ -265,9 +265,7 @@ RESEARCH_TEACH_CACHE: Cache = CACHE_PARAM
 RESEARCH_TYPICAL_TURNS = 4  # two searches, a calculate turn, the answer
 RESEARCH_TYPICAL_OUTPUT = 220  # tokens a turn writes, on average: tool calls, then the figures
 SEARCH_RESULT_TOKENS = 1500  # five passages of ~295 tokens, measured over the six filings
-FIGURE_DESCRIPTION_WORDS = (
-    5  # the most words an other figure's description may have, as underhood's
-)
+RESEARCH_DESCRIPTION_WORDS = 10  # Vedant: an other figure's description, in the teacher's own words
 
 # --- Classical baseline ----------------------------------------------------------------------
 # Project 1a's TF-IDF + logistic regression on `direction`: word n-grams, and the C grid that

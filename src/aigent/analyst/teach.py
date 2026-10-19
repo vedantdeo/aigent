@@ -25,16 +25,17 @@ from pathlib import Path
 from typing import cast
 
 from pydantic import BaseModel, Field, JsonValue, ValidationError
+from underhood.tooldata.labels import Label, check_call, printed
 
 from aigent.analyst.cfg_analyst import SPECIALIST_TOOL_TURNS, max_tokens
 from aigent.analyst.run import in_parallel
 from aigent.analyst.served import opening, research, turn_request
-from aigent.analyst.specialists import FigureJob, Found, Invalid, Told, check_figures
+from aigent.analyst.specialists import FigureJob, Found, Invalid, Told, check_figures, passages_in
 from aigent.analyst.toolbox import SEARCH
 from aigent.config import (
     CLIENT,
-    FIGURE_DESCRIPTION_WORDS,
     MAX_USD_RESEARCH_TEACH,
+    RESEARCH_DESCRIPTION_WORDS,
     RESEARCH_TEACH_CACHE,
     RESEARCH_TEACH_NAMED_SHARE,
     RESEARCH_TEACH_PAIRED_SHARE,
@@ -47,8 +48,8 @@ from aigent.config import (
     SEARCH_METHOD,
     SEARCH_RESULT_TOKENS,
 )
+from aigent.extraction.figures import CHANGE, Figure, Labelled
 from aigent.extraction.figures import TOOL as CALCULATE_FUNCTION
-from aigent.extraction.figures import Figure, Labelled, described, same_figure
 from aigent.extraction.research import REPORT_SEARCH_TOOL, SourcedFigure, research_messages
 from aigent.llm.adapters import spec
 from aigent.llm.adapters.cfg_hostllm import ANALYST
@@ -266,12 +267,15 @@ def training_search(cache: bool = True) -> Dispatch:
 
 
 def found_as(label: Labelled, figure: Figure) -> bool:
-    """Whether `figure` is `label`: the same metric, value, unit and year, or, for a label written
-    as printed, the value a named scale gives it, which the label's chunk may not have shown."""
-    if same_figure(label, figure):
-        return True
-    scaled = (label.model_copy(update={"value": label.value * 10**k}) for k in SCALE_POWERS)
-    return label.call is None and any(same_figure(s, figure) for s in scaled)
+    """Whether `figure` is the number `label` asks for: the same value, or for a label written as
+    printed the value a named scale gives it, in the same year (any, for a label with none). How
+    to file it, its metric, unit and description, is the teacher's, which read the whole report."""
+    if label.year is not None and figure.year != label.year:
+        return False
+    values = [label.value]
+    if label.call is None:
+        values += [label.value * 10**k for k in SCALE_POWERS]
+    return any(math.isclose(v, figure.value, rel_tol=1e-9, abs_tol=1e-9) for v in values)
 
 
 def missed(labels: Sequence[Labelled], figures: Sequence[Figure]) -> list[Labelled]:
@@ -282,7 +286,7 @@ def missed(labels: Sequence[Labelled], figures: Sequence[Figure]) -> list[Labell
 class TaughtFigure(SourcedFigure):
     """A teacher's figure: with the calculate call behind its value, which code then makes."""
 
-    call: str | None = Field(description=Labelled.model_fields["call"].description)
+    call: str | None = Field(default=None, description=Labelled.model_fields["call"].description)
 
 
 class Taught(BaseModel):
@@ -299,13 +303,46 @@ def _taught(text: str) -> Taught | None:
         return None
 
 
+def _number(n: float) -> str:
+    return str(int(n)) if n.is_integer() else repr(n)
+
+
+def inferred_call(figure: SourcedFigure, passage: str) -> str | None:
+    """The call behind a value its passage does not print as it is: the printed number over 100,
+    or times a scale the passage names, whichever `check_call` accepts; None if none does."""
+    value = abs(figure.value)
+    if value in printed(passage):
+        return None
+    sign = "-" if figure.value < 0 else ""
+    candidates = [
+        f"{sign}{_number(n)} / 100" for n in printed(passage) if math.isclose(n / 100, value)
+    ]
+    for k in SCALE_POWERS:
+        candidates += [
+            f"{sign}{_number(n)} * 10**{k}"
+            for n in printed(passage)
+            if math.isclose(n * 10**k, value)
+        ]
+    label = figure.model_dump(exclude={"chunk_id", "basis", "call"})
+    return next(
+        (c for c in candidates if check_call(Label(**label, call=c), passage, CHANGE)), None
+    )
+
+
 def worked(told: Told) -> Told:
-    """The teacher's trajectory as the specialist runs it: its searches, then every figure's call
-    made as one calculate turn, then the answer without the calls. Invalid for a reply holding no
+    """The teacher's trajectory as the specialist runs it: its searches, then every figure's call,
+    its own or else `inferred_call`'s from its passage, made as one calculate turn, then the answer
+    without the calls. Invalid for a reply holding no
     figures, a call that does not give its figure's value, or more turns than the loop allows."""
     taught = _taught(told.text)
     if taught is None:
         raise Invalid("the reply holds no figures")
+    read = {passage.id: passage.text for passage in told.read}
+    for figure in taught.figures:
+        if figure.metric != "other" and figure.description != CHANGE:
+            figure.description = None  # a named metric is described by nothing but a change
+        if figure.call is None and figure.chunk_id in read:
+            figure.call = inferred_call(figure, read[figure.chunk_id])
     called = [f for f in taught.figures if f.call]
     turns: list[Msg] = []
     if called:
@@ -334,12 +371,16 @@ def worked(told: Told) -> Told:
 
 
 def undescribed(found: Found) -> list[str]:
-    """The figures whose description breaks its rule: verbatim from the passage and at most
-    `FIGURE_DESCRIPTION_WORDS` words for an other figure, none or 'change' for a named one."""
+    """The other figures whose description is empty or longer than `RESEARCH_DESCRIPTION_WORDS`
+    words, and the named ones described by anything but 'change'."""
     bad: list[str] = []
     for f in found.figures:
-        long = f.metric == "other" and len((f.description or "").split()) > FIGURE_DESCRIPTION_WORDS
-        if long or not described(f, found.passages[f.chunk_id].text):
+        if f.metric == "other":
+            words = len((f.description or "").split())
+            wrong = not 0 < words <= RESEARCH_DESCRIPTION_WORDS
+        else:
+            wrong = f.description not in (None, CHANGE)
+        if wrong:
             bad.append(f"{f.metric} {f.value:g} described {f.description!r}")
     return bad
 
@@ -350,6 +391,7 @@ def teach(asked: Asked, run: Callable[[FigureJob], Told]) -> dict[str, JsonValue
     to its rule and every label found — or why not."""
     job = asked.job
     told = run(job)
+    taught = told.conversation
     why: str | None = None
     figures: list[JsonValue] = []
     try:
@@ -373,8 +415,56 @@ def teach(asked: Asked, run: Callable[[FigureJob], Told]) -> dict[str, JsonValue
         "why": why,
         "figures": figures,
         "usd": told.usd,
-        "conversation": cast(JsonValue, json.loads(json.dumps(told.conversation, default=str))),
+        "labels": [cast(JsonValue, label.model_dump()) for label in asked.labels],
+        "conversation": _json(told.conversation),
+        "taught": _json(taught),
     }
+
+
+def _json(messages: Sequence[Msg]) -> JsonValue:
+    return cast(JsonValue, json.loads(json.dumps(messages, default=str)))
+
+
+def _is_made(message: Msg) -> bool:
+    """Whether a turn is one `worked` made: the calculate turn or its results."""
+    blocks = message["content"]
+    if not isinstance(blocks, list) or not blocks:
+        return False
+    first = cast(dict[str, object], blocks[0])
+    return str(first.get("id") or first.get("tool_use_id") or "").startswith("calc_")
+
+
+def regrade(row: dict[str, JsonValue], asked: Sequence[Asked]) -> dict[str, JsonValue]:
+    """A saved row judged again by the rules as they are now, from the teacher's own turns: free,
+    for when a rule changes. Its labels are its own, or its v3 question's from `asked`."""
+    turns = cast(list[Msg], row.get("taught") or row["conversation"])
+    turns = [m for m in turns if not _is_made(m)]
+    blocks = turns[-1]["content"]
+    text = (
+        "".join(
+            str(cast(dict[str, object], b).get("text", "")) for b in blocks if isinstance(b, dict)
+        )
+        if isinstance(blocks, list)
+        else str(blocks)
+    )
+    read = [
+        p
+        for m in turns
+        if m["role"] == "user" and isinstance(m["content"], list)
+        for b in m["content"]
+        for p in passages_in(str(cast(dict[str, object], b).get("content", "")))
+    ]
+    if "labels" in row:
+        labels = tuple(Labelled.model_validate(x) for x in cast(list[JsonValue], row["labels"]))
+    else:
+        labels = next(
+            a.labels
+            for a in asked
+            if a.chunk_id == row["chunk_id"] and a.question in str(row["question"])
+        )
+    one = Asked(str(row["chunk_id"]), str(row["question"]), labels, bool(row["paired"]))
+    told = Told(text, cast(float, row["usd"]), 0, 0, (), tuple(read), tuple(turns))
+    return teach(one, lambda job: told)
 
 
 def _key(row: dict[str, JsonValue]) -> tuple[str, str]:
@@ -481,6 +571,8 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     running.add_argument("--client", default=CLIENT, help=f"who is billed (default {CLIENT})")
     running.add_argument("--workers", type=int, default=RESEARCH_TEACH_WORKERS)
     running.add_argument("--out", type=Path, default=TRAJECTORIES)
+    regrading = commands.add_parser("regrade", help="judge saved rows again, free")
+    regrading.add_argument("--out", type=Path, default=TRAJECTORIES)
     exporting = commands.add_parser("export", help="write the kept trajectories for underhood")
     exporting.add_argument("--out", type=Path, required=True, help="underhood's data directory")
     exporting.add_argument("--trajectories", type=Path, default=TRAJECTORIES)
@@ -491,6 +583,11 @@ def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
     if args.command == "run":
         _run(args)
+    elif args.command == "regrade":
+        asked = load_asked()
+        rows = [regrade(row, asked) for row in read_rows(args.out)]
+        write_rows(args.out, rows)
+        print(f"{sum(1 for r in rows if r['kept'])} of {len(rows)} kept on regrading {args.out}")
     else:
         print(f"{export(args.trajectories, args.out)} trajectories to {args.out}")
 

@@ -35,7 +35,18 @@ BASES = ("consolidated", "standalone")
 
 
 class SourcedFigure(Figure):
-    """A figure, the basis it is reported on, and the passage that prints it."""
+    """A figure, the basis it is reported on, and the passage that prints it. Its description may
+    be the model's own words, where the per-passage task's is a quote."""
+
+    description: str | None = Field(
+        default=None,
+        description=(
+            "When metric is other, a few words, ten at most, naming what is counted or measured, "
+            "in the passage's terms where they serve: 'retail outlets', 'vessels'. For a named "
+            "metric, 'change' when the figure is its change, else null: only a named metric "
+            "takes 'change', and it takes nothing else."
+        ),
+    )
 
     basis: str | None = Field(
         default=None,
