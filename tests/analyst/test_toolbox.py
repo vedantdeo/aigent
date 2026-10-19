@@ -1,5 +1,6 @@
 """The generalist's toolbox and the list of experts in it: a server's tools beside the
-specialists', evidence kept from each search, and a specialist call answered through the router."""
+specialists', evidence kept from each search and from what a specialist's answer cites, and a
+specialist call answered through the router."""
 
 from __future__ import annotations
 
@@ -16,15 +17,24 @@ from aigent.analyst.experts import (
     experts,
     figures_expert,
 )
+from aigent.analyst.served import report_analyst
 from aigent.analyst.specialists import FigureJob, Specialist, Told, check_figures
 from aigent.analyst.toolbox import Passage, Toolbox, passages_in
 from aigent.errors import SpecialistUnreachable
-from aigent.llm.core import Llm
+from aigent.llm.core import Dispatch, Llm
 from aigent.mcp_client import connect
 from aigent.mcp_server import build_server
 from aigent.retrieval.chunk import context_block
 
-from ..conftest import PASSAGES, FakeFilings, FakeSearch
+from ..conftest import (
+    PASSAGES,
+    FakeFilings,
+    FakeOpenAI,
+    FakeSearch,
+    MakeLlm,
+    asking,
+    completion,
+)
 from .conftest import DIVIDEND, FIGURE, box, never, search, told
 
 
@@ -46,83 +56,62 @@ def test_the_generalist_is_shown_the_server_s_tools_and_the_specialist() -> None
     assert names == ["search_filings", "extract_figures"]
     said = EXTRACT_FIGURES_TOOL.get("description", "")
     assert said.startswith("Specialist for ") and "Use it" in said and "Limits:" in said, said
-    assert dict(EXTRACT_FIGURES_TOOL["input_schema"])["required"] == ["chunk_ids", "wanted"]
+    assert dict(EXTRACT_FIGURES_TOOL["input_schema"])["required"] == ["question", "ticker", "year"]
 
 
-def test_figures_are_extracted_from_passages_a_search_returned_each_tagged_with_its_own() -> None:
+ASK: dict[str, object] = {
+    "question": "  What dividend did Reliance recommend for FY25?\n",
+    "ticker": "RELIANCE",
+}
+CALL: dict[str, object] = {**ASK, "year": "2025"}
+WRONG = FIGURE.replace("5.5", "9.9")  # a dividend no passage prints
+
+
+def test_a_call_is_one_job_whose_figures_come_back_with_the_passages_they_cite_as_evidence() -> (
+    None
+):
     asked: list[FigureJob] = []
 
     def figures(job: FigureJob) -> Told:
         asked.append(job)
-        return told('{"figures": [' + (FIGURE if "dividend" in job.passage else "") + "]}")
+        return told('{"figures": [' + FIGURE + "]}")
 
     tools = box(search, figures)
-    tools("search_filings", {"query": "dividend", "company": "all", "year": "all"})
 
-    content, is_error = tools(
-        "extract_figures", {"chunk_ids": [DIVIDEND, "ITC-FY25#0001"], "wanted": "the dividend"}
-    )
+    content, is_error = tools("extract_figures", CALL)
 
     assert not is_error, content
-    assert json.loads(content) == {"figures": [{**json.loads(FIGURE), "chunk_id": DIVIDEND}]}
-    assert [(job.source, job.wanted) for job in asked] == [
-        ("RELIANCE-FY25", "the dividend"),
-        ("ITC-FY25", "the dividend"),
-    ]
-    assert asked[0].passage == PASSAGES["RELIANCE-FY25"][0].text
-    assert [r.specialist for r in tools.route.routed] == ["extract_figures"] * 2
+    assert asked == [FigureJob("What dividend did Reliance recommend for FY25?", "RELIANCE", 2025)]
+    assert json.loads(content) == {"figures": [json.loads(FIGURE)]}
+    assert list(tools.evidence) == [DIVIDEND], "a claim can cite the passage it was read from"
+    assert tools.evidence[DIVIDEND].text == PASSAGES["RELIANCE-FY25"][0].text
+    assert [r.specialist for r in tools.route.routed] == ["extract_figures"]
 
 
-WRONG = FIGURE.replace("5.5", "9.9")  # a dividend no passage prints
-
-
-def _figures_expert(reads: Callable[[FigureJob], Told]) -> Toolbox:
-    """A toolbox whose figures specialist and fallback both answer with `reads`."""
+def _failing() -> Toolbox:
+    """A toolbox whose figures specialist and fallback both answer a dividend nothing prints."""
     tools = box(search)
+    reads = lambda job: told('{"figures": [' + WRONG + "]}")  # noqa: E731
     tools.experts = [figures_expert(Specialist("extract_figures", reads, reads, check_figures))]
-    tools("search_filings", {"query": "dividend"})
     return tools
 
 
-def test_a_passage_neither_model_can_read_is_listed_and_the_rest_come_back() -> None:
-    def reads(job: FigureJob) -> Told:
-        right = "dividend" in job.passage
-        return told('{"figures": [' + (FIGURE if right else WRONG) + "]}")
+def test_an_answer_neither_model_gets_past_its_check_is_an_error_and_adds_no_evidence() -> None:
+    tools = _failing()
 
-    tools = _figures_expert(reads)
+    content, is_error = tools("extract_figures", CALL)
 
-    content, is_error = tools(
-        "extract_figures", {"chunk_ids": [DIVIDEND, "ITC-FY25#0001"], "wanted": "the dividend"}
-    )
-
-    assert not is_error, content
-    assert json.loads(content) == {
-        "figures": [{**json.loads(FIGURE), "chunk_id": DIVIDEND}],
-        "failed": [
-            {"chunk_id": "ITC-FY25#0001", "reason": "the passage does not back 9.9 for dividend"}
-        ],
-    }
-
-
-def test_a_call_whose_every_passage_failed_is_an_error_naming_each() -> None:
-    tools = _figures_expert(lambda job: told('{"figures": [' + WRONG + "]}"))
-
-    content, is_error = tools(
-        "extract_figures", {"chunk_ids": [DIVIDEND, "ITC-FY25#0001"], "wanted": "the dividend"}
-    )
-
-    assert is_error and f"{DIVIDEND}: the passage" in content, content
-    assert "ITC-FY25#0001: the passage" in content
+    assert is_error and f"{DIVIDEND} does not back 9.9" in content, content
+    assert tools.route.routed[0].path is None and tools.evidence == {}
 
 
 def test_an_exact_repeat_of_a_failed_call_is_refused_unrun() -> None:
-    tools = _figures_expert(lambda job: told('{"figures": [' + WRONG + "]}"))
-    failing = {"chunk_ids": [DIVIDEND], "wanted": "the dividend"}
+    tools = _failing()
 
-    first, _ = tools("extract_figures", failing)
+    first, _ = tools("extract_figures", CALL)
     ran = len(tools.route.routed)
-    again, is_error = tools("extract_figures", dict(reversed(failing.items())))
-    other, _ = tools("extract_figures", {**failing, "wanted": "the final dividend"})
+    again, is_error = tools("extract_figures", dict(reversed(CALL.items())))
+    other, _ = tools("extract_figures", {**CALL, "year": "2024"})
 
     assert (
         is_error
@@ -135,61 +124,41 @@ def test_an_exact_repeat_of_a_failed_call_is_refused_unrun() -> None:
 
 def test_a_call_that_succeeded_may_be_made_again() -> None:
     tools = box(search)
-    tools("search_filings", {"query": "dividend"})
 
     for _ in range(2):
-        _, is_error = tools("extract_figures", {"chunk_ids": [DIVIDEND], "wanted": "dividend"})
+        _, is_error = tools("extract_figures", CALL)
         assert not is_error
     assert len(tools.route.routed) == 2
 
 
 @pytest.mark.parametrize(
-    ("name", "arguments", "says"),
+    ("arguments", "says"),
     [
-        pytest.param(
-            "extract_figures", {"chunk_ids": [], "wanted": "x"}, "at least one", id="no passages"
-        ),
-        pytest.param(
-            "extract_figures", {"chunk_ids": [DIVIDEND], "wanted": ""}, "what", id="nothing wanted"
-        ),
-        pytest.param(
-            "extract_figures",
-            {"chunk_ids": [DIVIDEND, "INFY-FY25#0009"], "wanted": "x"},
-            "no passage INFY-FY25#0009",
-            id="a passage no search returned",
-        ),
+        pytest.param({**CALL, "question": "  "}, "as you were asked", id="no question"),
+        pytest.param({"question": "q", "year": "2025"}, "ticker must be", id="no ticker"),
+        pytest.param({**CALL, "ticker": "INFY"}, "ticker must be one of", id="a company not filed"),
+        pytest.param({**CALL, "year": "2023"}, "year must be one of", id="a year not filed"),
+        pytest.param({**CALL, "year": "FY25"}, "year must be one of", id="a year not a number"),
+        pytest.param(ASK, "year must be one of", id="no year"),
     ],
 )
 def test_a_bad_specialist_call_is_an_error_result_and_reaches_no_model(
-    name: str, arguments: dict[str, object], says: str
+    arguments: dict[str, object], says: str
 ) -> None:
     tools = box(search)
-    tools("search_filings", {"query": "dividend"})
 
-    content, is_error = tools(name, arguments)
+    content, is_error = tools("extract_figures", arguments)
 
     assert is_error and content.startswith("Error: ") and says in content, content
     assert tools.route.routed == []
-
-
-def test_an_answer_neither_model_gets_past_its_check_is_an_error_result() -> None:
-    tools = _figures_expert(lambda job: told(""))
-
-    content, is_error = tools("extract_figures", {"chunk_ids": [DIVIDEND], "wanted": "dividend"})
-
-    assert is_error and "no figures" in content, content
-    assert tools.route.routed[0].path is None
 
 
 def test_an_unreachable_specialist_fails_the_task_rather_than_the_call() -> None:
     def down(job: FigureJob) -> Told:
         raise SpecialistUnreachable("hostllm-analyst did not answer in 2 tries")
 
-    tools = box(search, down)
-    tools("search_filings", {"query": "dividend"})
-
     with pytest.raises(SpecialistUnreachable):
-        tools("extract_figures", {"chunk_ids": [DIVIDEND], "wanted": "dividend"})
+        box(search, down)("extract_figures", CALL)
 
 
 def test_a_failed_search_adds_no_evidence_and_other_tools_pass_straight_through() -> None:
@@ -205,18 +174,22 @@ def test_a_failed_search_adds_no_evidence_and_other_tools_pass_straight_through(
     assert tools.evidence == {}
 
 
-def test_over_the_real_server_a_search_feeds_the_figures_call() -> None:
-    with connect(build_server(FakeSearch(), FakeFilings()), fenced=False) as served:
+def test_over_the_real_server_the_specialist_s_own_search_finds_what_it_cites(
+    make_llm: MakeLlm, offline_tokenizer: None
+) -> None:
+    searching = asking(("search_report", {"query": "dividend"}))
+    fake = FakeOpenAI(searching, completion('{"figures": [' + FIGURE + "]}"))
+    small = Llm("hostllm-analyst", sdk=cast(object, fake))
+    filings = FakeFilings()
+    with connect(build_server(FakeSearch(), filings), fenced=False) as served:
         tools = box(served.dispatch)
         tools.served_tools = served.tools
-        found, failed = tools("search_filings", {"query": "dividend", "company": "RELIANCE"})
-        content, is_error = tools(
-            "extract_figures", {"chunk_ids": [DIVIDEND], "wanted": "dividend"}
-        )
+        tools.experts = [figures_expert(report_analyst(small, make_llm(never)[0], served.dispatch))]
+        content, is_error = tools("extract_figures", CALL)
 
-    assert not failed and list(tools.evidence) == [DIVIDEND], found
-    assert not is_error and cast(dict[str, list[object]], json.loads(content))["figures"], content
-    assert isinstance(tools.evidence[DIVIDEND], Passage)
+    assert not is_error and json.loads(content)["figures"], content
+    assert filings.asked == [("dividend", "RELIANCE", "2025")]
+    assert isinstance(tools.evidence[DIVIDEND], Passage) and list(tools.evidence) == [DIVIDEND]
 
 
 def test_a_fundamentals_answer_is_kept_as_evidence_under_its_cite_as() -> None:
@@ -256,22 +229,22 @@ def test_two_tools_with_one_name_are_refused(served: list[str]) -> None:
 def test_the_list_builds_every_specialist_on_its_own_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    built: list[tuple[str, str, str]] = []
+    built: list[tuple[str, str, str, Dispatch]] = []
     for name in ("report_analyst",):
 
         def build(
-            small: str, big: str, model: str | None = "unset", name: str = name
+            small: str, big: str, served: Dispatch, model: str | None = "unset", name: str = name
         ) -> Specialist[object, object]:
-            built.append((name, small, f"{big} as {model}"))
+            built.append((name, small, f"{big} as {model}", served))
             return Specialist(name, never, never, lambda job, said: said)
 
         monkeypatch.setattr(listed, name, build)
 
     small = cast("Callable[[str], Llm]", lambda client: client)
-    made = experts(cast(Llm, "generalist"), small, model="claude-haiku-4-5")
+    made = experts(cast(Llm, "generalist"), search, small, model="claude-haiku-4-5")
 
     assert list(BUILDERS) == sorted(BUILDERS), "the list keeps one canonical order"
     assert built == [
-        ("report_analyst", "hostllm-analyst", "generalist as claude-haiku-4-5"),
+        ("report_analyst", "hostllm-analyst", "generalist as claude-haiku-4-5", search),
     ]
     assert [expert.name for expert in made] == ["extract_figures"]

@@ -268,7 +268,7 @@ def main(argv: list[str] | None = None) -> None:
                 served.tools,
                 served.dispatch,
                 Router(price=lambda i, o: cost_usd(chosen.label, i, o)),
-                experts(generalist, small=small.__getitem__, model=chosen.model),
+                experts(generalist, served.dispatch, small=small.__getitem__, model=chosen.model),
             )
             path = args.out / f"{stamp}-{named}.md"
             try:

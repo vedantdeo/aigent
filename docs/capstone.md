@@ -73,21 +73,22 @@ as a tool with **structured arguments**, and the adapter renders the exact train
 
 What the generalist sees is a **specialist card** — the tool's description and schema:
 
-| Field | Report analyst: `extract_figures` |
+| Field | Report analyst: `extract_figures` (since 2026-10-19) |
 |---|---|
-| good at | the figures a filing passage states that answer a question: metric, value with any named scale applied, unit, financial year |
-| arguments | `chunk_ids` (passages from `search_filings`), `wanted` (what to extract) |
-| returns | `[Figure]` with each figure's `chunk_id` |
-| limits | one passage's worth at a time; no arithmetic across passages; per-₹-crore intensities are a known weakness |
+| good at | the figures a question needs from one company's annual report: metric, value with any named scale applied, unit, financial year |
+| arguments | `question` (word for word, as the generalist was asked it), `ticker`, `year` (the financial year the report ends) |
+| does | searches that report itself (`search_report`, scoped in code to the ticker and year), calculates scales and percentages, answers |
+| returns | `[Figure]`, each with the `chunk_id` of the passage it is printed in; the generalist never reads the passages, the critic does |
+| limits | one company's report for one year a call, though a report also states the year before; no arithmetic across figures; a figure the report does not state is left out |
 
-Behind the card, each specialist is a small contract, in code:
+Behind the card, the specialist is a small contract, in code:
 
 | Piece | Report analyst |
 |---|---|
-| render | `figure_messages(passage, source, wanted)` + the `calculate` tool |
-| model | the v3 PEFT LoRA on Qwen3-4B |
-| validate | parses as `Figures`; every value's number printed in its passage (`check_call`'s rules), all or nothing: one figure that fails sends the whole call to the generalist |
-| fallback | the same job on the generalist, with the same schema and the same check; an answer that fails it too is an error |
+| render | `research_messages(question, company, report)` + `search_report` and `calculate` (`extraction.research`) |
+| model | **v4**, to be trained on that prompt (step 3 of the 2026-10-19 plan); the served v3 knows only the per-passage prompt |
+| validate | parses as `SourcedFigures`; every figure's passage is one its searches returned, and its value is a number that passage prints (`check_call`'s rules), all or nothing |
+| fallback | the same job on the generalist: the same prompt, tools and check; an answer that fails it too is an error |
 | log | which path answered, the validation failure if any, tokens and latency |
 
 ## Serving
@@ -287,8 +288,10 @@ no specialist to calm it fails, by decision.
   it was removed (Vedant), and its adapter, rows, prompt and training setup are kept in underhood's
   `finetunes/headline-flavour/` for a later use. `extract_figures` as built reads passages `search_filings` already put in
   the generalist's context ($0.0085 a call against $0.0013 for the same tokens on the generalist, on
-  2026-10-14). The redesign that follows: the generalist sends the question with a ticker and a
-  filing year, and the specialist retrieves and reads for itself.
+  2026-10-14). So since 2026-10-19 (Vedant) the generalist sends the question word for word with
+  a ticker and a filing year, and the specialist searches and reads for itself; the generalist
+  keeps `search_filings` for when it does the job itself. The card states no price: the generalist
+  does not weigh cost to delegate (Vedant); the eval measures what routing saves.
 
 - **A task that is too trivial does not go to the specialist, even when offered and coaxed**
   (2026-10-13, three questions, seven research passes, three drafts of the prompt). Sonnet 5 called

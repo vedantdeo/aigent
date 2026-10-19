@@ -6,18 +6,23 @@ from collections.abc import Callable
 
 from aigent.analyst.experts import figures_expert
 from aigent.analyst.router import Router
-from aigent.analyst.specialists import FigureJob, Specialist, Told, check_figures
+from aigent.analyst.specialists import FigureJob, Passage, Specialist, Told, check_figures
 from aigent.analyst.toolbox import Toolbox
 from aigent.retrieval.chunk import context_block
 
 from ..conftest import PASSAGES
 
 DIVIDEND = "RELIANCE-FY25#0001"  # "The Board recommended a dividend of Rs 5.50 per equity share."
-FIGURE = '{"metric": "dividend", "value": 5.5, "unit": "INR", "year": 2025, "description": null}'
+READ = Passage(DIVIDEND, PASSAGES["RELIANCE-FY25"][0].citation, PASSAGES["RELIANCE-FY25"][0].text)
+FIGURE = (
+    '{"metric": "dividend", "value": 5.5, "unit": "INR", "year": 2025, "description": null, '
+    f'"chunk_id": "{DIVIDEND}"}}'
+)
 
 
-def told(text: str) -> Told:
-    return Told(text, 0.01, 100, 10)
+def told(text: str, *read: Passage) -> Told:
+    """A reply that read `read`, the dividend passage when none is named."""
+    return Told(text, 0.01, 100, 10, (), read or (READ,))
 
 
 def never(job: object) -> Told:

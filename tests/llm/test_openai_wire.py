@@ -45,6 +45,7 @@ from aigent.llm.adapters.openai import (
 )
 from aigent.llm.core import Dispatch, Llm, Request
 from aigent.llm.messages import Msg, Thinking
+from aigent.llm.pricing import cost_usd
 from aigent.tools import CALCULATOR_TOOL
 
 from ..conftest import FakeOpenAI, Finish, MakeLlm, StubTokenizer
@@ -355,7 +356,7 @@ def test_both_sarvam_clients_wait_out_a_rate_limit_of_a_minute() -> None:
     assert patient == [(6, 60.0)] * 2
 
 
-def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_and_how_long_it_waits() -> None:
+def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_its_wait_and_its_rate() -> None:
     ours, theirs = ANALYST, VLLM_ANALYST
     assert theirs.model == ours.model, "vLLM serves each adapter under the same name"
     same = replace(
@@ -364,10 +365,35 @@ def test_a_vllm_specialist_differs_from_ours_only_in_where_it_is_and_how_long_it
         base_url=ours.base_url,
         timeout=ours.timeout,
         max_tokens=ours.max_tokens,
+        priced_as=ours.priced_as,
     )
     assert same == ours
     assert theirs.base_url == VLLM_BASE_URL != ours.base_url
     assert theirs.timeout == VLLM_COLD_START_TIMEOUT > 349, "outlasts vLLM's slowest cold start"
+
+
+@pytest.mark.parametrize(
+    ("client", "asked", "billed"),
+    [
+        pytest.param("hostllm-analyst", None, "report-analyst", id="our engine, at our rate"),
+        pytest.param("vllm-analyst", None, "report-analyst@vllm", id="vLLM, at its own rate"),
+        pytest.param(
+            "vllm-analyst", "claude-sonnet-5", "claude-sonnet-5", id="another model named, at its"
+        ),
+    ],
+)
+def test_a_call_is_billed_at_its_engine_s_rate_and_traced_as_the_model_it_named(
+    offline_tokenizer: None, client: str, asked: str | None, billed: str
+) -> None:
+    fake = FakeOpenAI(_completion("ok", prompt=2000, completion=300))
+    llm = Llm(client, sdk=cast(object, fake))
+
+    llm.create(Request("row", [{"role": "user", "content": "hi"}], 400, model=asked))
+
+    [call] = llm.trace
+    assert call.model == (asked or "report-analyst"), "traced as what was sent"
+    assert llm.spent_usd == pytest.approx(cost_usd(billed, 2000, 300)), call
+    assert llm.spent_usd > 0, "every engine's rate is a price"
 
 
 @pytest.mark.parametrize(

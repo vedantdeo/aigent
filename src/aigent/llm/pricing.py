@@ -11,7 +11,7 @@ import math
 import threading
 from dataclasses import dataclass, field
 
-from underhood.gpu.pricing import SERVED
+from underhood.gpu.pricing import SERVED, VLLM_SERVED
 
 from aigent.config import MAX_USD_PER_REQUEST, MAX_USD_PER_RUN, WEB_SEARCH_RESULT_TOKENS
 from aigent.errors import BudgetExceeded
@@ -54,6 +54,7 @@ PRICES: dict[str, Price] = {
     "mlx-community/Qwen3-8B-4bit": Price(input=0.0028, output=0.025),
     # The specialist hostllm serves, at the price it measured: a GPU's hour over engine time.
     "report-analyst": Price(input=SERVED.input, output=SERVED.output),
+    "report-analyst@vllm": Price(input=VLLM_SERVED.input, output=VLLM_SERVED.output),
     # Sarvam lists ₹29.28 / ₹10.98 / ₹73.20 per million, converted at ₹95.5 and rounded up.
     "sarvam-105b": Price(input=0.31, output=0.77, cached_input=0.12),
 }

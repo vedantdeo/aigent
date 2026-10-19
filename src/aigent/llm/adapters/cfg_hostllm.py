@@ -49,6 +49,7 @@ VLLM_ANALYST = replace(
     base_url=VLLM_BASE_URL,
     timeout=VLLM_COLD_START_TIMEOUT,
     max_tokens={"FIGURE_ANSWER": FIGURE_ANSWER_VLLM},
+    priced_as="report-analyst@vllm",
 )
 
 # Client name → settings, in one canonical order.

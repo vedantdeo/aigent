@@ -3,13 +3,12 @@ and the gate, by an approver and by a person resuming a paused run."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from typing import cast
 
 import pytest
 from anthropic.types import Message, TextBlock
-from openai.types.chat import ChatCompletion, ChatCompletionMessageFunctionToolCall
+from openai.types.chat import ChatCompletion
 from pydantic import BaseModel
 
 pytest.importorskip("langgraph")
@@ -40,7 +39,7 @@ from ..conftest import (  # noqa: E402
     FakeOpenAI,
     MakeLlm,
     Sent,
-    calling,
+    asking,
     completion,
     tool_turn,
 )
@@ -130,14 +129,8 @@ def test_a_generalist_on_a_wire_with_no_cache_runs_as_its_client_s_own_model(
 
 
 def _figures_call() -> ChatCompletion:
-    """A turn asking the figures specialist for the dividend passage."""
-    asked = calling("0")
-    calls = asked.choices[0].message.tool_calls
-    assert calls is not None
-    call = cast(ChatCompletionMessageFunctionToolCall, calls[0])
-    call.function.name = "extract_figures"
-    call.function.arguments = json.dumps({"chunk_ids": [DIVIDEND], "wanted": "dividend"})
-    return asked
+    """A turn asking the figures specialist for the question's figures."""
+    return asking(("extract_figures", {"question": QUESTION, "ticker": "RELIANCE", "year": "2025"}))
 
 
 @pytest.mark.parametrize(

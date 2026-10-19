@@ -1,5 +1,6 @@
-"""The specialists' contract and each one's check: a narrow job a fine-tune answers on the prompt it
-was trained on, with the generalist as the other model that can do it. `analyst.router` runs it.
+"""The specialists' contract and the report analyst's check: a narrow job a fine-tune answers on
+the prompt it was trained on, with the generalist as the other model that can do it, and the
+passages a job read. `analyst.router` runs it.
 """
 
 from __future__ import annotations
@@ -10,7 +11,29 @@ from dataclasses import dataclass
 
 from underhood.tooldata.labels import Label, check_call
 
-from aigent.extraction.figures import CHANGE, Figures, parse_figures
+from aigent.extraction.figures import CHANGE
+from aigent.extraction.research import SourcedFigure, parse_sourced
+
+_PASSAGE = re.compile(r'<passage id="([^"]+)" source="([^"]*)">\n(.*?)\n</passage>', re.S)
+
+
+@dataclass(frozen=True)
+class Passage:
+    """One passage a search returned: the id it is cited by, where it is from, and its text."""
+
+    id: str
+    source: str
+    text: str
+
+    @property
+    def report(self) -> str:
+        """The report it is from: ITC-FY25 for ITC-FY25#0412."""
+        return self.id.split("#")[0]
+
+
+def passages_in(result: str) -> list[Passage]:
+    """Every passage in a search result's text, in order."""
+    return [Passage(*found) for found in _PASSAGE.findall(result)]
 
 
 class Invalid(ValueError):
@@ -19,13 +42,15 @@ class Invalid(ValueError):
 
 @dataclass(frozen=True)
 class Told:
-    """One model's reply to a job, what it cost, and the calculate calls it made on the way."""
+    """One model's reply to a job, what it cost, the calculate calls it made on the way, and the
+    passages its searches returned."""
 
     text: str
     usd: float
     input_tokens: int
     output_tokens: int
     calls: tuple[str, ...] = ()
+    read: tuple[Passage, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -42,11 +67,20 @@ class Specialist[Job, Out]:
 
 @dataclass(frozen=True)
 class FigureJob:
-    """What the report analyst is asked: a passage, the report it is from, and what to extract."""
+    """What the report analyst is asked: the question as it was put, and the one report to search,
+    by ticker and the financial year it ends."""
 
-    passage: str
-    source: str
-    wanted: str
+    question: str
+    ticker: str
+    year: int
+
+
+@dataclass(frozen=True)
+class Found:
+    """The report analyst's answer: its figures, and the passage each is printed in, by id."""
+
+    figures: list[SourcedFigure]
+    passages: dict[str, Passage]
 
 
 _SCALED = re.compile(r"\(?\s*(-?\d+(?:\.\d+)?)\s*\*\s*(?:10\s*\*\*\s*(\d+)|1e(\d+)|1(0{3,}))\s*\)?")
@@ -62,17 +96,24 @@ def canonical(call: str) -> str:
     return f"{number} * 10**{power or exponent or len(zeros)}"
 
 
-def check_figures(job: FigureJob, told: Told) -> Figures:
-    """The report analyst's check, all or nothing: the reply is `Figures`, and every value is a
-    number the passage prints, as printed or through one of the reply's calculate calls."""
-    figures = parse_figures(told.text)
+def check_figures(job: FigureJob, told: Told) -> Found:
+    """The report analyst's check, all or nothing: the reply is `SourcedFigures`, each figure's
+    passage is one its searches returned, and its value is a number that passage prints, as
+    printed or through one of the reply's calculate calls."""
+    figures = parse_sourced(told.text)
     if figures is None:
         raise Invalid("the reply holds no figures")
+    read = {passage.id: passage for passage in told.read}
     for figure in figures.figures:
+        passage = read.get(figure.chunk_id)
+        if passage is None:
+            raise Invalid(f"{figure.chunk_id} is not a passage its searches returned")
+        label = figure.model_dump(exclude={"chunk_id"})
         backed = any(
-            check_call(Label(**figure.model_dump(), call=call), job.passage, CHANGE)
+            check_call(Label(**label, call=call), passage.text, CHANGE)
             for call in (None, *(canonical(c) for c in told.calls))
         )
         if not backed:
-            raise Invalid(f"the passage does not back {figure.value} for {figure.metric}")
-    return figures
+            raise Invalid(f"{figure.chunk_id} does not back {figure.value} for {figure.metric}")
+    cited = {figure.chunk_id: read[figure.chunk_id] for figure in figures.figures}
+    return Found(figures.figures, cited)
