@@ -31,9 +31,32 @@ REPORT_SEARCH_TOOL: ToolParam = {
 }
 
 
-class SourcedFigure(Figure):
-    """A figure and the passage that prints it."""
+BASES = ("consolidated", "standalone")
 
+
+class SourcedFigure(Figure):
+    """A figure, the basis it is reported on, and the passage that prints it. Its description may
+    be the model's own words, where the per-passage task's is a quote."""
+
+    description: str | None = Field(
+        default=None,
+        description=(
+            "When metric is other, a few words, ten at most, naming what is counted or measured, "
+            "in the passage's terms where they serve: 'retail outlets', 'vessels'. For a named "
+            "metric, 'change' when the figure is its change, else null: only a named metric "
+            "takes 'change', and it takes nothing else."
+        ),
+    )
+
+    basis: str | None = Field(
+        default=None,
+        description=(
+            "Only for a figure from the financial statements or segment information: "
+            "consolidated or standalone, as the statement or its heading says, or for one "
+            "segment's figure the segment's name copied from the passage. Null for anything "
+            "else, such as a count, customers or business an initiative sourced."
+        ),
+    )
     chunk_id: str = Field(description="The id of the passage the figure is printed in.")
 
 
@@ -53,12 +76,29 @@ def _rules() -> str:
 
 
 SYSTEM = (
-    "You answer a question about one Indian company's annual report with the figures it needs. "
-    "Search the report with search_report, as often as the question needs, then return only the "
-    "figures that answer it, each from a passage a search returned, as JSON of the form "
+    "You answer a question about one Indian company's annual report with the figures it needs, "
+    "found by searching that report. You have six turns: search, calculate, then answer.\n"
+    "Searching. Query in the report's own words, naming the statement or table that would "
+    "print the figure: 'Consolidated Statement of Profit and Loss', 'Revenue from operations', "
+    "'segment results'. Search again with other words when the passages do not print every "
+    "figure the question asks for, each year included; a report prints the previous year beside "
+    "the current one, so both years usually come from one passage. When two searches find "
+    "nothing, answer with no figures rather than guess.\n"
+    "Reading. The question may also ask about other companies or other reports: answer only for "
+    "the company and report named in <company> and <report>, and never search for another "
+    "company; the rest of the question is not yours. Take figures on the basis the question names "
+    "(consolidated, standalone or a segment) and, when it names none, consolidated. In a table, "
+    "read each number by its row and its column heading: a column is a year only when its "
+    "heading says so, and a segment table's columns are segments. When the question asks for "
+    "something the report does not print, such as a ratio or a growth rate, return the figures "
+    "it rests on and do not compute it.\n"
+    "Answering. Return only the figures that answer the question, each from a passage a search "
+    "returned, as JSON of the form "
     '{"figures": [{"metric": ..., "value": ..., "unit": ..., "year": ..., "description": ..., '
-    '"chunk_id": ...}]}, and nothing else. A report states the previous year beside the current '
-    "one, so both years' figures may come from it. " + TOOL_RULE + " Each figure:\n" + _rules()
+    '"basis": ..., "chunk_id": ...}]}, and nothing else. '
+    + TOOL_RULE
+    + " Each figure:\n"
+    + _rules()
 )
 
 

@@ -5,7 +5,7 @@ generalist; and the request that warms the endpoint.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import cast
 
 from aigent.analyst.cfg_analyst import (
@@ -30,7 +30,7 @@ from aigent.extraction.research import REPORT_SEARCH_TOOL, research_messages
 from aigent.llm.adapters import spec
 from aigent.llm.adapters.openai import UNREACHABLE
 from aigent.llm.core import Dispatch, Llm, Request
-from aigent.llm.messages import Block, Msg, Reply
+from aigent.llm.messages import Block, Cache, Msg, Reply, Tool
 from aigent.tools import CALCULATOR_TOOL, execute_tool
 
 
@@ -62,6 +62,7 @@ def _told(
     replies: Sequence[Reply],
     calls: Sequence[str] = (),
     read: Sequence[Passage] = (),
+    conversation: Sequence[Msg] = (),
 ) -> Told:
     """A job's reply with what `llm` billed for it since `before`, over every turn it took."""
     return Told(
@@ -71,6 +72,7 @@ def _told(
         sum(reply.usage.output_tokens for reply in replies),
         tuple(calls),
         tuple(read),
+        tuple(conversation),
     )
 
 
@@ -109,34 +111,68 @@ def _answered(
     return {"role": "user", "content": answered}
 
 
-def _research(llm: Llm, search: Dispatch, model: str | None = None) -> Callable[[FigureJob], Told]:
-    cap = max_tokens("FIGURE_ANSWER", spec(llm.client))
+def opening(job: FigureJob, names: Mapping[str, str] = COMPANIES) -> list[Msg]:
+    """A job's first user turn: its question, the company `names` gives its ticker, its report."""
+    _, user = research_messages(job.question, names[job.ticker], report(job.year))
+    return [{"role": "user", "content": user}]
 
-    def research(job: FigureJob) -> Told:
+
+TOOLS: tuple[Tool, ...] = (REPORT_SEARCH_TOOL, CALCULATOR_TOOL)
+
+
+def turn_request(
+    messages: Sequence[Msg],
+    cap: int,
+    model: str | None = None,
+    cache: Cache | None = None,
+    system: str | None = None,
+    tools: Sequence[Tool] = TOOLS,
+) -> Request:
+    """One turn of the report analyst's loop: the trained prompt, the search and calculate, unless
+    a teacher's `system` and `tools` are given."""
+    trained, _ = research_messages("", "", "")
+    return Request(
+        "extract_figures",
+        messages,
+        cap,
+        system=system or trained,
+        model=model,
+        tools=list(tools),
+        cache_control=cache,
+    )
+
+
+def research(
+    llm: Llm,
+    search: Dispatch,
+    model: str | None = None,
+    names: Mapping[str, str] = COMPANIES,
+    cache: Cache | None = None,
+    system: str | None = None,
+    tools: Sequence[Tool] = TOOLS,
+) -> Callable[[FigureJob], Told]:
+    """The report analyst's loop on `llm`, asked as `model`: a job's question about the company
+    `names` gives its ticker, searched through `search` and calculated, every turn of it kept in
+    `Told.conversation`; `cache` marks each turn for a prompt cache, where the wire has one, and a
+    teacher's `system` and `tools` replace the trained ones."""
+    cap = max_tokens("RESEARCH_TURN", spec(llm.client))
+
+    def answer(job: FigureJob) -> Told:
         before = llm.spent_usd
-        system, user = research_messages(job.question, COMPANIES[job.ticker], report(job.year))
-        messages: list[Msg] = [{"role": "user", "content": user}]
+        messages = opening(job, names)
         replies: list[Reply] = []
         calls: list[str] = []
         read: list[Passage] = []
         for _ in range(SPECIALIST_TOOL_TURNS):
-            request = Request(
-                "extract_figures",
-                messages,
-                cap,
-                system=system,
-                model=model,
-                tools=[REPORT_SEARCH_TOOL, CALCULATOR_TOOL],
-            )
-            reply = llm.turn(request)
+            reply = llm.turn(turn_request(messages, cap, model, cache, system, tools))
             replies.append(reply)
-            if reply.stop_reason != "tool_use":
-                return _told(llm, before, reply.text, replies, calls, read)
             asked: Msg = {"role": "assistant", "content": reply.blocks}
+            if reply.stop_reason != "tool_use":
+                return _told(llm, before, reply.text, replies, calls, read, [*messages, asked])
             messages = [*messages, asked, _answered(reply, job, search, calls, read)]
-        return _told(llm, before, "", replies, calls, read)  # still working: nothing to check
+        return _told(llm, before, "", replies, calls, read, messages)  # still working: no answer
 
-    return research
+    return answer
 
 
 def report_analyst(
@@ -145,10 +181,10 @@ def report_analyst(
     """`extract_figures`: the figures a question needs from one report, found through `search`
     (the served `search_filings`), on the prompt and tools the adapter is trained on; `small`
     serves the adapter, `big` is the generalist, asked as `model`."""
-    served = _research(small, search)
+    served = research(small, search)
     return Specialist(
         "extract_figures",
         lambda job: reaching(small, lambda: served(job)),
-        _research(big, search, model),
+        research(big, search, model),
         check_figures,
     )

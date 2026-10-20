@@ -301,6 +301,45 @@ no specialist to calm it fails, by decision.
   decision (Vedant); the eval reports how often it routes, and its tasks need narrow jobs big enough
   to be worth handing over. The runs are in `LOG.md`.
 
+## Parked, to try later
+
+- **A structure-aware index of the filings** (Vedant, 2026-10-19). Sentence chunking cuts a table
+  from its heading, so a chunk can print a number without the scale its table states: in the first
+  v4 smoke run the teacher knew Wipro reports in millions but no passage it cited said so, and a Sun
+  Pharma table's "(in Million)" sat two chunks before the number. Wipro, Sun Pharma and HDFC state a
+  scale once per statement section (15 to 24 of 1,300 to 2,000 chunks name one), Bajaj Auto and Power
+  Grid once per table. Extracting tables as tables, labelled with their scale, unit, period columns
+  and basis, would fix this at the source, and likely the segment-table and standalone/consolidated
+  misreads too. Considered and set aside for now: a second citation for the heading's passage
+  (`scale_id`), with a `read_before` tool to fetch the chunks before a table. **Taken up on
+  2026-10-20** (Vedant) as approaches 1 to 4 of the literature below: Docling as every
+  chunker's parser, and a new chunker, `by_element`.
+- **Docling as the parser**, first set aside for pdfplumber (2026-10-20, Vedant: "we can come back
+  to it if we dont get good results") and adopted the same day, after pdfplumber's text found 48
+  of the retrieval eval's 54 quotes and Docling's 54. Its TableFormer reads merged cells and multi-level headers that rule-based parsers
+  miss, and its `DoclingDocument` keeps section hierarchy and captions; it needs torch models at
+  load, where pdfplumber is pure Python. pdfplumber was chosen first for leading on table pages in
+  a 2026 benchmark (MRR 0.807 against PyPDF2's 0.758, arXiv 2604.12047).
+- **From the literature search of 2026-10-20, set aside to try later** (Vedant):
+  - *Tables as data*: extract tables into records (rows, period columns, unit, scale, basis) and
+    query them as data, after TableRAG's schema and cell retrieval (arXiv 2410.04739) and the
+    scale prediction TAT-QA and FinQA call for.
+  - *XBRL as a structured source*: Regulation 33 results filed to NSE and BSE in XBRL, standalone
+    and consolidated with segment results, and the full statements in MCA's AOC-4 XBRL, every
+    value tagged with entity, period and unit; headline figures, not narrative KPIs or notes.
+  - *A knowledge graph beside the vectors*: HybridRAG (arXiv 2408.04948), which beat vector and
+    graph retrieval alone on Nifty-50 earnings calls.
+  - *Retrieval over page images*: ColPali and its ViDoRe benchmark (arXiv 2407.01449), embedding
+    page images and skipping text extraction; it would put a vision model in the specialist's loop.
+- **Tables longer than the embedder reads** (2026-10-20, Vedant). bge-small reads 512 tokens, and
+  209 of `by_element`'s 6,443 chunks over the eval reports run past it, almost all tables; it
+  embeds only their start. Capping chunks at 512 tokens was built and reverted: it cut giant rows
+  at words and stopped repeating oversized headers, losing the table context the label, scale and
+  captions exist to carry. Two ways to try instead:
+  - *A smarter split*: every piece keeps the whole context, and the rows are summarised or chosen
+    rather than cut at a token count.
+  - *An embedder with a longer window*, such as one reading 8k tokens, so a table needs no split.
+
 ## Open questions
 
 - **Is the specialist good enough to be worth routing to?** v2 passed 28/43 on the old labels; v3's

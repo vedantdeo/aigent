@@ -12,7 +12,9 @@ from dataclasses import dataclass
 from underhood.tooldata.labels import Label, check_call
 
 from aigent.extraction.figures import CHANGE
-from aigent.extraction.research import SourcedFigure, parse_sourced
+from aigent.extraction.research import BASES, SourcedFigure, parse_sourced
+from aigent.llm.messages import Msg
+from aigent.retrieval.chunk import squeeze
 
 _PASSAGE = re.compile(r'<passage id="([^"]+)" source="([^"]*)">\n(.*?)\n</passage>', re.S)
 
@@ -42,8 +44,8 @@ class Invalid(ValueError):
 
 @dataclass(frozen=True)
 class Told:
-    """One model's reply to a job, what it cost, the calculate calls it made on the way, and the
-    passages its searches returned."""
+    """One model's reply to a job, what it cost, the calculate calls it made on the way, the
+    passages its searches returned, and the whole conversation from the first user turn on."""
 
     text: str
     usd: float
@@ -51,6 +53,7 @@ class Told:
     output_tokens: int
     calls: tuple[str, ...] = ()
     read: tuple[Passage, ...] = ()
+    conversation: tuple[Msg, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -98,8 +101,8 @@ def canonical(call: str) -> str:
 
 def check_figures(job: FigureJob, told: Told) -> Found:
     """The report analyst's check, all or nothing: the reply is `SourcedFigures`, each figure's
-    passage is one its searches returned, and its value is a number that passage prints, as
-    printed or through one of the reply's calculate calls."""
+    passage is one its searches returned, a segment it names is printed there, and its value is
+    a number that passage prints, as printed or through one of the reply's calculate calls."""
     figures = parse_sourced(told.text)
     if figures is None:
         raise Invalid("the reply holds no figures")
@@ -108,7 +111,11 @@ def check_figures(job: FigureJob, told: Told) -> Found:
         passage = read.get(figure.chunk_id)
         if passage is None:
             raise Invalid(f"{figure.chunk_id} is not a passage its searches returned")
-        label = figure.model_dump(exclude={"chunk_id"})
+        if figure.basis not in (None, *BASES) and squeeze(figure.basis) not in squeeze(
+            passage.text
+        ):
+            raise Invalid(f"{figure.chunk_id} does not name the segment {figure.basis!r}")
+        label = figure.model_dump(exclude={"chunk_id", "basis"})
         backed = any(
             check_call(Label(**label, call=call), passage.text, CHANGE)
             for call in (None, *(canonical(c) for c in told.calls))

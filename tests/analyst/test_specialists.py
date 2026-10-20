@@ -120,3 +120,37 @@ def test_figures_with_a_value_the_passage_does_not_back_are_refused(
 ) -> None:
     with pytest.raises(Invalid, match=reason):
         check_figures(JOB, told(reply, *calls))
+
+
+SEGMENT = Passage(
+    "ITC-FY25#0300",
+    "ITC-FY25 p90",
+    "Segment Revenue: FMCG - Others 2,345 crore; Agri Business 900.",
+)
+
+
+@pytest.mark.parametrize(
+    ("basis", "passes"),
+    [
+        pytest.param(None, True, id="no basis"),
+        pytest.param("consolidated", True, id="consolidated"),
+        pytest.param("standalone", True, id="standalone"),
+        pytest.param("FMCG - Others", True, id="a segment the passage names"),
+        pytest.param("Cigarettes", False, id="a segment it does not"),
+    ],
+)
+def test_a_figure_s_basis_is_a_statement_or_a_segment_its_passage_names(
+    basis: str | None, passes: bool
+) -> None:
+    named = "null" if basis is None else f'"{basis}"'
+    reply = (
+        '{"figures": [{"metric": "revenue", "value": 2345.0, "unit": null, "year": 2025, '
+        f'"description": null, "basis": {named}, "chunk_id": "{SEGMENT.id}"}}]}}'
+    )
+    said = Told(reply, 0.0, 0, 0, (), (SEGMENT,))
+
+    if passes:
+        assert check_figures(JOB, said).figures[0].basis == basis
+    else:
+        with pytest.raises(Invalid, match="does not name the segment 'Cigarettes'"):
+            check_figures(JOB, said)

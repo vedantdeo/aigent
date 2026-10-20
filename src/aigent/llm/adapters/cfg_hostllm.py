@@ -20,10 +20,10 @@ PROXY_AUTH = {"Modal-Key": "HOSTLLM_MODAL_KEY", "Modal-Secret": "HOSTLLM_MODAL_S
 
 # A request may find the endpoint cold and has to outlast its start: 34 to 110 s when measured.
 COLD_START_TIMEOUT = 180.0
-# Modal ends one request at 150 s. A figures answer's room, per engine: hostllm writes ~4-8 tokens
+# Modal ends one request at 150 s. A research turn's room, per engine: hostllm writes ~4-8 tokens
 # a second, so 512 ends inside it; vLLM writes 15+, and fits a segment table's figures in 1024.
-FIGURE_ANSWER_HOSTLLM = 512
-FIGURE_ANSWER_VLLM = 1024
+RESEARCH_TURN_HOSTLLM = 512
+RESEARCH_TURN_VLLM = 1024
 VLLM_COLD_START_TIMEOUT = 600.0  # vLLM profiles memory and captures CUDA graphs: 183 to 349 s
 
 ANALYST = Client(
@@ -40,7 +40,7 @@ ANALYST = Client(
     tokenizer=BASE_MODEL,
     # hostllm always templates with thinking off; this makes a count template the same way.
     template_kwargs={"enable_thinking": False},
-    max_tokens={"FIGURE_ANSWER": FIGURE_ANSWER_HOSTLLM},
+    max_tokens={"RESEARCH_TURN": RESEARCH_TURN_HOSTLLM},
 )
 
 VLLM_ANALYST = replace(
@@ -48,7 +48,7 @@ VLLM_ANALYST = replace(
     name="vllm-analyst",
     base_url=VLLM_BASE_URL,
     timeout=VLLM_COLD_START_TIMEOUT,
-    max_tokens={"FIGURE_ANSWER": FIGURE_ANSWER_VLLM},
+    max_tokens={"RESEARCH_TURN": RESEARCH_TURN_VLLM},
     priced_as="report-analyst@vllm",
 )
 

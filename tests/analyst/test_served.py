@@ -11,16 +11,18 @@ import openai
 import pytest
 from openai.types.chat import ChatCompletion
 
-from aigent.analyst.cfg_analyst import GENERALIST_MODEL, SPECIALIST_TOOL_TURNS
+from aigent.analyst.cfg_analyst import GENERALIST_MODEL, MAX_TOKENS, SPECIALIST_TOOL_TURNS
 from aigent.analyst.router import Router
-from aigent.analyst.served import reaching, report, report_analyst, warm_up
+from aigent.analyst.served import reaching, report, report_analyst, research, warm_up
 from aigent.analyst.specialists import FigureJob
+from aigent.config import CACHE_PARAM
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
 from aigent.extraction.research import REPORT_SEARCH_TOOL, research_messages
-from aigent.llm.adapters.cfg_hostllm import ANALYST, FIGURE_ANSWER_HOSTLLM
+from aigent.llm.adapters.cfg_hostllm import ANALYST, RESEARCH_TURN_HOSTLLM
 from aigent.llm.adapters.openai import function_tool
 from aigent.llm.core import Llm
+from aigent.llm.messages import Cache
 from aigent.llm.pricing import cost_usd
 from aigent.retrieval.chunk import Chunk, context_block
 from aigent.tools import fence
@@ -100,7 +102,7 @@ def test_a_question_reaches_the_adapter_on_its_trained_prompt_and_tools(
     ]
     assert first["tools"] == [function_tool(REPORT_SEARCH_TOOL), TRAINED_TOOL]
     assert first["model"] == "report-analyst"
-    assert first["max_tokens"] == ANALYST.max_tokens["FIGURE_ANSWER"] == FIGURE_ANSWER_HOSTLLM
+    assert first["max_tokens"] == ANALYST.max_tokens["RESEARCH_TURN"] == RESEARCH_TURN_HOSTLLM
     results = [m for m in cast(list[dict[str, object]], third["messages"]) if m["role"] == "tool"]
     assert PASSAGE.text in str(results[0]["content"]), "the search's passages went back"
     assert [m["content"] for m in results[1:]] == ["23450000000.0", "0.18"]
@@ -162,6 +164,25 @@ def test_figures_their_passage_does_not_back_go_to_the_generalist(
         "calculate",
     ]
     assert len(served.asked) == 2, "each model searched for itself"
+    assert sent.max_tokens == MAX_TOKENS["RESEARCH_TURN"], "the analyst's cap, not the default"
+
+
+@pytest.mark.parametrize("cache", [CACHE_PARAM, None], ids=["cached", "not cached"])
+def test_every_turn_is_kept_in_the_conversation_and_marked_for_a_cache_if_asked(
+    make_llm: MakeLlm, cache: Cache | None
+) -> None:
+    searched = tool_turn(("s1", "search_report", {"query": "revenue"}))
+    llm, sdk = make_llm(turns(searched, '{"figures": []}'))
+
+    told = research(llm, Served(), GENERALIST_MODEL, cache=cache)(JOB)
+
+    roles = [m["role"] for m in told.conversation]
+    assert roles == ["user", "assistant", "user", "assistant"]
+    assert (
+        told.conversation[0]["content"]
+        == research_messages(JOB.question, "ITC Limited", "Annual report 2024-25")[1]
+    )
+    assert [sent.cache_control for sent in sdk.sent] == [cache, cache]
 
 
 def test_a_fallback_asks_the_generalist_as_the_model_it_was_given(
@@ -275,3 +296,10 @@ def test_reaching_gives_up_after_its_tries(offline_tokenizer: None) -> None:
     with pytest.raises(SpecialistUnreachable, match="hostllm-analyst"):
         reaching(llm, call)
     assert len(tried) == 2
+
+
+def test_the_prompt_gives_the_turns_the_loop_allows() -> None:
+    words = {4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight"}
+    system, _ = research_messages("", "", "")
+
+    assert f"You have {words[SPECIALIST_TOOL_TURNS]} turns" in system

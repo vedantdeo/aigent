@@ -37,7 +37,7 @@ from aigent.evals.grade import (
 )
 from aigent.evals.report import write_report
 from aigent.evals.runner import EvalRun, Task, combine, run_eval
-from aigent.retrieval.chunk import Document, Inventory, Splitter, by_sentence, fixed
+from aigent.retrieval.chunk import Document, Inventory, Splitter, by_element, by_sentence, fixed
 from aigent.retrieval.corpus import FY25_REPORTS, load_corpus
 from aigent.retrieval.dense import DenseIndex
 from aigent.retrieval.embed import Embedder, LocalEmbedder, Vectors
@@ -55,6 +55,7 @@ STRATEGIES: dict[str, Splitter] = {
     "fixed": fixed(CHUNK_CHARS, 0),
     "fixed+overlap": fixed(CHUNK_CHARS, CHUNK_OVERLAP_CHARS),
     "by_sentence": by_sentence(),
+    "by_element": by_element(),
 }
 
 # The inventory the six retrieval methods all rank, so they share one set of labels.

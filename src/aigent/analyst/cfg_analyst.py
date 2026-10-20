@@ -31,6 +31,7 @@ ANALYST_WORKERS = 4  # questions in flight at once, so the specialists' GPU is s
 MAX_TOKENS: dict[str, int] = {
     "MEMO": 2048,  # a summary, up to a dozen cited claims, caveats
     "VERDICT": 1024,  # a verdict and a quoted sentence, after Opus reasons
+    "RESEARCH_TURN": 1024,  # a turn of the report analyst's loop: sourced figures, or tool calls
 }
 
 

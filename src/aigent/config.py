@@ -226,6 +226,17 @@ FURNITURE_RATIO = 0.2
 
 # What joins two pages into one document text. Read as a paragraph break by every splitter.
 PAGE_SEPARATOR = "\n\n"
+# Docling, every chunker's parser: the reports carry a text layer, so OCR stays off; the device
+# is Docling's choice of what the machine has (MPS here, CPU in CI).
+DOCLING_OCR = False
+DOCLING_DEVICE = "auto"
+# Fonts drawing ₹ on a keyboard key, by family, and the keys each draws it on; nothing else maps.
+PDF_RUPEE_KEYS: dict[str, str] = {
+    "ITFRupee": "CDEHIJKL",
+    "IndianRupee": "`",
+    "Rupee": "`",
+    "RupeeForadian": "`",
+}
 
 
 # --- Toy fine-tune ---------------------------------------------------------------------------
@@ -251,6 +262,21 @@ MAX_USD_FIGURE_LABELS = 9.00
 # its requests at once and the smoke batches took 77-156 seconds.
 FIGURE_ANSWER_CACHE: Cache = CACHE_PARAM
 FIGURE_ANSWER_SLICE = 300
+
+# v4's trajectories (analyst.teach): the teacher, how many questions and how they are drawn, how
+# many run at once, the run's ceiling, and what a typical trajectory holds, for the estimate.
+RESEARCH_TEACHER_MODEL = "claude-sonnet-5"
+RESEARCH_TEACH_QUESTIONS = 310  # Vedant: ~200 kept first; the 10-19 smoke run kept 13 of 20
+RESEARCH_TEACH_SEED = 0
+RESEARCH_TEACH_NAMED_SHARE = 0.8  # of the single questions (Vedant): named metrics, the rest other
+RESEARCH_TEACH_PAIRED_SHARE = 0.33  # Vedant: about a third ask about two companies
+RESEARCH_TEACH_WORKERS = 8
+MAX_USD_RESEARCH_TEACH = 12.00
+RESEARCH_TEACH_CACHE: Cache = CACHE_PARAM
+RESEARCH_TYPICAL_TURNS = 4  # two searches, a calculate turn, the answer
+RESEARCH_TYPICAL_OUTPUT = 220  # tokens a turn writes, on average: tool calls, then the figures
+SEARCH_RESULT_TOKENS = 1500  # five passages of ~295 tokens, measured over the six filings
+RESEARCH_DESCRIPTION_WORDS = 10  # Vedant: an other figure's description, in the teacher's own words
 
 # --- Classical baseline ----------------------------------------------------------------------
 # Project 1a's TF-IDF + logistic regression on `direction`: word n-grams, and the C grid that

@@ -38,12 +38,12 @@ from aigent.extraction.figures import (
     TOOL,
     Figure,
     Figures,
-    _described,
     _printed,
-    _same,
+    described,
     figure_messages,
     figures_match,
     parse_figures,
+    same_figure,
     unit_key,
 )
 from aigent.retrieval.chunk import Inventory, by_sentence
@@ -154,7 +154,7 @@ def _differences(want: Figure, got: Figure, passage: str) -> list[str]:
             if got.year is None
             else "year wrong"
         )
-    if not _described(got, passage):
+    if not described(got, passage):
         out.append("description")
     return out
 
@@ -176,7 +176,7 @@ def faults(case_row: dict[str, JsonValue], prediction: dict[str, JsonValue]) -> 
     want = Figures.model_validate({"figures": case_row["expected"]}).figures
     left = list(got_figures.figures)
     for figure in want:
-        exact = next((g for g in left if _same(figure, g) and _described(g, passage)), None)
+        exact = next((g for g in left if same_figure(figure, g) and described(g, passage)), None)
         if exact is not None:
             left.remove(exact)
             continue
