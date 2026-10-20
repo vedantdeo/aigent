@@ -1992,3 +1992,15 @@
   0.907 → 0.943, MRR 0.742 → 0.813. Dense over `by_element` hit@5 0.648, recall@5 0.639 (the best),
   MRR 0.465, but 209 of its 6,443 chunks are past the embedder's 512 tokens, against 57 of
   `by_sentence`'s 5,174.
+- 10-20: **₹ audited over every page of all 15 reports; the one gap fixed; re-parsed from scratch,
+  free, 132 minutes.** An audit of every run drawn in a rupee font, form XObjects included, and a
+  scan of every document's text for stand-ins found one gap: WIPRO-FY25 draws its statements'
+  "(C in millions …)" from form XObjects whose 8 ITFRupee fonts no page lists, 273 times. Fixed
+  (`_fonts_of`); the other 14 reports decode to identical text, WIPRO-FY25 now reads "(₹ in
+  millions …)" 283 times. What is left is printed so: HDFC's "C C in crore" (3 a report) and one
+  backtick in Sun Pharma FY25's Lato text. After the re-parse: `test_fundamentals` 34/34; the
+  dropped teacher figures 45/57 provable, the same 12 refused; the retrieval eval unchanged (its
+  three FY25 reports were untouched). Also on 10-20: a 512-token cap on `by_element` built and
+  reverted (it cut giant rows at words and lost the table's context), parked in `docs/capstone.md`;
+  underhood's `check_call` reads the label's `= ×N`, closing a blind spot on 1,008 of 5,271 scaled
+  chunks. underhood#13 and aigent#18 merged.
