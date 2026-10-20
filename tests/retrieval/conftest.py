@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from docling_core.types.doc.base import BoundingBox, Size
+from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
 from docling_core.types.doc.common.content_layer import ContentLayer
 from docling_core.types.doc.common.reference import ProvenanceItem
 from docling_core.types.doc.document import DoclingDocument
@@ -29,6 +29,13 @@ class Footer:
 
 
 @dataclass(frozen=True)
+class Running:
+    """A running page header, set aside by Docling as furniture."""
+
+    text: str
+
+
+@dataclass(frozen=True)
 class Grid:
     """A table: its rows of cells, cells spanning columns as (row, first, last, text), and how many
     leading rows are column headers."""
@@ -36,6 +43,14 @@ class Grid:
     rows: tuple[tuple[str, ...], ...]
     spans: tuple[tuple[int, int, int, str], ...] = ()
     header_rows: int = 0
+    # Laid out on the page when given: (left, bottom, right, top) from the bottom-left corner, cells
+    # tiling it below a caption band of `band` points and left of an empty `margin` on the right.
+    box: tuple[float, float, float, float] | None = None
+    band: float = 0.0
+    margin: float = 0.0
+    caption: str | None = None  # a caption Docling found itself
+    footnote: str | None = None
+    sections: tuple[int, ...] = ()  # rows Docling marks as opening a section
 
 
 @dataclass(frozen=True)
@@ -45,12 +60,28 @@ class Picture:
     texts: tuple[str, ...]
 
 
-Piece = str | Heading | Footer | Grid | Picture
+Piece = str | Heading | Footer | Running | Grid | Picture
 
 
 def _prov(page: int, text: str) -> ProvenanceItem:
     return ProvenanceItem(
         page_no=page, bbox=BoundingBox(l=0, t=0, r=1, b=1), charspan=(0, len(text))
+    )
+
+
+def _cell_box(grid: Grid, row: int, first: int, last: int) -> BoundingBox | None:
+    if grid.box is None:
+        return None
+    left, bottom, right, top = grid.box
+    width = (right - left - grid.margin) / max(len(values) for values in grid.rows)
+    height = (top - bottom - grid.band) / len(grid.rows)
+    upper = top - grid.band - row * height
+    return BoundingBox(
+        l=left + first * width,
+        r=left + last * width,
+        t=upper,
+        b=upper - height,
+        coord_origin=CoordOrigin.BOTTOMLEFT,
     )
 
 
@@ -67,6 +98,7 @@ def _table(grid: Grid) -> TableData:
                 end_col_offset_idx=last,
                 col_span=last - first,
                 column_header=row < grid.header_rows,
+                bbox=_cell_box(grid, row, first, last),
             )
         )
     for r, values in enumerate(grid.rows):
@@ -80,6 +112,8 @@ def _table(grid: Grid) -> TableData:
                         start_col_offset_idx=c,
                         end_col_offset_idx=c + 1,
                         column_header=r < grid.header_rows,
+                        row_section=r in grid.sections and c == 0,
+                        bbox=_cell_box(grid, r, c, c + 1),
                     )
                 )
     columns = max(len(values) for values in grid.rows)
@@ -94,6 +128,13 @@ def docling(pages: Sequence[Sequence[Piece]]) -> DoclingDocument:
         for piece in pieces:
             if isinstance(piece, Heading):
                 document.add_heading(text=piece.text, prov=_prov(number, piece.text))
+            elif isinstance(piece, Running):
+                document.add_text(
+                    label=DocItemLabel.PAGE_HEADER,
+                    text=piece.text,
+                    prov=_prov(number, piece.text),
+                    content_layer=ContentLayer.FURNITURE,
+                )
             elif isinstance(piece, Footer):
                 document.add_text(
                     label=DocItemLabel.PAGE_FOOTER,
@@ -102,7 +143,29 @@ def docling(pages: Sequence[Sequence[Piece]]) -> DoclingDocument:
                     content_layer=ContentLayer.FURNITURE,
                 )
             elif isinstance(piece, Grid):
-                document.add_table(data=_table(piece), prov=_prov(number, "table"))
+                prov = _prov(number, "table")
+                if piece.box is not None:
+                    left, bottom, right, top = piece.box
+                    prov.bbox = BoundingBox(
+                        l=left, b=bottom, r=right, t=top, coord_origin=CoordOrigin.BOTTOMLEFT
+                    )
+                table = document.add_table(data=_table(piece), prov=prov)
+                if piece.caption is not None:
+                    caption = document.add_text(
+                        label=DocItemLabel.CAPTION,
+                        text=piece.caption,
+                        prov=_prov(number, piece.caption),
+                        parent=table,
+                    )
+                    table.captions.append(caption.get_ref())
+                if piece.footnote is not None:
+                    footnote = document.add_text(
+                        label=DocItemLabel.FOOTNOTE,
+                        text=piece.footnote,
+                        prov=_prov(number, piece.footnote),
+                        parent=table,
+                    )
+                    table.footnotes.append(footnote.get_ref())
             elif isinstance(piece, Picture):
                 picture = document.add_picture(prov=_prov(number, "picture"))
                 for text in piece.texts:

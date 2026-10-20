@@ -15,7 +15,7 @@ import json
 import re
 import unicodedata
 from collections import Counter
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import cache
 from importlib.metadata import version
@@ -27,11 +27,15 @@ from docling.datamodel.accelerator_options import AcceleratorDevice, Accelerator
 from docling.datamodel.base_models import DocumentStream, InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling_core.types.doc.base import BoundingBox
+from docling_core.types.doc.common.content_layer import ContentLayer
+from docling_core.types.doc.common.reference import ProvenanceItem, RefItem
 from docling_core.types.doc.document import DoclingDocument
 from docling_core.types.doc.items.node import DocItem
 from docling_core.types.doc.items.table.table import TableItem
 from docling_core.types.doc.items.table.table_data import TableData
 from docling_core.types.doc.items.text import SectionHeaderItem, TextItem, TitleItem
+from docling_core.types.doc.labels import DocItemLabel
 from pypdf import PdfWriter
 from pypdf._codecs.adobe_glyphs import adobe_glyphs
 from pypdf.generic import (
@@ -78,6 +82,8 @@ class Element:
     rows: tuple[tuple[str, ...], ...] | None = None  # None for text and headings
     heading: bool = False
     header_rows: int = 0  # a table's leading rows of column headers
+    sections: tuple[int, ...] = ()  # a table's rows that open a section of it
+    running: bool = False  # a running page header: the page's context, never its text
 
     @property
     def is_table(self) -> bool:
@@ -87,6 +93,7 @@ class Element:
 @cache
 def _converter() -> DocumentConverter:
     options = PdfPipelineOptions(do_ocr=DOCLING_OCR, do_table_structure=True)
+    options.generate_parsed_pages = True  # its printed lines, for `captions_restored`
     options.accelerator_options = AcceleratorOptions(device=AcceleratorDevice(DOCLING_DEVICE))
     return DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
@@ -193,9 +200,86 @@ def rupees_decoded(path: Path) -> Path | DocumentStream:
     return DocumentStream(name=path.name, stream=out)
 
 
+Line = tuple[str, BoundingBox]  # a printed line and its box, origin bottom-left
+
+
+def _stray_caption(table: TableItem, height: float, lines: Sequence[Line]) -> list[Line]:
+    """The lines printed in a table's box, in none of its cells and level with or above its first
+    row, top to bottom."""
+    box = table.prov[0].bbox.to_bottom_left_origin(height)
+    cells = [
+        (cell.start_row_offset_idx, cell.bbox.to_bottom_left_origin(height))
+        for cell in table.data.table_cells
+        if cell.bbox is not None
+    ]
+    first_row = [cell for row, cell in cells if row == 0]
+    if not first_row:
+        return []
+    floor = min(cell.b for cell in first_row)
+    found: list[Line] = []
+    for text, line in lines:
+        x, y = (line.l + line.r) / 2, (line.b + line.t) / 2
+        inside = box.l <= x <= box.r and floor <= y <= box.t
+        if inside and not any(c.l <= x <= c.r and c.b <= y <= c.t for _, c in cells):
+            found.append((text, line))
+    return sorted(found, key=lambda found_line: (-found_line[1].t, found_line[1].l))
+
+
+def _captions(table: TableItem, document: DoclingDocument) -> list[str]:
+    """A table's caption lines, in order."""
+    return [
+        line
+        for ref in table.captions
+        if isinstance(caption := ref.resolve(document), TextItem)
+        for line in caption.text.split("\n")
+        if line.strip()
+    ]
+
+
+def captions_restored(
+    document: DoclingDocument, lines: Mapping[int, Sequence[Line]]
+) -> DoclingDocument:
+    """The document with the lines Docling's cell matching dropped from each table's box
+    (`_stray_caption`) made that table's caption; `lines` are each page's, by number."""
+    tables = [
+        item for item, _ in document.iterate_items() if isinstance(item, TableItem) and item.prov
+    ]
+    for table in tables:
+        number = table.prov[0].page_no
+        height = document.pages[number].size.height
+        known = set(_captions(table, document))
+        caption = [
+            (text, box)
+            for text, box in _stray_caption(table, height, lines.get(number, ()))
+            if text not in known
+        ]
+        if caption:
+            text = "\n".join(line for line, _ in caption)
+            box = BoundingBox.enclosing_bbox([box for _, box in caption])
+            item = document.add_text(
+                label=DocItemLabel.CAPTION,
+                text=text,
+                prov=ProvenanceItem(page_no=number, bbox=box, charspan=(0, len(text))),
+                parent=table,
+            )
+            table.captions.append(item.get_ref())
+    return document
+
+
 def convert(path: Path) -> DoclingDocument:
-    """A PDF as Docling reads it, ₹ restored. The only function here that touches the parser."""
-    return _converter().convert(rupees_decoded(path)).document
+    """A PDF as Docling reads it, ₹ and dropped captions restored. The only function here that
+    touches the parser."""
+    result = _converter().convert(rupees_decoded(path))
+    lines = {
+        page.page_no: [
+            (cell.text, cell.rect.to_bounding_box().to_bottom_left_origin(page.size.height))
+            for cell in page.parsed_page.textline_cells
+            if cell.text.strip()
+        ]
+        for page in result.pages
+        if page.parsed_page is not None and page.size is not None
+    }
+    return captions_restored(result.document, lines)
 
 
 def table_rows(data: TableData) -> tuple[tuple[str, ...], ...]:
@@ -224,20 +308,58 @@ def header_rows(data: TableData) -> int:
     return count
 
 
+def section_rows(data: TableData) -> tuple[int, ...]:
+    """The rows Docling marked as opening a section of a table, such as "Quoted:"."""
+    return tuple(
+        sorted({cell.start_row_offset_idx for cell in data.table_cells if cell.row_section})
+    )
+
+
+def _notes(refs: Sequence[RefItem], document: DoclingDocument) -> list[str]:
+    """The lines of the text items these references point at, in order."""
+    return [
+        line
+        for ref in refs
+        if isinstance(item := ref.resolve(document), TextItem)
+        for line in item.text.split("\n")
+        if line.strip()
+    ]
+
+
 def elements_of(document: DoclingDocument) -> list[list[Element]]:
-    """Every page of a Docling document as its elements in reading order, text inside a picture
-    included, a table printed one row a line, its filled cells joined by spaces. A page with
-    nothing on it comes back with no elements rather than missing (invariant 19).
+    """Every page of a Docling document as its elements in reading order: text inside a picture
+    included, running page headers kept apart as `running`, a table printed one row a line between
+    its caption lines (counted as header rows) and its footnotes, its filled cells joined by
+    spaces. A page with nothing on it comes back with no elements, not missing (invariant 19).
     """
     pages: list[list[Element]] = [[] for _ in range(max(document.pages, default=0))]
-    for item, _ in document.iterate_items(traverse_pictures=True):
-        if not isinstance(item, DocItem) or not item.prov:
+    attached = {
+        ref.cref
+        for item, _ in document.iterate_items()
+        if isinstance(item, TableItem)
+        for ref in (*item.captions, *item.footnotes)
+    }
+    layers = {ContentLayer.BODY, ContentLayer.FURNITURE}
+    for item, _ in document.iterate_items(traverse_pictures=True, included_content_layers=layers):
+        if not isinstance(item, DocItem) or not item.prov or item.self_ref in attached:
             continue
         page = pages[item.prov[0].page_no - 1]
-        if isinstance(item, TableItem):
-            rows = table_rows(item.data)
+        if item.content_layer == ContentLayer.FURNITURE:
+            if item.label == DocItemLabel.PAGE_HEADER and isinstance(item, TextItem):
+                page.append(Element(item.text, running=True))
+        elif isinstance(item, TableItem):
+            captions = tuple((line,) for line in _notes(item.captions, document))
+            footnotes = tuple((line,) for line in _notes(item.footnotes, document))
+            rows = captions + table_rows(item.data) + footnotes
             text = "\n".join(" ".join(c for c in row if c) for row in rows if any(row))
-            page.append(Element(text, rows, header_rows=header_rows(item.data)))
+            page.append(
+                Element(
+                    text,
+                    rows,
+                    header_rows=len(captions) + header_rows(item.data),
+                    sections=tuple(len(captions) + row for row in section_rows(item.data)),
+                )
+            )
         elif isinstance(item, (SectionHeaderItem, TitleItem)):
             page.append(Element(item.text, heading=True))
         elif isinstance(item, TextItem) and item.text.strip():
@@ -346,16 +468,28 @@ def to_document(
 def assembled(doc_id: str, elements: Sequence[Sequence[Element]], source: str = "") -> Document:
     """A document from its pages' elements: each normalised, the furniture stripped from its text
     but never from a heading or a table, and each table's and heading's span recorded as the
-    pages are joined. An empty page still takes its place, or every page after it is cited low."""
+    pages are joined. A page's running headers, Docling's and the lines stripped as furniture, are
+    kept as its `running` context. An empty page still takes its place, or every page after it is
+    cited low."""
     cleaned = [[replace(e, text=normalise(e.text)) for e in page] for page in elements]
-    found = furniture(["\n".join(e.text for e in page) for page in cleaned])
+    found = furniture(["\n".join(e.text for e in page if not e.running) for page in cleaned])
     pages: list[str] = []
     spans: list[list[tuple[int, int, Element]]] = []
+    running: list[str] = []
     for page in cleaned:
         parts: list[str] = []
         page_spans: list[tuple[int, int, Element]] = []
+        context = [e.text for e in page if e.running and e.text]
         offset = 0
         for element in page:
+            if element.running:
+                continue
+            if not (element.heading or element.is_table):
+                context += [
+                    line
+                    for line in element.text.split("\n")
+                    if line.strip() and _skeleton(line) in found
+                ]
             text = (
                 element.text
                 if element.heading or element.is_table
@@ -370,9 +504,10 @@ def assembled(doc_id: str, elements: Sequence[Sequence[Element]], source: str = 
             offset += len(text)
         pages.append("\n".join(parts))
         spans.append(page_spans)
+        running.append(" · ".join(dict.fromkeys(context)))
     document = to_document(doc_id, pages, source=source)
     tables = tuple(
-        Table(start + a, start + b, e.rows, e.header_rows)
+        Table(start + a, start + b, e.rows, e.header_rows, e.sections)
         for start, page_spans in zip(document.page_starts, spans, strict=True)
         for a, b, e in page_spans
         if e.rows is not None
@@ -383,7 +518,7 @@ def assembled(doc_id: str, elements: Sequence[Sequence[Element]], source: str = 
         for a, b, e in page_spans
         if e.heading
     )
-    return replace(document, tables=tables, headings=headings)
+    return replace(document, tables=tables, headings=headings, running=tuple(running))
 
 
 def load_pdf(path: Path, doc_id: str | None = None) -> Document:
@@ -405,6 +540,9 @@ _PARSE_FINGERPRINT = hashlib.sha256(
                 _rupee_entries,
                 _simple_font_map,
                 rupees_decoded,
+                _stray_caption,
+                _captions,
+                captions_restored,
                 convert,
             )
         )
@@ -419,6 +557,8 @@ _INGEST_FINGERPRINT = hashlib.sha256(
         + "".join(
             inspect.getsource(function)
             for function in (
+                _notes,
+                section_rows,
                 table_rows,
                 header_rows,
                 elements_of,
@@ -491,10 +631,12 @@ def load_pdf_cached(path: Path, doc_id: str | None = None, cache_dir: Path = CAC
                         t["end"],
                         tuple(tuple(row) for row in t["rows"]),
                         t["header_rows"],
+                        tuple(t["sections"]),
                     )
                     for t in stored["tables"]
                 ),
                 headings=tuple(Heading(h["start"], h["end"]) for h in stored["headings"]),
+                running=tuple(stored["running"]),
             )
         except (json.JSONDecodeError, KeyError, TypeError):
             cached.unlink(missing_ok=True)
@@ -519,10 +661,12 @@ def load_pdf_cached(path: Path, doc_id: str | None = None, cache_dir: Path = CAC
                         "end": t.end,
                         "rows": [list(row) for row in t.rows],
                         "header_rows": t.header_rows,
+                        "sections": list(t.sections),
                     }
                     for t in document.tables
                 ],
                 "headings": [{"start": h.start, "end": h.end} for h in document.headings],
+                "running": list(document.running),
             }
         ),
         encoding="utf-8",

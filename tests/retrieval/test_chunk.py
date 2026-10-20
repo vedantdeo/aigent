@@ -22,11 +22,13 @@ from aigent.retrieval.chunk import (
     fixed,
     headings,
     multiplier_of,
+    section_path,
     sentences,
+    text_label,
 )
 from aigent.retrieval.corpus import assembled, elements_of
 
-from .conftest import Grid, Heading, Piece, docling
+from .conftest import Grid, Heading, Piece, Running, docling
 
 FILLER = "The company reported steady progress across every operating segment this year. "
 
@@ -292,7 +294,7 @@ def test_a_chunk_starts_at_every_heading_and_every_table() -> None:
     assert texts[1].startswith("[Table · RELIANCE-FY25 p.2 · Consolidated Statement of Profit")
     assert texts[2] == (
         "[RELIANCE-FY25 p.2 · Consolidated Statement of Profit and Loss"
-        " · (Rs in crore) = ×10000000]\nNotes follow the statement."
+        " · consolidated · (Rs in crore) = ×10000000]\nNotes follow the statement."
     ), "text under its section's scale carries it too"
     assert texts[3] == "Risk management\nRisks are reviewed each quarter by the Board."
     assert [c.heading for c in chunks] == [
@@ -340,6 +342,32 @@ def test_a_chunk_starts_at_every_heading_and_every_table() -> None:
             "[Table · RELIANCE-FY25 p.1 · Segment reporting · (₹ crore) = ×10000000"
             " · columns: 2025]",
             id="a scale written without 'in', the currency sign before it",
+        ),
+        pytest.param(
+            [Running("STANDALONE FINANCIAL STATEMENTS · NOTES"), Heading("5 Investments")],
+            Grid(rows=(("Particulars", "2025"), ("Quoted", "3,214"))),
+            "[Table · RELIANCE-FY25 p.1 · 5 Investments · standalone · columns: 2025]",
+            id="the basis from the page's running header when the section names none",
+        ),
+        pytest.param(
+            [Running("STANDALONE FINANCIAL STATEMENTS"), Heading("Consolidated Balance Sheet")],
+            Grid(rows=(("Particulars", "2025"), ("Inventories", "1,688.75"))),
+            "[Table · RELIANCE-FY25 p.1 · Consolidated Balance Sheet · consolidated"
+            " · columns: 2025]",
+            id="the section's basis before the running header's",
+        ),
+        pytest.param(
+            [Heading("16. Segment reporting"), Heading("a) Treasury")],
+            Grid(rows=(("Particulars", "2025"), ("Revenue", "1,000"))),
+            "[Table · RELIANCE-FY25 p.1 · 16. Segment reporting › a) Treasury · columns: 2025]",
+            id="the section named by its path",
+        ),
+        pytest.param(
+            [Heading("Trade receivables")],
+            Grid(rows=(("Particulars", "2025"), ("Unsecured", "3,214")), caption="(₹ In Crore)"),
+            "[Table · RELIANCE-FY25 p.1 · Trade receivables · (₹ In Crore) = ×10000000"
+            " · columns: 2025]",
+            id="the scale in the table's caption",
         ),
         pytest.param(
             [Heading("Gratuity"), "The Group contributed (₹ 1,110.49 crore) to the fund."],
@@ -469,3 +497,88 @@ def test_a_document_with_no_parsed_structure_is_packed_by_sentence() -> None:
 def test_a_chunk_size_below_one_is_refused(table: int, text: int) -> None:
     with pytest.raises(ValueError, match="at least 1"):
         by_element(table, text)
+
+
+@pytest.mark.parametrize(
+    ("headings", "path"),
+    [
+        pytest.param(
+            ["16. Segment reporting", "a) Treasury", "i. Digital banking"],
+            "16. Segment reporting › a) Treasury › i. Digital banking",
+            id="a note, its letter, the letter's numeral",
+        ),
+        pytest.param(
+            ["16. Segment reporting", "a) Treasury", "b) Retail banking"],
+            "16. Segment reporting › b) Retail banking",
+            id="a letter closes its sibling",
+        ),
+        pytest.param(
+            ["13 Equity", "a) Shares", "ii) Preference", "b) Debentures"],
+            "13 Equity › b) Debentures",
+            id="a letter closes the numerals under the last",
+        ),
+        pytest.param(
+            ["13 Equity", "h) Others", "i) Reserves"],
+            "13 Equity › i) Reserves",
+            id="i after h is the next letter",
+        ),
+        pytest.param(
+            ["13 Equity", "a) Shares", "i) Ordinary"],
+            "13 Equity › a) Shares › i) Ordinary",
+            id="i after a is the first numeral",
+        ),
+        pytest.param(
+            ["5 Investments", "Quoted bonds"],
+            "Quoted bonds",
+            id="an unnumbered heading starts afresh",
+        ),
+        pytest.param(
+            ["Corporate governance", "a) Board"],
+            "a) Board",
+            id="a letter with no note open starts afresh",
+        ),
+        pytest.param(
+            ["16. Segment reporting", "17. Remuneration"],
+            "17. Remuneration",
+            id="a note closes the last",
+        ),
+    ],
+)
+def test_a_heading_s_path_follows_its_numbering(headings: list[str], path: str) -> None:
+    stack: list[tuple[int, str]] = []
+    for heading in headings:
+        stack = section_path(stack, heading)
+
+    assert " › ".join(text for _, text in stack) == path, stack
+
+
+def test_a_text_label_takes_its_basis_from_the_running_header_when_its_section_has_none() -> None:
+    text = "(Rs in crore)\nRevenue rose to 100."
+    doc = Document("BAJAJ-AUTO-FY24", text, page_starts=(0,), running=("STANDALONE NOTES",))
+
+    label = text_label(doc, 14, "5 Revenue", 0, "Revenue rose to 100.")
+
+    assert label == "[BAJAJ-AUTO-FY24 p.1 · 5 Revenue · standalone · (Rs in crore) = ×10000000]\n"
+
+
+def test_a_split_table_repeats_the_section_row_each_piece_continues_under() -> None:
+    rows = (
+        ("Particulars", "2025"),
+        ("Quoted:", ""),
+        *((f"Bond {n} of Rural Electrification Corporation", f"{n},000.00") for n in range(1, 9)),
+        ("Unquoted:", ""),
+        *((f"Fund {n} of a mutual fund house", f"{n},500.00") for n in range(1, 9)),
+        ("Brought forward 3,152.58", "2,275.02"),
+        *((f"Deposit {n} with a bank", f"{n}00.00") for n in range(1, 9)),
+    )
+    grid = Grid(rows=rows, header_rows=1, sections=(1, 10, 19))
+
+    pieces = [c.text.split("\n") for c in by_element(max_chars=260)(_assembled([[grid]]))]
+
+    assert len(pieces) > 3, pieces
+    for piece in pieces[1:]:
+        section, first = piece[2], piece[3]
+        assert section in ("Quoted:", "Unquoted:"), f"a piece opens with its section row: {piece}"
+        if first not in ("Quoted:", "Unquoted:"):
+            expected = "Quoted:" if first.startswith("Bond") else "Unquoted:"
+            assert section == expected, piece

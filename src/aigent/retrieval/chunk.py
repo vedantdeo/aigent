@@ -46,12 +46,14 @@ def squeeze(text: str) -> str:
 @dataclass(frozen=True)
 class Table:
     """A table the parser found: the span of `Document.text` it was printed as, its cells row by
-    row, an empty cell as '', and how many of its leading rows are column headers."""
+    row, an empty cell as '', how many of its leading rows are column headers, and which rows open
+    a section of it."""
 
     start: int
     end: int
     rows: tuple[tuple[str, ...], ...]
     header_rows: int = 0
+    sections: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -64,8 +66,8 @@ class Heading:
 
 @dataclass(frozen=True)
 class Document:
-    """One source document, with `page_starts` holding the offset each page begins at, and
-    `tables` and `headings` those found in it, in order."""
+    """One source document, with `page_starts` holding the offset each page begins at, `tables`
+    and `headings` those found in it, in order, and `running` each page's running header."""
 
     doc_id: str
     text: str
@@ -73,6 +75,7 @@ class Document:
     page_starts: tuple[int, ...] = ()
     tables: tuple[Table, ...] = ()
     headings: tuple[Heading, ...] = ()
+    running: tuple[str, ...] = ()  # each page's running header, "" where it has none
 
     def page_of(self, offset: int) -> int | None:
         """1-indexed page containing this character offset, None for a source without pages."""
@@ -491,18 +494,26 @@ def _basis_of(text: str) -> str | None:
     return found[-1].lower() if found else None
 
 
+def _running_of(doc: Document, at: int) -> str:
+    page = (doc.page_of(at) or 1) - 1
+    return doc.running[page] if page < len(doc.running) else ""
+
+
 def table_label(
     doc: Document, table: Table, section: str | None, before: str, page: str = ""
 ) -> str:
-    """The line that opens every chunk of a table: its report and page, its section, the basis,
-    the scale stated in its own top rows, its section or, failing both, anywhere on its page (a
-    page's scale line can come after the table in reading order), with the multiplier it names,
-    and its column headings' years."""
+    """The line that opens every chunk of a table: its report and page, its section, the basis
+    its section or rows name or, failing them, its page's running header, the scale stated in its
+    own top rows, its section or, failing both, anywhere on its page (a page's scale line can come
+    after the table in reading order), with the multiplier it names, and its column headings'
+    years."""
     top = "\n".join(
         " ".join(c for c in row if c) for row in table.rows[: max(table.header_rows, 2)]
     )
     scale = _scale_of(top) or _scale_of(before) or _scale_of(page)
-    basis = _basis_of(f"{section or ''}\n{before}\n{top}")
+    basis = _basis_of(f"{section or ''}\n{before}\n{top}") or _basis_of(
+        _running_of(doc, table.start)
+    )
     years = list(dict.fromkeys(_YEAR.findall(top)))
     parts = [f"Table · {doc.doc_id} p.{doc.page_of(table.start)}"]
     parts += [part for part in (section, basis, scale and _scaled(scale)) if part]
@@ -513,7 +524,8 @@ def table_label(
 
 def text_label(doc: Document, at: int, section: str | None, section_start: int, text: str) -> str:
     """The line that opens a text chunk whose amounts a scale stated above it governs, in its
-    section or on its page, and that names none itself; nothing otherwise."""
+    section or on its page, and that names none itself, with the basis as `table_label` finds it;
+    nothing otherwise."""
     if _scale_of(text) or _NUMBER_SCALED.search(text):
         return ""
     page = (doc.page_of(at) or 1) - 1
@@ -521,15 +533,49 @@ def text_label(doc: Document, at: int, section: str | None, section_start: int, 
     scale = _scale_of(doc.text[section_start:at]) or _scale_of(doc.text[page_start:at])
     if scale is None:
         return ""
-    parts = [f"{doc.doc_id} p.{page + 1}", *([section] if section else []), _scaled(scale)]
-    return "[" + " · ".join(parts) + "]\n"
+    basis = _basis_of(f"{section or ''}\n{doc.text[section_start:at]}") or _basis_of(
+        _running_of(doc, at)
+    )
+    parts = [f"{doc.doc_id} p.{page + 1}", *(part for part in (section, basis) if part)]
+    return "[" + " · ".join([*parts, _scaled(scale)]) + "]\n"
+
+
+# A heading's numbering: a note ("5 Investments", "16. Segment", "5A"), a letter ("a) Treasury"),
+# a roman numeral ("ii. Non digital").
+_NOTE = re.compile(r"^\d{1,2}[A-Z]?(?:\.\d+)*[.)]?\s+[A-Za-z(]")
+_LETTER = re.compile(r"^\(?([a-z])[.)]\s*\S")
+_ROMAN = re.compile(r"^\(?(ii|iii|iv|vi|vii|viii|ix|xi|xii|i|v|x)[.)]\s*\S", re.IGNORECASE)
+# Roman numerals that are also the letter after another: i after h, v after u, x after w.
+_LETTER_BEFORE = {"i": "h", "v": "u", "x": "w"}
+
+
+def heading_level(text: str, letter: str | None) -> int:
+    """A heading's depth from its numbering: 2 a lettered and 3 a roman-numbered subsection, 1
+    anything else. `letter` is the open lettered heading's letter, which decides whether "i." is
+    the ninth letter or the first numeral."""
+    roman = _ROMAN.match(text)
+    if roman and (len(roman.group(1)) > 1 or letter != _LETTER_BEFORE[roman.group(1).lower()]):
+        return 3
+    return 2 if _LETTER.match(text) else 1
+
+
+def section_path(stack: list[tuple[int, str]], text: str) -> list[tuple[int, str]]:
+    """The open headings once this one is read, outermost first. Lettered and roman-numbered
+    subsections nest under a numbered note; any other heading starts the path afresh."""
+    letters = [_LETTER.match(t) for depth, t in stack if depth == 2]
+    letter = letters[-1].group(1) if letters and letters[-1] else None
+    level = heading_level(text, letter)
+    if level > 1 and stack and _NOTE.match(stack[0][1]):
+        return [*(entry for entry in stack if entry[0] < level), (level, text)]
+    return [(1, text)]
 
 
 def by_element(max_chars: int = CHUNK_MAX_CHARS, text_chars: int = CHUNK_CHARS) -> Splitter:
     """A chunk starts at every heading and every table the parser found. Text runs are packed by
     sentence up to `text_chars`, each piece keeping its section heading; a table is one chunk
     opened by its `table_label`, or, past `max_chars`, split at rows, every piece repeating the
-    label and the table's column-header rows. A document with no parsed structure is packed as
+    label, the column-header rows and the section row it continues under. Labels name the
+    section path (`section_path`). A document with no parsed structure is packed as
     `by_sentence` packs it."""
     if max_chars < 1 or text_chars < 1:
         raise ValueError(f"Chunk sizes {max_chars} and {text_chars} must be at least 1")
@@ -551,63 +597,71 @@ def by_element(max_chars: int = CHUNK_MAX_CHARS, text_chars: int = CHUNK_CHARS) 
                 )
             )
 
-        def add_text(start: int, end: int, heading: str | None) -> None:
+        def add_text(start: int, end: int, path: str | None) -> None:
             body = doc.text[start:end]
-            if body.strip() == (heading or ""):
+            if stack and body.strip() == stack[-1][1]:
                 return  # a heading alone, its table about to carry it in its label
             for piece in pack(Document(doc_id=doc.doc_id, text=body)):
                 at = start + piece.start
-                add(
-                    at,
-                    text_label(doc, at, heading, section_start, piece.text) + piece.text,
-                    heading,
-                )
+                add(at, text_label(doc, at, path, section_start, piece.text) + piece.text, path)
 
-        def add_table(table: Table, heading: str | None, section_start: int) -> None:
+        def add_table(table: Table, path: str | None, section_start: int) -> None:
             before = doc.text[section_start : table.start]
             page = (doc.page_of(table.start) or 1) - 1
             page_start = doc.page_starts[page] if doc.page_starts else 0
             page_end = (
                 doc.page_starts[page + 1] if page + 1 < len(doc.page_starts) else len(doc.text)
             )
-            label = table_label(doc, table, heading, before, doc.text[page_start:page_end])
+            label = table_label(doc, table, path, before, doc.text[page_start:page_end])
             lines = doc.text[table.start : table.end].split("\n")
             whole = f"{label}\n" + "\n".join(lines)
             if len(whole) <= max_chars:
-                add(table.start, whole, heading)
+                add(table.start, whole, path)
                 return
             head = lines[: table.header_rows]
             opening = "\n".join([label, *head])
             offset = table.start + sum(len(line) + 1 for line in head)
+            # A line equals its first cell only when the rest are empty: figures keep a row a row.
+            openers = {
+                " ".join(table.rows[row][0].split()) for row in table.sections if table.rows[row]
+            }
             piece: list[str] = []
+            carried: list[str] = []  # the section row a piece continues under, repeated
+            current: str | None = None
             piece_start = offset
             for line in lines[len(head) :]:
-                if piece and len(opening) + len("\n".join(piece)) + len(line) + 2 > max_chars:
-                    add(piece_start, "\n".join([opening, *piece]), heading)
+                size = len(opening) + len("\n".join([*carried, *piece])) + len(line) + 2
+                if piece and size > max_chars:
+                    add(piece_start, "\n".join([opening, *carried, *piece]), path)
                     piece, piece_start = [], offset
+                    is_opener = " ".join(line.split()) in openers
+                    carried = [current] if current is not None and not is_opener else []
+                if " ".join(line.split()) in openers:
+                    current = line
                 piece.append(line)
                 offset += len(line) + 1
             if piece:
-                add(piece_start, "\n".join([opening, *piece]), heading)
+                add(piece_start, "\n".join([opening, *carried, *piece]), path)
 
         marks = sorted(
             [(h.start, h.end, None) for h in doc.headings]
             + [(t.start, t.end, t) for t in doc.tables],
             key=lambda mark: mark[0],
         )
-        heading: str | None = None
+        stack: list[tuple[int, str]] = []
         section_start = 0
         cursor = 0
         for start, end, table in marks:
+            path = " › ".join(text for _, text in stack) or None
             if table is None:
-                add_text(cursor, start, heading)
-                heading = doc.text[start:end].strip()
+                add_text(cursor, start, path)
+                stack = section_path(stack, doc.text[start:end].strip())
                 section_start = cursor = start  # the heading opens its section's first chunk
                 continue
-            add_text(cursor, start, heading)
-            add_table(table, heading, section_start)
+            add_text(cursor, start, path)
+            add_table(table, path, section_start)
             cursor = end
-        add_text(cursor, len(doc.text), heading)
+        add_text(cursor, len(doc.text), " › ".join(text for _, text in stack) or None)
         return chunks
 
     return splitter

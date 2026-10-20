@@ -8,11 +8,13 @@ are read by a fake Docling (`conftest.fake_docling`), so no test downloads its m
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
 import pytest
 from docling.datamodel.base_models import DocumentStream
+from docling_core.types.doc.base import BoundingBox, CoordOrigin
 from pypdf import PdfReader
 from pypdf.generic import DictionaryObject, StreamObject
 
@@ -22,6 +24,7 @@ from aigent.retrieval.corpus import (
     FY25_REPORTS,
     assembled,
     cache_file,
+    captions_restored,
     elements_of,
     load_corpus,
     load_pdf,
@@ -36,7 +39,7 @@ from aigent.retrieval.corpus import (
     to_document,
 )
 
-from .conftest import Footer, Grid, Heading, Picture, docling
+from .conftest import Footer, Grid, Heading, Picture, Piece, Running, docling
 
 pytestmark = pytest.mark.usefixtures("fake_docling")
 
@@ -392,7 +395,10 @@ def test_each_table_and_heading_spans_exactly_its_text_on_its_page() -> None:
 def test_tables_and_headings_survive_the_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    pages = [[Heading("Statement of Profit and Loss"), TABLE, "Notes."]]
+    table = replace(TABLE, sections=(2,))
+    pages = [
+        [Running("STANDALONE NOTES"), Heading("Statement of Profit and Loss"), table, "Notes."]
+    ]
     monkeypatch.setattr(corpus, "convert", lambda path: docling(pages))
     path = annual_report(tmp_path)
 
@@ -400,6 +406,7 @@ def test_tables_and_headings_survive_the_cache(
     second = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
 
     assert second == first and second.tables and second.headings
+    assert second.tables[0].sections == (2,) and second.running == ("STANDALONE NOTES",)
 
 
 # --- The document cache -----------------------------------------------------------------------
@@ -696,3 +703,147 @@ def test_a_code_moved_by_differences_is_mapped_by_its_own_code(tmp_path: Path) -
     font = cast(DictionaryObject, cast(DictionaryObject, resources["/Font"])["/F2"].get_object())
     cmap = cast(StreamObject, font["/ToUnicode"].get_object()).get_data()
     assert b"<1F> <20B9>" in cmap and b"<60> <20B9>" in cmap, cmap
+
+
+# Cells tile x 50-490 in two columns, three rows from y 660 down; the caption band is y 660-700,
+# the empty margin x 490-550, and the first row y 573-660.
+LAID_OUT = Grid(
+    rows=(("Particulars", "2025"), ("Revenue", "9,74,864"), ("Profit", "79,020")),
+    box=(50, 400, 550, 700),
+    band=40,
+    margin=60,
+)
+
+
+def printed(text: str, left: float, bottom: float, right: float, top: float) -> corpus.Line:
+    return text, BoundingBox(l=left, b=bottom, r=right, t=top, coord_origin=CoordOrigin.BOTTOMLEFT)
+
+
+@pytest.mark.parametrize(
+    ("before", "table", "lines", "restored"),
+    [
+        pytest.param(
+            [],
+            LAID_OUT,
+            [printed("(₹ crore)", 430, 670, 480, 680)],
+            ["(₹ crore)"],
+            id="a scale line in the band above the first row is restored",
+        ),
+        pytest.param(
+            [],
+            LAID_OUT,
+            [printed("(₹ crore)", 430, 665, 480, 675), printed("Gross block", 60, 685, 250, 695)],
+            ["Gross block", "(₹ crore)"],
+            id="several dropped lines come back top to bottom",
+        ),
+        pytest.param(
+            [],
+            LAID_OUT,
+            [printed("(₹ In Crore)", 495, 600, 545, 610)],
+            ["(₹ In Crore)"],
+            id="a line level with the first row, beside its cells",
+        ),
+        pytest.param(
+            [],
+            LAID_OUT,
+            [printed("Overview", 495, 450, 545, 460)],
+            [],
+            id="text beside the lower rows is not a caption",
+        ),
+        pytest.param(
+            [],
+            LAID_OUT,
+            [printed("Revenue", 60, 520, 120, 530)],
+            [],
+            id="a line inside a cell is the cell's",
+        ),
+        pytest.param(
+            [],
+            LAID_OUT,
+            [printed("Page 12", 560, 670, 600, 680)],
+            [],
+            id="a line outside the table's box is not its caption",
+        ),
+        pytest.param(
+            ["Gross block"],
+            LAID_OUT,
+            [printed("Gross block", 60, 685, 250, 695)],
+            ["Gross block"],
+            id="a line printed elsewhere on the page is still this table's",
+        ),
+        pytest.param([], LAID_OUT, [], [], id="no lines read, nothing restored"),
+        pytest.param(
+            [],
+            TABLE,
+            [printed("(₹ crore)", 430, 670, 480, 680)],
+            [],
+            id="a table without cell boxes is left as it is",
+        ),
+    ],
+)
+def test_lines_dropped_from_a_table_s_box_become_its_leading_header_rows(
+    before: list[str], table: Grid, lines: list[corpus.Line], restored: list[str]
+) -> None:
+    document = captions_restored(docling([[*before, table]]), {1: lines})
+
+    [page] = elements_of(document)
+
+    assert [e.text for e in page[:-1]] == before, "a restored line is the table's, not loose text"
+    assert page[-1].rows is not None
+    assert page[-1].rows[: len(restored)] == tuple((line,) for line in restored), page[-1].rows
+    assert page[-1].header_rows == len(restored) + table.header_rows
+
+
+def test_a_caption_docling_found_is_its_table_s_first_row_and_not_restored_twice() -> None:
+    table = replace(LAID_OUT, caption="(₹ crore)")
+    document = captions_restored(
+        docling([[table]]), {1: [printed("(₹ crore)", 430, 670, 480, 680)]}
+    )
+
+    [page] = elements_of(document)
+
+    assert len(page) == 1, "the caption is not printed again as text"
+    assert page[0].rows is not None and page[0].rows[:2] == (
+        ("(₹ crore)",),
+        ("Particulars", "2025"),
+    )
+    assert page[0].header_rows == 1
+
+
+def test_a_page_s_running_headers_are_its_context_and_never_its_text() -> None:
+    notes = "Notes to standalone financial statements (Contd.)"
+    body = [
+        "Revenue rose.",
+        "Margins held.",
+        "Exports doubled.",
+        "Debt was repaid.",
+        "Cash grew.",
+        "Stock fell.",
+        "Tax was paid.",
+        "Plants ran.",
+        "Wages rose.",
+    ]
+    pages: list[list[Piece]] = [
+        [Running("STANDALONE FINANCIAL STATEMENTS"), notes, line] for line in body
+    ]
+    pages.append(["The Board met six times."])
+
+    document = assembled("BAJAJ-AUTO-FY24", elements_of(docling(pages)))
+
+    assert document.running[0] == f"STANDALONE FINANCIAL STATEMENTS · {notes}", document.running
+    assert document.running[9] == "", "a page without a running header has no context"
+    assert "STANDALONE FINANCIAL STATEMENTS" not in document.text
+    assert notes not in document.text, "a running line stripped as furniture moves to the context"
+    assert "Revenue rose." in document.text
+
+
+def test_a_table_carries_its_footnote_last_and_its_section_rows_past_its_caption() -> None:
+    table = replace(TABLE, caption="(₹ crore)", footnote="* Less than ₹ 50 lakh", sections=(1,))
+
+    [page] = elements_of(docling([[table]]))
+
+    [element] = page
+    assert element.rows is not None
+    assert element.rows[0] == ("(₹ crore)",) and element.rows[-1] == ("* Less than ₹ 50 lakh",)
+    assert element.header_rows == 1 + TABLE.header_rows, "a footnote is no header"
+    assert element.sections == (2,), "a section row counts the caption above it"
