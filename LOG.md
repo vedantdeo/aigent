@@ -1980,3 +1980,15 @@
   no passage it read prints, to 14.6%), and Wipro's paid-up capital (the teacher's ₹20,944 million to
   ₹20,944,272,098). A first pass also matched HDFC's 200,000 headcount to 213,527, one significant
   figure; three are now required.
+- 10-20: **every report re-parsed with Docling, ₹ restored, captions and running headers kept;
+  free, 92 minutes on the Mac.** 15 reports, 6,500 tables. The measurements, all free:
+  `test_fundamentals` 34/34 (ITC's interim dividend, inside a picture, now read). The 57 figures
+  the teacher run dropped for a value its passage did not back: 45 now provable from one
+  `by_element` chunk; the other 12 are the teacher's own errors (6 wrong scales, among them HDFC's
+  capex, read in millions from a `(₹ crore)` table; 3 numbers no passage prints or the wrong line;
+  1 sum) or Wipro's two AOC-1 subsidiaries, scaled only by a footnote. Retrieval eval (54 quotes,
+  two relabelled from "C 30 lakh" and "I60,000" to the ₹ the reports print): hybrid+rerank over
+  `by_sentence` hit@5 0.889 → 0.925, recall@5 0.881 → 0.885, MRR 0.745 → 0.796; bm25+rerank hit@5
+  0.907 → 0.943, MRR 0.742 → 0.813. Dense over `by_element` hit@5 0.648, recall@5 0.639 (the best),
+  MRR 0.465, but 209 of its 6,443 chunks are past the embedder's 512 tokens, against 57 of
+  `by_sentence`'s 5,174.
