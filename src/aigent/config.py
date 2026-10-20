@@ -226,6 +226,17 @@ FURNITURE_RATIO = 0.2
 
 # What joins two pages into one document text. Read as a paragraph break by every splitter.
 PAGE_SEPARATOR = "\n\n"
+# Docling, every chunker's parser: the reports carry a text layer, so OCR stays off; the device
+# is Docling's choice of what the machine has (MPS here, CPU in CI).
+DOCLING_OCR = False
+DOCLING_DEVICE = "auto"
+# Fonts drawing ₹ on a keyboard key, by family, and the keys each draws it on; nothing else maps.
+PDF_RUPEE_KEYS: dict[str, str] = {
+    "ITFRupee": "CDEHIJKL",
+    "IndianRupee": "`",
+    "Rupee": "`",
+    "RupeeForadian": "`",
+}
 
 
 # --- Toy fine-tune ---------------------------------------------------------------------------

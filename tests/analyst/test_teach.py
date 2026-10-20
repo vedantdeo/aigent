@@ -327,7 +327,14 @@ def test_a_trajectory_that_passes_and_finds_its_labels_is_kept_with_every_turn(
     ("answer", "why"),
     [
         pytest.param(
-            sourced(UNSCALED), "missed revenue 4.4685e+11 2024", id="checked, but a label missed"
+            sourced(UNSCALED.model_copy(update={"unit": None})),
+            "missed revenue 4.4685e+11 2024",
+            id="checked, but a label missed",
+        ),
+        pytest.param(
+            sourced(UNSCALED),
+            "does not back 44685.0 for revenue",
+            id="money left unscaled beside its scale word",
         ),
         pytest.param(
             sourced(REVENUE, cited="BAJAJ-AUTO-FY24#0999"),
@@ -336,7 +343,9 @@ def test_a_trajectory_that_passes_and_finds_its_labels_is_kept_with_every_turn(
         ),
         pytest.param("I could not find it.", "no figures", id="no figures at all"),
         pytest.param(
-            sourced(UNSCALED.model_copy(update={"metric": "other", "description": None})),
+            sourced(
+                UNSCALED.model_copy(update={"metric": "other", "description": None, "unit": None})
+            ),
             "described None",
             id="checked, but an other figure described by nothing",
         ),

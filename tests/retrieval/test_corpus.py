@@ -1,34 +1,57 @@
-"""The corpus: a PDF in, a `Document` with page offsets out.
+"""The corpus: a PDF in, a `Document` with page offsets, tables and headings out.
 
 The load-bearing table is the one on page offsets. Every citation downstream names a page, and
-offsets taken before normalisation are wrong in a way nothing else in the pipeline notices.
+offsets taken before normalisation are wrong in a way nothing else in the pipeline notices. PDFs
+are read by a fake Docling (`conftest.fake_docling`), so no test downloads its models.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import cast
 
 import pytest
+from docling.datamodel.base_models import DocumentStream
+from pypdf import PdfReader
+from pypdf.generic import DictionaryObject, StreamObject
 
 from aigent.config import PAGE_SEPARATOR
 from aigent.retrieval import corpus
 from aigent.retrieval.corpus import (
     FY25_REPORTS,
+    assembled,
     cache_file,
+    elements_of,
     load_corpus,
     load_pdf,
     load_pdf_cached,
     normalise,
+    parse_cached,
+    parse_file,
     read_pages,
+    rupees_decoded,
     strip_furniture,
+    table_rows,
     to_document,
 )
+
+from .conftest import Footer, Grid, Heading, Picture, docling
+
+pytestmark = pytest.mark.usefixtures("fake_docling")
 
 HEADER = "RELIANCE INDUSTRIES LIMITED | INTEGRATED ANNUAL REPORT 2024-25"
 
 
-def build_pdf(pages: list[list[str]]) -> bytes:
-    """An uncompressed PDF with these lines on these pages, so a test can read one back."""
+def build_pdf(
+    pages: list[list[str]],
+    second_font: str = "Courier",
+    encoding: bytes = b"/WinAnsiEncoding",
+    to_unicode: dict[str, str] | None = None,
+) -> bytes:
+    """An uncompressed PDF with these lines on these pages, so a test can read one back. A part of
+    a line in braces is drawn in `second_font`, with this encoding and, given one, a ToUnicode map
+    from each character drawn to the text it reads as."""
     objects: list[bytes] = []
 
     def add(body: bytes) -> int:
@@ -37,13 +60,35 @@ def build_pdf(pages: list[list[str]]) -> bytes:
 
     catalog, pages_obj = add(b""), add(b"")
     font = add(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    extra = b""
+    if to_unicode is not None:
+        pairs = "\n".join(f"<{ord(a):04X}> <{ord(b):04X}>" for a, b in to_unicode.items())
+        cmap = (
+            "begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+            f"{len(to_unicode)} beginbfchar\n{pairs}\nendbfchar\nendcmap\n"
+        ).encode()
+        mapped = add(
+            b"<< /Length " + str(len(cmap)).encode() + b" >>\nstream\n" + cmap + b"\nendstream"
+        )
+        extra = b" /ToUnicode " + str(mapped).encode() + b" 0 R"
+    font2 = add(
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /"
+        + second_font.encode()
+        + b" /Encoding "
+        + encoding
+        + extra
+        + b" >>"
+    )
 
     kids: list[int] = []
     for lines in pages:
         text = b"BT /F1 12 Tf 72 720 Td 14 TL\n"
         for line in lines:
-            escaped = line.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
-            text += b"(" + escaped.encode("latin-1") + b") Tj T*\n"
+            for number, part in enumerate(re.split(r"[{}]", line)):
+                escaped = part.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
+                text += b"/F2 12 Tf " if number % 2 else b"/F1 12 Tf "
+                text += b"(" + escaped.encode("cp1252") + b") Tj\n"
+            text += b"T*\n"
         text += b"ET"
         content = add(
             b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"\nendstream"
@@ -52,7 +97,11 @@ def build_pdf(pages: list[list[str]]) -> bytes:
             add(
                 b"<< /Type /Page /Parent " + str(pages_obj).encode() + b" 0 R "
                 b"/MediaBox [0 0 612 792] /Contents " + str(content).encode() + b" 0 R "
-                b"/Resources << /Font << /F1 " + str(font).encode() + b" 0 R >> >> >>"
+                b"/Resources << /Font << /F1 "
+                + str(font).encode()
+                + b" 0 R /F2 "
+                + str(font2).encode()
+                + b" 0 R >> >> >>"
             )
         )
 
@@ -243,6 +292,116 @@ def test_read_pages_returns_one_string_per_page(tmp_path: Path) -> None:
     assert "3,89,000 people" in pages[5]
 
 
+# --- Docling's elements --------------------------------------------------------------------------
+
+SCALE = "(Rs in crore)"
+TABLE = Grid(
+    rows=((SCALE, "", ""), ("Particulars", "2025", "2024"), ("Revenue", "9,74,864", "9,01,064")),
+    spans=((0, 0, 3, SCALE),),
+)
+
+
+def test_a_page_s_elements_keep_its_reading_order_and_kinds() -> None:
+    document = docling(
+        [
+            [
+                Heading("Statement of Profit and Loss"),
+                TABLE,
+                "The notes are part of it.",
+                Footer("12"),
+            ],
+            [],
+            ["Revenue rose by 8 per cent."],
+        ]
+    )
+
+    first, empty, last = elements_of(document)
+
+    assert [(e.heading, e.is_table) for e in first] == [
+        (True, False),
+        (False, True),
+        (False, False),
+    ]
+    assert first[1].text == f"{SCALE}\nParticulars 2025 2024\nRevenue 9,74,864 9,01,064"
+    assert empty == [], "a page with nothing on it keeps its place"
+    assert [e.text for e in last] == ["Revenue rose by 8 per cent."]
+    assert all("12" != e.text for e in first), "a page footer Docling set aside stays out"
+
+
+def test_text_drawn_inside_a_picture_is_read_where_the_picture_stands() -> None:
+    document = docling(
+        [["Dividend", Picture(("6.50 per share", "(Interim)")), "declared for the year."]]
+    )
+
+    [page] = elements_of(document)
+
+    assert [e.text for e in page] == [
+        "Dividend",
+        "6.50 per share",
+        "(Interim)",
+        "declared for the year.",
+    ]
+
+
+def test_a_cell_spanning_columns_is_given_once_in_its_first() -> None:
+    document = docling([[TABLE]])
+    [table] = document.tables
+
+    rows = table_rows(table.data)
+
+    assert rows[0] == (SCALE, "", "") and rows[2] == ("Revenue", "9,74,864", "9,01,064")
+
+
+@pytest.mark.parametrize(("marked", "counted"), [(0, 0), (1, 1), (2, 2)])
+def test_a_table_counts_the_leading_rows_docling_marked_as_column_headers(
+    marked: int, counted: int
+) -> None:
+    grid = Grid(rows=TABLE.rows, spans=TABLE.spans, header_rows=marked)
+
+    [[element]] = elements_of(docling([[grid]]))
+
+    assert element.header_rows == counted
+
+
+def test_furniture_goes_from_text_but_never_from_a_heading_or_a_table() -> None:
+    """The scale line atop every statement page repeats like a running header; it must stay."""
+    page = [Heading("Balance Sheet"), TABLE, "Notes follow.", "NOTES"]
+    elements = elements_of(docling([page] * 5))
+
+    document = assembled("BAJAJ-AUTO-FY24", elements)
+
+    assert document.text.count(SCALE) == 5, "the scale line is in every table still"
+    assert document.text.count("Balance Sheet") == 5, "and every heading"
+    assert "NOTES" not in document.text, "the section tab that repeats on every page is gone"
+
+
+def test_each_table_and_heading_spans_exactly_its_text_on_its_page() -> None:
+    pages = [["Opening remarks."], [Heading("Statement of Profit and Loss"), TABLE, "Notes."]]
+
+    document = assembled("RELIANCE-FY25", elements_of(docling(pages)))
+
+    [table] = document.tables
+    [heading] = document.headings
+    assert document.text[heading.start : heading.end] == "Statement of Profit and Loss"
+    assert document.text[table.start : table.end].startswith(SCALE)
+    assert document.text[table.start : table.end].endswith("9,01,064")
+    assert table.rows[2] == ("Revenue", "9,74,864", "9,01,064")
+    assert document.page_of(table.start) == document.page_of(heading.start) == 2
+
+
+def test_tables_and_headings_survive_the_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pages = [[Heading("Statement of Profit and Loss"), TABLE, "Notes."]]
+    monkeypatch.setattr(corpus, "convert", lambda path: docling(pages))
+    path = annual_report(tmp_path)
+
+    first = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
+    second = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
+
+    assert second == first and second.tables and second.headings
+
+
 # --- The document cache -----------------------------------------------------------------------
 
 
@@ -259,45 +418,30 @@ def _revised_report() -> bytes:
     return build_pdf([[HEADER, line, str(11 + n)] for n, line in enumerate(body, start=1)])
 
 
-def _counting_reader(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-    """Replace `read_pages` with one that records how often the PDF was really parsed."""
-    calls = [0]
-    original = corpus.read_pages
-
-    def counted(path: Path) -> list[str]:
-        calls[0] += 1
-        return original(path)
-
-    monkeypatch.setattr(corpus, "read_pages", counted)
-    return calls
-
-
 def test_a_second_load_is_served_from_cache_without_parsing_the_pdf_again(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, fake_docling: list[Path]
 ) -> None:
     path = annual_report(tmp_path)
-    calls = _counting_reader(monkeypatch)
 
     first = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
     second = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
 
-    assert calls[0] == 1, "the second load re-parsed the PDF"
+    assert len(fake_docling) == 1, "the second load re-parsed the PDF"
     assert second == first, "a cached document must be indistinguishable from a parsed one"
     assert second.page_starts == first.page_starts, "page offsets have to survive the round trip"
 
 
 def test_republishing_the_report_invalidates_its_cache(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, fake_docling: list[Path]
 ) -> None:
     """A company quietly reissuing a report is the case that would poison a filename-keyed cache."""
     path = annual_report(tmp_path)
-    calls = _counting_reader(monkeypatch)
     load_pdf_cached(path, cache_dir=tmp_path / ".cache")
 
     path.write_bytes(_revised_report())
     reloaded = load_pdf_cached(path, cache_dir=tmp_path / ".cache")
 
-    assert calls[0] == 2, "changed bytes must not be served from the old cache"
+    assert len(fake_docling) == 2, "changed bytes must not be served from the old cache"
     assert "restated" in reloaded.text
 
 
@@ -317,7 +461,7 @@ def test_a_truncated_cache_file_is_reparsed_rather_than_raising(tmp_path: Path) 
     path = annual_report(tmp_path)
     cache = tmp_path / ".cache"
     load_pdf_cached(path, cache_dir=cache)
-    written = next(cache.glob("*.json"))
+    written = cache_file(path, "RELIANCE-FY25", cache)
     written.write_text('{"doc_id": "RELIANCE-FY25", "text": "tru', encoding="utf-8")
 
     recovered = load_pdf_cached(path, cache_dir=cache)
@@ -343,3 +487,212 @@ def test_the_cache_keeps_one_file_per_document(tmp_path: Path) -> None:
     load_pdf_cached(path, cache_dir=cache)
 
     assert len(list(cache.glob("RELIANCE-FY25-*.json"))) == 1, "superseded entries should be swept"
+
+
+def test_a_change_to_rendering_reads_the_kept_parse_rather_than_the_pdf(
+    tmp_path: Path, fake_docling: list[Path]
+) -> None:
+    path = annual_report(tmp_path)
+    cache = tmp_path / ".cache"
+    first = load_pdf_cached(path, cache_dir=cache)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(corpus, "_INGEST_FINGERPRINT", "0123456789ab")
+        second = load_pdf_cached(path, cache_dir=cache)
+
+    assert len(fake_docling) == 1, "a rendering change re-parsed the PDF"
+    assert second == first
+    assert len(list(cache.glob("RELIANCE-FY25-*.json"))) == 1, "the old rendering is swept"
+    assert parse_file(path, "RELIANCE-FY25", cache).exists(), "the sweep kept the parse"
+
+
+def test_a_change_to_parsing_parses_the_pdf_again(tmp_path: Path, fake_docling: list[Path]) -> None:
+    path = annual_report(tmp_path)
+    cache = tmp_path / ".cache"
+    load_pdf_cached(path, cache_dir=cache)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(corpus, "_PARSE_FINGERPRINT", "0123456789ab")
+        patch.setattr(corpus, "_INGEST_FINGERPRINT", "ba9876543210")
+        load_pdf_cached(path, cache_dir=cache)
+
+    assert len(fake_docling) == 2, "a parse made by other parsing code was reused"
+    assert len(list(cache.glob("RELIANCE-FY25.*.docling"))) == 1, "the old parse is swept"
+
+
+def test_a_truncated_parse_is_parsed_again_rather_than_raising(
+    tmp_path: Path, fake_docling: list[Path]
+) -> None:
+    path = annual_report(tmp_path)
+    cache = tmp_path / ".cache"
+    parse_cached(path, "RELIANCE-FY25", cache)
+    parse_file(path, "RELIANCE-FY25", cache).write_text('{"schema_name": "Docl', encoding="utf-8")
+
+    parsed = parse_cached(path, "RELIANCE-FY25", cache)
+
+    assert len(fake_docling) == 2, fake_docling
+    assert "final dividend" in parsed.export_to_text()
+
+
+def test_republishing_the_report_keeps_one_parse(tmp_path: Path, fake_docling: list[Path]) -> None:
+    path = annual_report(tmp_path)
+    cache = tmp_path / ".cache"
+    load_pdf_cached(path, cache_dir=cache)
+    path.write_bytes(_revised_report())
+    reloaded = load_pdf_cached(path, cache_dir=cache)
+
+    assert len(fake_docling) == 2, "changed bytes must not be served from the old parse"
+    assert "restated" in reloaded.text
+    assert len(list(cache.glob("RELIANCE-FY25.*.docling"))) == 1, "superseded parses are swept"
+
+
+DIFFERENCES = b"<< /BaseEncoding /WinAnsiEncoding /Differences [31 /grave] >>"
+
+
+@pytest.mark.parametrize(
+    ("line", "font", "encoding", "to_unicode", "read_as"),
+    [
+        pytest.param(
+            "({`} crore)",
+            "ABCDEF+RupeeForadian",
+            b"/WinAnsiEncoding",
+            None,
+            "(₹ crore)",
+            id="Foradian's backtick is the rupee",
+        ),
+        pytest.param(
+            "{`}1,068.03 crore",
+            "Rupee",
+            b"/WinAnsiEncoding",
+            None,
+            "₹1,068.03 crore",
+            id="Rupee's backtick is the rupee",
+        ),
+        pytest.param(
+            "{`}205.36",
+            "IndianRupee-Regular",
+            b"/WinAnsiEncoding",
+            None,
+            "₹205.36",
+            id="a styled family name is still its family",
+        ),
+        pytest.param(
+            "({C} in millions)",
+            "ITFRupee",
+            b"/WinAnsiEncoding",
+            None,
+            "(₹ in millions)",
+            id="ITFRupee's C is the rupee",
+        ),
+        pytest.param(
+            "{H} 44,685 {J}9,723 {K}26 ({I} Cr) {D}10 {E}5 {L}9",
+            "ITFRupee",
+            b"/WinAnsiEncoding",
+            None,
+            "₹ 44,685 ₹9,723 ₹26 (₹ Cr) ₹10 ₹5 ₹9",
+            id="every ITFRupee key seen in the reports is the rupee",
+        ),
+        pytest.param(
+            "{\x1f}10",
+            "Rupee",
+            DIFFERENCES,
+            None,
+            "₹10",
+            id="a backtick moved by Differences is still the rupee",
+        ),
+        pytest.param(
+            "{` - ^}",
+            "Rupee",
+            b"/WinAnsiEncoding",
+            {"`": "`", "-": "-", "^": "^"},
+            "₹ - ^",
+            id="a map already present changes only its backtick",
+        ),
+        pytest.param(
+            "{R} 23,768",
+            "RupeeForadian",
+            b"/WinAnsiEncoding",
+            None,
+            "R 23,768",
+            id="Foradian's R is printed as an R",
+        ),
+        pytest.param(
+            "{Others China 118.6 – -}",
+            "RupeeForadian",
+            b"/WinAnsiEncoding",
+            None,
+            "Others China 118.6 – -",
+            id="Foradian's letters, digits and dashes stay",
+        ),
+        pytest.param("{C}", "Rupee", b"/WinAnsiEncoding", None, "C", id="Rupee's C stays a C"),
+        pytest.param(
+            "{` A Z c 0}",
+            "ITFRupee",
+            b"/WinAnsiEncoding",
+            None,
+            "` A Z c 0",
+            id="ITFRupee's other keys stay",
+        ),
+        pytest.param(
+            "({`} crore) Class C",
+            "Courier",
+            b"/WinAnsiEncoding",
+            None,
+            "(` crore) Class C",
+            id="a font that is not a rupee font is untouched",
+        ),
+        pytest.param(
+            "{`}",
+            "SuperRupee",
+            b"/WinAnsiEncoding",
+            None,
+            "`",
+            id="a family merely containing Rupee is untouched",
+        ),
+        pytest.param(
+            "{`}",
+            "Rupee",
+            b"/MacRomanEncoding",
+            None,
+            "`",
+            id="an encoding other than WinAnsi is untouched",
+        ),
+    ],
+)
+def test_only_a_rupee_font_s_rupee_keys_read_as_the_rupee_sign(
+    tmp_path: Path,
+    line: str,
+    font: str,
+    encoding: bytes,
+    to_unicode: dict[str, str] | None,
+    read_as: str,
+) -> None:
+    path = tmp_path / "report.pdf"
+    path.write_bytes(build_pdf([[line]], font, encoding, to_unicode))
+    source = rupees_decoded(path)
+    reader = PdfReader(source.stream if isinstance(source, DocumentStream) else source)
+    assert reader.pages[0].extract_text().strip() == read_as
+
+
+def test_a_pdf_without_a_rupee_font_is_passed_on_untouched(tmp_path: Path) -> None:
+    path = tmp_path / "report.pdf"
+    path.write_bytes(build_pdf([["({`} crore)"]], second_font="Courier"))
+    assert rupees_decoded(path) == path
+
+
+def test_a_decoded_pdf_keeps_its_file_name_for_the_parser(tmp_path: Path) -> None:
+    path = tmp_path / "HDFCBANK-FY25.pdf"
+    path.write_bytes(build_pdf([["({`} crore)"]], second_font="Rupee"))
+    source = rupees_decoded(path)
+    assert isinstance(source, DocumentStream) and source.name == path.name, source
+
+
+def test_a_code_moved_by_differences_is_mapped_by_its_own_code(tmp_path: Path) -> None:
+    path = tmp_path / "report.pdf"
+    path.write_bytes(build_pdf([["{\x1f}10"]], "Rupee", DIFFERENCES))
+    source = rupees_decoded(path)
+    assert isinstance(source, DocumentStream), source
+    resources = cast(DictionaryObject, PdfReader(source.stream).pages[0]["/Resources"])
+    font = cast(DictionaryObject, cast(DictionaryObject, resources["/Font"])["/F2"].get_object())
+    cmap = cast(StreamObject, font["/ToUnicode"].get_object()).get_data()
+    assert b"<1F> <20B9>" in cmap and b"<60> <20B9>" in cmap, cmap
