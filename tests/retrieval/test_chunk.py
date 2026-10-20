@@ -363,6 +363,27 @@ def test_a_chunk_starts_at_every_heading_and_every_table() -> None:
             id="the section named by its path",
         ),
         pytest.param(
+            [Heading("Revenue")],
+            Grid(rows=(("Particulars", "2025 ₹ in Million As at March 31, 2024"), ("Sales", "8"))),
+            "[Table · RELIANCE-FY25 p.1 · Revenue · ₹ in Million = ×1000000"
+            " · columns: 2025 | 2024]",
+            id="an unbracketed scale ends at its word",
+        ),
+        pytest.param(
+            [Heading("Trade receivables")],
+            Grid(rows=(("Particulars", "2024 In Crore) 2023"), ("Unsecured", "3,214"))),
+            "[Table · RELIANCE-FY25 p.1 · Trade receivables · In Crore = ×10000000"
+            " · columns: 2024 | 2023]",
+            id="a scale split across header cells, its stray digits left out",
+        ),
+        pytest.param(
+            [Heading("Borrowings"), "(Amount in ₹ crore)"],
+            Grid(rows=(("Particulars", "2025"), ("Term loans", "1,250"))),
+            "[Table · RELIANCE-FY25 p.1 · Borrowings · (Amount in ₹ crore) = ×10000000"
+            " · columns: 2025]",
+            id="amount in, then the currency and scale",
+        ),
+        pytest.param(
             [Heading("Trade receivables")],
             Grid(rows=(("Particulars", "2025"), ("Unsecured", "3,214")), caption="(₹ In Crore)"),
             "[Table · RELIANCE-FY25 p.1 · Trade receivables · (₹ In Crore) = ×10000000"

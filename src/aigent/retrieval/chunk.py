@@ -447,10 +447,13 @@ def by_heading(max_chars: int = CHUNK_MAX_CHARS) -> Splitter:
 
 # --- Elements --------------------------------------------------------------------------------
 
-# A scale as reports print it: "(₹ in crore)", "(H In Crore)", "(C in millions, except ...)".
+# A scale as printed: "(C in millions, except …)" to its bracket, "(₹ crore)", or "₹ in Million".
+_SCALE_WORD = r"(?:crores?|lakhs?|millions?|billions?|thousands?)\b"
+_CURRENCY = r"(?:₹|Rs\.?|INR|USD|US\$|\$)"
 _SCALE = re.compile(
-    r"\(?[^\n()]{0,6}\bin\s+(?:crores?|lakhs?|millions?|billions?|thousands?)\b[^\n)]{0,60}\)?"
-    r"|\(\s*(?:₹|Rs\.?|INR|US\$|\$)\s*(?:crores?|lakhs?|millions?|billions?|thousands?)\b[^\n)]{0,60}\)",
+    rf"\([^\n()]{{0,20}}?\bin\s+(?:{_CURRENCY}\s*)?{_SCALE_WORD}[^\n()]{{0,60}}\)"
+    rf"|\(\s*{_CURRENCY}\s*{_SCALE_WORD}[^\n()]{{0,60}}\)"
+    rf"|(?:{_CURRENCY}\s*)?\bin\s+{_SCALE_WORD}",
     re.IGNORECASE,
 )
 _BASIS = re.compile(r"\b(consolidated|standalone)\b", re.IGNORECASE)
