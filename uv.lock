@@ -4403,7 +4403,7 @@ wheels = [
 [[package]]
 name = "underhood"
 version = "0.1.0"
-source = { git = "https://github.com/vedantdeo/underhood?branch=main#971bd1cacb90aa895533f530d0f9f2af51d6b3ab" }
+source = { git = "https://github.com/vedantdeo/underhood?branch=main#16b5437a1b28b37425370643117eac8a297fb2b4" }
 dependencies = [
     { name = "hostllm" },
 ]
