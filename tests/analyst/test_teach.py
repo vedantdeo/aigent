@@ -26,9 +26,12 @@ from aigent.analyst.teach import (
     named,
     read_rows,
     regrade,
+    relabel,
     relabelled,
     report_search,
+    rounds_to,
     select,
+    significant,
     task,
     teach,
     undescribed,
@@ -514,6 +517,118 @@ def test_a_description_keeps_its_rule_or_the_trajectory_is_dropped(
     read = Passage(CHUNK.id, "", CHUNK.text)
 
     assert bool(undescribed(Found([sourced_figure], {CHUNK.id: read}))) is bad
+
+
+@pytest.mark.parametrize(
+    ("value", "figures"),
+    [
+        (88.3, 3),
+        (88.29, 4),
+        (1640000.0, 3),
+        (20944000000.0, 5),
+        (20944272098.0, 11),
+        (0.0683, 3),
+        (704.05, 5),
+        (-0.04, 1),
+    ],
+)
+def test_a_number_s_significant_figures_leave_out_a_whole_number_s_trailing_zeros(
+    value: float, figures: int
+) -> None:
+    assert significant(value) == figures
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "same"),
+    [
+        pytest.param(88.3, 88.29, True, id="one more decimal"),
+        pytest.param(1640000.0, 1636210.0, True, id="millions, in full"),
+        pytest.param(20944000000.0, 20944272098.0, True, id="in full, millions"),
+        pytest.param(132180.0, 131354.0, False, id="two figures at one precision"),
+        pytest.param(0.166, 0.162, False, id="close, not a rounding"),
+        pytest.param(200000.0, 213527.0, False, id="one significant figure is too few"),
+        pytest.param(-88.3, 88.29, False, id="opposite signs"),
+    ],
+)
+def test_two_numbers_are_one_figure_when_one_rounds_the_other(
+    a: float, b: float, same: bool
+) -> None:
+    assert rounds_to(a, b) is same
+
+
+ROUNDED = Labelled(metric="volume", value=1640000.0, unit=None, year=2024, call="1.64 * 10**6")
+EXACT = ROUNDED.model_copy(update={"value": 1636210.0, "call": None})
+VOLUMES = Chunk(
+    id="BAJAJ-AUTO-FY24#0029",
+    text="Exports of 1,636,210 units, against 1.64 million in the highlights.",
+    doc_id="BAJAJ-AUTO-FY24",
+    ordinal=29,
+    start=0,
+    page=20,
+)
+
+
+def _dropped(make_llm: MakeLlm, answer: Labelled, label: Labelled) -> dict[str, JsonValue]:
+    """A row the teacher answered with `answer` from the volumes passage, against `label`."""
+    llm, _ = make_llm(
+        turns(
+            tool_turn(("s1", "search_report", {"query": "exports"})),
+            sourced(answer, cited=VOLUMES.id),
+        )
+    )
+    search = report_search(lambda q, d: [VOLUMES], {"BAJAJ-AUTO-FY24"})
+    asked = Asked(CHUNK.id, "What were Bajaj Auto's exports?", (label,))
+    return teach(asked, research(llm, search, "claude-sonnet-5", NAMES))
+
+
+def test_a_rounded_label_takes_the_teacher_s_exact_value_and_the_row_is_kept(
+    make_llm: MakeLlm,
+) -> None:
+    row = _dropped(make_llm, EXACT, ROUNDED)
+    assert row["kept"] is False and str(row["why"]).startswith("missed")
+
+    fixed = regrade(relabel(row), [])
+
+    assert fixed["kept"] is True, fixed["why"]
+    assert fixed["relabelled"] == [
+        {"label": 0, "was": 1640000.0, "now": 1636210.0, "passage": VOLUMES.id}
+    ]
+    assert fixed["corrections"] == [], "the teacher's figure was already the actual value"
+
+
+def test_a_rounded_answer_takes_the_exact_value_its_searches_found_and_cites_it(
+    make_llm: MakeLlm,
+) -> None:
+    row = _dropped(make_llm, ROUNDED, EXACT)
+
+    fixed = regrade(relabel(row), [])
+
+    assert fixed["kept"] is True, fixed["why"]
+    assert fixed["corrections"] == [
+        {"figure": 0, "value": 1636210.0, "chunk_id": VOLUMES.id, "was": 1640000.0}
+    ]
+    answer = cast(list[dict[str, object]], fixed["figures"])[0]
+    assert answer["value"] == 1636210.0, "the trajectory teaches the exact figure"
+    assert "1.64" in json.dumps(fixed["taught"]), "the teacher's own turns are kept as they were"
+
+
+def test_a_precise_label_no_passage_prints_takes_the_teacher_s_value_instead(
+    make_llm: MakeLlm,
+) -> None:
+    unprinted = EXACT.model_copy(update={"value": 1636211.0})
+    row = _dropped(make_llm, ROUNDED, unprinted)
+
+    fixed = regrade(relabel(row), [])
+
+    assert fixed["kept"] is True and fixed["corrections"] == []
+    assert cast(list[dict[str, object]], fixed["labels"])[0]["value"] == 1640000.0
+
+
+def test_a_label_that_is_not_a_rounding_leaves_the_row_as_it_was(make_llm: MakeLlm) -> None:
+    other = EXACT.model_copy(update={"value": 1712345.0})
+    row = _dropped(make_llm, EXACT, other)
+
+    assert relabel(row) is row and row["kept"] is False
 
 
 def test_rows_are_written_in_one_order_and_a_missing_file_is_none(tmp_path: Path) -> None:

@@ -30,7 +30,15 @@ from underhood.tooldata.labels import Label, check_call, printed
 from aigent.analyst.cfg_analyst import SPECIALIST_TOOL_TURNS, max_tokens
 from aigent.analyst.run import in_parallel
 from aigent.analyst.served import opening, research, turn_request
-from aigent.analyst.specialists import FigureJob, Found, Invalid, Told, check_figures, passages_in
+from aigent.analyst.specialists import (
+    FigureJob,
+    Found,
+    Invalid,
+    Passage,
+    Told,
+    check_figures,
+    passages_in,
+)
 from aigent.analyst.toolbox import SEARCH
 from aigent.config import (
     CLIENT,
@@ -65,6 +73,7 @@ from aigent.tools import CALCULATOR_TOOL, execute_tool, fence
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"
 TRAJECTORIES = TRAINING_DIR / "research-trajectories.jsonl"
 SCALE_POWERS = (3, 5, 6, 7, 9)  # thousand, lakh, million, crore, billion
+ROUNDED_FIGURES = 3  # fewer, and 200,000 would be any number from 150,000 to 249,999
 # What the teacher is told beyond the trained prompt: it writes each call, and code makes it.
 TEACHER_NOTE = (
     "You are writing a worked example of this job and have no calculate tool here. Give each "
@@ -434,9 +443,9 @@ def _is_made(message: Msg) -> bool:
     return str(first.get("id") or first.get("tool_use_id") or "").startswith("calc_")
 
 
-def regrade(row: dict[str, JsonValue], asked: Sequence[Asked]) -> dict[str, JsonValue]:
-    """A saved row judged again by the rules as they are now, from the teacher's own turns: free,
-    for when a rule changes. Its labels are its own, or its v3 question's from `asked`."""
+def _replayed(row: dict[str, JsonValue]) -> tuple[str, list[Passage], list[Msg]]:
+    """A saved row's final answer as text, the passages its searches returned, and its turns, from
+    the teacher's own turns, those `worked` made left out."""
     turns = cast(list[Msg], row.get("taught") or row["conversation"])
     turns = [m for m in turns if not _is_made(m)]
     blocks = turns[-1]["content"]
@@ -454,6 +463,27 @@ def regrade(row: dict[str, JsonValue], asked: Sequence[Asked]) -> dict[str, Json
         for b in m["content"]
         for p in passages_in(str(cast(dict[str, object], b).get("content", "")))
     ]
+    return text, read, turns
+
+
+def _corrected(text: str, corrections: Sequence[JsonValue]) -> str:
+    """The teacher's answer with each recorded correction's value and passage in place, its call
+    left for `worked` to work out."""
+    start, end = text.find("{"), text.rfind("}")
+    answer = cast(dict[str, list[dict[str, JsonValue]]], json.loads(text[start : end + 1]))
+    for c in cast(list[dict[str, JsonValue]], corrections):
+        figure = answer["figures"][cast(int, c["figure"])]
+        figure.update({"value": c["value"], "chunk_id": c["chunk_id"], "call": None})
+    return json.dumps(answer)
+
+
+def regrade(row: dict[str, JsonValue], asked: Sequence[Asked]) -> dict[str, JsonValue]:
+    """A saved row judged again by the rules as they are now, from the teacher's own turns and any
+    corrections recorded on it: free, for when a rule changes. Its labels are its own, or its v3
+    question's from `asked`."""
+    text, read, turns = _replayed(row)
+    if row.get("corrections"):
+        text = _corrected(text, cast(list[JsonValue], row["corrections"]))
     if "labels" in row:
         labels = tuple(Labelled.model_validate(x) for x in cast(list[JsonValue], row["labels"]))
     else:
@@ -464,7 +494,86 @@ def regrade(row: dict[str, JsonValue], asked: Sequence[Asked]) -> dict[str, Json
         )
     one = Asked(str(row["chunk_id"]), str(row["question"]), labels, bool(row["paired"]))
     told = Told(text, cast(float, row["usd"]), 0, 0, (), tuple(read), tuple(turns))
-    return teach(one, lambda job: told)
+    judged = teach(one, lambda job: told)
+    kept = {k: row[k] for k in ("corrections", "relabelled") if k in row}
+    return {**judged, **kept}
+
+
+def significant(value: float) -> int:
+    """How many significant figures a number carries; a whole number's trailing zeros do not."""
+    whole, _, fraction = f"{abs(value):.15g}".partition(".")
+    if "e" in whole or "e" in fraction:
+        return len(f"{abs(value):.15g}".split("e")[0].replace(".", "").strip("0")) or 1
+    if not fraction:
+        return len(whole.strip("0")) or 1
+    if whole.strip("0"):
+        return len(whole.lstrip("0")) + len(fraction)
+    return len(fraction.lstrip("0")) or 1
+
+
+def rounds_to(a: float, b: float) -> bool:
+    """Whether two numbers of different precision are one figure, the more precise rounded to the
+    other's significant figures, of which it carries at least `ROUNDED_FIGURES`."""
+    n, m = significant(a), significant(b)
+    fewest = min(n, m)
+    if n == m or fewest < ROUNDED_FIGURES:
+        return False
+    return math.isclose(float(f"{a:.{fewest}g}"), float(f"{b:.{fewest}g}"), rel_tol=1e-12)
+
+
+def _backed(figure: SourcedFigure, value: float, passages: Sequence[Passage]) -> str | None:
+    """The first of `passages` that prints `value` for `figure`, as it is or at a named scale."""
+    for passage in passages:
+        candidate = figure.model_copy(update={"value": value, "chunk_id": passage.id})
+        if abs(value) in printed(passage.text) or inferred_call(candidate, passage.text):
+            return passage.id
+    return None
+
+
+def relabel(row: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    """A row dropped only for labels the teacher's figures round, with label and figure both set
+    to the actual value: the more precise of the two where a passage its searches returned prints
+    it (the figure then citing that passage), else the teacher's, which its passage prints. Every
+    change is recorded; the row is returned unchanged if any missed label is not a rounding."""
+    if row["kept"] or not str(row["why"] or "").startswith("missed") or not row["figures"]:
+        return row
+    _, read, _ = _replayed(row)
+    figures = [SourcedFigure.model_validate(f) for f in cast(list[JsonValue], row["figures"])]
+    labels = [Labelled.model_validate(x) for x in cast(list[JsonValue], row["labels"])]
+    corrections = list(cast(list[JsonValue], row.get("corrections") or []))
+    relabelled = list(cast(list[JsonValue], row.get("relabelled") or []))
+    for i, label in enumerate(labels):
+        if any(found_as(label, f) for f in figures):
+            continue
+        j = next(
+            (
+                j
+                for j, f in enumerate(figures)
+                if (label.year is None or f.year == label.year) and rounds_to(label.value, f.value)
+            ),
+            None,
+        )
+        if j is None:
+            return row
+        figure = figures[j]
+        actual, cited = figure.value, figure.chunk_id
+        if significant(label.value) > significant(figure.value):
+            own = [p for p in read if p.id == figure.chunk_id]
+            where = _backed(figure, label.value, [*own, *(p for p in read if p not in own)])
+            if where is not None:
+                actual, cited = label.value, where
+                corrections.append(
+                    {"figure": j, "value": actual, "chunk_id": cited, "was": figure.value}
+                )
+                figures[j] = figure.model_copy(update={"value": actual, "chunk_id": cited})
+        relabelled.append({"label": i, "was": label.value, "now": actual, "passage": cited})
+        labels[i] = label.model_copy(update={"value": actual, "call": None})
+    return {
+        **row,
+        "labels": [cast(JsonValue, label.model_dump()) for label in labels],
+        "corrections": corrections,
+        "relabelled": relabelled,
+    }
 
 
 def _key(row: dict[str, JsonValue]) -> tuple[str, str]:
@@ -573,6 +682,10 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     running.add_argument("--out", type=Path, default=TRAJECTORIES)
     regrading = commands.add_parser("regrade", help="judge saved rows again, free")
     regrading.add_argument("--out", type=Path, default=TRAJECTORIES)
+    relabelling = commands.add_parser(
+        "relabel", help="set rounded labels to the actual value, free"
+    )
+    relabelling.add_argument("--out", type=Path, default=TRAJECTORIES)
     exporting = commands.add_parser("export", help="write the kept trajectories for underhood")
     exporting.add_argument("--out", type=Path, required=True, help="underhood's data directory")
     exporting.add_argument("--trajectories", type=Path, default=TRAJECTORIES)
@@ -583,6 +696,15 @@ def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
     if args.command == "run":
         _run(args)
+    elif args.command == "relabel":
+        asked = load_asked()
+        rows = read_rows(args.out)
+        fixed = [relabel(row) for row in rows]
+        changed = [r for r, f in zip(rows, fixed, strict=True) if f is not r]
+        rows = [regrade(f, asked) if f is not r else r for r, f in zip(rows, fixed, strict=True)]
+        write_rows(args.out, rows)
+        now = sum(1 for r in rows if r["kept"])
+        print(f"{len(changed)} rows relabelled; {now} of {len(rows)} kept; {args.out}")
     elif args.command == "regrade":
         asked = load_asked()
         rows = [regrade(row, asked) for row in read_rows(args.out)]

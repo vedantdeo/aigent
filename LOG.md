@@ -1941,3 +1941,42 @@
   150 s per request cannot be raised (its docs: enforced for every web endpoint); a request past
   it gets a 303 to a result URL, which for ap-16's earlier attempt answered "Missing request". The
   capstone closes at **19 of 20 with a supported memo** (`docs/capstone.md`, Final results).
+- 10-19: **the capstone's specialists redesigned (Vedant): the headline reader retired, and
+  `extract_figures` takes the question, a ticker and a year and searches for itself.** A specialist
+  saves money only if the generalist never reads what it reads: served answer tokens cost $26/M,
+  above Sonnet's $10/M, and both specialists read text the generalist had already read. vLLM now
+  bills at its own measured rate, $3.70/M answer at four in flight (hostllm#3). v4 is to be
+  Qwen3-8B, trained on teacher trajectories over the nine held-out training reports. Free.
+- 10-19: **v4's first teacher smoke run: 20 questions, Sonnet 5, 5 kept; $0.4999** (half the
+  uncached estimate, the prompt cached). Six drops were a teacher that skipped `calculate` and
+  wrote a scaled value or fraction itself; two each a growth rate not described `change` and a
+  loss given a minus sign; others an unnamed scale from another chunk, `equity` for a share
+  count, and a search for the paired question's other company. The fixes, from v3's experience:
+  the teacher writes each figure's call and code makes the calculate turn; the 10-12 census's
+  five-word verbatim description rule enforced; the prompt's equity, basis and other-company rules.
+  Rows kept as `corpus/training/research-trajectories-smoke1-old-prompt.jsonl`.
+- 10-19: **the second smoke run: the same 20, 0 kept; $0.4483, a bug of mine.** The teacher
+  wrote no `call` at all, following the prompt's JSON form, which lists none, and the parser
+  required one; the test fake always carried it. Fixed without another call: `inferred_call`
+  works a missing call out from the cited passage; a named metric's description is set to null
+  unless `change`; an other figure's may be the teacher's own words, up to ten (Vedant); a v3
+  label is found by its number and year, how to file it left to the teacher (Vedant, after a v3
+  label filing a total payout as `dividend` dropped a right answer). `regrade`, free, took the 20
+  saved rows from 0 to 13 kept. The 7 drops: the teacher's arithmetic, two signs, a question it
+  could not answer, three scales stated outside the cited chunk (parked: a structure-aware index
+  of the filings, `docs/capstone.md`). Smoke runs in all: $0.95.
+- 10-19: **v4's first full teacher run: 297 questions, Sonnet 5, 132 kept; $7.2468** (inside the
+  $12 ceiling; ~$0.024 a trajectory). With the smoke rows, 145 of 317 kept (46%). Every row is
+  recorded, kept or not, in `corpus/training/research-trajectories.jsonl` (git-ignored). The drops:
+  76 a different number from the v3 label (roughly a fifth rounding, a quarter consolidated taken
+  where the chunk-written label was standalone, a third the teacher's wrong line, the rest label
+  noise); 44 a scale the cited passage does not name (the parked case, 14% of all rows, the largest
+  single fault); 15 other label misses; 14 answers not parsed (6 out of turns, 5 a value written as
+  an expression, 2 broken JSON); 10 signs; 8 segment names or the turn cap. Wipro FY24 kept 3 of 22.
+- 10-20: **rounded labels relabelled to the actual value (Vedant): 6 rows, 151 of 317 kept; free.**
+  `relabel` sets a v3 label and the teacher's figure that are one number at two precisions to the
+  more precise one a passage the teacher read prints, recording each change: Bajaj's export
+  volumes (1.64 million to 1,636,210, three rows), HDFC's EPS (88.3 to 88.29) and ROE (14.56%, which
+  no passage it read prints, to 14.6%), and Wipro's paid-up capital (the teacher's ₹20,944 million to
+  ₹20,944,272,098). A first pass also matched HDFC's 200,000 headcount to 213,527, one significant
+  figure; three are now required.
