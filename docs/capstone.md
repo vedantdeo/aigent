@@ -331,6 +331,14 @@ no specialist to calm it fails, by decision.
     graph retrieval alone on Nifty-50 earnings calls.
   - *Retrieval over page images*: ColPali and its ViDoRe benchmark (arXiv 2407.01449), embedding
     page images and skipping text extraction; it would put a vision model in the specialist's loop.
+- **Tables longer than the embedder reads** (2026-10-20, Vedant). bge-small reads 512 tokens, and
+  209 of `by_element`'s 6,443 chunks over the eval reports run past it, almost all tables; it
+  embeds only their start. Capping chunks at 512 tokens was built and reverted: it cut giant rows
+  at words and stopped repeating oversized headers, losing the table context the label, scale and
+  captions exist to carry. Two ways to try instead:
+  - *A smarter split*: every piece keeps the whole context, and the rows are summarised or chosen
+    rather than cut at a token count.
+  - *An embedder with a longer window*, such as one reading 8k tokens, so a table needs no split.
 
 ## Open questions
 
