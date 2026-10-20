@@ -51,10 +51,14 @@ def build_pdf(
     second_font: str = "Courier",
     encoding: bytes = b"/WinAnsiEncoding",
     to_unicode: dict[str, str] | None = None,
+    boxed: str | None = None,
+    loops: bool = False,
 ) -> bytes:
     """An uncompressed PDF with these lines on these pages, so a test can read one back. A part of
     a line in braces is drawn in `second_font`, with this encoding and, given one, a ToUnicode map
-    from each character drawn to the text it reads as."""
+    from each character drawn to the text it reads as. `boxed` is a line every page draws from a
+    form XObject, its braced part in a font object of its own of `second_font`'s family; with
+    `loops`, the form lists itself among its own XObjects."""
     objects: list[bytes] = []
 
     def add(body: bytes) -> int:
@@ -83,8 +87,7 @@ def build_pdf(
         + b" >>"
     )
 
-    kids: list[int] = []
-    for lines in pages:
+    def drawn(lines: list[str]) -> bytes:
         text = b"BT /F1 12 Tf 72 720 Td 14 TL\n"
         for line in lines:
             for number, part in enumerate(re.split(r"[{}]", line)):
@@ -92,7 +95,38 @@ def build_pdf(
                 text += b"/F2 12 Tf " if number % 2 else b"/F1 12 Tf "
                 text += b"(" + escaped.encode("cp1252") + b") Tj\n"
             text += b"T*\n"
-        text += b"ET"
+        return text + b"ET"
+
+    xobject = b""
+    if boxed is not None:
+        font3 = add(
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /"
+            + second_font.encode()
+            + b" /Encoding "
+            + encoding
+            + b" >>"
+        )
+        form = drawn([boxed])
+        box = len(objects) + 1
+        itself = b" /XObject << /X1 " + str(box).encode() + b" 0 R >>" if loops else b""
+        add(
+            b"<< /Type /XObject /Subtype /Form /BBox [0 0 612 792] /Resources << /Font << /F1 "
+            + str(font).encode()
+            + b" 0 R /F2 "
+            + str(font3).encode()
+            + b" 0 R >>"
+            + itself
+            + b" >> /Length "
+            + str(len(form)).encode()
+            + b" >>\nstream\n"
+            + form
+            + b"\nendstream"
+        )
+        xobject = b" /XObject << /X1 " + str(box).encode() + b" 0 R >>"
+
+    kids: list[int] = []
+    for lines in pages:
+        text = drawn(lines) + (b"\nq 1 0 0 1 0 -400 cm /X1 Do Q" if boxed is not None else b"")
         content = add(
             b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"\nendstream"
         )
@@ -104,7 +138,9 @@ def build_pdf(
                 + str(font).encode()
                 + b" 0 R /F2 "
                 + str(font2).encode()
-                + b" 0 R >> >> >>"
+                + b" 0 R >>"
+                + xobject
+                + b" >> >>"
             )
         )
 
@@ -692,6 +728,26 @@ def test_a_decoded_pdf_keeps_its_file_name_for_the_parser(tmp_path: Path) -> Non
     path.write_bytes(build_pdf([["({`} crore)"]], second_font="Rupee"))
     source = rupees_decoded(path)
     assert isinstance(source, DocumentStream) and source.name == path.name, source
+
+
+def test_a_rupee_font_inside_a_form_xobject_is_read_as_the_rupee_sign_too(tmp_path: Path) -> None:
+    path = tmp_path / "report.pdf"
+    path.write_bytes(build_pdf([["Balance Sheet"]], "ITFRupee", boxed="({C} in millions)"))
+
+    source = rupees_decoded(path)
+
+    assert isinstance(source, DocumentStream), "a font only an XObject draws with is repaired"
+    text = PdfReader(source.stream).pages[0].extract_text()
+    assert "(₹ in millions)" in text and "(C in" not in text, text
+
+
+def test_a_form_xobject_that_draws_itself_is_walked_once(tmp_path: Path) -> None:
+    path = tmp_path / "report.pdf"
+    path.write_bytes(build_pdf([["Notes"]], "ITFRupee", boxed="({C} in crore)", loops=True))
+
+    source = rupees_decoded(path)
+
+    assert isinstance(source, DocumentStream), source
 
 
 def test_a_code_moved_by_differences_is_mapped_by_its_own_code(tmp_path: Path) -> None:

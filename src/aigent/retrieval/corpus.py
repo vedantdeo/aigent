@@ -43,6 +43,7 @@ from pypdf.generic import (
     DecodedStreamObject,
     DictionaryObject,
     NameObject,
+    PdfObject,
     StreamObject,
 )
 
@@ -167,16 +168,41 @@ def _simple_font_map(font: DictionaryObject, keys: str) -> bytes | None:
     ).encode()
 
 
+def _fonts_of(resources: PdfObject | None, seen: set[int]) -> list[DictionaryObject]:
+    """Every font a page's resources reach, through the form XObjects it draws too; `seen` holds
+    the forms already walked, so a form that draws itself ends."""
+    if resources is None:
+        return []
+    held = cast(DictionaryObject, resources.get_object())
+    found: list[DictionaryObject] = []
+    fonts = held.get("/Font")
+    for ref in (
+        cast(DictionaryObject, fonts.get_object()) if fonts else DictionaryObject()
+    ).values():
+        found.append(cast(DictionaryObject, ref.get_object()))
+    forms = held.get("/XObject")
+    for ref in (
+        cast(DictionaryObject, forms.get_object()) if forms else DictionaryObject()
+    ).values():
+        form = ref.get_object()
+        if (
+            isinstance(form, StreamObject)
+            and form.get("/Subtype") == "/Form"
+            and id(form) not in seen
+        ):
+            seen.add(id(form))
+            found += _fonts_of(form.get("/Resources"), seen)
+    return found
+
+
 def rupees_decoded(path: Path) -> Path | DocumentStream:
-    """The PDF in memory with the keys `PDF_RUPEE_KEYS` names read as ₹ in their fonts; the path
-    itself if no font needed it."""
+    """The PDF in memory with the keys `PDF_RUPEE_KEYS` names read as ₹ in their fonts, those its
+    form XObjects draw with included; the path itself if no font needed it."""
     writer = PdfWriter(clone_from=path)
     changed = False
+    seen: set[int] = set()
     for page in writer.pages:
-        resources = page.get("/Resources")
-        fonts = resources.get_object().get("/Font") if resources else None
-        for ref in (fonts.get_object() if fonts else DictionaryObject()).values():
-            font = cast(DictionaryObject, ref.get_object())
+        for font in _fonts_of(page.get("/Resources"), seen):
             keys = PDF_RUPEE_KEYS.get(_family(font))
             if keys is None:
                 continue
@@ -539,6 +565,7 @@ _PARSE_FINGERPRINT = hashlib.sha256(
                 _family,
                 _rupee_entries,
                 _simple_font_map,
+                _fonts_of,
                 rupees_decoded,
                 _stray_caption,
                 _captions,
