@@ -7,6 +7,7 @@ already holds.
 
 uv run python -m aigent.analyst.teach run --sample 20
 uv run python -m aigent.analyst.teach run --yes
+uv run python -m aigent.analyst.teach run --only retry.jsonl --out retried.jsonl
 uv run python -m aigent.analyst.teach export --out ../underhood/data/research-v4
 """
 
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import random
 import re
@@ -53,7 +55,6 @@ from aigent.config import (
     RESEARCH_TEACHER_MODEL,
     RESEARCH_TYPICAL_OUTPUT,
     RESEARCH_TYPICAL_TURNS,
-    SEARCH_METHOD,
     SEARCH_RESULT_TOKENS,
 )
 from aigent.extraction.figures import CHANGE, Figure, Labelled
@@ -65,9 +66,9 @@ from aigent.llm.adapters.openai import OpenAI, function_tool
 from aigent.llm.core import Dispatch, Llm, Request
 from aigent.llm.messages import Block, Msg, Tool
 from aigent.llm.pricing import Budget, cost_usd
-from aigent.retrieval.chunk import Chunk, Inventory, by_sentence, context_block
+from aigent.retrieval.chunk import Chunk, context_block
 from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
-from aigent.retrieval.rank import Indexes, build_ranker
+from aigent.retrieval.keys import keyed_search
 from aigent.tools import CALCULATOR_TOOL, execute_tool, fence
 
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"
@@ -263,8 +264,7 @@ def report_search(find: Callable[[str, str], list[Chunk]], reports: Collection[s
 def training_search(cache: bool = True) -> Dispatch:
     """The training reports chunked, embedded and indexed as the filings are, searched alike."""
     documents = load_corpus(TRAINING_DIR, cache=cache)
-    inventory = Inventory.build("by_sentence", documents, by_sentence())
-    ranker = build_ranker(SEARCH_METHOD, Indexes.build(inventory, cache=cache))
+    inventory, ranker = keyed_search("training", documents, cache=cache)
     one_at_a_time = threading.Lock()  # torch on MPS is not safe across threads
 
     def find(query: str, doc_id: str) -> list[Chunk]:
@@ -632,9 +632,22 @@ def export(trajectories: Path, out_dir: Path) -> int:
     return len(kept)
 
 
+def only(chosen: Sequence[Asked], listed: Path) -> list[Asked]:
+    """The drawn questions `listed` names by chunk_id and question, in draw order; one it names
+    that was not drawn is a ValueError."""
+    wanted = {_key(row) for row in read_rows(listed)}
+    picked = [one for one in chosen if (one.chunk_id, one.question) in wanted]
+    missing = wanted - {(one.chunk_id, one.question) for one in picked}
+    if missing:
+        raise ValueError(f"{len(missing)} listed questions were not drawn, such as {min(missing)}")
+    return picked
+
+
 def _run(args: argparse.Namespace) -> None:
     done = {_key(row) for row in read_rows(args.out)}
     chosen = select(load_asked(), args.sample or RESEARCH_TEACH_QUESTIONS)
+    if args.only is not None:
+        chosen = only(chosen, args.only)
     todo = [one for one in chosen if (one.chunk_id, one.question) not in done]
     names = companies()
     teacher = Llm(args.client, budget=Budget(limit_usd=MAX_USD_RESEARCH_TEACH, scope="teach"))
@@ -677,6 +690,9 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     running = commands.add_parser("run", help="run the teacher; without --yes, estimate")
     running.add_argument("--yes", action="store_true", help="send the calls")
     running.add_argument("--sample", type=int, metavar="N", help="the first N questions drawn")
+    running.add_argument(
+        "--only", type=Path, metavar="FILE", help="just the drawn questions FILE's rows name"
+    )
     running.add_argument("--client", default=CLIENT, help=f"who is billed (default {CLIENT})")
     running.add_argument("--workers", type=int, default=RESEARCH_TEACH_WORKERS)
     running.add_argument("--out", type=Path, default=TRAJECTORIES)
@@ -694,6 +710,8 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
+    logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    logging.getLogger("aigent.retrieval").setLevel(logging.INFO)  # the first search embeds for long
     if args.command == "run":
         _run(args)
     elif args.command == "relabel":

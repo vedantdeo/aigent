@@ -75,6 +75,7 @@ def test_an_unknown_scope_is_refused(company: str, year: str) -> None:
 class _Ranker:
     asked: list[Scope] = field(default_factory=list[Scope])
     loaded: list[object] = field(default_factory=list[object])
+    named: list[str] = field(default_factory=list[str])
 
     def rank(self, query: str, doc_id: Scope = None) -> list[Hit]:
         self.asked.append(doc_id)
@@ -92,9 +93,11 @@ def ranker(monkeypatch: pytest.MonkeyPatch) -> _Ranker:
     monkeypatch.setattr(
         filings, "load_corpus", lambda cache, doc_ids: built.loaded.append(doc_ids) or []
     )
-    monkeypatch.setattr(filings.Inventory, "build", lambda *args: _Inventory())
-    monkeypatch.setattr(filings.Indexes, "build", lambda *args, **kwargs: None)
-    monkeypatch.setattr(filings, "build_ranker", lambda method, indexes: built)
+    monkeypatch.setattr(
+        filings,
+        "keyed_search",
+        lambda name, documents, cache: built.named.append(name) or (_Inventory(), built),
+    )
     return built
 
 
@@ -106,6 +109,7 @@ def test_the_search_reads_all_six_filings_and_ranks_within_the_scope(ranker: _Ra
     assert [c.id for c in found] == ["ITC-FY25#0001"]
     assert ranker.asked == [frozenset({"ITC-FY25"})]
     assert ranker.loaded == [FILINGS]
+    assert ranker.named == ["filings"], "its own index name, so no other search evicts its vectors"
 
 
 def test_the_tool_fences_the_passages_and_records_each_search(ranker: _Ranker) -> None:

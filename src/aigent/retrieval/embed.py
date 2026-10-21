@@ -13,7 +13,7 @@ from typing import Protocol, cast
 import numpy as np
 from numpy.typing import NDArray
 
-from aigent.config import EMBED_BATCH, EMBED_MODEL, EMBED_QUERY_PREFIX
+from aigent.config import EMBED_BATCH, EMBED_MODEL, EMBED_QUERY_PREFIXES, LOCAL_MODEL_DTYPE
 
 Vectors = NDArray[np.float32]
 
@@ -32,6 +32,18 @@ class Embedder(Protocol):
     def embed_query(self, text: str) -> Vectors: ...
 
 
+def query_prefix_of(model_name: str, declared: str | None) -> str:
+    """The prefix a model's queries take: the one it declares, else `EMBED_QUERY_PREFIXES`'s.
+    A model with neither is a ValueError, never another model's prefix."""
+    if declared:
+        return declared
+    if model_name in EMBED_QUERY_PREFIXES:
+        return EMBED_QUERY_PREFIXES[model_name]
+    raise ValueError(
+        f"{model_name} declares no query prefix; add its card's to config.EMBED_QUERY_PREFIXES"
+    )
+
+
 class LocalEmbedder:
     """`sentence-transformers` on whatever device this machine has, defaulting to MPS.
 
@@ -42,7 +54,7 @@ class LocalEmbedder:
         """Load the model. `device=None` picks MPS when available, else CPU.
 
         torch and SentenceTransformer are imported here so the rest of the package stays cheap to
-        import. `query_prefix` falls back to `EMBED_QUERY_PREFIX` for models too old to declare one.
+        import. Weights load at `LOCAL_MODEL_DTYPE`; `query_prefix` is `query_prefix_of`'s.
         """
         import torch
         from sentence_transformers import SentenceTransformer
@@ -51,11 +63,13 @@ class LocalEmbedder:
             device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.name = model_name
         self.device = device
-        self._model = SentenceTransformer(model_name, device=device)
+        self._model = SentenceTransformer(
+            model_name, device=device, model_kwargs={"dtype": getattr(torch, LOCAL_MODEL_DTYPE)}
+        )
         self.dimensions = cast(int, self._model.get_embedding_dimension())
         self.max_tokens = cast(int, self._model.max_seq_length)
         self.batch_size = EMBED_BATCH
-        self.query_prefix = self._model.prompts.get("query") or EMBED_QUERY_PREFIX
+        self.query_prefix = query_prefix_of(model_name, self._model.prompts.get("query"))
 
     def embed_documents(self, texts: Sequence[str]) -> Vectors:
         """One row per text, L2-normalised, in order. No query prefix — that side is asymmetric."""

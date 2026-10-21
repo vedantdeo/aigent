@@ -14,7 +14,7 @@ from openai.types.chat import ChatCompletion
 from aigent.analyst.cfg_analyst import GENERALIST_MODEL, MAX_TOKENS, SPECIALIST_TOOL_TURNS
 from aigent.analyst.router import Router
 from aigent.analyst.served import reaching, report, report_analyst, research, warm_up
-from aigent.analyst.specialists import FigureJob
+from aigent.analyst.specialists import FigureJob, canonical
 from aigent.config import CACHE_PARAM
 from aigent.errors import SpecialistUnreachable
 from aigent.extraction.figures import TOOL as TRAINED_TOOL
@@ -22,7 +22,7 @@ from aigent.extraction.research import REPORT_SEARCH_TOOL, research_messages
 from aigent.llm.adapters.cfg_hostllm import ANALYST, RESEARCH_TURN_HOSTLLM
 from aigent.llm.adapters.openai import function_tool
 from aigent.llm.core import Llm
-from aigent.llm.messages import Cache
+from aigent.llm.messages import Cache, Usage
 from aigent.llm.pricing import cost_usd
 from aigent.retrieval.chunk import Chunk, context_block
 from aigent.tools import fence
@@ -185,6 +185,23 @@ def test_every_turn_is_kept_in_the_conversation_and_marked_for_a_cache_if_asked(
     assert [sent.cache_control for sent in sdk.sent] == [cache, cache]
 
 
+def test_a_job_records_its_own_turns_cost_not_what_others_billed_the_same_llm(
+    make_llm: MakeLlm,
+) -> None:
+    llm, _ = make_llm(turns(tool_turn(("s1", "search_report", {"query": "revenue"})), "{}"))
+    elsewhere = Usage(input_tokens=50_000, output_tokens=5_000)
+
+    def search_while_another_job_bills(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
+        llm.budget.charge(GENERALIST_MODEL, elsewhere)  # a concurrent worker on the same llm
+        return Served()(name, arguments)
+
+    told = research(llm, search_while_another_job_bills, GENERALIST_MODEL)(JOB)
+
+    other = cost_usd(GENERALIST_MODEL, 50_000, 5_000)
+    assert told.usd == pytest.approx(llm.spent_usd - other), (told.usd, llm.spent_usd, other)
+    assert 0 < told.usd < other
+
+
 def test_a_fallback_asks_the_generalist_as_the_model_it_was_given(
     make_llm: MakeLlm, offline_tokenizer: None
 ) -> None:
@@ -303,3 +320,11 @@ def test_the_prompt_gives_the_turns_the_loop_allows() -> None:
     system, _ = research_messages("", "", "")
 
     assert f"You have {words[SPECIALIST_TOOL_TURNS]} turns" in system
+
+
+def test_the_prompt_reads_a_labels_multiplier_into_the_calculate_call_the_check_accepts() -> None:
+    system, _ = research_messages("", "", "")
+
+    assert "'= ×' and that scale's multiplier" in system
+    assert "calculate('1250 * 10000000')" in system
+    assert canonical("1250 * 10000000") == "1250 * 10**7", "the check reads it as a power of ten"

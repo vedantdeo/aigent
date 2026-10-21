@@ -50,7 +50,8 @@ wrong answer. Add the alias and re-run; that row was never the model's fault.
 
 ## Retrieval cases
 
-A retrieval row labels the **sentence that answers the question**, not the chunk that holds it:
+A retrieval row labels the **sentence that answers the question**, not the chunk that holds it (for a table question, the row that answers it, cells as the chunkers render them,
+space-separated):
 
 ```json
 {"id": "q-001", "input": {"question": "What dividend was recommended?"},
@@ -71,6 +72,9 @@ capped its own recall before the embedder ever runs. Print those rather than dro
 `recall_at_k` and `reciprocal_rank` then read `expected["relevant"]` against
 `output["retrieved"]`, both ranked lists of ids. Neither spends anything, so a retrieval number can
 be re-measured as often as it is worth asking about.
+
+The prose questions (`retrieval.jsonl`) and the table questions (`retrieval-tables.jsonl`) are
+kept apart for bookkeeping and scored as one set: one number per column.
 
 ## Datasets
 

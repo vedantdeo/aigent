@@ -24,6 +24,7 @@ from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 
 PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
+TABLES = DATASET.with_name("retrieval-tables.jsonl")
 TASKS = DATASET.parent / "tasks.jsonl"
 INJECTIONS = DATASET.parent / "injections.jsonl"
 FIGURES = DATASET.parent / "figures.jsonl"
@@ -88,6 +89,7 @@ ORDERED_FILES = [
     Ordered(TRAINING_MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(DATASET, key="id", load=jsonl_ids("id")),
     Ordered(PARAPHRASED, key="id", load=jsonl_ids("id")),
+    Ordered(TABLES, key="id", load=jsonl_ids("id")),
     Ordered(INJECTIONS, key="id", load=jsonl_ids("id")),
     Ordered(PROBE, key="id", load=jsonl_ids("id")),
     Ordered(TASKS, key="id", load=jsonl_ids("id")),

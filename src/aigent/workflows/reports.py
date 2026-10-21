@@ -6,10 +6,9 @@ import json
 import threading
 from typing import Literal, Protocol, cast
 
-from aigent.config import SEARCH_METHOD
-from aigent.retrieval.chunk import Chunk, Inventory, by_sentence
+from aigent.retrieval.chunk import Chunk
 from aigent.retrieval.corpus import FY25_REPORTS, MANIFEST, load_corpus
-from aigent.retrieval.rank import Indexes, build_ranker
+from aigent.retrieval.keys import keyed_search
 
 # As a schema field, this holds the model to a real report. A test holds it to FY25_REPORTS.
 DocId = Literal["ITC-FY25", "RELIANCE-FY25", "TATAMOTORS-FY25"]
@@ -28,11 +27,9 @@ class Search(Protocol):
 
 
 def build_search(cache: bool) -> Search:
-    """Chunk, embed and index the corpus once; passages come back by `SEARCH_METHOD`."""
-    inventory = Inventory.build(
-        "by_sentence", load_corpus(cache=cache, doc_ids=FY25_REPORTS), by_sentence()
-    )
-    ranker = build_ranker(SEARCH_METHOD, Indexes.build(inventory, cache=cache))
+    """Chunk, embed and index the corpus once, by key (`keyed_search`)."""
+    documents = load_corpus(cache=cache, doc_ids=FY25_REPORTS)
+    inventory, ranker = keyed_search("reports", documents, cache=cache)
     one_at_a_time = threading.Lock()  # torch on MPS is not safe across threads
 
     def search(query: str, /, *, doc_id: str | None = None) -> list[Chunk]:

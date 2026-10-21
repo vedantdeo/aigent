@@ -62,7 +62,7 @@ class Indexes:
         return cls(inventory, embedder, dense, SparseIndex.build(inventory))
 
 
-def _scoped(
+def scoped(
     search: Callable[[int], list[Hit]], k: int, doc_id: Scope, inventory: Inventory
 ) -> list[Hit]:
     """`search`'s best `k`, or with `doc_id` the best `k` from that report or reports alone."""
@@ -84,7 +84,7 @@ class DenseRanker:
     def rank(self, query: str, k: int = TOP_K, *, doc_id: Scope = None) -> list[Hit]:
         vector = self.indexes.embedder.embed_query(query)
         dense = self.indexes.dense
-        return _scoped(lambda n: dense.search(vector, k=n), k, doc_id, self.indexes.inventory)
+        return scoped(lambda n: dense.search(vector, k=n), k, doc_id, self.indexes.inventory)
 
 
 @dataclass(frozen=True)
@@ -95,7 +95,7 @@ class SparseRanker:
 
     def rank(self, query: str, k: int = TOP_K, *, doc_id: Scope = None) -> list[Hit]:
         sparse = self.indexes.sparse
-        return _scoped(lambda n: sparse.search(query, k=n), k, doc_id, self.indexes.inventory)
+        return scoped(lambda n: sparse.search(query, k=n), k, doc_id, self.indexes.inventory)
 
 
 @dataclass(frozen=True)

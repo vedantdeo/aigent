@@ -24,6 +24,7 @@ from aigent.analyst.teach import (
     missed,
     mix,
     named,
+    only,
     read_rows,
     regrade,
     relabel,
@@ -43,7 +44,8 @@ from aigent.extraction.research import SourcedFigure
 from aigent.llm.core import Dispatch, Llm
 from aigent.llm.messages import Msg
 from aigent.llm.pricing import cost_usd
-from aigent.retrieval.chunk import Chunk
+from aigent.retrieval.chunk import Chunk, Document, Inventory
+from aigent.retrieval.hits import Hit
 
 from ..conftest import FakeMessages, MakeLlm, tool_turn, turns
 
@@ -276,6 +278,35 @@ def test_a_training_search_reads_one_report_and_refuses_the_rest_as_data(
 
     assert says in content and is_error is (doc_id is None), content
     assert asked == ([(str(arguments["query"]), doc_id)] if doc_id else [])
+
+
+def test_the_training_search_ranks_its_own_keyed_index_within_one_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    named: list[str] = []
+    ranked: list[object] = []
+
+    class _Ranker:
+        def rank(self, query: str, k: int = 5, *, doc_id: object = None) -> list[Hit]:
+            ranked.append(doc_id)
+            return [Hit(CHUNK.id, 1.0)]
+
+    inventory = Inventory("training", (CHUNK,), {CHUNK.id: CHUNK})
+    documents = [Document(doc_id="BAJAJ-AUTO-FY24", text="")]
+    monkeypatch.setattr(module, "load_corpus", lambda directory, cache: documents)
+    monkeypatch.setattr(
+        module,
+        "keyed_search",
+        lambda name, docs, cache: named.append(name) or (inventory, _Ranker()),
+    )
+
+    content, is_error = module.training_search(cache=False)(
+        "search_filings", {"query": "revenue", "company": "BAJAJ-AUTO", "year": "2024"}
+    )
+
+    assert not is_error and CHUNK.text in content, content
+    assert ranked == [frozenset({"BAJAJ-AUTO-FY24"})]
+    assert named == ["training"], "its own index name, so no other search evicts its vectors"
 
 
 @pytest.mark.parametrize(
@@ -707,6 +738,62 @@ def test_a_run_writes_its_rows_and_a_second_run_skips_what_is_done(
     assert [t["name"] for t in cast(list[dict[str, object]], first.tools)] == ["search_report"]
     assert module.TEACHER_NOTE in str(first.system), "the teacher is told to write its calls"
     assert len(sdk.sent) == sent, "nothing sent for a question already done"
+
+
+PROFIT_ASKED = Asked("BAJAJ-AUTO-FY24#0009", "What was Bajaj Auto's net profit in FY2023-24?", ())
+
+
+def _listing(path: Path, *asked: tuple[str, str]) -> Path:
+    write_rows(path, [{"chunk_id": chunk_id, "question": question} for chunk_id, question in asked])
+    return path
+
+
+@pytest.mark.parametrize(
+    ("listed", "picked"),
+    [
+        pytest.param(
+            [(PROFIT_ASKED.chunk_id, PROFIT_ASKED.question)],
+            [PROFIT_ASKED],
+            id="one listed of two drawn",
+        ),
+        pytest.param(
+            [(PROFIT_ASKED.chunk_id, PROFIT_ASKED.question), (ASKED.chunk_id, ASKED.question)],
+            [ASKED, PROFIT_ASKED],
+            id="both, in draw order whatever the file's",
+        ),
+        pytest.param([], [], id="an empty list runs nothing"),
+    ],
+)
+def test_only_the_listed_questions_of_the_draw_are_run(
+    tmp_path: Path, listed: list[tuple[str, str]], picked: list[Asked]
+) -> None:
+    assert only([ASKED, PROFIT_ASKED], _listing(tmp_path / "only.jsonl", *listed)) == picked
+
+
+def test_a_listed_question_that_was_not_drawn_is_refused(tmp_path: Path) -> None:
+    listed = _listing(tmp_path / "only.jsonl", (ASKED.chunk_id, ASKED.question), ("X#1", "q?"))
+
+    with pytest.raises(ValueError, match=r"1 listed questions were not drawn, such as \('X#1'"):
+        only([ASKED, PROFIT_ASKED], listed)
+
+
+def test_a_run_with_only_estimates_just_the_listed_questions(
+    make_llm: MakeLlm,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    llm, sdk = teacher(make_llm, sourced(REVENUE))
+    _patched(monkeypatch, llm, [])
+    monkeypatch.setattr(module, "load_asked", lambda: [ASKED, PROFIT_ASKED])
+    monkeypatch.setattr(module, "select", lambda asked, n: list(asked))
+    listed = _listing(tmp_path / "only.jsonl", (PROFIT_ASKED.chunk_id, PROFIT_ASKED.question))
+
+    main(["run", "--only", str(listed), "--out", str(tmp_path / "t.jsonl")])
+
+    said = capsys.readouterr().out
+    assert said.startswith("1 questions over 1 reports, 1 to run"), said
+    assert sdk.sent == [], "an estimate sends nothing"
 
 
 def test_the_export_is_the_kept_trajectories_on_the_served_wire(

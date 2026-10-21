@@ -60,7 +60,12 @@ from aigent.llm.messages import (
     Usage,
     is_client_tool,
 )
-from aigent.llm.pricing import Budget, affordable_output_tokens, assert_request_within_budget
+from aigent.llm.pricing import (
+    Budget,
+    affordable_output_tokens,
+    assert_request_within_budget,
+    usage_cost,
+)
 
 log = logging.getLogger(__name__)
 _sleep = time.sleep  # module-level so a test can wait out a batch without waiting
@@ -187,6 +192,11 @@ class Llm:
     @property
     def spent_usd(self) -> float:
         return self.budget.spent_usd
+
+    def price(self, request: Request, usage: Usage) -> float:
+        """What one call billed as `request` with `usage` costs, without billing it: a caller
+        sharing this `Llm` across threads prices its own calls by this, not by `spent_usd`."""
+        return usage_cost(priced_as(self._bound(request), self._spec), usage)
 
     def _bound(self, request: Request) -> Request:
         """The request as it will be sent: its model, or this client's if it named none."""

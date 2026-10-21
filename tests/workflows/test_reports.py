@@ -32,6 +32,7 @@ class _Ranker:
     most_inside: int = 0
     asked: list[tuple[str, str | None]] = field(default_factory=list[tuple[str, str | None]])
     loaded: list[object] = field(default_factory=list[object])
+    named: list[str] = field(default_factory=list[str])
 
     def rank(self, query: str, doc_id: str | None = None) -> list[Hit]:
         self.inside += 1
@@ -49,9 +50,11 @@ def ranker(monkeypatch: pytest.MonkeyPatch) -> _Ranker:
     monkeypatch.setattr(
         reports, "load_corpus", lambda cache, doc_ids: built.loaded.append(doc_ids) or []
     )
-    monkeypatch.setattr(reports.Inventory, "build", lambda *args: _Inventory())
-    monkeypatch.setattr(reports.Indexes, "build", lambda *args, **kwargs: None)
-    monkeypatch.setattr(reports, "build_ranker", lambda method, indexes: built)
+    monkeypatch.setattr(
+        reports,
+        "keyed_search",
+        lambda name, documents, cache: built.named.append(name) or (_Inventory(), built),
+    )
     return built
 
 
@@ -63,6 +66,7 @@ def test_search_returns_the_ranked_passages_scoped_as_asked(ranker: _Ranker) -> 
     assert search("dividend", doc_id=doc_id) == PASSAGES[doc_id]
     assert ranker.asked == [("dividend", None), ("dividend", doc_id)]
     assert ranker.loaded == [FY25_REPORTS], "the agents search the reports their numbers came from"
+    assert ranker.named == ["reports"], "its own index name, so no other search evicts its vectors"
 
 
 def test_concurrent_searches_rank_one_at_a_time(ranker: _Ranker) -> None:

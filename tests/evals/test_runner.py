@@ -7,6 +7,7 @@ reason the harness takes one instead of a prompt.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -190,6 +191,9 @@ def test_progress_names_an_error_row_and_why_the_run_stopped(
     assert "[1/3] c1 [a] ERROR stop_reason=refusal" in out
     assert "[2/3] c2 [a] exact=pass" in out
     assert "stopped early:" in out and "AIGENT_MAX_USD_PER_EVAL" in out
+    assert re.search(r"^\[1/3\] c1 \[a\] .*  \+0:0\d$", out, re.MULTILINE), (
+        "each line says how long"
+    )
 
 
 def test_a_run_needs_something_to_run_and_something_to_grade() -> None:

@@ -1992,3 +1992,88 @@
   0.907 → 0.943, MRR 0.742 → 0.813. Dense over `by_element` hit@5 0.648, recall@5 0.639 (the best),
   MRR 0.465, but 209 of its 6,443 chunks are past the embedder's 512 tokens, against 57 of
   `by_sentence`'s 5,174.
+- 10-20: **₹ audited over every page of all 15 reports; the one gap fixed; re-parsed from scratch,
+  free, 132 minutes.** An audit of every run drawn in a rupee font, form XObjects included, and a
+  scan of every document's text for stand-ins found one gap: WIPRO-FY25 draws its statements'
+  "(C in millions …)" from form XObjects whose 8 ITFRupee fonts no page lists, 273 times. Fixed
+  (`_fonts_of`); the other 14 reports decode to identical text, WIPRO-FY25 now reads "(₹ in
+  millions …)" 283 times. What is left is printed so: HDFC's "C C in crore" (3 a report) and one
+  backtick in Sun Pharma FY25's Lato text. After the re-parse: `test_fundamentals` 34/34; the
+  dropped teacher figures 45/57 provable, the same 12 refused; the retrieval eval unchanged (its
+  three FY25 reports were untouched). Also on 10-20: a 512-token cap on `by_element` built and
+  reverted (it cut giant rows at words and lost the table's context), parked in `docs/capstone.md`;
+  underhood's `check_call` reads the label's `= ×N`, closing a blind spot on 1,008 of 5,271 scaled
+  chunks. underhood#13 and aigent#18 merged.
+- 10-21: **34 table questions added to the retrieval eval, scored with the 54 prose ones as one
+  set; free.** The prose set barely touched tables, so it could not show what `by_element` buys.
+  `retrieval-tables.jsonl`: rows from statements, segment, ratio, ten-year and volume tables
+  across the three FY25 reports, each quote verified. On all 88, hybrid+rerank over `by_sentence`
+  hit@5 0.733, recall@5 0.691, MRR 0.598; over `by_element` 0.773, 0.768, 0.582 (on the 54 prose
+  questions alone `by_element` trails: 0.889 / 0.881 / 0.749 against 0.925 / 0.885 / 0.796).
+  Every arm falls from ~0.9, so table rows are the harder retrieval for every method.
+- 10-21: **the retrieval eval searches each question in its own report, as the analyst does;
+  free.** It had searched all three FY25 reports at once, so an ITC question could lose to Tata
+  Motors passages. Scoped, on all 88, hybrid+rerank: `by_sentence` hit@5 0.733, recall@5 0.691, MRR
+  0.622; `by_element` 0.807, 0.802, 0.606. On the table questions alone `by_element` finds the row
+  in the top 5 for 0.68 of them against 0.42; the misses are whole statements as one chunk (a
+  30-row P&L asked about one row), the reranker demoting a right table, and answer sentences
+  buried in long text chunks. 1 of 34 table answers sits past the 512-token limit.
+- 10-21: **the misses read, then the literature (free).** Of 20 hybrid+rerank misses on `by_element`:
+  a 30-row statement as one chunk asked about one row, the reranker demoting a right table,
+  answer sentences buried in long text chunks; 1 of 34 table answers past the 512-token limit.
+  The literature (TARGET 2505.11545, financial-report chunking 2402.05131, contextual retrieval,
+  Dense X 2312.06648, FinMTEB 2502.10990) pointed first at the embedder, then at indexing several
+  representations of each chunk.
+- 10-21: **local embedders and rerankers screened on the 88 questions, `by_element`, each searched
+  in its own report; free, about 2 hours of the Mac's GPU.** Only models that run no downloaded
+  code. Hybrid hit@5 (tables): `bge-small` 0.636 (0.47), `bge-large` 0.773 (0.62),
+  `gte-modernbert-base` 0.602 (0.47), `Qwen3-Embedding-0.6B` 0.773 (0.68; slower, worse on prose).
+  Rerankers over `bge-large`'s shortlist: MiniLM-L6 0.807 (0.71), `bge-reranker-base` 0.864
+  (0.82), `bge-reranker-v2-m3` 0.898 (0.85), `gte-reranker-modernbert` 0.830 (0.74).
+  **Precision found on the way:** `transformers` loads a model at the precision its files declare.
+  Qwen3 (bfloat16) gave vectors ~0.3% off unit length, refused by `DenseIndex`, and ran out of GPU
+  memory at batch 64 (20 GB on a 16 GB Mac); gte (float16) passed unnoticed, its half-precision
+  vectors within 0.0006 of full. Every number recorded before today was full precision. Also
+  found: `LocalEmbedder` gave BGE's query prefix to any model that declared none.
+- 10-21: **search keys, prototyped and measured (free).** Every chunk indexed under its own text,
+  one number-free key per table row (section, basis, row label, years; Vedant: no figures), one
+  per table, one per sentence; results returned as chunks. With `bge-large` + `bge-reranker-v2-m3`:
+  chunks only 0.909 hit@5 (tables 0.82, MRR 0.743); + rows and tables 0.909 (0.85, 0.757);
+  + sentences 0.920 (0.85, 0.764). Before reranking 0.761 → 0.841. The stronger the reranker the
+  less keys add: MiniLM on the full index 0.818, below no reranker (0.841); `bge-reranker-base`
+  0.886. 20 rerank candidates scored as 30 at 3.6 s a search.
+- 10-21: **adopted (Vedant): `bge-large`, keys, `bge-reranker-v2-m3` on 20 candidates, for every
+  production search** (`keyed_search`: the analyst's filings, the teacher's training reports, the
+  workflows' reports), each under its own index name (all three had shared `by_sentence` and
+  evicted each other's cached vectors). Local models load at float32 whatever they declare; a
+  model's query prefix is its own or it is refused. The retrieval eval scores the keyed search as a
+  seventh arm over `by_element`. Production indexes not yet rebuilt.
+- 10-21: **the committed keyed search measured in the repo's own eval; free, 63 minutes** (half
+  of it embedding `by_element`'s chunks and keys with `bge-large`, now cached). 88 questions, each
+  in its own report, hit@5: dense 0.625, dense+rerank 0.807, bm25 0.705, bm25+rerank 0.852, hybrid
+  0.773, hybrid+rerank 0.886, keys+hybrid+rerank **0.920** (recall 0.918, MRR 0.766), the
+  prototype's numbers to the third place. The run was silent for an hour (Vedant: "waiting
+  blindly is stupid"), so eval rows now print as they finish with the elapsed time, and embedding
+  logs every 1,024 texts in the retrieval eval and the teacher's CLI.
+- 10-21: **a teacher re-run of 46 retrieval failures prepared, then stopped before any call (Vedant:
+  retrieval first); $0.** The 166 drops of the 10-19 run: 85 a labelled figure missed (15 never
+  answering the metric), 57 a value the cited passage did not back, 14 no figures, 3 out of turns,
+  7 other. `run --only` added to re-run chosen questions; the dry run priced the 46 at $2.37
+  typical, $7.83 worst. Found on the way: each row's `usd` was the shared `Llm`'s spending while it
+  ran, so with eight workers the 317 rows record $60.24 against the $7.2468 spent; a job now
+  prices its own turns (`Llm.price`). The research prompt now reads a label's `= ×N`. Embedding the
+  9 training reports' 95,725 keys with `bge-large` took over an hour and was stopped at 91%.
+- 10-21: **trajectory sizes, the baseline for chunk size (free).** In Qwen3 tokens: `by_element`
+  chunks are smaller than `by_sentence`'s on the whole (mean 168 against 243) but its tables run
+  long (mean 334, 90th percentile 672, max 1,739). On the 10-19 trajectories (old index) one
+  search returned a median 1,965 tokens (90th 2,610, max 3,560), and a kept trajectory as v4 trains
+  on it a median 4,601 (90th 7,110, max 11,838), 2 of 151 over `RESEARCH_SFT_MAX_TOKENS` (8,192).
+- 10-21: **the dense cache became a per-text vector store; free.** A vector depends on its text
+  alone (64 chunks batched against one at a time: cosine ≥ 0.9999999), but the cache kept one file
+  per index keyed on every chunk together, so one changed chunk re-embedded an index (45–60 min
+  with `bge-large`) and the three searches over the same FY25 reports embedded them three times.
+  Now one store per embedder, keyed by each text's hash: an index embeds only text no index has
+  seen, so a table split-size change re-embeds the table pieces and their table keys, not the
+  95,725 training keys. The eval's two caches moved in after every text was proven identical by
+  recomputing the old file's hash: 39,031 vectors became 29,623 (chunks are their own keys); served
+  back, the chunk index is bit-identical and 10 key rows differ by at most 1.3e-7.

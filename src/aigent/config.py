@@ -163,13 +163,21 @@ MCP_MAX_RESULT_CHARS = 20_000  # of a tool's text, before it reaches a model
 # --- Retrieval -------------------------------------------------------------------------------
 # Week 2's knobs. The embedding model runs locally, so none of these spends anything.
 
-# Its 384 dimensions and 512-token limit are read off the model, not set here.
-EMBED_MODEL = "BAAI/bge-small-en-v1.5"
+# Its 1024 dimensions and 512-token limit are read off the model, not set here.
+EMBED_MODEL = "BAAI/bge-large-en-v1.5"
 EMBED_BATCH = 64
+EMBED_LOG_EVERY = 1024  # texts embedded between progress lines
 
-# Query side only. A fallback: `LocalEmbedder` prefers what the model declares in `prompts`.
-# Transcribed from the model card, so re-check it against the card when changing `EMBED_MODEL`.
-EMBED_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+# Query prefixes for models that do not declare one in `prompts`, from each model card; a model
+# neither declares nor lists here is refused. "" is a model that wants none.
+EMBED_QUERY_PREFIXES: dict[str, str] = {
+    "Alibaba-NLP/gte-modernbert-base": "",
+    "BAAI/bge-large-en-v1.5": "Represent this sentence for searching relevant passages: ",
+    "BAAI/bge-small-en-v1.5": "Represent this sentence for searching relevant passages: ",
+}
+
+# Local models load at this precision, whatever their files declare.
+LOCAL_MODEL_DTYPE = "float32"
 
 # In characters, not tokens: the tokenizer belongs to the embedding model. ~1200 chars is ~300
 # tokens, leaving room under the model's 512 before it starts truncating.
@@ -210,12 +218,15 @@ RRF_K = 60
 
 # The reranker reads every candidate with the query, so this is a forward pass per row, not a
 # lookup. Retrieve this many cheaply, score them all, keep the best TOP_K.
-RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-RERANK_CANDIDATES = 30
+RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
+RERANK_CANDIDATES = 20
 RERANK_BATCH = 32
 
 # The method to rank with outside the eval: the best on questions not written from the passages.
 SEARCH_METHOD = "hybrid+rerank"
+
+# How many keys a keyed search reads from each ranker, enough to reach RERANK_CANDIDATES chunks.
+KEY_DEPTH = 400
 
 # What counts as page furniture in a PDF, where no markup survives to say what is a running header.
 # Only lines this close to the top or bottom of a page are candidates; one whose digits-masked form
