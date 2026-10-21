@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from pydantic import JsonValue
 
+from aigent.config import SEARCH_METHOD
 from aigent.evals.dataset import Case, DatasetError, digest
 from aigent.evals.runner import EvalRun
 from aigent.retrieval import evaluate
@@ -28,7 +29,7 @@ from aigent.retrieval.evaluate import (
     retrieval_task,
 )
 from aigent.retrieval.hits import Hit
-from aigent.retrieval.rank import Ranker
+from aigent.retrieval.rank import METHODS, Ranker
 
 from ..conftest import BagOfWordsEmbedder, KeywordReranker
 
@@ -232,4 +233,17 @@ def test_a_comparison_over_two_files_reports_them_as_one_set(
 
     assert (run.dataset, run.digest) == label_of(paths)
     assert {row.case_id for row in run.rows} == {"rq-001", "rt-1"}, "both files are scored"
+    assert all(row.error is None for row in run.rows), [row.error for row in run.rows]
+
+
+def test_the_methods_comparison_scores_the_keyed_search_beside_the_six(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(evaluate, "LocalReranker", KeywordReranker)
+    paths = [_dataset(tmp_path / "prose.jsonl", "rq-001")]
+    documents = [Document(doc_id="ITC-FY25", text="Revenue q grew. Dividend q was paid.")]
+
+    run = compare_retrieval(load_cases(paths), documents, BagOfWordsEmbedder(), 5, paths, 30, False)
+
+    assert run.variants == (*METHODS, f"keys+{SEARCH_METHOD}"), run.variants
     assert all(row.error is None for row in run.rows), [row.error for row in run.rows]

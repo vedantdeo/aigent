@@ -43,7 +43,8 @@ from aigent.extraction.research import SourcedFigure
 from aigent.llm.core import Dispatch, Llm
 from aigent.llm.messages import Msg
 from aigent.llm.pricing import cost_usd
-from aigent.retrieval.chunk import Chunk
+from aigent.retrieval.chunk import Chunk, Document, Inventory
+from aigent.retrieval.hits import Hit
 
 from ..conftest import FakeMessages, MakeLlm, tool_turn, turns
 
@@ -276,6 +277,35 @@ def test_a_training_search_reads_one_report_and_refuses_the_rest_as_data(
 
     assert says in content and is_error is (doc_id is None), content
     assert asked == ([(str(arguments["query"]), doc_id)] if doc_id else [])
+
+
+def test_the_training_search_ranks_its_own_keyed_index_within_one_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    named: list[str] = []
+    ranked: list[object] = []
+
+    class _Ranker:
+        def rank(self, query: str, k: int = 5, *, doc_id: object = None) -> list[Hit]:
+            ranked.append(doc_id)
+            return [Hit(CHUNK.id, 1.0)]
+
+    inventory = Inventory("training", (CHUNK,), {CHUNK.id: CHUNK})
+    documents = [Document(doc_id="BAJAJ-AUTO-FY24", text="")]
+    monkeypatch.setattr(module, "load_corpus", lambda directory, cache: documents)
+    monkeypatch.setattr(
+        module,
+        "keyed_search",
+        lambda name, docs, cache: named.append(name) or (inventory, _Ranker()),
+    )
+
+    content, is_error = module.training_search(cache=False)(
+        "search_filings", {"query": "revenue", "company": "BAJAJ-AUTO", "year": "2024"}
+    )
+
+    assert not is_error and CHUNK.text in content, content
+    assert ranked == [frozenset({"BAJAJ-AUTO-FY24"})]
+    assert named == ["training"], "its own index name, so no other search evicts its vectors"
 
 
 @pytest.mark.parametrize(

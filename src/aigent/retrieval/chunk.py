@@ -465,7 +465,7 @@ _NUMBER_SCALED = re.compile(
 _YEAR = re.compile(r"\b(?:19|20)\d\d(?:-\d\d)?\b")
 
 
-def _scale_of(text: str) -> str | None:
+def scale_of(text: str) -> str | None:
     found = _SCALE.search(text)
     return found.group(0).strip() if found else None
 
@@ -513,7 +513,7 @@ def table_label(
     top = "\n".join(
         " ".join(c for c in row if c) for row in table.rows[: max(table.header_rows, 2)]
     )
-    scale = _scale_of(top) or _scale_of(before) or _scale_of(page)
+    scale = scale_of(top) or scale_of(before) or scale_of(page)
     basis = _basis_of(f"{section or ''}\n{before}\n{top}") or _basis_of(
         _running_of(doc, table.start)
     )
@@ -529,11 +529,11 @@ def text_label(doc: Document, at: int, section: str | None, section_start: int, 
     """The line that opens a text chunk whose amounts a scale stated above it governs, in its
     section or on its page, and that names none itself, with the basis as `table_label` finds it;
     nothing otherwise."""
-    if _scale_of(text) or _NUMBER_SCALED.search(text):
+    if scale_of(text) or _NUMBER_SCALED.search(text):
         return ""
     page = (doc.page_of(at) or 1) - 1
     page_start = doc.page_starts[page] if doc.page_starts else 0
-    scale = _scale_of(doc.text[section_start:at]) or _scale_of(doc.text[page_start:at])
+    scale = scale_of(doc.text[section_start:at]) or scale_of(doc.text[page_start:at])
     if scale is None:
         return ""
     basis = _basis_of(f"{section or ''}\n{doc.text[section_start:at]}") or _basis_of(

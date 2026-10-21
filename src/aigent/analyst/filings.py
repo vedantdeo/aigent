@@ -11,10 +11,9 @@ from typing import Literal, Protocol, cast
 
 from anthropic.types import ToolParam
 
-from aigent.config import SEARCH_METHOD
-from aigent.retrieval.chunk import Chunk, Inventory, by_sentence, context_block
+from aigent.retrieval.chunk import Chunk, context_block
 from aigent.retrieval.corpus import MANIFEST, load_corpus
-from aigent.retrieval.rank import Indexes, build_ranker
+from aigent.retrieval.keys import keyed_search
 from aigent.tools import fence
 
 _DOCUMENTS = cast(
@@ -65,11 +64,9 @@ class Search(Protocol):
 
 
 def build_filings_search(cache: bool) -> Search:
-    """Chunk, embed and index the six filings once; passages come back by `SEARCH_METHOD`."""
-    inventory = Inventory.build(
-        "by_sentence", load_corpus(cache=cache, doc_ids=FILINGS), by_sentence()
-    )
-    ranker = build_ranker(SEARCH_METHOD, Indexes.build(inventory, cache=cache))
+    """Chunk, embed and index the six filings once, by key (`keyed_search`)."""
+    documents = load_corpus(cache=cache, doc_ids=FILINGS)
+    inventory, ranker = keyed_search("filings", documents, cache=cache)
     one_at_a_time = threading.Lock()  # torch on MPS is not safe across threads
 
     def search(query: str, /, *, company: str = ALL, year: str = ALL) -> list[Chunk]:

@@ -53,7 +53,6 @@ from aigent.config import (
     RESEARCH_TEACHER_MODEL,
     RESEARCH_TYPICAL_OUTPUT,
     RESEARCH_TYPICAL_TURNS,
-    SEARCH_METHOD,
     SEARCH_RESULT_TOKENS,
 )
 from aigent.extraction.figures import CHANGE, Figure, Labelled
@@ -65,9 +64,9 @@ from aigent.llm.adapters.openai import OpenAI, function_tool
 from aigent.llm.core import Dispatch, Llm, Request
 from aigent.llm.messages import Block, Msg, Tool
 from aigent.llm.pricing import Budget, cost_usd
-from aigent.retrieval.chunk import Chunk, Inventory, by_sentence, context_block
+from aigent.retrieval.chunk import Chunk, context_block
 from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
-from aigent.retrieval.rank import Indexes, build_ranker
+from aigent.retrieval.keys import keyed_search
 from aigent.tools import CALCULATOR_TOOL, execute_tool, fence
 
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"
@@ -263,8 +262,7 @@ def report_search(find: Callable[[str, str], list[Chunk]], reports: Collection[s
 def training_search(cache: bool = True) -> Dispatch:
     """The training reports chunked, embedded and indexed as the filings are, searched alike."""
     documents = load_corpus(TRAINING_DIR, cache=cache)
-    inventory = Inventory.build("by_sentence", documents, by_sentence())
-    ranker = build_ranker(SEARCH_METHOD, Indexes.build(inventory, cache=cache))
+    inventory, ranker = keyed_search("training", documents, cache=cache)
     one_at_a_time = threading.Lock()  # torch on MPS is not safe across threads
 
     def find(query: str, doc_id: str) -> list[Chunk]:

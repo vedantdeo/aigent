@@ -2018,3 +2018,33 @@
   in the top 5 for 0.68 of them against 0.42; the misses are whole statements as one chunk (a
   30-row P&L asked about one row), the reranker demoting a right table, and answer sentences
   buried in long text chunks. 1 of 34 table answers sits past the 512-token limit.
+- 10-21: **the misses read, then the literature (free).** Of 20 hybrid+rerank misses on `by_element`:
+  a 30-row statement as one chunk asked about one row, the reranker demoting a right table,
+  answer sentences buried in long text chunks; 1 of 34 table answers past the 512-token limit.
+  The literature (TARGET 2505.11545, financial-report chunking 2402.05131, contextual retrieval,
+  Dense X 2312.06648, FinMTEB 2502.10990) pointed first at the embedder, then at indexing several
+  representations of each chunk.
+- 10-21: **local embedders and rerankers screened on the 88 questions, `by_element`, each searched
+  in its own report; free, about 2 hours of the Mac's GPU.** Only models that run no downloaded
+  code. Hybrid hit@5 (tables): `bge-small` 0.636 (0.47), `bge-large` 0.773 (0.62),
+  `gte-modernbert-base` 0.602 (0.47), `Qwen3-Embedding-0.6B` 0.773 (0.68; slower, worse on prose).
+  Rerankers over `bge-large`'s shortlist: MiniLM-L6 0.807 (0.71), `bge-reranker-base` 0.864
+  (0.82), `bge-reranker-v2-m3` 0.898 (0.85), `gte-reranker-modernbert` 0.830 (0.74).
+  **Precision found on the way:** `transformers` loads a model at the precision its files declare.
+  Qwen3 (bfloat16) gave vectors ~0.3% off unit length, refused by `DenseIndex`, and ran out of GPU
+  memory at batch 64 (20 GB on a 16 GB Mac); gte (float16) passed unnoticed, its half-precision
+  vectors within 0.0006 of full. Every number recorded before today was full precision. Also
+  found: `LocalEmbedder` gave BGE's query prefix to any model that declared none.
+- 10-21: **search keys, prototyped and measured (free).** Every chunk indexed under its own text,
+  one number-free key per table row (section, basis, row label, years; Vedant: no figures), one
+  per table, one per sentence; results returned as chunks. With `bge-large` + `bge-reranker-v2-m3`:
+  chunks only 0.909 hit@5 (tables 0.82, MRR 0.743); + rows and tables 0.909 (0.85, 0.757);
+  + sentences 0.920 (0.85, 0.764). Before reranking 0.761 → 0.841. The stronger the reranker the
+  less keys add: MiniLM on the full index 0.818, below no reranker (0.841); `bge-reranker-base`
+  0.886. 20 rerank candidates scored as 30 at 3.6 s a search.
+- 10-21: **adopted (Vedant): `bge-large`, keys, `bge-reranker-v2-m3` on 20 candidates, for every
+  production search** (`keyed_search`: the analyst's filings, the teacher's training reports, the
+  workflows' reports), each under its own index name (all three had shared `by_sentence` and
+  evicted each other's cached vectors). Local models load at float32 whatever they declare; a
+  model's query prefix is its own or it is refused. The retrieval eval scores the keyed search as a
+  seventh arm over `by_element`. Production indexes not yet rebuilt.

@@ -29,7 +29,13 @@ from typing import cast
 
 from pydantic import JsonValue
 
-from aigent.config import CHUNK_CHARS, CHUNK_OVERLAP_CHARS, RERANK_CANDIDATES, TOP_K
+from aigent.config import (
+    CHUNK_CHARS,
+    CHUNK_OVERLAP_CHARS,
+    RERANK_CANDIDATES,
+    SEARCH_METHOD,
+    TOP_K,
+)
 from aigent.evals.dataset import Case, DatasetError, digest, load_jsonl
 from aigent.evals.grade import (
     Grader,
@@ -46,6 +52,7 @@ from aigent.retrieval.corpus import FY25_REPORTS, load_corpus
 from aigent.retrieval.dense import DenseIndex
 from aigent.retrieval.embed import Embedder, LocalEmbedder, Vectors
 from aigent.retrieval.hits import rank_ids
+from aigent.retrieval.keys import keyed_search
 from aigent.retrieval.rank import METHODS, Indexes, Ranker, build_ranker, scoped
 from aigent.retrieval.rerank import LocalReranker
 
@@ -65,7 +72,7 @@ STRATEGIES: dict[str, Splitter] = {
 }
 
 # The inventory the six retrieval methods all rank, so they share one set of labels.
-METHOD_STRATEGY = "by_sentence"
+METHOD_STRATEGY = "by_element"
 
 
 def graders(k: int = TOP_K) -> dict[str, Grader]:
@@ -269,7 +276,8 @@ def compare_retrieval(
     candidates: int = RERANK_CANDIDATES,
     cache: bool = False,
 ) -> EvalRun:
-    """Six methods over one inventory, so one run with six tasks and no merge.
+    """Six methods over one inventory, and the keyed search production runs over the same chunks
+    (`keyed_search`), so one run with seven tasks and no merge.
 
     Every arm ranks the same chunks with the same ids, which means the same resolved labels and
     the same `resolvable` column — so the differences between these columns are the retrieval
@@ -282,6 +290,14 @@ def compare_retrieval(
     rankers = {
         method: build_ranker(method, indexes, reranker, candidates=candidates) for method in METHODS
     }
+    _, rankers[f"keys+{SEARCH_METHOD}"] = keyed_search(
+        METHOD_STRATEGY,
+        documents,
+        cache=cache,
+        embedder=embedder,
+        reranker=reranker,
+        candidates=candidates,
+    )
     resolved = resolve(cases, inventory)
     print(f"  chunks: {len(inventory):,} under {METHOD_STRATEGY}")
     print(f"  lexical: {len(indexes.sparse.idf):,} distinct terms")

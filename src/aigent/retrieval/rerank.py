@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, cast
 
-from aigent.config import RERANK_BATCH, RERANK_MODEL, TOP_K
+from aigent.config import LOCAL_MODEL_DTYPE, RERANK_BATCH, RERANK_MODEL, TOP_K
 from aigent.retrieval.hits import Hit
 
 
@@ -38,7 +38,7 @@ class LocalReranker:
     """A `sentence-transformers` CrossEncoder on whatever device this machine has.
 
     Heavy imports are deferred into `__init__`, as in `embed`, so importing this module costs
-    nothing to anything that does not build one.
+    nothing to anything that does not build one. Weights load at `LOCAL_MODEL_DTYPE`.
     """
 
     def __init__(self, model_name: str = RERANK_MODEL, *, device: str | None = None) -> None:
@@ -50,7 +50,9 @@ class LocalReranker:
         self.name = model_name
         self.device = device
         self.batch_size = RERANK_BATCH
-        self._model = CrossEncoder(model_name, device=device)
+        self._model = CrossEncoder(
+            model_name, device=device, model_kwargs={"dtype": getattr(torch, LOCAL_MODEL_DTYPE)}
+        )
 
     def scores(self, query: str, passages: Sequence[str]) -> list[float]:
         """One relevance score per passage, in the order given.
