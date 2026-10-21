@@ -3,19 +3,38 @@ and the note naming labels no chunk holds. No model is loaded; indexes and ranke
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import cast
 
 import numpy as np
 import pytest
 from pydantic import JsonValue
 
-from aigent.evals.dataset import Case
-from aigent.retrieval.chunk import Chunk, Inventory
+from aigent.evals.dataset import Case, DatasetError, digest
+from aigent.evals.runner import EvalRun
+from aigent.retrieval import evaluate
+from aigent.retrieval.chunk import Chunk, Document, Inventory
 from aigent.retrieval.dense import DenseIndex
-from aigent.retrieval.embed import Vectors
-from aigent.retrieval.evaluate import ranker_task, report_unresolved, resolve, retrieval_task
+from aigent.retrieval.embed import Embedder, Vectors
+from aigent.retrieval.evaluate import (
+    compare_chunking,
+    compare_retrieval,
+    label_of,
+    load_cases,
+    ranker_task,
+    report_unresolved,
+    resolve,
+    retrieval_task,
+)
 from aigent.retrieval.hits import Hit
 from aigent.retrieval.rank import Ranker
+
+from ..conftest import BagOfWordsEmbedder, KeywordReranker
+
+Compare = Callable[
+    [Sequence[Case], Sequence[Document], Embedder, int, Sequence[Path], int, bool], EvalRun
+]
 
 
 def _chunk(id_: str, text: str) -> Chunk:
@@ -81,33 +100,60 @@ class _Index:
 
 class _Ranker:
     def __init__(self) -> None:
-        self.asked: list[tuple[str, int]] = []
+        self.asked: list[tuple[str, int, object]] = []
 
-    def rank(self, query: str, k: int, doc_id: str | None = None) -> list[Hit]:
-        del doc_id
-        self.asked.append((query, k))
-        return [Hit("RIL-FY25#0001", 3.0)]
-
-
-def test_the_dense_task_ranks_a_pre_embedded_question() -> None:
-    queries = {"q1": np.ones(4, dtype=np.float32)}
-    task = retrieval_task(cast(DenseIndex, _Index()), cast(dict[str, Vectors], queries), k=2)
-
-    found = task(_case("x"))
-    missing = task(Case(id="q9", input={"question": "?"}))
-
-    assert found.error is None and found.usage is None, "ranking spends nothing"
-    assert found.output == {"retrieved": ["ITC-FY25#0002", "RIL-FY25#0001"], "scores": [0.9, 0.7]}
-    assert missing.error == "case q9 has no query vector"
+    def rank(self, query: str, k: int, doc_id: object = None) -> list[Hit]:
+        self.asked.append((query, k, doc_id))
+        return [Hit("ITC-FY25#0002", 3.0)]
 
 
-def test_a_ranker_task_ranks_the_question_text() -> None:
+SCOPES = [
+    pytest.param(["ITC-FY25", "lookup"], "ITC-FY25", id="a case naming one report"),
+    pytest.param(["lookup"], None, id="a case naming no report"),
+    pytest.param(["ITC-FY25", "RELIANCE-FY25"], None, id="a case naming two reports"),
+]
+
+
+def _tagged(tags: list[str]) -> Case:
+    return Case(id="q1", input={"question": "?"}, expected={}, tags=tags)
+
+
+@pytest.mark.parametrize(("tags", "report"), SCOPES)
+def test_the_dense_task_ranks_only_the_report_its_case_names(
+    tags: list[str], report: str | None
+) -> None:
+    queries = cast(dict[str, Vectors], {"q1": np.ones(4, dtype=np.float32)})
+    task = retrieval_task(cast(DenseIndex, _Index()), queries, INVENTORY, k=2)
+
+    outcome = task(_tagged(tags))
+
+    if report is None:
+        assert outcome.error == "case q1 names no single report to search", outcome
+    else:
+        assert outcome.error is None and outcome.usage is None, "ranking spends nothing"
+        assert outcome.output == {"retrieved": ["ITC-FY25#0002"], "scores": [0.9]}, outcome
+
+
+def test_the_dense_task_reports_a_case_with_no_query_vector() -> None:
+    task = retrieval_task(cast(DenseIndex, _Index()), {}, INVENTORY, k=2)
+
+    assert task(_tagged(["ITC-FY25"])).error == "case q1 has no query vector"
+
+
+@pytest.mark.parametrize(("tags", "report"), SCOPES)
+def test_a_ranker_task_ranks_the_question_within_its_report(
+    tags: list[str], report: str | None
+) -> None:
     ranker = _Ranker()
 
-    outcome = ranker_task(cast(Ranker, ranker), k=3)(_case("x"))
+    outcome = ranker_task(cast(Ranker, ranker), k=3)(_tagged(tags))
 
-    assert ranker.asked == [("?", 3)]
-    assert outcome.output == {"retrieved": ["RIL-FY25#0001"], "scores": [3.0]}
+    if report is None:
+        assert ranker.asked == [], "an unscoped case is never searched across every report"
+        assert outcome.error == "case q1 names no single report to search", outcome
+    else:
+        assert ranker.asked == [("?", 3, report)]
+        assert outcome.output == {"retrieved": ["ITC-FY25#0002"], "scores": [3.0]}, outcome
 
 
 @pytest.mark.parametrize(
@@ -128,3 +174,62 @@ def test_unresolved_labels_are_named(
     report_unresolved("toy", cases)
 
     assert capsys.readouterr().out.strip() == printed
+
+
+def _dataset(path: Path, *ids: str) -> Path:
+    rows = (
+        f'{{"id": "{i}", "input": {{"question": "?"}}, "expected": {{"quote": "q"}}, '
+        f'"tags": ["ITC-FY25"]}}'
+        for i in ids
+    )
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return path
+
+
+def test_two_files_load_as_one_set_in_file_order(tmp_path: Path) -> None:
+    prose = _dataset(tmp_path / "prose.jsonl", "rq-002", "rq-001")
+    tables = _dataset(tmp_path / "tables.jsonl", "rt-001")
+
+    assert [case.id for case in load_cases([prose, tables])] == ["rq-002", "rq-001", "rt-001"]
+
+
+def test_an_id_two_files_share_is_refused(tmp_path: Path) -> None:
+    prose = _dataset(tmp_path / "prose.jsonl", "rq-001")
+    tables = _dataset(tmp_path / "tables.jsonl", "rt-001", "rq-001")
+
+    with pytest.raises(DatasetError, match="'rq-001' is also in prose.jsonl"):
+        load_cases([prose, tables])
+
+
+def test_one_file_is_labelled_as_before(tmp_path: Path) -> None:
+    prose = _dataset(tmp_path / "prose.jsonl", "rq-001")
+
+    assert label_of([prose]) == ("prose.jsonl", digest(prose))
+
+
+@pytest.mark.parametrize("edited", [0, 1], ids=["the first file edited", "the second file edited"])
+def test_the_joined_digest_moves_with_either_file(tmp_path: Path, edited: int) -> None:
+    paths = [_dataset(tmp_path / "prose.jsonl", "rq-001"), _dataset(tmp_path / "t.jsonl", "rt-1")]
+    name, before = label_of(paths)
+
+    _dataset(paths[edited], "rx-999")
+
+    assert name == "prose.jsonl+t.jsonl"
+    assert label_of(paths)[1] != before, "a report must say the data changed"
+
+
+@pytest.mark.parametrize(
+    "compare", [compare_chunking, compare_retrieval], ids=["chunking", "retrieval methods"]
+)
+def test_a_comparison_over_two_files_reports_them_as_one_set(
+    compare: Compare, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(evaluate, "LocalReranker", KeywordReranker)
+    paths = [_dataset(tmp_path / "prose.jsonl", "rq-001"), _dataset(tmp_path / "t.jsonl", "rt-1")]
+    documents = [Document(doc_id="ITC-FY25", text="Revenue q grew. Dividend q was paid.")]
+
+    run = compare(load_cases(paths), documents, BagOfWordsEmbedder(), 5, paths, 30, False)
+
+    assert (run.dataset, run.digest) == label_of(paths)
+    assert {row.case_id for row in run.rows} == {"rq-001", "rt-1"}, "both files are scored"
+    assert all(row.error is None for row in run.rows), [row.error for row in run.rows]

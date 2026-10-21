@@ -1,7 +1,10 @@
 """The retrieval eval: one question set, two comparisons, four numbers each.
 
-uv run python -m aigent.retrieval.evaluate                      # three chunking strategies
+uv run python -m aigent.retrieval.evaluate                      # four chunking strategies
 uv run python -m aigent.retrieval.evaluate --compare retrieval  # six retrieval methods
+
+The prose questions and the table questions live in two files and are scored as one set. Each
+question is searched within the one report its tags name, as the analyst searches.
 
 Nothing here calls the Anthropic API, so both runs are free and can be repeated as often as the
 question is worth asking.
@@ -16,6 +19,7 @@ against the inventory being scored, which is what makes any of these columns com
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import sys
 import time
@@ -26,7 +30,7 @@ from typing import cast
 from pydantic import JsonValue
 
 from aigent.config import CHUNK_CHARS, CHUNK_OVERLAP_CHARS, RERANK_CANDIDATES, TOP_K
-from aigent.evals.dataset import Case, digest, load_jsonl
+from aigent.evals.dataset import Case, DatasetError, digest, load_jsonl
 from aigent.evals.grade import (
     Grader,
     Outcome,
@@ -42,11 +46,13 @@ from aigent.retrieval.corpus import FY25_REPORTS, load_corpus
 from aigent.retrieval.dense import DenseIndex
 from aigent.retrieval.embed import Embedder, LocalEmbedder, Vectors
 from aigent.retrieval.hits import rank_ids
-from aigent.retrieval.rank import METHODS, Indexes, Ranker, build_ranker
+from aigent.retrieval.rank import METHODS, Indexes, Ranker, build_ranker, scoped
 from aigent.retrieval.rerank import LocalReranker
 
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "evals" / "datasets" / "retrieval.jsonl"
+TABLES = DATASET.with_name("retrieval-tables.jsonl")
+DATASETS = (DATASET, TABLES)
 
 # `by_heading` is deliberately absent: it resolves fewer labels than `by_sentence` while producing
 # the most chunks of any strategy, which is heading detection firing on kerning damage. Kept in
@@ -76,6 +82,37 @@ def graders(k: int = TOP_K) -> dict[str, Grader]:
     }
 
 
+def load_cases(paths: Sequence[Path]) -> list[Case]:
+    """Every file's cases as one set; an id two files share is a `DatasetError`."""
+    cases: list[Case] = []
+    seen: dict[str, str] = {}
+    for path in paths:
+        for case in load_jsonl(path):
+            if case.id in seen:
+                raise DatasetError(f"{path.name}: id {case.id!r} is also in {seen[case.id]}")
+            seen[case.id] = path.name
+            cases.append(case)
+    return cases
+
+
+def label_of(paths: Sequence[Path]) -> tuple[str, str]:
+    """The name and digest a report records: one file's own, or the files' joined."""
+    if len(paths) == 1:
+        return paths[0].name, digest(paths[0])
+    joined = "".join(digest(path) for path in paths).encode()
+    return "+".join(path.name for path in paths), hashlib.sha256(joined).hexdigest()[:12]
+
+
+def report_of(case: Case) -> str | None:
+    """The one report a case's tags name; None when they name none or several."""
+    named = [tag for tag in case.tags if tag in FY25_REPORTS]
+    return named[0] if len(named) == 1 else None
+
+
+def _unscoped(case: Case) -> Outcome:
+    return Outcome(error=f"case {case.id} names no single report to search")
+
+
 def resolve(cases: Sequence[Case], inventory: Inventory) -> list[Case]:
     """Each case's labelled quote turned into the chunk ids that hold it in *this* inventory.
 
@@ -97,14 +134,19 @@ def resolve(cases: Sequence[Case], inventory: Inventory) -> list[Case]:
     return resolved
 
 
-def retrieval_task(index: DenseIndex, queries: Mapping[str, Vectors], k: int = TOP_K) -> Task:
-    """Rank this index against a pre-embedded question. Spends nothing, so `usage` stays None."""
+def retrieval_task(
+    index: DenseIndex, queries: Mapping[str, Vectors], inventory: Inventory, k: int = TOP_K
+) -> Task:
+    """Rank the case's report in this index against a pre-embedded question. Spends nothing."""
 
     def task(case: Case) -> Outcome:
         vector = queries.get(case.id)
         if vector is None:
             return Outcome(error=f"case {case.id} has no query vector")
-        hits = index.search(vector, k=k)
+        report = report_of(case)
+        if report is None:
+            return _unscoped(case)
+        hits = scoped(lambda n: index.search(vector, k=n), k, report, inventory)
         return Outcome(
             output={
                 "retrieved": cast(JsonValue, rank_ids(hits)),
@@ -116,10 +158,13 @@ def retrieval_task(index: DenseIndex, queries: Mapping[str, Vectors], k: int = T
 
 
 def ranker_task(ranker: Ranker, k: int = TOP_K) -> Task:
-    """Rank the question with this ranker. Spends nothing, so `usage` stays None."""
+    """Rank the question within its case's report with this ranker. Spends nothing."""
 
     def task(case: Case) -> Outcome:
-        hits = ranker.rank(str(case.input["question"]), k)
+        report = report_of(case)
+        if report is None:
+            return _unscoped(case)
+        hits = ranker.rank(str(case.input["question"]), k, doc_id=report)
         return Outcome(
             output={
                 "retrieved": cast(JsonValue, rank_ids(hits)),
@@ -159,8 +204,9 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=Path,
-        default=DATASET,
-        help="question set to score against (default evals/datasets/retrieval.jsonl)",
+        nargs="+",
+        default=list(DATASETS),
+        help="question sets scored as one (default the prose and the table questions)",
     )
     parser.add_argument(
         "--cache",
@@ -175,7 +221,7 @@ def compare_chunking(
     documents: Sequence[Document],
     embedder: Embedder,
     k: int,
-    dataset: Path = DATASET,
+    datasets: Sequence[Path] = DATASETS,
     candidates: int = RERANK_CANDIDATES,
     cache: bool = False,
 ) -> EvalRun:
@@ -186,6 +232,7 @@ def compare_chunking(
     through one signature.
     """
     del candidates
+    dataset, fingerprint = label_of(datasets)
     queries = {case.id: embedder.embed_query(str(case.input["question"])) for case in cases}
     runs = []
     for name, splitter in STRATEGIES.items():
@@ -202,10 +249,10 @@ def compare_chunking(
         runs.append(
             run_eval(
                 resolved,
-                {name: retrieval_task(index, queries, k)},
+                {name: retrieval_task(index, queries, inventory, k)},
                 graders(k),
-                dataset=dataset.name,
-                digest=digest(dataset),
+                dataset=dataset,
+                digest=fingerprint,
                 model=embedder.name,
                 progress=False,
             )
@@ -218,7 +265,7 @@ def compare_retrieval(
     documents: Sequence[Document],
     embedder: Embedder,
     k: int,
-    dataset: Path = DATASET,
+    datasets: Sequence[Path] = DATASETS,
     candidates: int = RERANK_CANDIDATES,
     cache: bool = False,
 ) -> EvalRun:
@@ -228,6 +275,7 @@ def compare_retrieval(
     the same `resolvable` column — so the differences between these columns are the retrieval
     methods and nothing else.
     """
+    dataset, fingerprint = label_of(datasets)
     inventory = Inventory.build(METHOD_STRATEGY, documents, STRATEGIES[METHOD_STRATEGY])
     indexes = Indexes.build(inventory, embedder, cache=cache)
     reranker = LocalReranker()
@@ -243,8 +291,8 @@ def compare_retrieval(
         resolved,
         {method: ranker_task(ranker, k) for method, ranker in rankers.items()},
         graders(k),
-        dataset=dataset.name,
-        digest=digest(dataset),
+        dataset=dataset,
+        digest=fingerprint,
         model=embedder.name,
         progress=False,
     )
@@ -254,10 +302,10 @@ def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
     logging.getLogger("pypdf").setLevel(logging.ERROR)
 
-    cases = load_jsonl(args.dataset)
+    cases = load_cases(args.dataset)
     started = time.perf_counter()
     documents = load_corpus(cache=args.cache, doc_ids=FY25_REPORTS)
-    print(f"{args.dataset.name}: {len(cases)} cases over {len(documents)} documents")
+    print(f"{label_of(args.dataset)[0]}: {len(cases)} cases over {len(documents)} documents")
 
     embedder: Embedder = LocalEmbedder()
     print(f"embedder: {embedder.name}, {embedder.dimensions} dimensions")

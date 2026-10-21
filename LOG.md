@@ -2004,3 +2004,17 @@
   reverted (it cut giant rows at words and lost the table's context), parked in `docs/capstone.md`;
   underhood's `check_call` reads the label's `= ×N`, closing a blind spot on 1,008 of 5,271 scaled
   chunks. underhood#13 and aigent#18 merged.
+- 10-21: **34 table questions added to the retrieval eval, scored with the 54 prose ones as one
+  set; free.** The prose set barely touched tables, so it could not show what `by_element` buys.
+  `retrieval-tables.jsonl`: rows from statements, segment, ratio, ten-year and volume tables
+  across the three FY25 reports, each quote verified. On all 88, hybrid+rerank over `by_sentence`
+  hit@5 0.733, recall@5 0.691, MRR 0.598; over `by_element` 0.773, 0.768, 0.582 (on the 54 prose
+  questions alone `by_element` trails: 0.889 / 0.881 / 0.749 against 0.925 / 0.885 / 0.796).
+  Every arm falls from ~0.9, so table rows are the harder retrieval for every method.
+- 10-21: **the retrieval eval searches each question in its own report, as the analyst does;
+  free.** It had searched all three FY25 reports at once, so an ITC question could lose to Tata
+  Motors passages. Scoped, on all 88, hybrid+rerank: `by_sentence` hit@5 0.733, recall@5 0.691, MRR
+  0.622; `by_element` 0.807, 0.802, 0.606. On the table questions alone `by_element` finds the row
+  in the top 5 for 0.68 of them against 0.42; the misses are whole statements as one chunk (a
+  30-row P&L asked about one row), the reranker demoting a right table, and answer sentences
+  buried in long text chunks. 1 of 34 table answers sits past the 512-token limit.
