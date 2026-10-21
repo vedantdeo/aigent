@@ -2055,3 +2055,25 @@
   prototype's numbers to the third place. The run was silent for an hour (Vedant: "waiting
   blindly is stupid"), so eval rows now print as they finish with the elapsed time, and embedding
   logs every 1,024 texts in the retrieval eval and the teacher's CLI.
+- 10-21: **a teacher re-run of 46 retrieval failures prepared, then stopped before any call (Vedant:
+  retrieval first); $0.** The 166 drops of the 10-19 run: 85 a labelled figure missed (15 never
+  answering the metric), 57 a value the cited passage did not back, 14 no figures, 3 out of turns,
+  7 other. `run --only` added to re-run chosen questions; the dry run priced the 46 at $2.37
+  typical, $7.83 worst. Found on the way: each row's `usd` was the shared `Llm`'s spending while it
+  ran, so with eight workers the 317 rows record $60.24 against the $7.2468 spent; a job now
+  prices its own turns (`Llm.price`). The research prompt now reads a label's `= ×N`. Embedding the
+  9 training reports' 95,725 keys with `bge-large` took over an hour and was stopped at 91%.
+- 10-21: **trajectory sizes, the baseline for chunk size (free).** In Qwen3 tokens: `by_element`
+  chunks are smaller than `by_sentence`'s on the whole (mean 168 against 243) but its tables run
+  long (mean 334, 90th percentile 672, max 1,739). On the 10-19 trajectories (old index) one
+  search returned a median 1,965 tokens (90th 2,610, max 3,560), and a kept trajectory as v4 trains
+  on it a median 4,601 (90th 7,110, max 11,838), 2 of 151 over `RESEARCH_SFT_MAX_TOKENS` (8,192).
+- 10-21: **the dense cache became a per-text vector store; free.** A vector depends on its text
+  alone (64 chunks batched against one at a time: cosine ≥ 0.9999999), but the cache kept one file
+  per index keyed on every chunk together, so one changed chunk re-embedded an index (45–60 min
+  with `bge-large`) and the three searches over the same FY25 reports embedded them three times.
+  Now one store per embedder, keyed by each text's hash: an index embeds only text no index has
+  seen, so a table split-size change re-embeds the table pieces and their table keys, not the
+  95,725 training keys. The eval's two caches moved in after every text was proven identical by
+  recomputing the old file's hash: 39,031 vectors became 29,623 (chunks are their own keys); served
+  back, the chunk index is bit-identical and 10 key rows differ by at most 1.3e-7.

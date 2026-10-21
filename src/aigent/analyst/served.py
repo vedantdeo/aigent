@@ -56,18 +56,17 @@ def warm_up(small: Llm) -> None:
 
 
 def _told(
-    llm: Llm,
-    before: float,
+    usd: float,
     text: str,
     replies: Sequence[Reply],
     calls: Sequence[str] = (),
     read: Sequence[Passage] = (),
     conversation: Sequence[Msg] = (),
 ) -> Told:
-    """A job's reply with what `llm` billed for it since `before`, over every turn it took."""
+    """A job's reply with what its own turns cost, `usd`, and the tokens of every turn it took."""
     return Told(
         text,
-        llm.spent_usd - before,
+        usd,
         sum(reply.usage.input_tokens for reply in replies),
         sum(reply.usage.output_tokens for reply in replies),
         tuple(calls),
@@ -158,19 +157,21 @@ def research(
     cap = max_tokens("RESEARCH_TURN", spec(llm.client))
 
     def answer(job: FigureJob) -> Told:
-        before = llm.spent_usd
+        usd = 0.0  # this job's turns alone: another thread may be billing the same llm
         messages = opening(job, names)
         replies: list[Reply] = []
         calls: list[str] = []
         read: list[Passage] = []
         for _ in range(SPECIALIST_TOOL_TURNS):
-            reply = llm.turn(turn_request(messages, cap, model, cache, system, tools))
+            request = turn_request(messages, cap, model, cache, system, tools)
+            reply = llm.turn(request)
+            usd += llm.price(request, reply.usage)
             replies.append(reply)
             asked: Msg = {"role": "assistant", "content": reply.blocks}
             if reply.stop_reason != "tool_use":
-                return _told(llm, before, reply.text, replies, calls, read, [*messages, asked])
+                return _told(usd, reply.text, replies, calls, read, [*messages, asked])
             messages = [*messages, asked, _answered(reply, job, search, calls, read)]
-        return _told(llm, before, "", replies, calls, read, messages)  # still working: no answer
+        return _told(usd, "", replies, calls, read, messages)  # still working: no answer
 
     return answer
 

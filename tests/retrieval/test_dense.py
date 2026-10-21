@@ -16,7 +16,7 @@ import pytest
 
 from aigent.retrieval import dense
 from aigent.retrieval.chunk import Document, Inventory, by_sentence
-from aigent.retrieval.dense import DenseIndex, cache_file
+from aigent.retrieval.dense import DenseIndex, read_store, store_file, text_key
 from aigent.retrieval.embed import Vectors
 from aigent.retrieval.hits import rank_ids
 
@@ -137,42 +137,7 @@ class PrefixingEmbedder(CountingEmbedder):
         return super().embed_documents([f"passage: {text}" for text in texts])
 
 
-def test_an_index_comes_back_from_disk_as_it_went_in(
-    tmp_path: Path, embedder: BagOfWordsEmbedder
-) -> None:
-    index = DenseIndex.build(_inventory(REVENUE, RISK, DIVIDEND), embedder)
-    path = tmp_path / "index.npz"
-
-    index.save(path)
-    loaded = DenseIndex.load(path)
-
-    assert loaded.ids == index.ids
-    assert np.array_equal(loaded.matrix, index.matrix)
-    assert loaded.embedder_name == index.embedder_name
-    query = embedder.embed_query("dividend per equity share")
-    assert loaded.search(query) == index.search(query)
-    assert [path.name for path in tmp_path.iterdir()] == ["index.npz"], "a partial file was left"
-
-
-@pytest.mark.parametrize(
-    ("matrix", "match"),
-    [
-        pytest.param(np.ones((2, 4), dtype=np.float32), "un-normalised", id="un-normalised rows"),
-        pytest.param(np.eye(4, dtype=np.float32)[:1], "1 vectors for 2 chunks", id="a row short"),
-    ],
-)
-def test_a_loaded_index_is_held_to_the_checks_a_built_one_is(
-    tmp_path: Path, matrix: Vectors, match: str
-) -> None:
-    """The constructor checks nothing, so it can write the file a bug would."""
-    path = tmp_path / "index.npz"
-    DenseIndex(ids=("doc-1#0000", "doc-2#0000"), matrix=matrix).save(path)
-
-    with pytest.raises(ValueError, match=match):
-        DenseIndex.load(path)
-
-
-def test_a_second_build_is_served_from_the_cache_without_embedding_again(tmp_path: Path) -> None:
+def test_a_second_build_is_served_from_the_store_without_embedding_again(tmp_path: Path) -> None:
     inventory = _inventory(REVENUE, RISK, DIVIDEND)
     embedder = CountingEmbedder()
 
@@ -185,40 +150,69 @@ def test_a_second_build_is_served_from_the_cache_without_embedding_again(tmp_pat
 
 
 @pytest.mark.parametrize(
-    ("paragraphs", "embedder", "embeds_again"),
+    ("paragraphs", "embedder", "embeds"),
     [
-        pytest.param((REVENUE, RISK), CountingEmbedder(), False, id="nothing changed"),
-        # Same ids, different text: the case a cache keyed on ids alone serves stale.
-        pytest.param((REVENUE, DIVIDEND), CountingEmbedder(), True, id="a chunk's text changed"),
-        pytest.param((REVENUE, RISK, DIVIDEND), CountingEmbedder(), True, id="a chunk was added"),
+        pytest.param((REVENUE, RISK), CountingEmbedder(), 0, id="nothing changed"),
+        # Same ids, different text: the case a store keyed on ids would serve stale.
+        pytest.param((REVENUE, DIVIDEND), CountingEmbedder(), 1, id="a chunk's text changed"),
+        pytest.param((REVENUE, RISK, DIVIDEND), CountingEmbedder(), 1, id="a chunk was added"),
+        pytest.param((RISK, REVENUE), CountingEmbedder(), 0, id="the same texts reordered"),
         pytest.param(
-            (REVENUE, RISK), CountingEmbedder("another-model"), True, id="another embedding model"
+            (REVENUE, RISK), CountingEmbedder("another-model"), 2, id="another embedding model"
         ),
         pytest.param(
-            (REVENUE, RISK), PrefixingEmbedder(), True, id="the code that embeds a passage changed"
+            (REVENUE, RISK), PrefixingEmbedder(), 2, id="the code that embeds a passage changed"
         ),
     ],
 )
-def test_the_cache_is_rebuilt_whenever_what_made_the_vectors_changed(
-    tmp_path: Path, paragraphs: tuple[str, ...], embedder: CountingEmbedder, embeds_again: bool
+def test_only_text_the_store_has_not_seen_is_embedded(
+    tmp_path: Path, paragraphs: tuple[str, ...], embedder: CountingEmbedder, embeds: int
 ) -> None:
     DenseIndex.build_cached(_inventory(REVENUE, RISK), CountingEmbedder(), tmp_path)
     inventory = _inventory(*paragraphs)
 
     index = DenseIndex.build_cached(inventory, embedder, tmp_path)
 
-    assert (embedder.embedded > 0) is embeds_again, f"embedded {embedder.embedded} passages"
+    assert embedder.embedded == embeds, f"embedded {embedder.embedded} passages"
     fresh = DenseIndex.build(inventory, embedder)
     assert index.ids == fresh.ids
-    assert np.array_equal(index.matrix, fresh.matrix), "the cache served vectors for other text"
+    assert np.array_equal(index.matrix, fresh.matrix), "a row holds another text's vector"
+
+
+def test_indexes_that_share_text_share_its_vectors(tmp_path: Path) -> None:
+    embedder = CountingEmbedder()
+    DenseIndex.build_cached(_inventory(REVENUE, RISK), embedder, tmp_path)
+
+    other = DenseIndex.build_cached(
+        Inventory.build("other", [Document("x", RISK + DIVIDEND)], by_sentence(400, 0)),
+        embedder,
+        tmp_path,
+    )
+
+    assert len(other) == 1 and embedder.embedded == 3, "a new text, whatever the index"
+    DenseIndex.build_cached(_inventory(DIVIDEND, RISK), embedder, tmp_path)
+    assert embedder.embedded == 4, "only DIVIDEND alone was new"
+
+
+def test_a_text_an_inventory_holds_twice_is_embedded_once(tmp_path: Path) -> None:
+    embedder = CountingEmbedder()
+
+    index = DenseIndex.build_cached(_inventory(REVENUE, REVENUE), embedder, tmp_path)
+
+    assert embedder.embedded == 1
+    assert len(index) == 2 and np.array_equal(index.matrix[0], index.matrix[1])
 
 
 def _truncate(path: Path) -> None:
     path.write_bytes(path.read_bytes()[: path.stat().st_size // 2])
 
 
-def _another_inventorys_index(path: Path) -> None:
-    DenseIndex.build(_inventory(DIVIDEND), BagOfWordsEmbedder()).save(path)
+def _misaligned(path: Path) -> None:
+    np.savez(path, keys=np.array(["a", "b"]), matrix=np.eye(4, dtype=np.float32)[:1])
+
+
+def _a_key_twice(path: Path) -> None:
+    np.savez(path, keys=np.array(["a", "a"]), matrix=np.eye(4, dtype=np.float32)[:2])
 
 
 @pytest.mark.parametrize(
@@ -226,30 +220,36 @@ def _another_inventorys_index(path: Path) -> None:
     [
         pytest.param(_truncate, id="a truncated file"),
         pytest.param(lambda path: path.write_bytes(b""), id="an empty file"),
-        pytest.param(lambda path: path.write_bytes(b"not an index"), id="not an index at all"),
-        pytest.param(_another_inventorys_index, id="another inventory's index in its place"),
+        pytest.param(lambda path: path.write_bytes(b"not a store"), id="not a store at all"),
+        pytest.param(_misaligned, id="keys and vectors that disagree"),
+        pytest.param(_a_key_twice, id="a key twice"),
     ],
 )
-def test_a_damaged_cache_file_is_rebuilt_rather_than_raised_on(
+def test_a_damaged_store_is_started_afresh_rather_than_raised_on(
     tmp_path: Path, damage: Callable[[Path], object]
 ) -> None:
     inventory = _inventory(REVENUE, RISK)
     embedder = CountingEmbedder()
     DenseIndex.build_cached(inventory, embedder, tmp_path)
-    damage(cache_file(inventory, embedder, tmp_path))
+    damage(store_file(embedder, tmp_path))
 
     index = DenseIndex.build_cached(inventory, embedder, tmp_path)
 
-    assert embedder.embedded == 2 * len(inventory), "the damaged file was not rebuilt"
+    assert embedder.embedded == 2 * len(inventory), "the damaged store was not rebuilt"
     assert index.ids == tuple(inventory.ids())
-    assert DenseIndex.load(cache_file(inventory, embedder, tmp_path)).ids == index.ids
+    keys, _ = read_store(store_file(embedder, tmp_path))
+    assert sorted(keys) == sorted(text_key(t) for t in inventory.texts())
 
 
-def test_the_cache_keeps_one_file_per_strategy(tmp_path: Path) -> None:
+def test_the_store_keeps_one_file_per_model_written_whole(tmp_path: Path) -> None:
     DenseIndex.build_cached(_inventory(REVENUE, RISK), CountingEmbedder(), tmp_path)
-    DenseIndex.build_cached(_inventory(REVENUE, DIVIDEND), CountingEmbedder(), tmp_path)
+    DenseIndex.build_cached(_inventory(REVENUE), PrefixingEmbedder(), tmp_path)
+    DenseIndex.build_cached(_inventory(REVENUE), CountingEmbedder("another/model"), tmp_path)
 
-    assert len(list(tmp_path.glob("index-sentence-*.npz"))) == 1, "superseded files were kept"
+    names = sorted(path.name for path in tmp_path.iterdir())
+    assert len(names) == 2, f"one store per model, its older version replaced: {names}"
+    assert [n.split("-")[1] for n in names] == ["another_model", "bag"], names
+    assert not list(tmp_path.glob("*.partial")), "a partial file was left"
 
 
 def test_building_embeds_in_slices_logging_each_and_matches_one_pass(
@@ -280,5 +280,14 @@ def test_a_cached_build_says_whether_it_embedded_or_read(
         DenseIndex.build_cached(inventory, embedder, tmp_path)
 
     said = [r.getMessage() for r in caplog.records]
-    assert said[0].startswith("sentence: embedding 2 texts with bag-of-words-fake"), said
-    assert said[-1].startswith("sentence: reading bag-of-words-fake's vectors from index-"), said
+    assert said[0] == "sentence: 0 of 2 texts already embedded with bag-of-words-fake; embedding 2"
+    assert said[-1] == "sentence: 2 of 2 texts already embedded with bag-of-words-fake; embedding 0"
+
+
+def test_texts_differing_by_a_character_never_share_a_key() -> None:
+    texts = [f"Revenue for FY{n % 100:02d} was ₹ {n:,} crore." for n in range(5000)]
+
+    keys = {text_key(text) for text in texts}
+
+    assert len(keys) == len(texts), f"{len(texts) - len(keys)} texts would share another's vector"
+    assert text_key("a") != text_key("a ") and text_key("a") == text_key("a")

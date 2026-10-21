@@ -24,6 +24,7 @@ from aigent.analyst.teach import (
     missed,
     mix,
     named,
+    only,
     read_rows,
     regrade,
     relabel,
@@ -737,6 +738,62 @@ def test_a_run_writes_its_rows_and_a_second_run_skips_what_is_done(
     assert [t["name"] for t in cast(list[dict[str, object]], first.tools)] == ["search_report"]
     assert module.TEACHER_NOTE in str(first.system), "the teacher is told to write its calls"
     assert len(sdk.sent) == sent, "nothing sent for a question already done"
+
+
+PROFIT_ASKED = Asked("BAJAJ-AUTO-FY24#0009", "What was Bajaj Auto's net profit in FY2023-24?", ())
+
+
+def _listing(path: Path, *asked: tuple[str, str]) -> Path:
+    write_rows(path, [{"chunk_id": chunk_id, "question": question} for chunk_id, question in asked])
+    return path
+
+
+@pytest.mark.parametrize(
+    ("listed", "picked"),
+    [
+        pytest.param(
+            [(PROFIT_ASKED.chunk_id, PROFIT_ASKED.question)],
+            [PROFIT_ASKED],
+            id="one listed of two drawn",
+        ),
+        pytest.param(
+            [(PROFIT_ASKED.chunk_id, PROFIT_ASKED.question), (ASKED.chunk_id, ASKED.question)],
+            [ASKED, PROFIT_ASKED],
+            id="both, in draw order whatever the file's",
+        ),
+        pytest.param([], [], id="an empty list runs nothing"),
+    ],
+)
+def test_only_the_listed_questions_of_the_draw_are_run(
+    tmp_path: Path, listed: list[tuple[str, str]], picked: list[Asked]
+) -> None:
+    assert only([ASKED, PROFIT_ASKED], _listing(tmp_path / "only.jsonl", *listed)) == picked
+
+
+def test_a_listed_question_that_was_not_drawn_is_refused(tmp_path: Path) -> None:
+    listed = _listing(tmp_path / "only.jsonl", (ASKED.chunk_id, ASKED.question), ("X#1", "q?"))
+
+    with pytest.raises(ValueError, match=r"1 listed questions were not drawn, such as \('X#1'"):
+        only([ASKED, PROFIT_ASKED], listed)
+
+
+def test_a_run_with_only_estimates_just_the_listed_questions(
+    make_llm: MakeLlm,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    llm, sdk = teacher(make_llm, sourced(REVENUE))
+    _patched(monkeypatch, llm, [])
+    monkeypatch.setattr(module, "load_asked", lambda: [ASKED, PROFIT_ASKED])
+    monkeypatch.setattr(module, "select", lambda asked, n: list(asked))
+    listed = _listing(tmp_path / "only.jsonl", (PROFIT_ASKED.chunk_id, PROFIT_ASKED.question))
+
+    main(["run", "--only", str(listed), "--out", str(tmp_path / "t.jsonl")])
+
+    said = capsys.readouterr().out
+    assert said.startswith("1 questions over 1 reports, 1 to run"), said
+    assert sdk.sent == [], "an estimate sends nothing"
 
 
 def test_the_export_is_the_kept_trajectories_on_the_served_wire(

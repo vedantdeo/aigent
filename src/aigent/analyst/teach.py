@@ -7,6 +7,7 @@ already holds.
 
 uv run python -m aigent.analyst.teach run --sample 20
 uv run python -m aigent.analyst.teach run --yes
+uv run python -m aigent.analyst.teach run --only retry.jsonl --out retried.jsonl
 uv run python -m aigent.analyst.teach export --out ../underhood/data/research-v4
 """
 
@@ -631,9 +632,22 @@ def export(trajectories: Path, out_dir: Path) -> int:
     return len(kept)
 
 
+def only(chosen: Sequence[Asked], listed: Path) -> list[Asked]:
+    """The drawn questions `listed` names by chunk_id and question, in draw order; one it names
+    that was not drawn is a ValueError."""
+    wanted = {_key(row) for row in read_rows(listed)}
+    picked = [one for one in chosen if (one.chunk_id, one.question) in wanted]
+    missing = wanted - {(one.chunk_id, one.question) for one in picked}
+    if missing:
+        raise ValueError(f"{len(missing)} listed questions were not drawn, such as {min(missing)}")
+    return picked
+
+
 def _run(args: argparse.Namespace) -> None:
     done = {_key(row) for row in read_rows(args.out)}
     chosen = select(load_asked(), args.sample or RESEARCH_TEACH_QUESTIONS)
+    if args.only is not None:
+        chosen = only(chosen, args.only)
     todo = [one for one in chosen if (one.chunk_id, one.question) not in done]
     names = companies()
     teacher = Llm(args.client, budget=Budget(limit_usd=MAX_USD_RESEARCH_TEACH, scope="teach"))
@@ -676,6 +690,9 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     running = commands.add_parser("run", help="run the teacher; without --yes, estimate")
     running.add_argument("--yes", action="store_true", help="send the calls")
     running.add_argument("--sample", type=int, metavar="N", help="the first N questions drawn")
+    running.add_argument(
+        "--only", type=Path, metavar="FILE", help="just the drawn questions FILE's rows name"
+    )
     running.add_argument("--client", default=CLIENT, help=f"who is billed (default {CLIENT})")
     running.add_argument("--workers", type=int, default=RESEARCH_TEACH_WORKERS)
     running.add_argument("--out", type=Path, default=TRAJECTORIES)
