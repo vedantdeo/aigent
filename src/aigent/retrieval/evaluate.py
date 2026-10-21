@@ -261,7 +261,7 @@ def compare_chunking(
                 dataset=dataset,
                 digest=fingerprint,
                 model=embedder.name,
-                progress=False,
+                progress=True,
             )
         )
     return combine(runs)
@@ -310,13 +310,15 @@ def compare_retrieval(
         dataset=dataset,
         digest=fingerprint,
         model=embedder.name,
-        progress=False,
+        progress=True,
     )
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
     logging.getLogger("pypdf").setLevel(logging.ERROR)
+    logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    logging.getLogger("aigent.retrieval").setLevel(logging.INFO)
 
     cases = load_cases(args.dataset)
     started = time.perf_counter()

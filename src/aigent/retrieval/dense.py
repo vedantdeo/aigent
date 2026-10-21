@@ -3,24 +3,32 @@
 No approximate index and no database: a dot product over NumPy is exact and fast enough for this
 corpus, so a miss belongs to the chunking or the embedding rather than to an index's own recall
 knob. The index holds ids and vectors; `Inventory` holds the chunks. `build_cached` keeps the
-vectors on disk, keyed by everything that produced them.
+vectors on disk, keyed by everything that produced them. Progress goes to this module's logger.
 """
 
 from __future__ import annotations
 
 import hashlib
 import inspect
+import logging
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
-from aigent.config import TOP_K
+from aigent.config import EMBED_LOG_EVERY, TOP_K
 from aigent.retrieval.chunk import Inventory
 from aigent.retrieval.corpus import CACHE_DIR
 from aigent.retrieval.embed import Embedder, Vectors
 from aigent.retrieval.hits import Hit
+
+log = logging.getLogger(__name__)
+
+
+def _clock(seconds: float) -> str:
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
 
 
 @dataclass(frozen=True)
@@ -36,12 +44,27 @@ class DenseIndex:
 
     @classmethod
     def build(cls, inventory: Inventory, embedder: Embedder) -> DenseIndex:
-        """Embed every chunk, ids and rows aligned.
+        """Embed every chunk, ids and rows aligned, `EMBED_LOG_EVERY` at a time, logging each.
 
         Refuses a vector count that does not match the inventory, and un-normalised rows — both
         would leave every score plausible and every citation wrong.
         """
-        vectors = embedder.embed_documents(inventory.texts())
+        texts = inventory.texts()
+        started = time.perf_counter()
+        parts: list[Vectors] = [embedder.embed_documents([])]
+        for start in range(0, len(texts), EMBED_LOG_EVERY):
+            parts.append(embedder.embed_documents(texts[start : start + EMBED_LOG_EVERY]))
+            done = min(start + EMBED_LOG_EVERY, len(texts))
+            log.info(
+                "%s: embedded %s/%s (%d%%) with %s, %s",
+                inventory.name,
+                f"{done:,}",
+                f"{len(texts):,}",
+                100 * done // len(texts),
+                embedder.name,
+                _clock(time.perf_counter() - started),
+            )
+        vectors = np.concatenate(parts).astype(np.float32, copy=False)
         return cls._checked(tuple(inventory.ids()), vectors, embedder.name)
 
     @classmethod
@@ -51,6 +74,7 @@ class DenseIndex:
         """`build`, memoised on disk. A damaged or mismatched entry is rebuilt, never raised on."""
         cached = cache_file(inventory, embedder, cache_dir)
         if cached.exists():
+            log.info("%s: reading %s's vectors from %s", inventory.name, embedder.name, cached.name)
             try:
                 index = cls.load(cached)
             except (OSError, EOFError, ValueError, KeyError, zipfile.BadZipFile):
@@ -59,6 +83,12 @@ class DenseIndex:
                 if index.ids == tuple(inventory.ids()) and index.embedder_name == embedder.name:
                     return index
 
+        log.info(
+            "%s: embedding %s texts with %s, nothing usable cached",
+            inventory.name,
+            f"{len(inventory):,}",
+            embedder.name,
+        )
         index = cls.build(inventory, embedder)
         cache_dir.mkdir(parents=True, exist_ok=True)
         for stale in cache_dir.glob(f"index-{inventory.name}-*.npz"):

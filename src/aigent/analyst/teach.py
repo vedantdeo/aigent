@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import random
 import re
@@ -692,6 +693,8 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
+    logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    logging.getLogger("aigent.retrieval").setLevel(logging.INFO)  # the first search embeds for long
     if args.command == "run":
         _run(args)
     elif args.command == "relabel":

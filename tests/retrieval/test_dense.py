@@ -7,12 +7,14 @@ quality.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from aigent.retrieval import dense
 from aigent.retrieval.chunk import Document, Inventory, by_sentence
 from aigent.retrieval.dense import DenseIndex, cache_file
 from aigent.retrieval.embed import Vectors
@@ -248,3 +250,35 @@ def test_the_cache_keeps_one_file_per_strategy(tmp_path: Path) -> None:
     DenseIndex.build_cached(_inventory(REVENUE, DIVIDEND), CountingEmbedder(), tmp_path)
 
     assert len(list(tmp_path.glob("index-sentence-*.npz"))) == 1, "superseded files were kept"
+
+
+def test_building_embeds_in_slices_logging_each_and_matches_one_pass(
+    embedder: BagOfWordsEmbedder, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    inventory = _inventory(REVENUE, RISK, DIVIDEND, REVENUE + RISK, RISK + DIVIDEND)
+    monkeypatch.setattr(dense, "EMBED_LOG_EVERY", 2)
+
+    with caplog.at_level(logging.INFO, logger="aigent.retrieval.dense"):
+        index = DenseIndex.build(inventory, embedder)
+
+    assert np.allclose(index.matrix, embedder.embed_documents(inventory.texts()))
+    lines = [r.getMessage() for r in caplog.records]
+    assert [line.split(" with ")[0] for line in lines] == [
+        "sentence: embedded 2/5 (40%)",
+        "sentence: embedded 4/5 (80%)",
+        "sentence: embedded 5/5 (100%)",
+    ], lines
+
+
+def test_a_cached_build_says_whether_it_embedded_or_read(
+    embedder: BagOfWordsEmbedder, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    inventory = _inventory(REVENUE, RISK)
+
+    with caplog.at_level(logging.INFO, logger="aigent.retrieval.dense"):
+        DenseIndex.build_cached(inventory, embedder, tmp_path)
+        DenseIndex.build_cached(inventory, embedder, tmp_path)
+
+    said = [r.getMessage() for r in caplog.records]
+    assert said[0].startswith("sentence: embedding 2 texts with bag-of-words-fake"), said
+    assert said[-1].startswith("sentence: reading bag-of-words-fake's vectors from index-"), said

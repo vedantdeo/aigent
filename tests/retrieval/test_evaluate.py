@@ -223,7 +223,10 @@ def test_the_joined_digest_moves_with_either_file(tmp_path: Path, edited: int) -
     "compare", [compare_chunking, compare_retrieval], ids=["chunking", "retrieval methods"]
 )
 def test_a_comparison_over_two_files_reports_them_as_one_set(
-    compare: Compare, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    compare: Compare,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(evaluate, "LocalReranker", KeywordReranker)
     paths = [_dataset(tmp_path / "prose.jsonl", "rq-001"), _dataset(tmp_path / "t.jsonl", "rt-1")]
@@ -234,10 +237,11 @@ def test_a_comparison_over_two_files_reports_them_as_one_set(
     assert (run.dataset, run.digest) == label_of(paths)
     assert {row.case_id for row in run.rows} == {"rq-001", "rt-1"}, "both files are scored"
     assert all(row.error is None for row in run.rows), [row.error for row in run.rows]
+    assert "[1/" in capsys.readouterr().out, "rows are logged as they finish"
 
 
 def test_the_methods_comparison_scores_the_keyed_search_beside_the_six(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(evaluate, "LocalReranker", KeywordReranker)
     paths = [_dataset(tmp_path / "prose.jsonl", "rq-001")]
@@ -247,3 +251,4 @@ def test_the_methods_comparison_scores_the_keyed_search_beside_the_six(
 
     assert run.variants == (*METHODS, f"keys+{SEARCH_METHOD}"), run.variants
     assert all(row.error is None for row in run.rows), [row.error for row in run.rows]
+    assert "[1/7] rq-001 [dense]" in capsys.readouterr().out, "rows are logged as they finish"

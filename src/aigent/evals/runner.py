@@ -9,6 +9,7 @@ every row in one batch, once the whole run is admitted.
 from __future__ import annotations
 
 import contextvars
+import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -138,6 +139,7 @@ def run_eval(
     session = f"{dataset}-{run.started_at:%Y%m%d-%H%M%S}"
     tracer = tracing.tracer()  # chosen here, before any row could race to choose it
     done = 0
+    started = time.perf_counter()
     ran: dict[tuple[str, str], _Ran] = {}  # one item set per row, atomic without a lock
 
     def traced(case: Case, name: str, task: Task) -> RowResult:
@@ -157,7 +159,8 @@ def run_eval(
         nonlocal done
         done += 1
         if progress:
-            print(f"[{done}/{len(jobs)}] {_describe(row)}")
+            elapsed = int(time.perf_counter() - started)
+            print(f"[{done}/{len(jobs)}] {_describe(row)}  +{elapsed // 60}:{elapsed % 60:02d}")
 
     if workers > 1:
         run.rows = _concurrently(jobs, traced, finished, budget, workers)

@@ -2048,3 +2048,10 @@
   evicted each other's cached vectors). Local models load at float32 whatever they declare; a
   model's query prefix is its own or it is refused. The retrieval eval scores the keyed search as a
   seventh arm over `by_element`. Production indexes not yet rebuilt.
+- 10-21: **the committed keyed search measured in the repo's own eval; free, 63 minutes** (half
+  of it embedding `by_element`'s chunks and keys with `bge-large`, now cached). 88 questions, each
+  in its own report, hit@5: dense 0.625, dense+rerank 0.807, bm25 0.705, bm25+rerank 0.852, hybrid
+  0.773, hybrid+rerank 0.886, keys+hybrid+rerank **0.920** (recall 0.918, MRR 0.766), the
+  prototype's numbers to the third place. The run was silent for an hour (Vedant: "waiting
+  blindly is stupid"), so eval rows now print as they finish with the elapsed time, and embedding
+  logs every 1,024 texts in the retrieval eval and the teacher's CLI.
