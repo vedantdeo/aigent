@@ -2094,3 +2094,27 @@
   only the batch in progress. Hashing the training reports' texts against the store: 81,222 of
   81,489 are not embedded yet (77,602 under the old sizes), so the training index is an hour of
   embedding whatever the chunk size; the 10-21 run that stopped at 91% kept none of it.
+- 10-22: **teacher re-run of the 46 retrieval failures on the new index; $1.1357 in two runs (dry
+  run $2.37 typical, $7.83 worst).** The first stopped after 13 questions ($0.3575) when every call
+  came back 400 "reached your specified API usage limits"; Vedant raised the limit and the second
+  ran the 33 left (dry run $1.70 / $5.62; spent $0.7782), the unfinished ones not having been
+  written, so `run --only` picked up exactly those. **13 of 46 kept**
+  (`corpus/training/retried-trajectories.jsonl`); of the 33 dropped, 17 still miss a labelled
+  figure, 14 reply with no figures, 2 cite a passage that does not back the value. Questions naming
+  two companies (each search covers one report) are only 8 of the 33 drops, so they do not explain
+  them.
+- 10-22: **pivot to a facts database (Vedant), design in `docs/facts-db.md`; step 1 built: NSE's
+  XBRL results fetched, loaded and checked, $0.00.** 192 filings fetched once (eight companies,
+  FY24-FY26, every quarter, consolidated and standalone; ~4 min at one request a second, none
+  failed): 34,904 facts, 89,248 related-party facts skipped. **All 18 checkable fundamentals equal**
+  (revenue, profit attributable to owners, basic EPS; ITC, Reliance, Tata Motors FY24-FY25); the 6
+  dividends per share are not filed in XBRL. **Every filing's own sums hold** once two terms the
+  first rule lacked were added: assets held for sale (Sun Pharma, Tata Motors, Bajaj Auto) and
+  Power Grid's regulatory deferral balances (~₹9,900 cr), which sit outside current and non-current
+  assets. The build found three loader bugs, each now tested: the 2020 taxonomy dates a year's
+  context with the quarter (periods now come from the filing's stated reporting periods), files
+  opening and closing cash in one context (opening first), and a June quarter states only its one
+  column (which had dropped its `D_` contexts). **516 issues remain, all in four HDFC Bank FY24 H1
+  filings** that reference an `OneD` context they never define; those facts are reported, not
+  guessed. 95 tests, every guard mutation-checked in a scratch copy (49 of 49; the first pass ran
+  without `evals/reference` in the copy, so every mutant "failed", and was discarded).
