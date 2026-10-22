@@ -41,5 +41,4 @@ jobs:
           fi
 
           echo "Comparing $base...$HEAD_SHA"
-          git diff --name-only --diff-filter=ACMRD "$base" "$HEAD_SHA" |
-            sh scripts/check-knowledge-graph.sh ci
+          sh scripts/check-knowledge-graph.sh ci "$base" "$HEAD_SHA"
