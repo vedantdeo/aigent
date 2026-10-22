@@ -256,6 +256,46 @@ def test_a_long_sentence_is_still_packed_whole_when_it_fits_the_budget() -> None
     ]
 
 
+@pytest.mark.parametrize(
+    ("text", "budget", "pieces"),
+    [
+        pytest.param(
+            "Revenue rose sharply. Profit fell. Costs held.",
+            40,
+            ["Revenue rose sharply. Profit fell.", "Costs held."],
+            id="sentences pack up to the budget",
+        ),
+        pytest.param(
+            "(a) oversee the reporting\n(b) review the auditors\n(c) approve the accounts",
+            55,
+            ["(a) oversee the reporting\n(b) review the auditors", "(c) approve the accounts"],
+            id="a sentence past the budget packs by whole lines",
+        ),
+        pytest.param(
+            "(a) oversee the financial reporting process and disclosures\n(b) review the auditors",
+            40,
+            [
+                "(a) oversee the financial reporting process and disclosures",
+                "(b) review the auditors",
+            ],
+            id="a line past the budget stays whole",
+        ),
+        pytest.param(
+            "Annual consumer spend of over Rs 34,000 crores across brands",
+            40,
+            ["Annual consumer spend of over Rs 34,000 crores across brands"],
+            id="a span with no break at all stays whole",
+        ),
+    ],
+)
+def test_whole_sentences_never_cuts_a_sentence_or_a_line(
+    text: str, budget: int, pieces: list[str]
+) -> None:
+    splitter = by_sentence(budget, overlap_sentences=0, whole_sentences=True)
+
+    assert [chunk.text for chunk in splitter(_doc(text))] == pieces
+
+
 # --- by_element --------------------------------------------------------------------------------
 
 STATEMENT = Grid(
@@ -506,6 +546,39 @@ def test_a_long_table_splits_at_rows_and_every_piece_repeats_its_label_and_heade
     assert pieces[1].start == document.text.index(
         "Segment " + rows[len(pieces[0].text.split("\n")) - 2].split()[1]
     )
+
+
+_SENTENCES = [f"Revenue from segment {n} grew in the year." for n in range(1, 41)]
+_DUTIES = [f"({n}) oversee the reporting of segment {n} to the board" for n in range(1, 41)]
+_ROWS = [
+    ("Particulars", "2025", "2024"),
+    (" ".join(f"item{n}" for n in range(150)), "1,000", "900"),
+    *((f"Segment {n}", f"{n},000", f"{n},100") for n in range(1, 6)),
+]
+
+
+@pytest.mark.parametrize(
+    ("pieces", "units"),
+    [
+        pytest.param(
+            [Heading("Review"), " ".join(_SENTENCES)], _SENTENCES, id="sentences past the budget"
+        ),
+        pytest.param([Heading("Duties"), *_DUTIES], _DUTIES, id="a list with no full stop"),
+        pytest.param(
+            [Grid(rows=tuple(_ROWS), header_rows=1)],
+            [" ".join(row) for row in _ROWS[1:]],
+            id="a table with a row longer than the budget",
+        ),
+    ],
+)
+def test_by_element_splits_past_its_budget_but_never_inside_a_unit(
+    pieces: list[Piece], units: list[str]
+) -> None:
+    chunks = by_element()(_assembled([pieces]))
+
+    assert len(chunks) > 1, "past the default budget the run must split"
+    for unit in units:
+        assert sum(unit in chunk.text for chunk in chunks) == 1, unit
 
 
 def test_a_document_with_no_parsed_structure_is_packed_by_sentence() -> None:

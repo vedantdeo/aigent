@@ -186,6 +186,9 @@ CHUNK_OVERLAP_CHARS = 200
 CHUNK_OVERLAP_SENTENCES = 1
 CHUNK_MAX_CHARS = 2000
 CHUNK_MIN_CHARS = 80
+# `by_element` budgets: a piece ends only between rows, sentences or lines; one longer stays whole.
+ELEMENT_TABLE_CHARS = 1000
+ELEMENT_TEXT_CHARS = 1000
 
 # What `by_heading` accepts as a heading in PDF text, where no markup survives to say so.
 HEADING_MAX_CHARS = 80

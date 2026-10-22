@@ -2077,3 +2077,14 @@
   95,725 training keys. The eval's two caches moved in after every text was proven identical by
   recomputing the old file's hash: 39,031 vectors became 29,623 (chunks are their own keys); served
   back, the chunk index is bit-identical and 10 key rows differ by at most 1.3e-7.
+- 10-22: **`by_element` at 1,000 characters for tables and for text, never ending inside a row, a
+  sentence or a line (Vedant); free.** The first step toward citing a small unit. Measured on the
+  88 questions, keyed search, each in its own report, tokens in Qwen3's tokenizer: tables at 2,000
+  / 1,000 / 600 gave hit@5 0.920 / 0.920 / 0.909, a search's top 5 at a 90th percentile of 3,091 /
+  2,190 / 1,615 tokens, and the largest cited chunk 1,130 / 753 / 442. Text also at 1,000 (was
+  1,200): hit@5 0.909 (prose 51/54, tables 29/34), recall@5 0.903, MRR 0.760, median search 1,352
+  tokens. The one prose question lost, `rq-003`, cites the same unchanged chunk, now ranked 6th. A
+  "sentence" over 1,000 characters (193 of 60,417 over 12 reports, up to 5,347: lists and address
+  blocks with no full stop) now splits at its line breaks, not mid-word; the longest line is 2,086.
+  The median cited chunk stays at ~220 tokens, so a row-level citation needs a unit inside the
+  chunk (options B/C). Eval run 26 minutes on the Mac, mostly embedding the new pieces.
