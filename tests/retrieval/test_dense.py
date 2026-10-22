@@ -118,14 +118,18 @@ def test_a_k_below_one_is_refused(embedder: BagOfWordsEmbedder) -> None:
 
 
 class CountingEmbedder(BagOfWordsEmbedder):
-    """Counts the passages it embeds, so a test can tell a cache hit from a rebuild."""
+    """Counts the passages it embeds, so a test can tell a cache hit from a rebuild; with `stop`,
+    interrupts the run once it has embedded that many, as a kill would."""
 
-    def __init__(self, name: str = "bag-of-words-fake") -> None:
+    def __init__(self, name: str = "bag-of-words-fake", stop: int | None = None) -> None:
         super().__init__()
         self.name = name
         self.embedded = 0
+        self.stop = stop
 
     def embed_documents(self, texts: Sequence[str]) -> Vectors:
+        if texts and self.stop is not None and self.embedded >= self.stop:
+            raise KeyboardInterrupt
         self.embedded += len(texts)
         return super().embed_documents(texts)
 
@@ -282,6 +286,32 @@ def test_a_cached_build_says_whether_it_embedded_or_read(
     said = [r.getMessage() for r in caplog.records]
     assert said[0] == "sentence: 0 of 2 texts already embedded with bag-of-words-fake; embedding 2"
     assert said[-1] == "sentence: 2 of 2 texts already embedded with bag-of-words-fake; embedding 0"
+
+
+@pytest.mark.parametrize(
+    ("save_every", "kept"),
+    [
+        pytest.param(2, 2, id="the batch in progress is lost, the one saved is kept"),
+        pytest.param(1, 3, id="saving every text keeps every one embedded"),
+        pytest.param(10, 0, id="stopped before the first save keeps nothing"),
+    ],
+)
+def test_a_stopped_build_keeps_what_it_saved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, save_every: int, kept: int
+) -> None:
+    monkeypatch.setattr(dense, "EMBED_LOG_EVERY", 1)
+    monkeypatch.setattr(dense, "EMBED_SAVE_EVERY", save_every)
+    inventory = _inventory(REVENUE, RISK, DIVIDEND, REVENUE + RISK, RISK + DIVIDEND)
+
+    with pytest.raises(KeyboardInterrupt):
+        DenseIndex.build_cached(inventory, CountingEmbedder(stop=3), tmp_path)
+    keys, _ = read_store(store_file(CountingEmbedder(), tmp_path))
+    resumed = CountingEmbedder()
+    index = DenseIndex.build_cached(inventory, resumed, tmp_path)
+
+    assert len(keys) == kept, keys
+    assert resumed.embedded == len(inventory) - kept, "a resumed build re-embedded saved text"
+    assert np.array_equal(index.matrix, DenseIndex.build(inventory, resumed).matrix)
 
 
 def test_texts_differing_by_a_character_never_share_a_key() -> None:

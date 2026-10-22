@@ -15,12 +15,13 @@ import logging
 import re
 import time
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
-from aigent.config import EMBED_LOG_EVERY, TOP_K
+from aigent.config import EMBED_LOG_EVERY, EMBED_SAVE_EVERY, TOP_K
 from aigent.retrieval.chunk import Inventory
 from aigent.retrieval.corpus import CACHE_DIR
 from aigent.retrieval.embed import Embedder, Vectors
@@ -33,13 +34,23 @@ def _clock(seconds: float) -> str:
     return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
 
 
-def embedded(texts: list[str], embedder: Embedder, name: str) -> Vectors:
-    """`texts`' vectors, `EMBED_LOG_EVERY` at a time, logging each slice under `name`."""
+def embedded(
+    texts: list[str],
+    embedder: Embedder,
+    name: str,
+    save: Callable[[Vectors], None] | None = None,
+) -> Vectors:
+    """`texts`' vectors, `EMBED_LOG_EVERY` at a time, logging each slice under `name`; `save`, if
+    given, receives the vectors not yet saved every `EMBED_SAVE_EVERY` texts and at the end."""
     started = time.perf_counter()
     parts: list[Vectors] = [embedder.embed_documents([])]
+    unsaved, saved_at = 1, 0  # the first part not yet saved, and how many texts were
     for start in range(0, len(texts), EMBED_LOG_EVERY):
         parts.append(embedder.embed_documents(texts[start : start + EMBED_LOG_EVERY]))
         done = min(start + EMBED_LOG_EVERY, len(texts))
+        if save is not None and (done - saved_at >= EMBED_SAVE_EVERY or done == len(texts)):
+            save(np.concatenate(parts[unsaved:]).astype(np.float32, copy=False))
+            unsaved, saved_at = len(parts), done
         log.info(
             "%s: embedded %s/%s (%d%%) with %s, %s",
             name,
@@ -121,8 +132,8 @@ class DenseIndex:
     def build_cached(
         cls, inventory: Inventory, embedder: Embedder, cache_dir: Path = CACHE_DIR
     ) -> DenseIndex:
-        """`build`, embedding only the texts `embedder`'s store has not seen, then adding them.
-        A missing or damaged store is started afresh, never raised on."""
+        """`build`, embedding only the texts `embedder`'s store has not seen and adding them as it
+        goes, so a stopped build keeps what it saved. A missing or damaged store starts afresh."""
         path = store_file(embedder, cache_dir)
         keys, matrix = read_store(path)
         row = {key: n for n, key in enumerate(keys)}
@@ -137,13 +148,20 @@ class DenseIndex:
             embedder.name,
             f"{len(new):,}",
         )
-        if new:
-            fresh = embedded(list(new.values()), embedder, inventory.name)
+        pending = list(new)
+
+        def save(fresh: Vectors) -> None:
+            nonlocal matrix
             matrix = fresh if not keys else np.concatenate([matrix, fresh])
-            for key in new:
+            for key in pending[: len(fresh)]:
                 row[key] = len(keys)
                 keys.append(key)
+            del pending[: len(fresh)]
             write_store(path, keys, matrix)
+            log.info("%s: %s vectors in the store", inventory.name, f"{len(keys):,}")
+
+        if new:
+            embedded(list(new.values()), embedder, inventory.name, save)
         rows = [row[key] for key in wanted]
         return cls._checked(tuple(inventory.ids()), matrix[rows], embedder.name)
 

@@ -2088,3 +2088,9 @@
   blocks with no full stop) now splits at its line breaks, not mid-word; the longest line is 2,086.
   The median cited chunk stays at ~220 tokens, so a row-level citation needs a unit inside the
   chunk (options B/C). Eval run 26 minutes on the Mac, mostly embedding the new pieces.
+- 10-22: **the vector store saves as it embeds (Vedant: "having entire run wasted at 91% is
+  wasteful"); free.** `DenseIndex.build_cached` writes the store every 4,096 new texts
+  (`EMBED_SAVE_EVERY`, about three minutes of `bge-large`) and at the end, so a stopped build loses
+  only the batch in progress. Hashing the training reports' texts against the store: 81,222 of
+  81,489 are not embedded yet (77,602 under the old sizes), so the training index is an hour of
+  embedding whatever the chunk size; the 10-21 run that stopped at 91% kept none of it.

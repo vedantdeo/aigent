@@ -167,6 +167,7 @@ MCP_MAX_RESULT_CHARS = 20_000  # of a tool's text, before it reaches a model
 EMBED_MODEL = "BAAI/bge-large-en-v1.5"
 EMBED_BATCH = 64
 EMBED_LOG_EVERY = 1024  # texts embedded between progress lines
+EMBED_SAVE_EVERY = 4096  # texts a cached build embeds between writes of its store
 
 # Query prefixes for models that do not declare one in `prompts`, from each model card; a model
 # neither declares nor lists here is refused. "" is a model that wants none.
