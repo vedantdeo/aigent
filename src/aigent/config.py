@@ -167,6 +167,7 @@ MCP_MAX_RESULT_CHARS = 20_000  # of a tool's text, before it reaches a model
 EMBED_MODEL = "BAAI/bge-large-en-v1.5"
 EMBED_BATCH = 64
 EMBED_LOG_EVERY = 1024  # texts embedded between progress lines
+EMBED_SAVE_EVERY = 4096  # texts a cached build embeds between writes of its store
 
 # Query prefixes for models that do not declare one in `prompts`, from each model card; a model
 # neither declares nor lists here is refused. "" is a model that wants none.
@@ -186,6 +187,9 @@ CHUNK_OVERLAP_CHARS = 200
 CHUNK_OVERLAP_SENTENCES = 1
 CHUNK_MAX_CHARS = 2000
 CHUNK_MIN_CHARS = 80
+# `by_element` budgets: a piece ends only between rows, sentences or lines; one longer stays whole.
+ELEMENT_TABLE_CHARS = 1000
+ELEMENT_TEXT_CHARS = 1000
 
 # What `by_heading` accepts as a heading in PDF text, where no markup survives to say so.
 HEADING_MAX_CHARS = 80

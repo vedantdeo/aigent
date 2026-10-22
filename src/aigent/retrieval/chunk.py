@@ -19,6 +19,8 @@ from aigent.config import (
     CHUNK_MIN_CHARS,
     CHUNK_OVERLAP_CHARS,
     CHUNK_OVERLAP_SENTENCES,
+    ELEMENT_TABLE_CHARS,
+    ELEMENT_TEXT_CHARS,
     HEADING_MAX_CHARS,
     HEADING_MAX_WORDS,
     HEADING_MIN_CAPITAL_RATIO,
@@ -270,12 +272,16 @@ def sentences(text: str) -> list[tuple[int, int]]:
 
 
 def by_sentence(
-    max_chars: int = CHUNK_CHARS, overlap_sentences: int = CHUNK_OVERLAP_SENTENCES
+    max_chars: int = CHUNK_CHARS,
+    overlap_sentences: int = CHUNK_OVERLAP_SENTENCES,
+    *,
+    whole_sentences: bool = False,
 ) -> Splitter:
     """Pack whole sentences up to `max_chars`, starting the next chunk `overlap_sentences` back.
 
     A span with no sentence break inside it is cut on the character budget, since text the
-    embedder never reads cannot be retrieved.
+    embedder never reads cannot be retrieved; with `whole_sentences` it is split only at its line
+    breaks instead, and a line longer than the budget stays whole.
     """
     if max_chars < 1:
         raise ValueError(f"Chunk size {max_chars} is below 1")
@@ -330,6 +336,18 @@ def by_sentence(
             for piece_start in range(span_start, span_end, max_chars):
                 emit(piece_start, min(piece_start + max_chars, span_end))
 
+        def emit_lines(span_start: int, span_end: int) -> None:
+            """Emit a span packed by whole lines up to the budget."""
+            ends = [i + 1 for i in range(span_start, span_end) if doc.text[i] == "\n"]
+            piece_start = cursor = span_start
+            for end in [*ends, span_end]:
+                if end - piece_start > max_chars:
+                    emit(piece_start, cursor)
+                    piece_start = cursor
+                cursor = end
+            emit(piece_start, span_end)
+
+        cut = emit_lines if whole_sentences else emit_capped
         sentence_spans = sentences(doc.text)
         start_index = 0
         curr_start = 0
@@ -339,7 +357,7 @@ def by_sentence(
             if end - curr_start > max_chars:
                 if curr_start == start:
                     # This one sentence is over budget on its own, so there is nothing to pack.
-                    emit_capped(curr_start, end)
+                    cut(curr_start, end)
                     curr_start = end
                     start_index = curr_index + 1
                     curr_index += 1
@@ -351,7 +369,7 @@ def by_sentence(
             else:
                 curr_index += 1
         if curr_start < len(doc.text):
-            emit_capped(curr_start, len(doc.text))
+            cut(curr_start, len(doc.text))
         return chunks
 
     return splitter
@@ -573,16 +591,18 @@ def section_path(stack: list[tuple[int, str]], text: str) -> list[tuple[int, str
     return [(1, text)]
 
 
-def by_element(max_chars: int = CHUNK_MAX_CHARS, text_chars: int = CHUNK_CHARS) -> Splitter:
+def by_element(
+    max_chars: int = ELEMENT_TABLE_CHARS, text_chars: int = ELEMENT_TEXT_CHARS
+) -> Splitter:
     """A chunk starts at every heading and every table the parser found. Text runs are packed by
-    sentence up to `text_chars`, each piece keeping its section heading; a table is one chunk
+    whole sentence up to `text_chars`, each piece keeping its section heading; a table is one chunk
     opened by its `table_label`, or, past `max_chars`, split at rows, every piece repeating the
     label, the column-header rows and the section row it continues under. Labels name the
-    section path (`section_path`). A document with no parsed structure is packed as
-    `by_sentence` packs it."""
+    section path (`section_path`). A document with no parsed structure is packed by whole
+    sentence alone. No piece ends inside a row, a sentence or a line."""
     if max_chars < 1 or text_chars < 1:
         raise ValueError(f"Chunk sizes {max_chars} and {text_chars} must be at least 1")
-    pack = by_sentence(text_chars, overlap_sentences=0)
+    pack = by_sentence(text_chars, overlap_sentences=0, whole_sentences=True)
 
     def splitter(doc: Document) -> list[Chunk]:
         chunks: list[Chunk] = []

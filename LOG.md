@@ -2077,3 +2077,44 @@
   95,725 training keys. The eval's two caches moved in after every text was proven identical by
   recomputing the old file's hash: 39,031 vectors became 29,623 (chunks are their own keys); served
   back, the chunk index is bit-identical and 10 key rows differ by at most 1.3e-7.
+- 10-22: **`by_element` at 1,000 characters for tables and for text, never ending inside a row, a
+  sentence or a line (Vedant); free.** The first step toward citing a small unit. Measured on the
+  88 questions, keyed search, each in its own report, tokens in Qwen3's tokenizer: tables at 2,000
+  / 1,000 / 600 gave hit@5 0.920 / 0.920 / 0.909, a search's top 5 at a 90th percentile of 3,091 /
+  2,190 / 1,615 tokens, and the largest cited chunk 1,130 / 753 / 442. Text also at 1,000 (was
+  1,200): hit@5 0.909 (prose 51/54, tables 29/34), recall@5 0.903, MRR 0.760, median search 1,352
+  tokens. The one prose question lost, `rq-003`, cites the same unchanged chunk, now ranked 6th. A
+  "sentence" over 1,000 characters (193 of 60,417 over 12 reports, up to 5,347: lists and address
+  blocks with no full stop) now splits at its line breaks, not mid-word; the longest line is 2,086.
+  The median cited chunk stays at ~220 tokens, so a row-level citation needs a unit inside the
+  chunk (options B/C). Eval run 26 minutes on the Mac, mostly embedding the new pieces.
+- 10-22: **the vector store saves as it embeds (Vedant: "having entire run wasted at 91% is
+  wasteful"); free.** `DenseIndex.build_cached` writes the store every 4,096 new texts
+  (`EMBED_SAVE_EVERY`, about three minutes of `bge-large`) and at the end, so a stopped build loses
+  only the batch in progress. Hashing the training reports' texts against the store: 81,222 of
+  81,489 are not embedded yet (77,602 under the old sizes), so the training index is an hour of
+  embedding whatever the chunk size; the 10-21 run that stopped at 91% kept none of it.
+- 10-22: **teacher re-run of the 46 retrieval failures on the new index; $1.1357 in two runs (dry
+  run $2.37 typical, $7.83 worst).** The first stopped after 13 questions ($0.3575) when every call
+  came back 400 "reached your specified API usage limits"; Vedant raised the limit and the second
+  ran the 33 left (dry run $1.70 / $5.62; spent $0.7782), the unfinished ones not having been
+  written, so `run --only` picked up exactly those. **13 of 46 kept**
+  (`corpus/training/retried-trajectories.jsonl`); of the 33 dropped, 17 still miss a labelled
+  figure, 14 reply with no figures, 2 cite a passage that does not back the value. Questions naming
+  two companies (each search covers one report) are only 8 of the 33 drops, so they do not explain
+  them.
+- 10-22: **pivot to a facts database (Vedant), design in `docs/facts-db.md`; step 1 built: NSE's
+  XBRL results fetched, loaded and checked, $0.00.** 192 filings fetched once (eight companies,
+  FY24-FY26, every quarter, consolidated and standalone; ~4 min at one request a second, none
+  failed): 34,904 facts, 89,248 related-party facts skipped. **All 18 checkable fundamentals equal**
+  (revenue, profit attributable to owners, basic EPS; ITC, Reliance, Tata Motors FY24-FY25); the 6
+  dividends per share are not filed in XBRL. **Every filing's own sums hold** once two terms the
+  first rule lacked were added: assets held for sale (Sun Pharma, Tata Motors, Bajaj Auto) and
+  Power Grid's regulatory deferral balances (~₹9,900 cr), which sit outside current and non-current
+  assets. The build found three loader bugs, each now tested: the 2020 taxonomy dates a year's
+  context with the quarter (periods now come from the filing's stated reporting periods), files
+  opening and closing cash in one context (opening first), and a June quarter states only its one
+  column (which had dropped its `D_` contexts). **516 issues remain, all in four HDFC Bank FY24 H1
+  filings** that reference an `OneD` context they never define; those facts are reported, not
+  guessed. 95 tests, every guard mutation-checked in a scratch copy (49 of 49; the first pass ran
+  without `evals/reference` in the copy, so every mutant "failed", and was discarded).

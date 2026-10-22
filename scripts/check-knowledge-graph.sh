@@ -3,14 +3,30 @@
 # describes must carry the graph update with it. The pre-commit hook and CI both
 # call this, so the rule cannot drift between them.
 #
-# Reads changed paths on stdin, one per line.
-#   usage:  <paths  scripts/check-knowledge-graph.sh [commit|ci]
+# Asks git for the changed paths itself and never reads stdin, so it cannot hang.
+#   scripts/check-knowledge-graph.sh               working tree against HEAD
+#   scripts/check-knowledge-graph.sh commit        what is staged (the pre-commit hook)
+#   scripts/check-knowledge-graph.sh ci BASE HEAD  a commit range (CI)
 
 GRAPH="docs/knowledge-graph.md"
 WATCHED='^(src/|pyproject\.toml$)'
-mode="${1:-ci}"
+mode="${1:-local}"
 
-changed=$(cat)
+usage() {
+  echo >&2 "usage: $0 [local | commit | ci BASE HEAD]"
+  exit 2
+}
+
+case "$mode" in
+  local) [ $# -le 1 ] || usage
+         changed=$(git diff --name-only --diff-filter=ACMRD HEAD) || exit 2 ;;
+  commit) [ $# -eq 1 ] || usage
+          changed=$(git diff --cached --name-only --diff-filter=ACMRD) || exit 2 ;;
+  ci) [ $# -eq 3 ] || usage
+      changed=$(git diff --name-only --diff-filter=ACMRD "$2" "$3") || exit 2 ;;
+  *) usage ;;
+esac
+
 watched=$(printf '%s\n' "$changed" | grep -E "$WATCHED")
 
 # Nothing the graph records changed.
@@ -27,6 +43,10 @@ if [ "$mode" = "commit" ]; then
   If this change genuinely records nothing in the graph:
 
     git commit --no-verify"
+elif [ "$mode" = "local" ]; then
+  headline="the knowledge graph is behind the working tree."
+  label="Changed files the graph describes:"
+  fix="  Update $GRAPH before committing."
 else
   headline="the knowledge graph is out of step with this change."
   label="Files the graph describes, changed here:"

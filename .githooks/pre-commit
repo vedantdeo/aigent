@@ -10,8 +10,7 @@
 root=$(git rev-parse --show-toplevel) || exit 0
 cd "$root" || exit 1
 
-git diff --cached --name-only --diff-filter=ACMRD |
-  sh scripts/check-knowledge-graph.sh commit || exit 1
+sh scripts/check-knowledge-graph.sh commit || exit 1
 
 # ruff reads the working tree, so a partly staged file is checked as it sits on disk.
 staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.md')
