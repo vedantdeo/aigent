@@ -1,7 +1,7 @@
 """The generalist's tools in one place: a server's tools over MCP, and every specialist as a tool
 whose calls go through the router. Passages a search returns, and those a specialist's answer
-cites, are kept as evidence by id, as is a fundamentals answer, by its `cite_as`, so the critic can
-read what a claim rests on.
+cites, are kept as evidence by id, as is each fact a fundamentals answer returns, by its `cite_as`,
+so the critic can read what a claim rests on.
 """
 
 from __future__ import annotations
@@ -35,16 +35,24 @@ class Expert:
         return self.card["name"]
 
 
-def _lookup(result: str) -> Passage | None:
-    """A fundamentals answer as evidence, cited by its `cite_as`; None if it is not one."""
+def _lookup(result: str) -> list[Passage]:
+    """Each fact of a fundamentals answer as evidence, cited by its `cite_as`."""
     try:
-        found = json.loads(result)
+        answer = json.loads(result)
     except json.JSONDecodeError:
-        return None
-    if not isinstance(found, dict) or "cite_as" not in found:
-        return None
-    fields = cast(dict[str, object], found)
-    return Passage(str(fields["cite_as"]), str(fields.get("source", "")), result)
+        return []
+    if not isinstance(answer, dict):
+        return []
+    facts = cast(dict[str, object], answer).get("facts")
+    if not isinstance(facts, list):
+        return []
+    found: list[Passage] = []
+    for fact in cast(list[object], facts):
+        if isinstance(fact, dict) and "cite_as" in fact:
+            fields = cast(dict[str, object], fact)
+            text = json.dumps(fields)
+            found.append(Passage(str(fields["cite_as"]), str(fields.get("source", "")), text))
+    return found
 
 
 @dataclass
@@ -96,7 +104,5 @@ class Toolbox:
         if name == SEARCH:
             self.evidence.update({found.id: found for found in passages_in(content)})
         if name == LOOKUP:
-            looked_up = _lookup(content)
-            if looked_up is not None:
-                self.evidence[looked_up.id] = looked_up
+            self.evidence.update({found.id: found for found in _lookup(content)})
         return content, is_error

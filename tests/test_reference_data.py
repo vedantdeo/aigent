@@ -17,9 +17,9 @@ from typing import cast
 import pytest
 
 from aigent import errors
-from aigent.analyst.fundamentals import FUNDAMENTALS
 from aigent.analyst.run import PROBE
 from aigent.extraction.headlines import DIRECTORY
+from aigent.facts.reference import FUNDAMENTALS
 from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 

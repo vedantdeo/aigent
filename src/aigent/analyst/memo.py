@@ -17,7 +17,8 @@ class Claim(BaseModel):
         min_length=1,
         description=(
             "Every source the claim rests on, by id: a passage id from search_filings "
-            "(ITC-FY25#0412) or a fundamentals cite_as (ITC:2025:dividend). At least one."
+            "(ITC-FY25#0412) or a fundamentals cite_as "
+            "(FACT:ITC:2025:consolidated:year:RevenueFromOperations). At least one."
         ),
     )
 

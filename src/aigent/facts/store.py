@@ -4,11 +4,12 @@ fact's row while its value holds, so what points at a fact survives it."""
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from aigent.facts.taxonomy import Labels
 from aigent.facts.xbrl import Fact, label_of
 
 FACTS_DB = Path(__file__).resolve().parents[3] / "corpus" / ".cache" / "facts.sqlite"
@@ -78,6 +79,11 @@ CREATE TABLE IF NOT EXISTS concepts (
     xbrl_concept TEXT,
     mapping_checked INTEGER NOT NULL DEFAULT 0,
     vector_key TEXT
+);
+CREATE TABLE IF NOT EXISTS concept_labels (
+    concept TEXT NOT NULL REFERENCES concepts(concept),
+    label TEXT NOT NULL,
+    PRIMARY KEY (concept, label)
 );
 CREATE TABLE IF NOT EXISTS lookups (
     id INTEGER PRIMARY KEY,
@@ -237,3 +243,27 @@ def sync_xbrl_facts(
         conn.execute("DELETE FROM facts WHERE id = ?", (fid,))
         out.removed += 1
     return out
+
+
+def apply_labels(conn: sqlite3.Connection, labels: Mapping[str, Labels]) -> list[str]:
+    """Each XBRL concept's standard label onto it and its facts, its other labels into
+    `concept_labels`; the concepts no package labels, which keep their split element name."""
+    unlabelled: list[str] = []
+    for (concept,) in conn.execute(
+        "SELECT concept FROM concepts WHERE kind = 'xbrl' ORDER BY concept"
+    ).fetchall():
+        found = labels.get(concept)
+        if found is None:
+            unlabelled.append(concept)
+            continue
+        conn.execute("UPDATE concepts SET label = ? WHERE concept = ?", (found.standard, concept))
+        conn.execute(
+            "UPDATE facts SET label = ? WHERE concept = ? AND tier = 'xbrl'",
+            (found.standard, concept),
+        )
+        conn.execute("DELETE FROM concept_labels WHERE concept = ?", (concept,))
+        conn.executemany(
+            "INSERT INTO concept_labels (concept, label) VALUES (?, ?)",
+            [(concept, alias) for alias in sorted(found.aliases)],
+        )
+    return unlabelled

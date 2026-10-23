@@ -284,6 +284,18 @@ def test_a_segment_with_no_description_is_named_by_its_member() -> None:
     assert [f.segment for f in parsed.facts] == ["Segment01Member"]
 
 
+def test_a_column_s_descriptions_are_no_segment() -> None:
+    parsed = parse(
+        filing(
+            *DECEMBER,
+            text("DescriptionOfPresentationCurrency", "OneD", "INR"),
+            text("DescriptionOfSingleSegment", "OneD", "FMCG"),
+            num("RevenueFromOperations", "OneD", "10"),
+        )
+    )
+    assert [(f.period_start, f.segment) for f in parsed.facts] == [(D("2025-10-01"), None)]
+
+
 def test_a_fact_carries_its_value_and_unit() -> None:
     parsed = parse(filing(*DECEMBER, num("BasicEps", "OneD", "3.94", "INRPerShare", "INF")))
     assert parsed.facts == [

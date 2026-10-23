@@ -8,8 +8,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
-from aigent.analyst.fundamentals import Fundamental
 from aigent.facts.cfg_facts import FILING_SUMS, FUNDAMENTALS_CONCEPTS
+from aigent.facts.reference import Fundamental
 
 Status = Literal["equal", "differs", "missing", "not in xbrl"]
 

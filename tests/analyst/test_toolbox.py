@@ -192,17 +192,27 @@ def test_over_the_real_server_the_specialist_s_own_search_finds_what_it_cites(
     assert isinstance(tools.evidence[DIVIDEND], Passage) and list(tools.evidence) == [DIVIDEND]
 
 
-def test_a_fundamentals_answer_is_kept_as_evidence_under_its_cite_as() -> None:
-    answer = '{"cite_as": "ITC:2025:dividend", "value": 14.35, "source": "ITC-FY25 p51"}'
-    replies = iter([(answer, False), ("14.35", False), ("Error: no metric", True), ("{}", False)])
+def test_each_fact_of_a_fundamentals_answer_is_kept_as_evidence_under_its_cite_as() -> None:
+    revenue = {"cite_as": "FACT:ITC:2025:consolidated:year:Revenue", "value": 1.0, "source": "s1"}
+    assets = {"cite_as": "FACT:ITC:2025:consolidated:year:Assets", "value": 2.0, "source": "s2"}
+    answer = json.dumps({"facts": [revenue, assets, {"value": 3.0}, "not a fact"]})
+    replies = iter(
+        [
+            (answer, False),
+            ("14.35", False),
+            ("Error: nothing found", True),
+            ("{}", False),
+            ("[]", False),
+        ]
+    )
     tools = box(lambda name, arguments: next(replies))
 
-    for _ in range(4):
-        tools("fundamentals", {"ticker": "ITC", "metric": "dividend", "year": "2025"})
+    for n in range(5):
+        tools("fundamentals", {"company": "ITC", "year": "2025", "what": f"figure {n}"})
 
-    assert list(tools.evidence) == ["ITC:2025:dividend"]
-    kept = tools.evidence["ITC:2025:dividend"]
-    assert (kept.source, kept.text) == ("ITC-FY25 p51", answer)
+    assert list(tools.evidence) == [revenue["cite_as"], assets["cite_as"]]
+    kept = tools.evidence[str(revenue["cite_as"])]
+    assert (kept.source, json.loads(kept.text)) == ("s1", revenue)
 
 
 @pytest.mark.parametrize(

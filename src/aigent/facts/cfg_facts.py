@@ -56,3 +56,21 @@ FILING_SUMS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     ("EquityAndLiabilities", ("Assets",), ()),
     ("Income", ("OtherIncome", "RevenueFromOperations"), ()),
 )
+
+# Concept labels: NSE's taxonomy packages for the four versions the filings use. The order is the
+# data: where packages label one concept differently, the earliest wins and the rest are aliases.
+_NSE_FILES = "https://nsearchives.nseindia.com/web/sites/default/files/inline-files"
+TAXONOMY_PACKAGES: tuple[tuple[str, str], ...] = (
+    ("sebi-indas-2025", f"{_NSE_FILES}/Taxonomy%20Integrated%20filing%20finance%20%28IndAS%29.zip"),
+    (
+        "sebi-banking-2025",
+        f"{_NSE_FILES}/Taxonomy%20Integrated%20Filing%20%28Finance%29%20Banking.zip",
+    ),
+    ("bse-indas-2020", f"{_NSE_FILES}/Financial%20Results_Ind%20AS%20Taxonomy.zip"),
+    ("bse-banking-2019", f"{_NSE_FILES}/Financial%20Results_Banking%20Taxonomy.zip"),
+)
+
+# Lookup: how `what` is matched to concept labels, how deep, and how many facts come back.
+FACTS_MATCH_METHOD = "hybrid"
+FACTS_MATCH_DEPTH = 20
+FACTS_LOOKUP_K = 5

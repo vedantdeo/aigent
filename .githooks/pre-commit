@@ -1,16 +1,25 @@
 #!/bin/sh
-# Refuse a commit that leaves the knowledge graph behind, or that stages files
+# Refuse a commit that leaves the knowledge graph behind or stale, or that stages files
 # ruff would flag (lint, or format — Python blocks in Markdown included).
 #
 # Enable once per clone:  git config core.hooksPath .githooks
 # Deliberate exception:   git commit --no-verify
 #
-# The graph rule itself lives in scripts/check-knowledge-graph.sh, which CI runs too.
+# The graph rules live in scripts/check-knowledge-graph.sh and scripts/graph_doc.py, which CI runs too.
 
 root=$(git rev-parse --show-toplevel) || exit 0
 cd "$root" || exit 1
 
 sh scripts/check-knowledge-graph.sh commit || exit 1
+
+# Any src/ edit can move an At: line, so the graph's generated parts are checked on every commit.
+uv run --no-sync python scripts/graph_doc.py || {
+  echo >&2 "
+  commit blocked — the knowledge graph's generated parts or rules are out of date.
+  Fix with: uv run python scripts/graph_doc.py --write, then fix what it still reports.
+"
+  exit 1
+}
 
 # ruff reads the working tree, so a partly staged file is checked as it sits on disk.
 staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.md')

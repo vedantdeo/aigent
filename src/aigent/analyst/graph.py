@@ -37,7 +37,8 @@ from aigent.llm.messages import Thinking
 RESEARCH = (
     "You are a filings analyst answering a question about Indian listed companies from their "
     "annual reports. Find what you need with search_filings, scoped to the company and the "
-    "financial year asked about, and with fundamentals for the headline figures it holds. "
+    "financial year asked about, and with fundamentals for figures in a company's results "
+    "filings, which it returns exactly. "
     "Some of your tools are specialists: narrow models, each built for one job, which its "
     "tool's description states. Before you do a piece of work yourself, read what every "
     "specialist at your disposal is for and hand the work to the most applicable one; break a "

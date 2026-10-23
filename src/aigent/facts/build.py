@@ -6,15 +6,24 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import xml.etree.ElementTree as ET
+import zipfile
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
-from aigent.analyst.fundamentals import Fundamental
 from aigent.facts.check import Checked, check_fundamentals, check_sums
 from aigent.facts.nse import Get, fetch, list_filings, read_manifest, write_manifest
-from aigent.facts.store import FilingRow, Synced, Writer, sync_xbrl_facts, upsert_filing
+from aigent.facts.reference import Fundamental
+from aigent.facts.store import (
+    FilingRow,
+    Synced,
+    Writer,
+    apply_labels,
+    sync_xbrl_facts,
+    upsert_filing,
+)
+from aigent.facts.taxonomy import fetch_packages, load_labels
 from aigent.facts.xbrl import parse
 
 
@@ -37,6 +46,9 @@ class Report:
     loaded: list[Loaded] = field(default_factory=list[Loaded])
     load_failures: list[str] = field(default_factory=list[str])
     fundamentals: list[Checked] = field(default_factory=list[Checked])
+    taxonomy_fetched: list[str] = field(default_factory=list[str])
+    taxonomy_failures: list[str] = field(default_factory=list[str])
+    unlabelled: list[str] = field(default_factory=list[str])
 
     def as_json(self) -> dict[str, object]:
         return asdict(self)
@@ -57,6 +69,8 @@ class Report:
             f"issues {sum(len(x.issues) for x in self.loaded)}, "
             f"sums broken {sum(len(x.sum_failures) for x in self.loaded)}",
             "fundamentals " + ", ".join(f"{n} {s}" for s, n in sorted(counts.items())),
+            f"taxonomy {len(self.taxonomy_fetched)} packages fetched, "
+            f"{len(self.taxonomy_failures)} failures, {len(self.unlabelled)} concepts unlabelled",
         ]
         return "\n".join(lines)
 
@@ -144,6 +158,33 @@ def load_all(
             )
 
 
+def label_all(
+    conn: sqlite3.Connection,
+    taxonomy_dir: Path,
+    get: Get | None,
+    packages: Iterable[tuple[str, str]],
+    now: datetime,
+    report: Report,
+) -> None:
+    """Fetch the taxonomy packages not yet cached (unless `get` is None), then label every
+    concept from them. A package that cannot be fetched or read is reported and nothing is
+    relabelled, so a partial set never overrides a label."""
+    packages = tuple(packages)
+    if get is not None:
+        try:
+            report.taxonomy_fetched = fetch_packages(get, taxonomy_dir, packages, now)
+        except OSError as error:
+            report.taxonomy_failures.append(f"fetch failed: {error}")
+            return
+    try:
+        labels = load_labels(taxonomy_dir, [name for name, _ in packages])
+    except (ValueError, OSError, ET.ParseError, zipfile.BadZipFile) as error:
+        report.taxonomy_failures.append(str(error))
+        return
+    with conn:
+        report.unlabelled = apply_labels(conn, labels)
+
+
 def build(
     conn: sqlite3.Connection,
     xbrl_dir: Path,
@@ -153,12 +194,15 @@ def build(
     writer: Writer,
     now: datetime,
     fundamentals: Iterable[Fundamental],
+    taxonomy_dir: Path,
+    packages: Iterable[tuple[str, str]],
 ) -> Report:
-    """Fetch (unless `get` is None), load and check."""
+    """Fetch (unless `get` is None), load, label and check."""
     tickers, years = tuple(tickers), tuple(years)
     report = Report()
     if get is not None:
         fetch_all(get, xbrl_dir, tickers, years, now, report)
     load_all(conn, xbrl_dir, tickers, years, writer, report)
+    label_all(conn, taxonomy_dir, get, packages, now, report)
     report.fundamentals = check_fundamentals(conn, fundamentals)
     return report

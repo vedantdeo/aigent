@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import contextvars
 import json
+import sqlite3
 import threading
 import zlib
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal, cast
 
@@ -47,6 +49,17 @@ from aigent import tracing
 from aigent.analyst import filings
 from aigent.config import CLIENT, JUDGE_MODEL, MAX_USD_PER_TURN, MODEL
 from aigent.evals.judge import LlmJudge, Verdict
+from aigent.facts.lookup import Lookup, concept_index
+from aigent.facts.store import (
+    FilingRow,
+    Writer,
+    apply_labels,
+    connect,
+    sync_xbrl_facts,
+    upsert_filing,
+)
+from aigent.facts.taxonomy import Labels
+from aigent.facts.xbrl import Fact
 from aigent.llm.adapters import CLIENTS
 from aigent.llm.adapters.cfg_anthropic import CLIENT as ANTHROPIC
 from aigent.llm.adapters.cfg_local import CLIENT as LOCAL
@@ -768,3 +781,102 @@ class FakeOpenAI:
         if isinstance(reply, Exception):
             raise reply
         return reply
+
+
+# A small facts database: ITC's FY25, both bases, and a model's read from another run.
+FACTS_WRITER = Writer("xbrl-loader@test", "2026-10-23T10:00:00+05:30", "build-test")
+FACTS_NOW = datetime(2026, 10, 23, 10, 0, 0)
+MARCH_URL, DECEMBER_URL = (
+    "https://nse.example/itc-2025-03-31-c.xml",
+    "https://nse.example/itc-2024-12-31-c.xml",
+)
+_FY25, _Q4 = (date(2024, 4, 1), date(2025, 3, 31)), (date(2025, 1, 1), date(2025, 3, 31))
+
+
+def _duration(
+    concept: str, span: tuple[date, date], value: float, segment: str | None = None
+) -> Fact:
+    return Fact(concept, "duration", span[0], span[1], segment, value, "INR", -5)
+
+
+def _instant(concept: str, day: date, value: float) -> Fact:
+    return Fact(concept, "instant", None, day, None, value, "INR", -5)
+
+
+MARCH_FACTS = [
+    _duration("RevenueFromOperations", _FY25, 816.0),
+    _duration("RevenueFromOperations", _Q4, 204.0),
+    _duration("ProfitOrLossAttributableToOwnersOfParent", _FY25, 347.0),
+    _instant("Assets", date(2025, 3, 31), 900.0),
+    _instant("CashAndCashEquivalentsCashFlowStatement", date(2024, 3, 31), 6.0),
+    _duration("SegmentRevenue", _FY25, 201.0, "Agri Business"),
+    _duration("SegmentRevenue", _FY25, 300.0, "FMCG - Cigarettes"),
+    _duration("SegmentRevenue", _FY25, 210.0, "FMCG - Others"),
+    _duration("SegmentRevenue", _FY25, 15.0, "Others"),
+]
+DECEMBER_FACTS = [
+    _duration("RevenueFromOperations", (date(2024, 4, 1), date(2024, 12, 31)), 612.0),
+    _duration("RevenueFromOperations", (date(2024, 10, 1), date(2024, 12, 31)), 203.5),
+    _instant("Assets", date(2024, 12, 31), 880.0),
+    _instant("CashAndCashEquivalentsCashFlowStatement", date(2024, 3, 31), 5.0),
+]
+FACTS_LABELS = {
+    "Assets": Labels("Assets", {"Total assets"}),
+    "CashAndCashEquivalentsCashFlowStatement": Labels("Cash and cash equivalents"),
+    "ProfitOrLossAttributableToOwnersOfParent": Labels(
+        "Profit or loss, attributable to owners of parent"
+    ),
+    "RevenueFromOperations": Labels("Revenue from operations", {"Sales"}),
+    "SegmentRevenue": Labels("Segment revenue"),
+}
+
+
+def _facts_filing(conn: sqlite3.Connection, day: date, basis: str, url: str) -> int:
+    return upsert_filing(conn, FilingRow("ITC", 2025, day, basis, "xbrl", url, "s", "t"))
+
+
+@pytest.fixture
+def facts_db(tmp_path: Path) -> Path:
+    path = tmp_path / "facts.sqlite"
+    conn = connect(path)
+    with conn:
+        march = _facts_filing(conn, date(2025, 3, 31), "consolidated", MARCH_URL)
+        december = _facts_filing(conn, date(2024, 12, 31), "consolidated", DECEMBER_URL)
+        standalone = _facts_filing(
+            conn, date(2025, 3, 31), "standalone", "https://nse.example/s.xml"
+        )
+        sync_xbrl_facts(conn, march, "ITC", "consolidated", MARCH_FACTS, FACTS_WRITER)
+        sync_xbrl_facts(conn, december, "ITC", "consolidated", DECEMBER_FACTS, FACTS_WRITER)
+        sync_xbrl_facts(
+            conn,
+            standalone,
+            "ITC",
+            "standalone",
+            [_duration("RevenueFromOperations", _FY25, 700.0)],
+            FACTS_WRITER,
+        )
+        conn.execute(
+            "INSERT INTO concepts (concept, label, kind) VALUES ('DividendPerShare', "
+            "'Dividend per share', 'read')"
+        )
+        conn.execute(
+            """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start,
+                      period_end, value, unit, tier, written_by, written_at, run_id)
+               VALUES ('ITC', 'consolidated', 'DividendPerShare', 'Dividend per share',
+                       'duration', '2024-04-01', '2025-03-31', 14.35, 'INRPerShare',
+                       'pdf-read-ai', 'model|agent@x', '2026-10-23', 'other-run')"""
+        )
+        apply_labels(conn, FACTS_LABELS)
+    conn.close()
+    return path
+
+
+@pytest.fixture
+def facts_lookup(facts_db: Path) -> Lookup:
+    return Lookup(
+        facts_db,
+        concept_index(BagOfWordsEmbedder()),
+        run_id="this-run",
+        asked_by="test",
+        clock=lambda: FACTS_NOW,
+    )
