@@ -57,9 +57,11 @@ pythonVersion = "3.12"
 typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
+extraPaths = ["scripts"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["scripts"]
 markers = ["live: spends real API credits; run explicitly with `uv run pytest -m live`"]
 addopts = "-m 'not live'"
 

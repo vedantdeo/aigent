@@ -24,8 +24,9 @@ run if `uv.lock` has drifted from `pyproject.toml`.
 `docs/knowledge-graph.md` maps the repo, and it moves with the code: a commit that touches `src/` or
 `pyproject.toml` without staging the graph is refused by `.githooks/pre-commit` (enable it with
 `git config core.hooksPath .githooks`, since git never installs hooks on clone), and the same rule
-runs in CI for clones that skipped the hook. The hook also runs `ruff check` and `ruff format
---check` over the staged files.
+runs in CI for clones that skipped the hook. Both also run `scripts/graph_doc.py`, which writes the
+graph's generated parts (contents, `At:` lines, import edges; `--write`) and checks its layering rules.
+The hook also runs `ruff check` and `ruff format --check` over the staged files.
 
 `main` takes changes only through pull requests, in both repos: a ruleset refuses direct and force
 pushes and waits for the checks above.

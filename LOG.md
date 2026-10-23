@@ -2118,3 +2118,22 @@
   filings** that reference an `OneD` context they never define; those facts are reported, not
   guessed. 95 tests, every guard mutation-checked in a scratch copy (49 of 49; the first pass ran
   without `evals/reference` in the copy, so every mutant "failed", and was discarded).
+- 10-23: **the knowledge graph rebuilt for agents, $0.00; my call (Vedant, 10-23: format decisions
+  for the graph are Claude's).** Agents read it by grep and slice, never whole, so every table row
+  became a ``#### `id` `` heading with one line per field in a fixed order — `At`, `Is`, `Contract`,
+  `Invariants`, `Gotchas`, `History`, `Named at`, `Decided in` — what holds now first and the dated
+  story last, so a reader stops early; rejected alternative: keeping table rows with the labels
+  inside one cell, where a grep still returns the whole row (up to 7 KB) on one line. Invariants
+  became `#### Invariant N:` headings; §5 lists open seams before consumed ones. New
+  `scripts/graph_doc.py` (standard library only) writes the parts code can show — a contents with
+  line numbers, every node's `At:` file:line, the §3 import edges from the AST — and checks the
+  file in CI and the pre-commit hook: stale generated parts, a node naming a symbol or path that is
+  gone, a node defined twice, fields out of order, and 31 `—never-imports→` / `—only-imports→`
+  layering rules that replace the old hand-written import list (stale: it still named
+  `workflows.demo`, and said `tracing` imports only `config` and `messages`). Nothing was deleted:
+  a word-by-word count of old against new, hand-written parts only, lost only table syntax, the
+  path column the `At:` lines replace and the rewritten intro and maintenance notes. Its first run
+  found one stale node, `agent.QUESTIONS`, removed with the demo code on 10-07, now a line in
+  `agent`'s History; two seams in §5 were out of date (`v0.1-rag` is tagged; the repos went public
+  on 10-09). 346 KB → 441 KB, the growth being the generated contents (20 KB) and import edges
+  (36 KB) and the field labels.

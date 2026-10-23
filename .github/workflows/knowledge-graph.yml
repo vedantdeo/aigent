@@ -42,3 +42,11 @@ jobs:
 
           echo "Comparing $base...$HEAD_SHA"
           sh scripts/check-knowledge-graph.sh ci "$base" "$HEAD_SHA"
+
+      # Pinned to a full version on purpose, as in checks.yml.
+      - uses: astral-sh/setup-uv@v10.1.0
+
+      # Standard library only, so no project install: the contents, At: lines and import edges are
+      # current, every node names something that exists, and no layering rule is broken.
+      - name: Check the graph's generated parts and rules
+        run: uv run --no-project --python 3.12 python scripts/graph_doc.py
