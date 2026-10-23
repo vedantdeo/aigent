@@ -1,111 +1,61 @@
-"""The analyst's `fundamentals` tool: a frozen table of each company's headline figures per year,
-every value cited to the page of the filing it came from, so it can be cited like a passage."""
+"""The analyst's `fundamentals` tool: reported figures looked up in the facts database by company,
+financial year, period, basis and the figure's description, each cited like a passage."""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Literal, cast
 
 from anthropic.types import ToolParam
 
-FUNDAMENTALS = Path(__file__).resolve().parents[3] / "evals" / "reference" / "fundamentals.json"
+from aigent.facts.cfg_facts import FACTS_TICKERS, FACTS_YEARS
+from aigent.facts.lookup import BASES, PERIODS, Basis, Lookup, NotFound, Period
 
-
-@dataclass(frozen=True)
-class Fundamental:
-    """One company's figure for one year, with the filing page it is printed on."""
-
-    ticker: str
-    year: int
-    metric: str
-    value: float
-    unit: str
-    printed: str
-    doc_id: str
-    page: int
-    note: str | None
-
-    @property
-    def key(self) -> str:
-        """How a claim cites it: ticker, year and metric."""
-        return f"{self.ticker}:{self.year}:{self.metric}"
-
-    @property
-    def citation(self) -> str:
-        return f"{self.doc_id} p{self.page}"
-
-
-Table = dict[tuple[str, int, str], Fundamental]
-# As schema fields these hold a model to what the table holds. A test holds them to it.
-Ticker = Literal["ITC", "RELIANCE", "TATAMOTORS"]
-Metric = Literal["dividend", "eps", "profit", "revenue"]
-FinancialYear = Literal["2024", "2025"]
-
-
-def load_fundamentals(path: Path = FUNDAMENTALS) -> Table:
-    """The table, keyed by (ticker, year, metric)."""
-    raw = cast(
-        dict[str, dict[str, dict[str, dict[str, object]]]],
-        json.loads(path.read_text(encoding="utf-8"))["fundamentals"],
-    )
-    table: Table = {}
-    for ticker, years in raw.items():
-        for year, metrics in years.items():
-            for metric, entry in metrics.items():
-                note = entry["note"]
-                table[(ticker, int(year), metric)] = Fundamental(
-                    ticker=ticker,
-                    year=int(year),
-                    metric=metric,
-                    value=float(cast(float, entry["value"])),
-                    unit=str(entry["unit"]),
-                    printed=str(entry["printed"]),
-                    doc_id=str(entry["doc_id"]),
-                    page=int(cast(int, entry["page"])),
-                    note=None if note is None else str(note),
-                )
-    return table
-
-
-def lookup(table: Table, ticker: str, metric: str, year: int) -> Fundamental:
-    """The figure, or ValueError naming what the table does not hold."""
-    found = table.get((ticker, year, metric))
-    if found is not None:
-        return found
-    tickers = sorted({t for t, _, _ in table})
-    if ticker not in tickers:
-        raise ValueError(f"no company {ticker!r}; one of {', '.join(tickers)}")
-    metrics = sorted({m for _, _, m in table})
-    if metric not in metrics:
-        raise ValueError(f"no metric {metric!r}; one of {', '.join(metrics)}")
-    years = sorted({y for t, y, _ in table if t == ticker})
-    raise ValueError(f"no {year} figures for {ticker}; years held: {', '.join(map(str, years))}")
-
-
-_TABLE = load_fundamentals()
+# As schema fields these hold a model to what the database holds. A test holds them to it.
+Company = Literal[
+    "BAJAJ-AUTO", "HDFCBANK", "ITC", "POWERGRID", "RELIANCE", "SUNPHARMA", "TATAMOTORS", "WIPRO"
+]
+FinancialYear = Literal["2024", "2025", "2026"]
 
 FUNDAMENTALS_TOOL: ToolParam = {
     "name": "fundamentals",
     "description": (
-        "Look up a company's headline figure for a financial year from a frozen table: revenue "
-        "from operations, profit attributable to owners, basic EPS, or the year's dividend per "
-        "share, all consolidated and as originally reported. Each answer names the filing page "
-        "it came from; cite it by `cite_as`."
+        "Look up a reported figure from a company's NSE XBRL results filings: revenue, expenses, "
+        "profit, EPS, assets, liabilities, borrowings, cash flows, segment results and the rest of "
+        "the results format, for a financial year, quarter, half or nine months, consolidated or "
+        "standalone, as originally reported, in rupees (EPS in rupees per share). Say in `what` "
+        "which figure, in plain words ('profit attributable to owners', 'current borrowings'); up "
+        "to five matching facts come back, each with the label it is filed under, so check the "
+        "label is the figure you meant. Balance-sheet items are as at the end of the period. "
+        "Dividends per share, notes and anything outside the results format are not here: search "
+        "the filings for those. Cite a fact by its `cite_as`."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "ticker": {"type": "string", "enum": sorted({t for t, _, _ in _TABLE})},
-            "metric": {"type": "string", "enum": sorted({m for _, _, m in _TABLE})},
+            "company": {"type": "string", "enum": list(FACTS_TICKERS)},
             "year": {
                 "type": "string",
-                "enum": [str(y) for y in sorted({y for _, y, _ in _TABLE})],
+                "enum": [str(y) for y in FACTS_YEARS],
                 "description": "The financial year a report ends: 2025 is FY 2024-25.",
             },
+            "what": {"type": "string", "description": "The figure, in plain words."},
+            "period": {
+                "type": "string",
+                "enum": list(PERIODS),
+                "description": (
+                    "The whole year, one quarter (Q1 is April to June), the first half (H1) or "
+                    "the first nine months (9M)."
+                ),
+            },
+            "basis": {"type": "string", "enum": list(BASES)},
+            "segment": {
+                "type": ["string", "null"],
+                "description": "A business segment's name for a segment figure, else null.",
+            },
         },
-        "required": ["ticker", "metric", "year"],
+        "required": ["company", "year", "what", "period", "basis", "segment"],
         "additionalProperties": False,
     },
     "strict": True,
@@ -114,27 +64,50 @@ FUNDAMENTALS_TOOL: ToolParam = {
 
 @dataclass
 class FundamentalsTool:
-    """`fundamentals` over one table, recording every lookup; an unknown one comes back as an
-    error message, never an exception."""
+    """`fundamentals` over one `Lookup`, recording what it cites; a bad call or nothing found comes
+    back as an error message, never an exception."""
 
-    table: Table
+    lookup: Lookup
     looked_up: list[str] = field(default_factory=list[str])
 
     def __call__(self, arguments: dict[str, object]) -> str:
-        ticker, metric = str(arguments.get("ticker", "")), str(arguments.get("metric", ""))
+        company = str(arguments.get("company", ""))
         year = str(arguments.get("year", ""))
+        what = str(arguments.get("what", "")).strip()
+        period = str(arguments.get("period", "year"))
+        basis = str(arguments.get("basis", "consolidated"))
+        segment = arguments.get("segment")
+        refusal = _refusal(company, year, what, period, basis, segment)
+        if refusal:
+            return f"Error: {refusal}"
         try:
-            found = lookup(self.table, ticker, metric, int(year) if year.isdigit() else -1)
-        except ValueError as error:
-            return f"Error: {error}"
-        self.looked_up.append(found.key)
-        return json.dumps(
-            {
-                "cite_as": found.key,
-                "value": found.value,
-                "unit": found.unit,
-                "printed": found.printed,
-                "source": found.citation,
-                "note": found.note,
-            }
-        )
+            found = self.lookup(
+                company,
+                int(year),
+                what,
+                cast(Basis, basis),
+                cast(Period, period),
+                None if segment is None else str(segment),
+            )
+        except NotFound as missing:
+            return f"Error: {missing}"
+        self.looked_up.extend(f.cite_as for f in found)
+        return json.dumps({"facts": [f.as_json() for f in found]})
+
+
+def _refusal(
+    company: str, year: str, what: str, period: str, basis: str, segment: object
+) -> str | None:
+    if company not in FACTS_TICKERS:
+        return f"no company {company!r}; one of {', '.join(FACTS_TICKERS)}"
+    if not year.isdigit() or int(year) not in FACTS_YEARS:
+        return f"no year {year!r}; one of {', '.join(map(str, FACTS_YEARS))}"
+    if not what:
+        return "say which figure in `what`"
+    if period not in PERIODS:
+        return f"no period {period!r}; one of {', '.join(PERIODS)}"
+    if basis not in BASES:
+        return f"no basis {basis!r}; one of {', '.join(BASES)}"
+    if segment is not None and not isinstance(segment, str):
+        return "`segment` is a name or null"
+    return None

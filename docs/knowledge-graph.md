@@ -24,502 +24,506 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
 ## Contents
 
 <!-- generated:toc (uv run python scripts/graph_doc.py --write) -->
-- L520 0. Orientation
-- L606 1. Shape of the system
-- L676 2. Nodes
-  - L680 2.1 Modules
-    - L682 `config`
-    - L687 `llm.pricing`
-    - L694 `llm`
-    - L701 `llm.messages`
-    - L708 `llm.adapters`
-    - L717 `llm.adapters.openai.function_tool`
-    - L724 `llm.adapters.cfg_hostllm`
-    - L731 `llm.adapters.retry`
-    - L740 `llm.core`
-    - L749 `guardrails`
-    - L757 `errors`
-    - L765 `tracing`
-    - L772 `transcript`
-    - L779 `tools`
-    - L787 `report_tools`
-    - L794 `mcp_server`
-    - L802 `mcp_client`
-    - L810 `analyst.specialists`
-    - L817 `analyst.cfg_analyst`
-    - L824 `analyst.router`
-    - L832 `analyst.served`
-    - L840 `analyst.toolbox`
-    - L847 `analyst.experts`
-    - L854 `analyst.memo`
-    - L861 `analyst.graph`
-    - L869 `analyst.run`
-    - L876 `analyst.teach`
-    - L883 `tools_config`
-    - L890 `analyst`
-    - L896 `analyst.filings`
-    - L903 `analyst.fundamentals`
-    - L911 `facts`
-    - L918 `facts.cfg_facts`
-    - L922 `facts.xbrl`
-    - L928 `facts.nse`
-    - L933 `facts.store`
-    - L939 `facts.check`
-    - L944 `facts.build`
-    - L949 `extraction.figures`
-    - L958 `extraction.research`
-    - L965 `extraction.figure_training`
-    - L973 `extraction.figure_eval`
-    - L980 `extraction.headline_eval`
-    - L987 `extraction.synthetic`
-    - L994 `extraction.baseline`
-    - L1002 `extraction.headlines`
-    - L1007 `evals.dataset`
-    - L1011 `evals.grade`
-    - L1018 `evals.judge`
-    - L1022 `evals.runner`
-    - L1026 `evals.report`
-    - L1030 `retrieval.chunk`
-    - L1038 `retrieval.embed`
-    - L1045 `retrieval.dense`
-    - L1052 `retrieval.corpus`
-    - L1060 `retrieval.questions`
-    - L1064 `retrieval.evaluate`
-    - L1071 `retrieval.langchain_rag`
-    - L1076 `retrieval.sparse`
-    - L1080 `retrieval.fuse`
-    - L1084 `retrieval.rerank`
-    - L1089 `retrieval.hits`
-    - L1094 `retrieval.rank`
-    - L1100 `retrieval.keys`
-    - L1107 `workflows.reports`
-    - L1111 `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}`
-    - L1114 `workflows.orchestrator_workers_graph`
-    - L1121 `agent`
-    - L1128 `agent_graph`
-    - L1135 `agent_adk`
-    - L1143 `agent_tasks`
-    - L1152 `retrieval.answer`
-  - L1157 2.2 Settings (`config`)
-    - L1161 `config.MODEL`
-    - L1166 `config.JUDGE_MODEL`
-    - L1172 `config.SMALL_MODEL`
-    - L1179 `config.MAX_USD_PER_REQUEST`
-    - L1184 `config.MAX_USD_PER_TURN`
-    - L1191 `config.MAX_USD_PER_RUN`
-    - L1195 `config.WEB_SEARCH_RESULT_TOKENS`
-    - L1202 `config.MAX_USD_PER_EVAL`
-    - L1206 `config.MAX_USD_PER_TASK`
-    - L1213 `config.DEFAULT_MAX_TOKENS`
-    - L1221 `config.MAX_AGENT_TURNS`
-    - L1228 `config.MIN_TOKENS_FINAL_ANSWER`
-    - L1232 `config.MAX_PARALLEL_CALLS`
-    - L1237 `config.EVAL_WORKERS`
-    - L1244 `config.BATCH_POLL_SECONDS`
-    - L1250 `config.THINKING_WORKFLOW_PARAM`
-    - L1256 `config.MAX_PLAN_TASKS`
-    - L1261 `config.MAX_GRAPH_STEPS`
-    - L1265 `config.MAX_FAILURES_SHOWN`
-    - L1269 `config.TRACING`
-    - L1274 `config.MAX_TASK_CHARS`
-    - L1278 `config.MCP_SERVER_NAME`
-    - L1284 `config.MCP_CALL_TIMEOUT_SECONDS`
-    - L1290 `analyst.cfg_analyst.SPECIALIST_TRIES`
-    - L1296 config.GENERALIST_MODEL and the analyst's other settings (moved)
-    - L1301 `config.EMBED_MODEL`
-    - L1307 `config.EMBED_LOG_EVERY`
-    - L1311 `config.EMBED_SAVE_EVERY`
-    - L1317 `config.EMBED_QUERY_PREFIXES`
-    - L1324 `config.LOCAL_MODEL_DTYPE`
-    - L1331 `config.CHUNK_*`
-    - L1336 `config.ELEMENT_*`
-    - L1342 `config.HEADING_*`
-    - L1345 `config.PASSAGE_MIN_CHARS`
-    - L1351 `config.TOP_K`
-    - L1355 `config.BM25_K1`
-    - L1360 `config.FUSE_DEPTH`
-    - L1365 `config.RRF_K`
-    - L1371 `config.RERANK_*`
-    - L1376 `config.KEY_DEPTH`
-    - L1380 `config.SEARCH_METHOD`
-    - L1388 `config.FURNITURE_*`
-    - L1393 `config.THINKING_EVAL_PARAM`
-    - L1401 `config.CACHE_TTL`
-    - L1408 `config.FIGURE_LABEL_*`
-    - L1414 `config.RESEARCH_*`
-    - L1419 `config.SYNTHETIC_*`
-    - L1424 `config.BASELINE_*`
-    - L1430 `config.PAGE_SEPARATOR`
-    - L1434 `config.DOCLING_OCR`
-    - L1442 `llm.adapters.anthropic.has_credentials`
-    - L1449 `llm.adapters.anthropic.get_client`
-    - L1456 `llm.adapters.anthropic.batch_params`
-  - L1461 2.3 Cost and budget (`pricing`)
-    - L1470 `llm.pricing.Price`
-    - L1477 `llm.pricing.PRICES`
-    - L1484 `llm.pricing.PRICE_PER_WEB_SEARCH`
-    - L1489 `llm.pricing.BATCH_DISCOUNT`
-    - L1497 `llm.pricing.cost_usd`
-    - L1503 `llm.messages.Usage`
-    - L1510 `llm.messages.Failed`
-    - L1515 `llm.pricing.usage_cost`
-    - L1519 `llm.pricing.describe_usage`
-    - L1523 `errors.BudgetExceeded`
-    - L1528 `errors.BatchUnfinished`
-    - L1536 `llm.pricing.worst_case_usd`
-    - L1544 `llm.pricing.affordable_output_tokens`
-    - L1549 `llm.pricing.estimate_eval_usd`
-    - L1555 `llm.pricing.assert_request_within_budget`
-    - L1563 `llm.pricing.Budget`
-    - L1571 `llm.pricing.Budget.admit`
-    - L1579 `llm.pricing.Budget.held_usd`
-    - L1586 `llm.pricing.Budget.tripped`
-  - L1591 2.4 The model door (`llm`)
-    - L1600 `llm.core.Request`
-    - L1607 `llm.core.Llm`
-    - L1612 `llm.core.Llm.for_eval`
-    - L1618 `llm.core.Llm._traced`
-    - L1625 `llm.core.Llm.count`
-    - L1630 `llm.core.Llm.create`
-    - L1635 `llm.core.Llm.parse`
-    - L1642 `llm.core.Llm.stream`
-    - L1646 `llm.core.Llm.gather_text`
-    - L1651 `llm.core.Llm.batch_records`
-    - L1659 `llm.core.Llm._admit`
-    - L1666 `llm.core.Rehearsed`
-    - L1671 `errors.SpecialistUnreachable`
-    - L1678 `errors.StepFailed`
-    - L1683 `llm.core.describe`
-    - L1688 `llm.messages.is_client_tool`
-    - L1693 `llm.core._writes_cache`
-    - L1698 `llm.core.Llm.run_tools`
-    - L1705 `llm.core.Llm.price`
-    - L1712 `llm.core.Llm.turn`
-    - L1719 `llm.core.ToolRun`
-    - L1724 `llm.core.Llm._last_answer`
-    - L1730 `llm.core.Llm._admit_turn`
-    - L1734 `llm.core.Llm._held`
-    - L1739 `errors.TurnsExhausted`
-    - L1744 `llm.core.Dispatch`
-    - L1749 `llm.adapters.anthropic._runnable`
-  - L1754 2.5 Tools (`tools`, `report_tools`)
-    - L1761 `tools.calculate`
-    - L1765 `tools.current_time`
-    - L1769 `tools.read_file`
-    - L1774 `tools.write_file`
-    - L1782 `tools_config.SANDBOX`
-    - L1787 `tools_config.MAX_WEB_SEARCHES`
-    - L1793 `tools.CALCULATOR_TOOL`
-    - L1798 `tools.ALL_TOOLS`
-    - L1805 `tools.WEB_SEARCH_TOOL`
-    - L1812 `tools.execute_tool`
-    - L1819 `tools.WRITE_TOOLS`
-    - L1825 `report_tools.SEARCH_TOOL`
-    - L1830 `report_tools.ReportSearch`
-    - L1835 `report_tools.Searched`
-  - L1839 2.7 Project 1a (`extraction`)
-    - L1841 `extraction.headlines.Extraction`
-    - L1847 `extraction.headlines.METRICS`
-    - L1854 `extraction.headlines.QUARTERS`
-    - L1860 `extraction.headlines.Resolver`
-    - L1867 `extraction.headlines.report_unresolved`
-    - L1872 `extraction.headlines.load_directory`
-    - L1876 `extraction.headlines.Variant`
-    - L1881 `extraction.headlines.CACHE_VARIANTS`
-    - L1889 `extraction.headlines.THINKING`
-    - L1896 `extraction.headlines.measure`
-    - L1903 `extraction.headlines.VARIANTS`
-    - L1909 `extraction.headlines.extraction_task`
-    - L1916 `extraction.headlines.main`
-  - L1924 2.8 Retrieval (`retrieval`)
-    - L1930 `retrieval.chunk.Document`
-    - L1935 `retrieval.chunk.Chunk`
-    - L1940 `retrieval.chunk.Inventory`
-    - L1946 `retrieval.chunk.squeeze`
-    - L1953 `retrieval.chunk.Inventory.containing`
-    - L1959 `retrieval.chunk.fixed`
-    - L1965 `retrieval.chunk.sentences`
-    - L1972 `retrieval.chunk.by_sentence`
-    - L1980 `retrieval.chunk.headings`
-    - L1985 `retrieval.chunk.by_heading`
-    - L1992 `retrieval.chunk.by_element`
-    - L2000 `retrieval.embed.Embedder`
-    - L2005 `retrieval.embed.query_prefix_of`
-    - L2011 `retrieval.embed.LocalEmbedder`
-    - L2018 `retrieval.embed.LocalEmbedder.embed_query`
-    - L2023 `retrieval.embed.LocalEmbedder.count_truncated`
-    - L2028 `retrieval.hits.Hit`
-    - L2033 `retrieval.dense.DenseIndex`
-    - L2038 `retrieval.dense.DenseIndex.build`
-    - L2046 `retrieval.dense.DenseIndex.search`
-    - L2051 `retrieval.dense.DenseIndex.build_cached`
-    - L2058 `retrieval.dense.store_file`
-    - L2065 `retrieval.hits.rank_ids`
-    - L2069 `retrieval.corpus.read_pages`
-    - L2078 `retrieval.corpus.normalise`
-    - L2083 `retrieval.corpus._skeleton`
-    - L2088 `retrieval.corpus.strip_furniture`
-    - L2096 `retrieval.corpus.to_document`
-    - L2102 `retrieval.corpus.load_pdf`
-    - L2107 `retrieval.questions.Question`
-    - L2112 `retrieval.questions.eligible`
-    - L2117 `retrieval.questions.sample_passages`
-    - L2122 `retrieval.questions.verify`
-    - L2130 `retrieval.questions.generate`
-    - L2135 `retrieval.corpus.cache_file`
-    - L2141 `retrieval.corpus.load_pdf_cached`
-    - L2149 `retrieval.corpus.load_corpus`
-    - L2156 `retrieval.evaluate.STRATEGIES`
-    - L2163 `retrieval.evaluate.graders`
-    - L2168 `retrieval.evaluate.load_cases`
-    - L2175 `retrieval.evaluate.label_of`
-    - L2182 `retrieval.evaluate.report_of`
-    - L2189 `retrieval.evaluate.resolve`
-    - L2195 `retrieval.evaluate.retrieval_task`
-    - L2202 `retrieval.evaluate.main`
-    - L2209 `retrieval.langchain_rag.prepare`
-    - L2215 `retrieval.langchain_rag.langchain_task`
-    - L2220 `retrieval.sparse.tokenise`
-    - L2225 `retrieval.sparse.SparseIndex`
-    - L2230 `retrieval.fuse.reciprocal_rank_fusion`
-    - L2236 `retrieval.rerank.Reranker`
-    - L2241 `retrieval.rerank.LocalReranker`
-    - L2248 `retrieval.keys.build_keys`
-    - L2253 `retrieval.keys.table_context`
-    - L2257 `retrieval.keys.ParentRanker`
-    - L2262 `retrieval.keys.keyed_search`
-    - L2267 `retrieval.rerank.rerank`
-    - L2273 `retrieval.rank.METHODS`
-    - L2280 `retrieval.rank.Ranker`
-    - L2285 `retrieval.rank.Indexes`
-    - L2293 `retrieval.rank.DenseRanker`
-    - L2298 `retrieval.rank.HybridRanker`
-    - L2302 `retrieval.rank.Reranked`
-    - L2307 `retrieval.rank.scoped`
-    - L2314 `retrieval.rank.build_ranker`
-    - L2319 `retrieval.chunk.context_block`
-    - L2326 `retrieval.evaluate.ranker_task`
-    - L2333 `retrieval.evaluate.compare_retrieval`
-    - L2340 `retrieval.answer.ARMS`
-    - L2345 `retrieval.answer.Answer`
-    - L2350 `retrieval.answer.answer_task`
-    - L2357 `retrieval.answer.graders`
-    - L2363 `retrieval.answer.main`
-  - L2370 2.9 The workflow patterns (`workflows`)
-    - L2378 `workflows.reports.DocId`
-    - L2383 `workflows.reports.Search`
-    - L2388 `workflows.reports.build_search`
-    - L2395 `workflows.chaining`
-    - L2401 `workflows.routing`
-    - L2406 `workflows.parallelization`
-    - L2411 `workflows.orchestrator_workers`
-    - L2416 `workflows.evaluator_optimizer`
-    - L2421 `workflows.orchestrator_workers_graph.build`
-  - L2427 2.10 The first agent (`agent`)
-    - L2444 `agent.TOOLS`
-    - L2449 `agent.cited`
-    - L2454 `agent.WebSources`
-    - L2461 `agent.run`
-    - L2466 `agent.FINISH`
-  - L2470 2.11 The eval harness (`evals`)
-    - L2475 `evals.dataset.Case`
-    - L2480 `evals.dataset.load_jsonl`
-    - L2485 `evals.dataset.digest`
-    - L2490 `evals.grade.Outcome`
-    - L2495 `evals.grade.Score`
-    - L2500 `evals.grade.Grader`
-    - L2505 `evals.grade.BatchGrader`
-    - L2510 `evals.grade.exact_match`
-    - L2515 `evals.grade.regex`
-    - L2521 `evals.grade.pydantic_valid`
-    - L2525 `evals.grade.field_match`
-    - L2530 `evals.grade.flag`
-    - L2537 `evals.grade.right_tools`
-    - L2544 `evals.grade.resolvable`
-    - L2550 `evals.grade.recall_at_k`
-    - L2556 `evals.grade.hit_at_k`
-    - L2563 `evals.grade.reciprocal_rank`
-    - L2568 `evals.judge.LlmJudge`
-    - L2575 `evals.judge.Verdict`
-    - L2580 `evals.runner.Task`
-    - L2585 `evals.runner.RowResult`
-    - L2590 `evals.runner.EvalRun`
-    - L2595 `evals.runner.run_eval`
-    - L2603 `evals.runner.combine`
-    - L2609 `evals.report.to_markdown`
-    - L2614 `evals.report._metrics_table`
-    - L2619 `evals.report._grading_models`
-    - L2623 `evals.report.write_report`
-  - L2630 2.12 Tests
-    - L2632 `tests.llm.test_pricing`
-    - L2639 `tests.test_tools`
-    - L2646 `tests.llm.test_core`
-    - L2653 `tests.conftest.FakeAnthropic`
-    - L2659 `tests.workflows.test_<pattern>`
-    - L2665 `tests.test_agent`
-    - L2670 `tests.test_agent_graph`
-    - L2677 `tests.test_agent_adk`
-    - L2684 `tests.test_agent_tasks`
-    - L2691 `tests.llm.test_batch`
-    - L2698 `tests.test_report_tools`
-    - L2703 `tests.workflows.test_patterns`
-    - L2708 `tests.workflows.test_reports`
-    - L2715 `tests.conftest.make_judge`
-    - L2720 `tests.conftest.CAPPED`
-    - L2727 `tests.test_api_smoke`
-    - L2731 `tests.evals.test_dataset`
-    - L2736 `tests.evals.test_graders`
-    - L2743 `tests.conftest.KeywordReranker`
-    - L2748 `tests.conftest.BagOfWordsEmbedder`
-    - L2753 `tests.retrieval.test_chunk`
-    - L2758 `tests.retrieval.test_corpus`
-    - L2765 `tests.retrieval.test_questions`
-    - L2771 `tests.retrieval.test_answer`
-    - L2776 `tests.retrieval.test_langchain_rag`
-    - L2782 `tests.retrieval.test_sparse`
-    - L2787 `tests.retrieval.test_fuse`
-    - L2793 `tests.retrieval.test_rerank`
-    - L2798 `tests.retrieval.test_evaluate`
-    - L2805 `tests.retrieval.test_keys`
-    - L2812 `tests.retrieval.test_embed`
-    - L2819 `tests.retrieval.test_rank`
-    - L2824 `tests.retrieval.test_dense`
-    - L2832 `tests.evals.test_runner`
-    - L2839 `tests.extraction.test_synthetic`
-    - L2846 `tests.extraction.test_baseline`
-    - L2853 `tests.extraction.test_headlines`
-    - L2860 `tests.test_underhood`
-    - L2867 `tests.test_mcp_server`
-    - L2875 `tests.test_mcp_client`
-    - L2883 `tests.analyst.test_specialists`
-    - L2890 `tests.analyst.test_router`
-    - L2897 `tests.analyst.test_served`
-    - L2904 `tests.analyst.test_toolbox`
-    - L2911 `tests.analyst.test_teach`
-    - L2918 `tests.analyst.test_graph`
-    - L2925 `tests.test_reference_data`
-    - L2933 `tests.evals.test_report`
-    - L2938 `tests.test_graph_doc`
-    - L2946 `tests.facts`
-  - L2953 2.13 Non-code nodes
-    - L2955 `sandbox/`
-    - L2960 `evals/`
-    - L2966 `evals/reference/nse-tickers.json`
-    - L2973 `evals/datasets/headlines.jsonl`
-    - L2981 `corpus/`
-    - L2987 `evals/reference/corpus-manifest.json`
-    - L2993 `scripts/fetch-corpus.sh`
-    - L2999 `evals/datasets/retrieval.jsonl`
-    - L3007 `evals/datasets/retrieval-tables.jsonl`
-    - L3015 `evals/datasets/retrieval-paraphrased.jsonl`
-    - L3023 `evals/datasets/tasks.jsonl`
-    - L3030 `docs/framework-comparison.md`
-    - L3035 `docs/tool-runner.md`
-    - L3039 `docs/langgraph.md`
-    - L3044 `docs/agent-frameworks.md`
-    - L3051 `docs/v0.2-agent.md`
-    - L3058 `docs/capstone.md`
-    - L3065 `docs/facts-db.md`
-    - L3071 corpus cache: `corpus/.cache/xbrl/`, `facts.sqlite`
-    - L3075 `evals/reference/fundamentals.json`
-    - L3082 `docs/context-management.md`
-    - L3087 `LOG.md`
-    - L3093 `docs/development.md`
-    - L3099 `README.md`
-    - L3105 `pyproject.toml`
-    - L3112 `.env.example`
-    - L3116 `CLAUDE.md`
-    - L3123 `.githooks/pre-commit`
-    - L3130 `scripts/check-knowledge-graph.sh`
-    - L3137 `.github/workflows/knowledge-graph.yml`
-    - L3142 `scripts/graph_doc.py`
-    - L3151 `.github/workflows/checks.yml`
-    - L3159 `.github/workflows/main.yml`
-    - L3166 `.github/workflows/release.yml`
-    - L3174 roadmap
-- L3181 3. Edges
-  - L3185 Imports (generated)
-  - L3694 Layering rules (checked)
-  - L3754 Reads and writes
-  - L3768 Enforcement and control flow
-  - L3821 Tested-by
-  - L3857 Environment
-- L3885 4. Invariants
-    - L3889 Invariant 1: Every paid call is preceded by a free count and the per-request check
-    - L3895 Invariant 2: Cost is reported, always
-    - L3899 Invariant 3: The assistant turn is echoed back verbatim
-    - L3902 Invariant 4: All tool results for one turn go back in ONE user message
-    - L3907 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
-    - L3911 Invariant 6: Both loops are capped
-    - L3918 Invariant 7: A file tool resolves before it compares
-    - L3924 Invariant 8: One home each for constants, clients, prices and model calls
-    - L3931 Invariant 9: Paid tests carry `@pytest.mark.live`
-    - L3934 Invariant 10: Types are complete
-    - L3937 Invariant 11: An eval survives its own bad rows
-    - L3941 Invariant 12: Every dollar an eval spends lands in one budget
-    - L3948 Invariant 13: A model is asked to read, never to join
-    - L3953 Invariant 14: The harness imports no capability module
-    - L3957 Invariant 15: An eval is a measurement, so nothing about it may wobble
-    - L3963 Invariant 16: A prompt never quotes its own test set
-    - L3970 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
-    - L3975 Invariant 18: Retrieval is graded before generation, and it is free
-    - L3980 Invariant 19: A page never leaves the page sequence
-    - L3985 Invariant 20: A retrieval label must identify one document, not merely appear in one
-    - L3991 Invariant 21: The ranking that is measured is the ranking that is used
-    - L3997 Invariant 22: A ceiling refuses spending before it happens, not only after
-    - L4004 Invariant 23: Every error the package defines lives in `errors`
-    - L4009 Invariant 24: A call is shaped by the client it goes to
-    - L4015 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
-    - L4021 Invariant 26: Tracing observes and never steers
-    - L4027 Invariant 27: A request is sent again only if it cannot have been billed
-    - L4033 Invariant 28: Text someone else wrote reaches the model fenced
-    - L4039 Invariant 29: A write runs only where a caller opted in, and never overwrites
-    - L4045 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
-- L4053 5. Where the next work attaches
-  - L4057 5.1 Open seams
-    - L4059 Seam: Facts database — step 2
-    - L4065 Seam: Week 6 — LangGraph agent
-    - L4069 Seam: Week 5 — async and batch evals
-    - L4076 Seam: Week 4 — compaction, when a task outgrows a turn
-    - L4082 Seam: Week 3 — measure a pattern
-    - L4087 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
-    - L4092 Seam: Week 3 — anything that searches the reports
-    - L4099 Seam: adding a tool
-    - L4103 Seam: adding a grader
-  - L4107 5.2 Consumed and superseded seams
-    - L4109 Seam: Week 1 — Project 1a
-    - L4114 Seam: Week 1 — prompt caching
-    - L4120 Seam: superseded — caching as two variants of one eval
-    - L4125 Seam: Week 1 — measure the un-saturated eval
-    - L4131 Seam: Week 1 — label the backlog
-    - L4136 Seam: Week 1 — break things on purpose
-    - L4142 Seam: Week 2 — retrieval metrics
-    - L4148 Seam: Week 2 — the four modules
-    - L4154 Seam: Week 2 — the corpus
-    - L4160 Seam: Week 2 — the retrieval dataset
-    - L4165 Seam: Week 2 — the measured run
-    - L4171 Seam: superseded — questions labelled with a quote
-    - L4176 Seam: Week 2 — hybrid and rerank
-    - L4182 Seam: Week 2 — answer-level eval
-    - L4190 Seam: Week 2 — RAG milestone `v0.1-rag`
-    - L4196 Seam: Week 3 — every model call through `llm`
-    - L4203 Seam: Week 3 — the five workflow patterns
-    - L4209 Seam: Week 3 — orchestrator-workers as a graph
-    - L4216 Seam: Week 4 — the toy fine-tune
-    - L4222 Seam: Week 3 — answer locally, judge on Anthropic
-    - L4228 Seam: Week 3 — context management
-    - L4233 Seam: Week 3 — server-side web search
-    - L4240 Seam: Week 5 — SDK tool runner
-    - L4246 Seam: Week 5 — tracing
-    - L4253 Seam: Week 5 — explicit retries
-    - L4259 Seam: Week 5 — guardrails
-    - L4266 Seam: Week 6 — MCP client
-- L4274 Maintenance
+- L524 0. Orientation
+- L610 1. Shape of the system
+- L680 2. Nodes
+  - L684 2.1 Modules
+    - L686 `config`
+    - L691 `llm.pricing`
+    - L698 `llm`
+    - L705 `llm.messages`
+    - L712 `llm.adapters`
+    - L721 `llm.adapters.openai.function_tool`
+    - L728 `llm.adapters.cfg_hostllm`
+    - L735 `llm.adapters.retry`
+    - L744 `llm.core`
+    - L753 `guardrails`
+    - L761 `errors`
+    - L769 `tracing`
+    - L776 `transcript`
+    - L783 `tools`
+    - L791 `report_tools`
+    - L798 `mcp_server`
+    - L806 `mcp_client`
+    - L814 `analyst.specialists`
+    - L821 `analyst.cfg_analyst`
+    - L828 `analyst.router`
+    - L836 `analyst.served`
+    - L844 `analyst.toolbox`
+    - L851 `analyst.experts`
+    - L858 `analyst.memo`
+    - L865 `analyst.graph`
+    - L873 `analyst.run`
+    - L880 `analyst.teach`
+    - L887 `tools_config`
+    - L894 `analyst`
+    - L900 `analyst.filings`
+    - L907 `analyst.fundamentals`
+    - L915 `facts`
+    - L922 `facts.cfg_facts`
+    - L928 `facts.xbrl`
+    - L936 `facts.nse`
+    - L941 `facts.store`
+    - L949 `facts.check`
+    - L954 `facts.build`
+    - L961 `facts.taxonomy`
+    - L969 `facts.lookup`
+    - L977 `facts.reference`
+    - L985 `extraction.figures`
+    - L994 `extraction.research`
+    - L1001 `extraction.figure_training`
+    - L1009 `extraction.figure_eval`
+    - L1016 `extraction.headline_eval`
+    - L1023 `extraction.synthetic`
+    - L1030 `extraction.baseline`
+    - L1038 `extraction.headlines`
+    - L1043 `evals.dataset`
+    - L1047 `evals.grade`
+    - L1054 `evals.judge`
+    - L1058 `evals.runner`
+    - L1062 `evals.report`
+    - L1066 `retrieval.chunk`
+    - L1074 `retrieval.embed`
+    - L1081 `retrieval.dense`
+    - L1088 `retrieval.corpus`
+    - L1096 `retrieval.questions`
+    - L1100 `retrieval.evaluate`
+    - L1107 `retrieval.langchain_rag`
+    - L1112 `retrieval.sparse`
+    - L1116 `retrieval.fuse`
+    - L1120 `retrieval.rerank`
+    - L1125 `retrieval.hits`
+    - L1130 `retrieval.rank`
+    - L1136 `retrieval.keys`
+    - L1143 `workflows.reports`
+    - L1147 `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}`
+    - L1150 `workflows.orchestrator_workers_graph`
+    - L1157 `agent`
+    - L1164 `agent_graph`
+    - L1171 `agent_adk`
+    - L1179 `agent_tasks`
+    - L1188 `retrieval.answer`
+  - L1193 2.2 Settings (`config`)
+    - L1197 `config.MODEL`
+    - L1202 `config.JUDGE_MODEL`
+    - L1208 `config.SMALL_MODEL`
+    - L1215 `config.MAX_USD_PER_REQUEST`
+    - L1220 `config.MAX_USD_PER_TURN`
+    - L1227 `config.MAX_USD_PER_RUN`
+    - L1231 `config.WEB_SEARCH_RESULT_TOKENS`
+    - L1238 `config.MAX_USD_PER_EVAL`
+    - L1242 `config.MAX_USD_PER_TASK`
+    - L1249 `config.DEFAULT_MAX_TOKENS`
+    - L1257 `config.MAX_AGENT_TURNS`
+    - L1264 `config.MIN_TOKENS_FINAL_ANSWER`
+    - L1268 `config.MAX_PARALLEL_CALLS`
+    - L1273 `config.EVAL_WORKERS`
+    - L1280 `config.BATCH_POLL_SECONDS`
+    - L1286 `config.THINKING_WORKFLOW_PARAM`
+    - L1292 `config.MAX_PLAN_TASKS`
+    - L1297 `config.MAX_GRAPH_STEPS`
+    - L1301 `config.MAX_FAILURES_SHOWN`
+    - L1305 `config.TRACING`
+    - L1310 `config.MAX_TASK_CHARS`
+    - L1314 `config.MCP_SERVER_NAME`
+    - L1320 `config.MCP_CALL_TIMEOUT_SECONDS`
+    - L1326 `analyst.cfg_analyst.SPECIALIST_TRIES`
+    - L1332 config.GENERALIST_MODEL and the analyst's other settings (moved)
+    - L1337 `config.EMBED_MODEL`
+    - L1343 `config.EMBED_LOG_EVERY`
+    - L1347 `config.EMBED_SAVE_EVERY`
+    - L1353 `config.EMBED_QUERY_PREFIXES`
+    - L1360 `config.LOCAL_MODEL_DTYPE`
+    - L1367 `config.CHUNK_*`
+    - L1372 `config.ELEMENT_*`
+    - L1378 `config.HEADING_*`
+    - L1381 `config.PASSAGE_MIN_CHARS`
+    - L1387 `config.TOP_K`
+    - L1391 `config.BM25_K1`
+    - L1396 `config.FUSE_DEPTH`
+    - L1401 `config.RRF_K`
+    - L1407 `config.RERANK_*`
+    - L1412 `config.KEY_DEPTH`
+    - L1416 `config.SEARCH_METHOD`
+    - L1424 `config.FURNITURE_*`
+    - L1429 `config.THINKING_EVAL_PARAM`
+    - L1437 `config.CACHE_TTL`
+    - L1444 `config.FIGURE_LABEL_*`
+    - L1450 `config.RESEARCH_*`
+    - L1455 `config.SYNTHETIC_*`
+    - L1460 `config.BASELINE_*`
+    - L1466 `config.PAGE_SEPARATOR`
+    - L1470 `config.DOCLING_OCR`
+    - L1478 `llm.adapters.anthropic.has_credentials`
+    - L1485 `llm.adapters.anthropic.get_client`
+    - L1492 `llm.adapters.anthropic.batch_params`
+  - L1497 2.3 Cost and budget (`pricing`)
+    - L1506 `llm.pricing.Price`
+    - L1513 `llm.pricing.PRICES`
+    - L1520 `llm.pricing.PRICE_PER_WEB_SEARCH`
+    - L1525 `llm.pricing.BATCH_DISCOUNT`
+    - L1533 `llm.pricing.cost_usd`
+    - L1539 `llm.messages.Usage`
+    - L1546 `llm.messages.Failed`
+    - L1551 `llm.pricing.usage_cost`
+    - L1555 `llm.pricing.describe_usage`
+    - L1559 `errors.BudgetExceeded`
+    - L1564 `errors.BatchUnfinished`
+    - L1572 `llm.pricing.worst_case_usd`
+    - L1580 `llm.pricing.affordable_output_tokens`
+    - L1585 `llm.pricing.estimate_eval_usd`
+    - L1591 `llm.pricing.assert_request_within_budget`
+    - L1599 `llm.pricing.Budget`
+    - L1607 `llm.pricing.Budget.admit`
+    - L1615 `llm.pricing.Budget.held_usd`
+    - L1622 `llm.pricing.Budget.tripped`
+  - L1627 2.4 The model door (`llm`)
+    - L1636 `llm.core.Request`
+    - L1643 `llm.core.Llm`
+    - L1648 `llm.core.Llm.for_eval`
+    - L1654 `llm.core.Llm._traced`
+    - L1661 `llm.core.Llm.count`
+    - L1666 `llm.core.Llm.create`
+    - L1671 `llm.core.Llm.parse`
+    - L1678 `llm.core.Llm.stream`
+    - L1682 `llm.core.Llm.gather_text`
+    - L1687 `llm.core.Llm.batch_records`
+    - L1695 `llm.core.Llm._admit`
+    - L1702 `llm.core.Rehearsed`
+    - L1707 `errors.SpecialistUnreachable`
+    - L1714 `errors.StepFailed`
+    - L1719 `llm.core.describe`
+    - L1724 `llm.messages.is_client_tool`
+    - L1729 `llm.core._writes_cache`
+    - L1734 `llm.core.Llm.run_tools`
+    - L1741 `llm.core.Llm.price`
+    - L1748 `llm.core.Llm.turn`
+    - L1755 `llm.core.ToolRun`
+    - L1760 `llm.core.Llm._last_answer`
+    - L1766 `llm.core.Llm._admit_turn`
+    - L1770 `llm.core.Llm._held`
+    - L1775 `errors.TurnsExhausted`
+    - L1780 `llm.core.Dispatch`
+    - L1785 `llm.adapters.anthropic._runnable`
+  - L1790 2.5 Tools (`tools`, `report_tools`)
+    - L1797 `tools.calculate`
+    - L1801 `tools.current_time`
+    - L1805 `tools.read_file`
+    - L1810 `tools.write_file`
+    - L1818 `tools_config.SANDBOX`
+    - L1823 `tools_config.MAX_WEB_SEARCHES`
+    - L1829 `tools.CALCULATOR_TOOL`
+    - L1834 `tools.ALL_TOOLS`
+    - L1841 `tools.WEB_SEARCH_TOOL`
+    - L1848 `tools.execute_tool`
+    - L1855 `tools.WRITE_TOOLS`
+    - L1861 `report_tools.SEARCH_TOOL`
+    - L1866 `report_tools.ReportSearch`
+    - L1871 `report_tools.Searched`
+  - L1875 2.7 Project 1a (`extraction`)
+    - L1877 `extraction.headlines.Extraction`
+    - L1883 `extraction.headlines.METRICS`
+    - L1890 `extraction.headlines.QUARTERS`
+    - L1896 `extraction.headlines.Resolver`
+    - L1903 `extraction.headlines.report_unresolved`
+    - L1908 `extraction.headlines.load_directory`
+    - L1912 `extraction.headlines.Variant`
+    - L1917 `extraction.headlines.CACHE_VARIANTS`
+    - L1925 `extraction.headlines.THINKING`
+    - L1932 `extraction.headlines.measure`
+    - L1939 `extraction.headlines.VARIANTS`
+    - L1945 `extraction.headlines.extraction_task`
+    - L1952 `extraction.headlines.main`
+  - L1960 2.8 Retrieval (`retrieval`)
+    - L1966 `retrieval.chunk.Document`
+    - L1971 `retrieval.chunk.Chunk`
+    - L1976 `retrieval.chunk.Inventory`
+    - L1982 `retrieval.chunk.squeeze`
+    - L1989 `retrieval.chunk.Inventory.containing`
+    - L1995 `retrieval.chunk.fixed`
+    - L2001 `retrieval.chunk.sentences`
+    - L2008 `retrieval.chunk.by_sentence`
+    - L2016 `retrieval.chunk.headings`
+    - L2021 `retrieval.chunk.by_heading`
+    - L2028 `retrieval.chunk.by_element`
+    - L2036 `retrieval.embed.Embedder`
+    - L2041 `retrieval.embed.query_prefix_of`
+    - L2047 `retrieval.embed.LocalEmbedder`
+    - L2054 `retrieval.embed.LocalEmbedder.embed_query`
+    - L2059 `retrieval.embed.LocalEmbedder.count_truncated`
+    - L2064 `retrieval.hits.Hit`
+    - L2069 `retrieval.dense.DenseIndex`
+    - L2074 `retrieval.dense.DenseIndex.build`
+    - L2082 `retrieval.dense.DenseIndex.search`
+    - L2087 `retrieval.dense.DenseIndex.build_cached`
+    - L2094 `retrieval.dense.store_file`
+    - L2101 `retrieval.hits.rank_ids`
+    - L2105 `retrieval.corpus.read_pages`
+    - L2114 `retrieval.corpus.normalise`
+    - L2119 `retrieval.corpus._skeleton`
+    - L2124 `retrieval.corpus.strip_furniture`
+    - L2132 `retrieval.corpus.to_document`
+    - L2138 `retrieval.corpus.load_pdf`
+    - L2143 `retrieval.questions.Question`
+    - L2148 `retrieval.questions.eligible`
+    - L2153 `retrieval.questions.sample_passages`
+    - L2158 `retrieval.questions.verify`
+    - L2166 `retrieval.questions.generate`
+    - L2171 `retrieval.corpus.cache_file`
+    - L2177 `retrieval.corpus.load_pdf_cached`
+    - L2185 `retrieval.corpus.load_corpus`
+    - L2192 `retrieval.evaluate.STRATEGIES`
+    - L2199 `retrieval.evaluate.graders`
+    - L2204 `retrieval.evaluate.load_cases`
+    - L2211 `retrieval.evaluate.label_of`
+    - L2218 `retrieval.evaluate.report_of`
+    - L2225 `retrieval.evaluate.resolve`
+    - L2231 `retrieval.evaluate.retrieval_task`
+    - L2238 `retrieval.evaluate.main`
+    - L2245 `retrieval.langchain_rag.prepare`
+    - L2251 `retrieval.langchain_rag.langchain_task`
+    - L2256 `retrieval.sparse.tokenise`
+    - L2261 `retrieval.sparse.SparseIndex`
+    - L2266 `retrieval.fuse.reciprocal_rank_fusion`
+    - L2272 `retrieval.rerank.Reranker`
+    - L2277 `retrieval.rerank.LocalReranker`
+    - L2284 `retrieval.keys.build_keys`
+    - L2289 `retrieval.keys.table_context`
+    - L2293 `retrieval.keys.ParentRanker`
+    - L2298 `retrieval.keys.keyed_search`
+    - L2303 `retrieval.rerank.rerank`
+    - L2309 `retrieval.rank.METHODS`
+    - L2316 `retrieval.rank.Ranker`
+    - L2321 `retrieval.rank.Indexes`
+    - L2329 `retrieval.rank.DenseRanker`
+    - L2334 `retrieval.rank.HybridRanker`
+    - L2338 `retrieval.rank.Reranked`
+    - L2343 `retrieval.rank.scoped`
+    - L2350 `retrieval.rank.build_ranker`
+    - L2355 `retrieval.chunk.context_block`
+    - L2362 `retrieval.evaluate.ranker_task`
+    - L2369 `retrieval.evaluate.compare_retrieval`
+    - L2376 `retrieval.answer.ARMS`
+    - L2381 `retrieval.answer.Answer`
+    - L2386 `retrieval.answer.answer_task`
+    - L2393 `retrieval.answer.graders`
+    - L2399 `retrieval.answer.main`
+  - L2406 2.9 The workflow patterns (`workflows`)
+    - L2414 `workflows.reports.DocId`
+    - L2419 `workflows.reports.Search`
+    - L2424 `workflows.reports.build_search`
+    - L2431 `workflows.chaining`
+    - L2437 `workflows.routing`
+    - L2442 `workflows.parallelization`
+    - L2447 `workflows.orchestrator_workers`
+    - L2452 `workflows.evaluator_optimizer`
+    - L2457 `workflows.orchestrator_workers_graph.build`
+  - L2463 2.10 The first agent (`agent`)
+    - L2480 `agent.TOOLS`
+    - L2485 `agent.cited`
+    - L2490 `agent.WebSources`
+    - L2497 `agent.run`
+    - L2502 `agent.FINISH`
+  - L2506 2.11 The eval harness (`evals`)
+    - L2511 `evals.dataset.Case`
+    - L2516 `evals.dataset.load_jsonl`
+    - L2521 `evals.dataset.digest`
+    - L2526 `evals.grade.Outcome`
+    - L2531 `evals.grade.Score`
+    - L2536 `evals.grade.Grader`
+    - L2541 `evals.grade.BatchGrader`
+    - L2546 `evals.grade.exact_match`
+    - L2551 `evals.grade.regex`
+    - L2557 `evals.grade.pydantic_valid`
+    - L2561 `evals.grade.field_match`
+    - L2566 `evals.grade.flag`
+    - L2573 `evals.grade.right_tools`
+    - L2580 `evals.grade.resolvable`
+    - L2586 `evals.grade.recall_at_k`
+    - L2592 `evals.grade.hit_at_k`
+    - L2599 `evals.grade.reciprocal_rank`
+    - L2604 `evals.judge.LlmJudge`
+    - L2611 `evals.judge.Verdict`
+    - L2616 `evals.runner.Task`
+    - L2621 `evals.runner.RowResult`
+    - L2626 `evals.runner.EvalRun`
+    - L2631 `evals.runner.run_eval`
+    - L2639 `evals.runner.combine`
+    - L2645 `evals.report.to_markdown`
+    - L2650 `evals.report._metrics_table`
+    - L2655 `evals.report._grading_models`
+    - L2659 `evals.report.write_report`
+  - L2666 2.12 Tests
+    - L2668 `tests.llm.test_pricing`
+    - L2675 `tests.test_tools`
+    - L2682 `tests.llm.test_core`
+    - L2689 `tests.conftest.FakeAnthropic`
+    - L2695 `tests.workflows.test_<pattern>`
+    - L2701 `tests.test_agent`
+    - L2706 `tests.test_agent_graph`
+    - L2713 `tests.test_agent_adk`
+    - L2720 `tests.test_agent_tasks`
+    - L2727 `tests.llm.test_batch`
+    - L2734 `tests.test_report_tools`
+    - L2739 `tests.workflows.test_patterns`
+    - L2744 `tests.workflows.test_reports`
+    - L2751 `tests.conftest.make_judge`
+    - L2756 `tests.conftest.CAPPED`
+    - L2763 `tests.test_api_smoke`
+    - L2767 `tests.evals.test_dataset`
+    - L2772 `tests.evals.test_graders`
+    - L2779 `tests.conftest.KeywordReranker`
+    - L2784 `tests.conftest.BagOfWordsEmbedder`
+    - L2789 `tests.retrieval.test_chunk`
+    - L2794 `tests.retrieval.test_corpus`
+    - L2801 `tests.retrieval.test_questions`
+    - L2807 `tests.retrieval.test_answer`
+    - L2812 `tests.retrieval.test_langchain_rag`
+    - L2818 `tests.retrieval.test_sparse`
+    - L2823 `tests.retrieval.test_fuse`
+    - L2829 `tests.retrieval.test_rerank`
+    - L2834 `tests.retrieval.test_evaluate`
+    - L2841 `tests.retrieval.test_keys`
+    - L2848 `tests.retrieval.test_embed`
+    - L2855 `tests.retrieval.test_rank`
+    - L2860 `tests.retrieval.test_dense`
+    - L2868 `tests.evals.test_runner`
+    - L2875 `tests.extraction.test_synthetic`
+    - L2882 `tests.extraction.test_baseline`
+    - L2889 `tests.extraction.test_headlines`
+    - L2896 `tests.test_underhood`
+    - L2903 `tests.test_mcp_server`
+    - L2911 `tests.test_mcp_client`
+    - L2919 `tests.analyst.test_specialists`
+    - L2926 `tests.analyst.test_router`
+    - L2933 `tests.analyst.test_served`
+    - L2940 `tests.analyst.test_toolbox`
+    - L2947 `tests.analyst.test_fundamentals`
+    - L2954 `tests.analyst.test_teach`
+    - L2961 `tests.analyst.test_graph`
+    - L2968 `tests.test_reference_data`
+    - L2976 `tests.evals.test_report`
+    - L2981 `tests.test_graph_doc`
+    - L2989 `tests.facts`
+  - L2996 2.13 Non-code nodes
+    - L2998 `sandbox/`
+    - L3003 `evals/`
+    - L3009 `evals/reference/nse-tickers.json`
+    - L3016 `evals/datasets/headlines.jsonl`
+    - L3024 `corpus/`
+    - L3030 `evals/reference/corpus-manifest.json`
+    - L3036 `scripts/fetch-corpus.sh`
+    - L3042 `evals/datasets/retrieval.jsonl`
+    - L3050 `evals/datasets/retrieval-tables.jsonl`
+    - L3058 `evals/datasets/retrieval-paraphrased.jsonl`
+    - L3066 `evals/datasets/tasks.jsonl`
+    - L3073 `docs/framework-comparison.md`
+    - L3078 `docs/tool-runner.md`
+    - L3082 `docs/langgraph.md`
+    - L3087 `docs/agent-frameworks.md`
+    - L3094 `docs/v0.2-agent.md`
+    - L3101 `docs/capstone.md`
+    - L3108 `docs/facts-db.md`
+    - L3114 corpus cache: `corpus/.cache/xbrl/`, `taxonomy/`, `facts.sqlite`
+    - L3119 `evals/reference/fundamentals.json`
+    - L3126 `docs/context-management.md`
+    - L3131 `LOG.md`
+    - L3137 `docs/development.md`
+    - L3143 `README.md`
+    - L3149 `pyproject.toml`
+    - L3156 `.env.example`
+    - L3160 `CLAUDE.md`
+    - L3167 `.githooks/pre-commit`
+    - L3174 `scripts/check-knowledge-graph.sh`
+    - L3181 `.github/workflows/knowledge-graph.yml`
+    - L3186 `scripts/graph_doc.py`
+    - L3195 `.github/workflows/checks.yml`
+    - L3203 `.github/workflows/main.yml`
+    - L3210 `.github/workflows/release.yml`
+    - L3218 roadmap
+- L3225 3. Edges
+  - L3229 Imports (generated)
+  - L3751 Layering rules (checked)
+  - L3812 Reads and writes
+  - L3826 Enforcement and control flow
+  - L3879 Tested-by
+  - L3915 Environment
+- L3943 4. Invariants
+    - L3947 Invariant 1: Every paid call is preceded by a free count and the per-request check
+    - L3953 Invariant 2: Cost is reported, always
+    - L3957 Invariant 3: The assistant turn is echoed back verbatim
+    - L3960 Invariant 4: All tool results for one turn go back in ONE user message
+    - L3965 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
+    - L3969 Invariant 6: Both loops are capped
+    - L3976 Invariant 7: A file tool resolves before it compares
+    - L3982 Invariant 8: One home each for constants, clients, prices and model calls
+    - L3989 Invariant 9: Paid tests carry `@pytest.mark.live`
+    - L3992 Invariant 10: Types are complete
+    - L3995 Invariant 11: An eval survives its own bad rows
+    - L3999 Invariant 12: Every dollar an eval spends lands in one budget
+    - L4006 Invariant 13: A model is asked to read, never to join
+    - L4011 Invariant 14: The harness imports no capability module
+    - L4015 Invariant 15: An eval is a measurement, so nothing about it may wobble
+    - L4021 Invariant 16: A prompt never quotes its own test set
+    - L4028 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
+    - L4033 Invariant 18: Retrieval is graded before generation, and it is free
+    - L4038 Invariant 19: A page never leaves the page sequence
+    - L4043 Invariant 20: A retrieval label must identify one document, not merely appear in one
+    - L4049 Invariant 21: The ranking that is measured is the ranking that is used
+    - L4055 Invariant 22: A ceiling refuses spending before it happens, not only after
+    - L4062 Invariant 23: Every error the package defines lives in `errors`
+    - L4067 Invariant 24: A call is shaped by the client it goes to
+    - L4073 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
+    - L4079 Invariant 26: Tracing observes and never steers
+    - L4085 Invariant 27: A request is sent again only if it cannot have been billed
+    - L4091 Invariant 28: Text someone else wrote reaches the model fenced
+    - L4097 Invariant 29: A write runs only where a caller opted in, and never overwrites
+    - L4103 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
+- L4109 5. Where the next work attaches
+  - L4113 5.1 Open seams
+    - L4115 Seam: Facts database — step 2
+    - L4121 Seam: Week 6 — LangGraph agent
+    - L4125 Seam: Week 5 — async and batch evals
+    - L4132 Seam: Week 4 — compaction, when a task outgrows a turn
+    - L4138 Seam: Week 3 — measure a pattern
+    - L4143 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
+    - L4148 Seam: Week 3 — anything that searches the reports
+    - L4155 Seam: adding a tool
+    - L4159 Seam: adding a grader
+  - L4163 5.2 Consumed and superseded seams
+    - L4165 Seam: Week 1 — Project 1a
+    - L4170 Seam: Week 1 — prompt caching
+    - L4176 Seam: superseded — caching as two variants of one eval
+    - L4181 Seam: Week 1 — measure the un-saturated eval
+    - L4187 Seam: Week 1 — label the backlog
+    - L4192 Seam: Week 1 — break things on purpose
+    - L4198 Seam: Week 2 — retrieval metrics
+    - L4204 Seam: Week 2 — the four modules
+    - L4210 Seam: Week 2 — the corpus
+    - L4216 Seam: Week 2 — the retrieval dataset
+    - L4221 Seam: Week 2 — the measured run
+    - L4227 Seam: superseded — questions labelled with a quote
+    - L4232 Seam: Week 2 — hybrid and rerank
+    - L4238 Seam: Week 2 — answer-level eval
+    - L4246 Seam: Week 2 — RAG milestone `v0.1-rag`
+    - L4252 Seam: Week 3 — every model call through `llm`
+    - L4259 Seam: Week 3 — the five workflow patterns
+    - L4265 Seam: Week 3 — orchestrator-workers as a graph
+    - L4272 Seam: Week 4 — the toy fine-tune
+    - L4278 Seam: Week 3 — answer locally, judge on Anthropic
+    - L4284 Seam: Week 3 — context management
+    - L4289 Seam: Week 3 — server-side web search
+    - L4296 Seam: Week 5 — SDK tool runner
+    - L4302 Seam: Week 5 — tracing
+    - L4309 Seam: Week 5 — explicit retries
+    - L4315 Seam: Week 5 — guardrails
+    - L4322 Seam: Week 6 — MCP client
+- L4330 Maintenance
 <!-- /generated:toc -->
 
 ## 0. Orientation
 
-**Verified against commit `569ae4f` plus `relabel`, then Docling as every chunker's parser, the `by_element` chunker, the rupee sign read from its legacy fonts, text inside pictures and Docling's parse cached on its own (commit `7e598a6`), then dropped table captions restored as header rows, footnotes kept with their tables, running headers as page context, section rows carried across a split and section paths from heading numbering (2026-10-20), then 34 table questions in `retrieval-tables.jsonl` scored with the prose set as one, and every eval question searched within its own report (2026-10-21, commit `7d735e4`), then search keys, `bge-large` and `bge-reranker-v2-m3` on 20 candidates for every production search, with each local model loaded at full precision and its query prefix its own (2026-10-21, commit `e55b009`), then progress logged while vectors embed and as eval rows finish (2026-10-21, `a36258e`), then a research job priced by its own turns, the label's multiplier in the research prompt and the teacher's `--only`, then the dense cache as one per-text vector store per embedder (2026-10-21, `a513893`), then `by_element` at 1,000 characters a table piece and a text piece, ending only between rows, sentences or lines (2026-10-22), then the vector store written every 4,096 new texts so a stopped build keeps its progress (2026-10-22, `42a43d8`), then the facts database's step 1: NSE's XBRL results fetched and cached, loaded into SQLite with their stated periods, and checked (2026-10-22, `389d0e1`), then this file rebuilt for agents: one heading per node with its fields in one order, a generated contents, `At:` lines and import edges, and checked layering rules (2026-10-23, landing in this change). Tests pass; pyright and ruff are clean.**
+**Verified against commit `569ae4f` plus `relabel`, then Docling as every chunker's parser, the `by_element` chunker, the rupee sign read from its legacy fonts, text inside pictures and Docling's parse cached on its own (commit `7e598a6`), then dropped table captions restored as header rows, footnotes kept with their tables, running headers as page context, section rows carried across a split and section paths from heading numbering (2026-10-20), then 34 table questions in `retrieval-tables.jsonl` scored with the prose set as one, and every eval question searched within its own report (2026-10-21, commit `7d735e4`), then search keys, `bge-large` and `bge-reranker-v2-m3` on 20 candidates for every production search, with each local model loaded at full precision and its query prefix its own (2026-10-21, commit `e55b009`), then progress logged while vectors embed and as eval rows finish (2026-10-21, `a36258e`), then a research job priced by its own turns, the label's multiplier in the research prompt and the teacher's `--only`, then the dense cache as one per-text vector store per embedder (2026-10-21, `a513893`), then `by_element` at 1,000 characters a table piece and a text piece, ending only between rows, sentences or lines (2026-10-22), then the vector store written every 4,096 new texts so a stopped build keeps its progress (2026-10-22, `42a43d8`), then the facts database's step 1: NSE's XBRL results fetched and cached, loaded into SQLite with their stated periods, and checked (2026-10-22, `389d0e1`), then this file rebuilt for agents: one heading per node with its fields in one order, a generated contents, `At:` lines and import edges, and checked layering rules (2026-10-23, `35a8e8e`), then the facts database's step 2: concept labels from NSE's taxonomy packages, a quarter's facts no longer filed under the segment "INR", and `fundamentals` rebuilt over the database with named periods (2026-10-23, landing in this change). Tests pass; pyright and ruff are clean.**
 
 > **The package is organised by capability, not by week.** `week01/` became `extraction/`
 > (Project 1a) and `week02/` became `retrieval/`; the test tree mirrors it. Roadmap weeks still
@@ -793,10 +797,10 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `mcp_server`
 - **At:** `src/aigent/mcp_server.py`
-- **Is:** module. **The capstone's toolbox, six tools, as an MCP server** on the `mcp` SDK 2.x (`MCPServer`, which was `FastMCP` in 1.x), over stdio: `uv run python -m aigent.mcp_server`. `search_reports`, `read_file`, `write_file`, `search_filings`, `fundamentals`, `calculate`; `build_server(search, filing_search, sandbox=SANDBOX, table=None)`.
-- **Contract:** `search_filings` (`analyst.filings.FilingSearch`, company and year defaulting to `all`, a year taken as text or a number, its query through `guardrails.check_task`, passages fenced), `fundamentals` (`analyst.fundamentals.FundamentalsTool` over the frozen table, or the `table` passed) and `calculate` (through `tools.execute_tool`). **Their arguments are enumerated** (`filings.Company`, `filings.Year`, `fundamentals.Ticker`, `Metric`, `FinancialYear`, written-out `Literal`s a test holds to the in-process tools' lists), so a client's model is shown the allowed values and the SDK refuses any other before the tool runs. A tool's `Error: ` reply is raised as `ToolError` by `_answered`. `LazyFilings` builds the six-filing search on the first call, once, and **refuses a scope it does not hold before building**. `search_reports` registers over `report_tools.ReportSearch` with `SEARCH_TOOL`'s description, `report` defaulting to `all`, its query through `guardrails.check_task`; the two file tools go through `tools.execute_tool(..., sandbox=, writes=True)` with `READ_FILE_TOOL`'s and `WRITE_FILE_TOOL`'s descriptions, so a read arrives **fenced** and a write is **create-only**, and carry MCP annotations (`read_only_hint` true for the read, false for the write, `destructive_hint` false). Every refusal is raised as the SDK's `ToolError`, **the only exception whose text reaches the client**, with the dispatcher's `Error: ` stripped since the SDK prefixes its own. `LazySearch` builds the real search on the first call, under a lock and once, so the server starts before the models load (first search ~19 s). `current_time` stays out.
+- **Is:** module. **The capstone's toolbox, six tools, as an MCP server** on the `mcp` SDK 2.x (`MCPServer`, which was `FastMCP` in 1.x), over stdio: `uv run python -m aigent.mcp_server`. `search_reports`, `read_file`, `write_file`, `search_filings`, `fundamentals`, `calculate`; `build_server(search, filing_search, sandbox=SANDBOX, lookup=None)`.
+- **Contract:** `search_filings` (`analyst.filings.FilingSearch`, company and year defaulting to `all`, a year taken as text or a number, its query through `guardrails.check_task`, passages fenced), `fundamentals` (`analyst.fundamentals.FundamentalsTool` over the facts database, its `what` through `guardrails.check_task`, its lookups logged under `mcp-<time>-<pid>` as `aigent-reports`, or over the `lookup` passed) and `calculate` (through `tools.execute_tool`). **Their arguments are enumerated** (`filings.Company`, `filings.Year`, `fundamentals.Company`, `FinancialYear`, `lookup.Period`, `Basis`, written-out `Literal`s a test holds to the in-process tools' lists), so a client's model is shown the allowed values and the SDK refuses any other before the tool runs. A tool's `Error: ` reply is raised as `ToolError` by `_answered`. `LazyFilings` builds the six-filing search on the first call, once, and **refuses a scope it does not hold before building**. `search_reports` registers over `report_tools.ReportSearch` with `SEARCH_TOOL`'s description, `report` defaulting to `all`, its query through `guardrails.check_task`; the two file tools go through `tools.execute_tool(..., sandbox=, writes=True)` with `READ_FILE_TOOL`'s and `WRITE_FILE_TOOL`'s descriptions, so a read arrives **fenced** and a write is **create-only**, and carry MCP annotations (`read_only_hint` true for the read, false for the write, `destructive_hint` false). Every refusal is raised as the SDK's `ToolError`, **the only exception whose text reaches the client**, with the dispatcher's `Error: ` stripped since the SDK prefixes its own. `LazySearch` builds the real search on the first call, under a lock and once, so the server starts before the models load (first search ~19 s). `current_time` stays out.
 - **Gotchas:** The SDK claims fd 1 for the protocol and diverts stray stdout to stderr, so search setup's prints cannot corrupt it.
-- **History:** **The reports' search and the sandbox's files as an MCP server** (2026-10-07; files 2026-10-08). **Three tools.** `search_reports` is the one capability no client has; `read_file` and `write_file` were added on 2026-10-08 at Vedant's request, though a client like Claude Code has its own, so the server is a complete toolbox over aigent's sandbox; `build_server(search, sandbox=SANDBOX)`. **Since 2026-10-13 six tools, the capstone's toolbox** (step 3): `search_filings`, `fundamentals` and `calculate` joined the three; `calculate` stayed out until 2026-10-13.
+- **History:** **The reports' search and the sandbox's files as an MCP server** (2026-10-07; files 2026-10-08). **Three tools.** `search_reports` is the one capability no client has; `read_file` and `write_file` were added on 2026-10-08 at Vedant's request, though a client like Claude Code has its own, so the server is a complete toolbox over aigent's sandbox; `build_server(search, sandbox=SANDBOX)`. **Since 2026-10-13 six tools, the capstone's toolbox** (step 3): `search_filings`, `fundamentals` and `calculate` joined the three; `calculate` stayed out until 2026-10-13. `fundamentals` over the facts database (2026-10-23).
 - **Decided in:** LOG.md 10-07, 10-08, 10-13
 
 #### `mcp_client`
@@ -840,7 +844,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 #### `analyst.toolbox`
 - **At:** `src/aigent/analyst/toolbox.py`
 - **Is:** module. **The generalist's tools in one place.** `Toolbox(served_tools, served, route, experts)` is an `llm.Dispatch`: `tools` is a server's listing (from `mcp_client.connect`) plus each expert's card.
-- **Contract:** **It names no specialist**: an `Expert` is a card and an `answer(arguments, evidence, route)` that turns a call into the tool's result, adds the passages its answer cites to `evidence` (a `MutableMapping`), raising `specialists.Invalid` for arguments it cannot use, and `analyst.experts` lists them. **The generalist decides to call a specialist as a tool; the router decides which model answers.** A `search_filings` result is read back by `passages_in` (the `<passage id source>` elements `retrieval.chunk.context_block` writes) into `evidence`, by id, and a `fundamentals` answer is kept there too under its `cite_as`, so the critic can read what a claim rests on, the passages a specialist read for itself included. An `Invalid`, from bad arguments or an answer neither model gets past its check, is an `Error:` result; **`errors.SpecialistUnreachable` is not caught, so it fails the task.** Two tools sharing a name is a `ValueError` at construction. Any other tool goes straight to the server. A call that repeats one that failed, same name and same arguments (sorted keys), is refused unrun with the first failure in `failed`, so a generalist that sends the same call again learns that it already failed.
+- **Contract:** **It names no specialist**: an `Expert` is a card and an `answer(arguments, evidence, route)` that turns a call into the tool's result, adds the passages its answer cites to `evidence` (a `MutableMapping`), raising `specialists.Invalid` for arguments it cannot use, and `analyst.experts` lists them. **The generalist decides to call a specialist as a tool; the router decides which model answers.** A `search_filings` result is read back by `passages_in` (the `<passage id source>` elements `retrieval.chunk.context_block` writes) into `evidence`, by id, and each fact of a `fundamentals` answer is kept there too under its `cite_as`, so the critic can read what a claim rests on, the passages a specialist read for itself included. An `Invalid`, from bad arguments or an answer neither model gets past its check, is an `Error:` result; **`errors.SpecialistUnreachable` is not caught, so it fails the task.** Two tools sharing a name is a `ValueError` at construction. Any other tool goes straight to the server. A call that repeats one that failed, same name and same arguments (sorted keys), is refused unrun with the first failure in `failed`, so a generalist that sends the same call again learns that it already failed.
 - **History:** 2026-10-13, capstone step 5: created; names no specialist (Vedant, 2026-10-13). `evidence` a `MutableMapping` since 2026-10-19. Repeat refusal (2026-10-14, after probe ap-06 sent one 13 times).
 - **Decided in:** LOG.md 10-13, 10-14, 10-19
 
@@ -853,7 +857,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `analyst.memo`
 - **At:** `src/aigent/analyst/memo.py`
-- **Is:** module. What the graph produces and judges: `Claim(id, text, citations)` with **at least one citation**, a passage id or a fundamentals `cite_as`; `Memo(summary, claims, caveats)`; `Judged(verdict, reason)`, the critic's `supported`, `unsupported` or `wrong`; `Review(approved, note)`, a person's decision.
+- **Is:** module. What the graph produces and judges: `Claim(id, text, citations)` with **at least one citation**, a passage id or a fundamentals `cite_as` (`FACT:ITC:2025:consolidated:year:RevenueFromOperations`); `Memo(summary, claims, caveats)`; `Judged(verdict, reason)`, the critic's `supported`, `unsupported` or `wrong`; `Review(approved, note)`, a person's decision.
 - **Contract:** Field descriptions are the prompts.
 - **History:** 2026-10-13: created.
 - **Decided in:** LOG.md 10-13
@@ -863,8 +867,8 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 - **Is:** module. **The capstone's graph, on LangGraph**: `research → write → criticise → (revise → research)* → gate → END or research`. Needs the `graph` dependency group.
 - **Contract:** **`research`** is one `Llm.run_tools` conversation over a `Toolbox` (traced), on the `model` and `thinking` that `build` and `run` are given (`GENERALIST_MODEL` and `GENERALIST_THINKING` by default; None for the client's own model, and for no thinking), with a cache marker only where `Llm.supports` has `cache`, so a generalist on the OpenAI wire runs the same graph; its `TOOL_LOOP` and `MEMO` caps are its own client's (`max_tokens(site, spec(generalist.client))`), so a reasoning client's raised caps reach it, seeded by `_brief`: the question, and on a redraft the memo so far, each refused claim with the critic's reason and the sources it was judged on, and every reviewer note. **`RESEARCH` names no specialist**: it tells the generalist that some tools are specialists, to read what each is for and hand work to the most applicable one, breaking a task into several calls if needed, and to end its answer with a `Specialists:` line naming each one it called, or explaining, specialist by specialist, a decision to call none. What a specialist is for lives in its tool description, which opens `Specialist for …`, then `Use it …` and `Limits: …`; a test holds the prompt free of their names. The explanation is read from `Analysed.draft`, and `WRITE` keeps it out of the memo. The draft is **every turn's text of the pass**, not the last turn's. It ends in a prose draft citing ids, or stops the run when there is no room even to answer. **`write`** has the generalist turn that draft into a `Memo` (`Llm.parse`); one that cannot be read stops the run, as does an empty draft. `WRITE` spells out the memo's keys and a claim's fields. A memo of no claims stops the run ("the memo has no claims"), counted a failure rather than approved. **`criticise`** asks `config.CRITIC_MODEL` about each claim with **only the claim and the text of what it cites**, never the draft or the question; a claim citing an id the run never retrieved is `unsupported` without a call, as is one the critic returns no verdict on. A memo with a refused claim goes back through `revise` at most `config.MAX_CRITIC_REVISIONS` times, then to the gate with what is still refused. **`gate`**: with an `approve` callable (evals pass `always_approve`) it is asked; without one the node `interrupt`s with the memo and verdicts and waits to be resumed with `{approved, note}`, which needs a checkpointer. A rejection's note joins `notes`, a constraint on every later research pass, and does not count as a revision. `begin` puts the question through `guardrails.check_task`; `run` is one question with no one at the gate; `analysed` reads a state into `Analysed` (memo, verdicts, review, revisions, the router's `routed`, why it stopped). State holds no `Reply`, so a checkpointer can save it. **`calm`**: once a specialist has answered (a routing on the `specialist` path), every later research turn, through `run_tools(rethink=…)`, and the memo are sent with `GENERALIST_CALM`, disabled thinking, which the OpenAI wire sends as `reasoning_effort: null`. A calm generalist never reasons writing the memo, specialist or not. Its settings come from `analyst.cfg_analyst`, the critic's cap from its own client through it.
 - **Gotchas:** The Anthropic runner refuses `rethink`, since its turns keep the thinking they started with; `analyst.run` makes a generalist calm only on the OpenAI wire. Sarvam caps reasoning only through `reasoning_effort`. The OpenAI wire's schema instruction names `claims` only as an array of `Claim`s, hence `WRITE` spelling the keys out.
-- **History:** 2026-10-13, step 5: created; run only against fakes at first. `RESEARCH` names no specialist (Vedant, 2026-10-13, so a new one needs only its card); the `Specialists:` line is the third draft: a plain request to explain was ignored on two live runs. Second draft: on the first live run the generalist read every figure itself and never called `extract_figures`. That the generalist makes this choice, rather than code or a fine-tuned router, is his call too, as is keeping the explanation a line of prompt with no machinery behind it. Every turn's text: on a live run the cited answer came a turn before a one-line close, the writer was handed only the close, and a memo with no claims reached the gate. Model and thinking defaults (2026-10-14). Empty draft stops the run (2026-10-14: Sarvam once ended research on a turn with no text, and the gate approved an empty memo). `WRITE` spells out keys (2026-10-14): Sarvam wrote no readable memo on any of three questions. No claims is a failure (2026-10-14, Vedant's call: no redraft). **`calm`** (2026-10-14, Vedant's call after five Sarvam memos each spent 16,384 tokens reasoning and wrote nothing). Since 2026-10-19 (Vedant) it no longer says a specialist costs a fraction of what the generalist does: the generalist is not asked to weigh cost.
-- **Decided in:** LOG.md 10-13, 10-14, 10-19
+- **History:** 2026-10-13, step 5: created; run only against fakes at first. `RESEARCH` names no specialist (Vedant, 2026-10-13, so a new one needs only its card); the `Specialists:` line is the third draft: a plain request to explain was ignored on two live runs. Second draft: on the first live run the generalist read every figure itself and never called `extract_figures`. That the generalist makes this choice, rather than code or a fine-tuned router, is his call too, as is keeping the explanation a line of prompt with no machinery behind it. Every turn's text: on a live run the cited answer came a turn before a one-line close, the writer was handed only the close, and a memo with no claims reached the gate. Model and thinking defaults (2026-10-14). Empty draft stops the run (2026-10-14: Sarvam once ended research on a turn with no text, and the gate approved an empty memo). `WRITE` spells out keys (2026-10-14): Sarvam wrote no readable memo on any of three questions. No claims is a failure (2026-10-14, Vedant's call: no redraft). **`calm`** (2026-10-14, Vedant's call after five Sarvam memos each spent 16,384 tokens reasoning and wrote nothing). Since 2026-10-19 (Vedant) it no longer says a specialist costs a fraction of what the generalist does: the generalist is not asked to weigh cost. `RESEARCH` says fundamentals returns figures in a company's results filings exactly, where it had said "the headline figures it holds" (2026-10-23).
+- **Decided in:** LOG.md 10-13, 10-14, 10-19, 10-23
 
 #### `analyst.run`
 - **At:** `src/aigent/analyst/run.py`
@@ -902,28 +906,32 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `analyst.fundamentals`
 - **At:** `src/aigent/analyst/fundamentals.py`
-- **Is:** module. **The capstone's `fundamentals` tool**: `evals/reference/fundamentals.json` loaded as `Fundamental`s keyed (ticker, year, metric) — revenue from operations, profit attributable to the parent's owners, basic EPS and the year's dividend per share, consolidated, each year from its own report as originally reported, in full rupees — every one with the `doc_id` and PDF page it is printed on, so `key` (`ITC:2025:dividend`) is cited like a passage.
-- **Contract:** `lookup` refuses what the table does not hold with a message naming it; `FUNDAMENTALS_TOOL` is strict and offers exactly the tickers, metrics and years held; `FundamentalsTool` answers in JSON with `cite_as` and `source`, records each lookup, and turns a bad one into an error message.
-- **Gotchas:** A test checks every printed number is on its cited page, run wherever the filings are fetched.
-- **History:** 2026-10-12: created.
-- **Decided in:** LOG.md 10-12
+- **Is:** module. **The capstone's `fundamentals` tool, over the facts database**: `FundamentalsTool(lookup)` answers `company`, `year`, `what`, `period`, `basis`, `segment` with up to `FACTS_LOOKUP_K` facts from `facts.lookup.Lookup`, as JSON `{"facts": [...]}`, each with its `cite_as`, filed label, value, unit, period, basis, segment, tier and source.
+- **Contract:** Refuses, as an `Error:` message and before any lookup, a company not in `FACTS_TICKERS`, a year not in `FACTS_YEARS` or not a number, an empty `what`, a period not in `PERIODS`, a basis not in `BASES`, a segment that is not a name; a lookup's `NotFound` is an `Error:` message too; never raises. `looked_up` records every `cite_as` it returned. `FUNDAMENTALS_TOOL`'s description is the generalist's whole knowledge of it: plain words in `what`, check the filed label, balances as at the period's end, and dividends per share, notes and anything outside the results format are not here, so search the filings. `Company` and `FinancialYear` are the written-out `Literal`s the MCP server serves; a test holds them to `FACTS_TICKERS` and `FACTS_YEARS`.
+- **Gotchas:** A figure not filed in XBRL still returns its nearest labels (asked for "dividend per share", it returns "Adjustments for dividend income"), so the label in each answer is what tells the generalist it missed.
+- **History:** 2026-10-12: created over the frozen 24-figure table (revenue, profit, EPS and dividend per share for ITC, Reliance and Tata Motors, FY24-FY25), cited `ITC:2025:dividend` to a PDF page. 2026-10-23: rebuilt over the facts database (step 2 of `docs/facts-db.md`); the frozen table moved to `facts.reference` as the build's check.
+- **Decided in:** LOG.md 10-12, 10-23 · `docs/facts-db.md`
 
 #### `facts`
 - **At:** `src/aigent/facts/__init__.py`
-- **Is:** package. **The facts database**: every reported number stored once in SQLite with its source and tier, for `fundamentals` to look up (step 2). So far the XBRL half: `python -m aigent.facts build [--offline]` fetches, loads and checks; free, no model calls.
-- **Contract:** Imports `analyst.fundamentals` for the check's reference table; nothing imports `facts` yet.
-- **History:** 2026-10-22, step 1 of `docs/facts-db.md`: created.
-- **Decided in:** LOG.md 10-22 · `docs/facts-db.md`
+- **Is:** package. **The facts database**: every reported number stored once in SQLite with its source and tier, looked up by `analyst.fundamentals`. So far the XBRL half: `python -m aigent.facts build [--offline]` fetches, loads, labels and checks; free, no model calls.
+- **Contract:** Imports nothing from `analyst` (checked: §3 rules); `analyst.fundamentals` and `mcp_server` import it.
+- **History:** 2026-10-22, step 1 of `docs/facts-db.md`: created, importing `analyst.fundamentals` for the check's reference table. 2026-10-23, step 2: labels from NSE's taxonomy, the lookup, and the reference table moved in as `facts.reference`.
+- **Decided in:** LOG.md 10-22, 10-23 · `docs/facts-db.md`
 
 #### `facts.cfg_facts`
 - **At:** `src/aigent/facts/cfg_facts.py`
-- **Is:** module. The facts database's settings, split from `config` by concern: `FACTS_TICKERS` (the eight in both corpora), `FACTS_YEARS` (2024-2026), `NSE_SYMBOLS` (`TATAMOTORS` files as `TMPV`), the two listing URLs, `NSE_PAGE_SIZE`, the browser `NSE_USER_AGENT`, `NSE_REQUEST_INTERVAL_S` (1 s), `XBRL_SKIP_CONTEXTS` (related-party transactions), `FUNDAMENTALS_CONCEPTS` (revenue, profit, eps; dividend per share is not filed) and `FILING_SUMS` (total, needed terms, terms counted as 0 when not filed).
+- **Is:** module. The facts database's settings, split from `config` by concern: `FACTS_TICKERS` (the eight in both corpora), `FACTS_YEARS` (2024-2026), `NSE_SYMBOLS` (`TATAMOTORS` files as `TMPV`), the two listing URLs, `NSE_PAGE_SIZE`, the browser `NSE_USER_AGENT`, `NSE_REQUEST_INTERVAL_S` (1 s), `XBRL_SKIP_CONTEXTS` (related-party transactions), `FUNDAMENTALS_CONCEPTS` (revenue, profit, eps; dividend per share is not filed), `FILING_SUMS` (total, needed terms, terms counted as 0 when not filed), `TAXONOMY_PACKAGES` and the lookup's `FACTS_MATCH_METHOD` (`hybrid`), `FACTS_MATCH_DEPTH` (20) and `FACTS_LOOKUP_K` (5).
+- **Invariants:** `TAXONOMY_PACKAGES` is a sequence, not sorted: where packages label a concept differently the earliest wins (SEBI Ind AS 2025, SEBI banking 2025, BSE Ind AS 2020, BSE banking 2019).
+- **History:** Taxonomy and lookup settings (2026-10-23).
 
 #### `facts.xbrl`
 - **At:** `src/aigent/facts/xbrl.py`
 - **Is:** module. **One NSE results filing in XBRL → `Parsed(facts, skipped, issues)`**, for both the 2020 BSE taxonomy (to Dec 2024) and SEBI's 2025 integrated filing. Standard-library XML; no network.
-- **Contract:** A `Fact` is concept, period kind, start (None for an instant), end, segment, value in base units, unit, decimals (None for INF). **Periods come from what the filing states** (`DateOfStart/EndOfReportingPeriod` on `OneD`/`FourD`); a context id's `One`/`Four` picks its column, and a context with no column (the integrated `D_…`) is read from its own dates only when every stated column's dates hold. A segment is its context's `Description…` text, else its member. Description and name facts are text even when filed with a unit (HDFC Bank). Out-of-scope contexts are counted, not loaded; a period it cannot settle, a value not a number, a missing context and one fact filed with two values are issues (the first value kept). `label_of` turns an element name into words.
-- **Gotchas:** The 2020 taxonomy dates a year-to-date context with the quarter, hence stated periods. The 2020 taxonomy's cash-flow cash (`_OPENING_CLOSING`) is filed twice in one duration: opening first (the day before the period), closing second.
+- **Contract:** A `Fact` is concept, period kind, start (None for an instant), end, segment, value in base units, unit, decimals (None for INF). **Periods come from what the filing states** (`DateOfStart/EndOfReportingPeriod` on `OneD`/`FourD`); a context id's `One`/`Four` picks its column, and a context with no column (the integrated `D_…`) is read from its own dates only when every stated column's dates hold. **A segment belongs to a dimensional context only**: its `Description…` text, else its member; a context with no member has none. Description and name facts are text even when filed with a unit (HDFC Bank). Out-of-scope contexts are counted, not loaded; a period it cannot settle, a value not a number, a missing context and one fact filed with two values are issues (the first value kept). `label_of` turns an element name into words, the label until the taxonomy's replaces it.
+- **Gotchas:** The 2020 taxonomy dates a year-to-date context with the quarter, hence stated periods. The 2020 taxonomy's cash-flow cash (`_OPENING_CLOSING`) is filed twice in one duration: opening first (the day before the period), closing second. The quarter column `OneD` carries text facts of its own, `DescriptionOfPresentationCurrency` in every filing and `DescriptionOfSingleSegment` in some.
+- **History:** 2026-10-22: created. 2026-10-23: a context with no member had taken any `Description…` text as its segment, so every quarter-alone fact (`OneD`) was filed under the segment "INR", its currency: 8,753 facts invisible to an unsegmented lookup. Step 1's checks compared only full years, and the trimmed test fixture held no currency text, so neither caught it; the lookup's first quarter query did.
+- **Decided in:** LOG.md 10-22, 10-23
 
 #### `facts.nse`
 - **At:** `src/aigent/facts/nse.py`
@@ -932,9 +940,11 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.store`
 - **At:** `src/aigent/facts/store.py`
-- **Is:** module. **The SQLite schema and the build's writes**, `corpus/.cache/facts.sqlite` in WAL mode. Tables `filings`, `facts`, `derived_from`, `concepts`, `lookups` as in the design; `TIERS` (seven) and `CHECKED_TIERS`.
-- **Contract:** `sync_xbrl_facts` makes a filing's `xbrl` rows equal what was loaded: **an unchanged fact keeps its row id**, a changed value is updated and re-attributed (`written_by`, `written_at`, `run_id`), a fact no longer loaded is deleted; new concepts go into `concepts` with their label.
+- **Is:** module. **The SQLite schema and the build's writes**, `corpus/.cache/facts.sqlite` in WAL mode. Tables `filings`, `facts`, `derived_from`, `concepts`, `concept_labels` (each concept's other labels), `lookups` as in the design; `TIERS` (seven) and `CHECKED_TIERS`.
+- **Contract:** `sync_xbrl_facts` makes a filing's `xbrl` rows equal what was loaded: **an unchanged fact keeps its row id**, a changed value is updated and re-attributed (`written_by`, `written_at`, `run_id`), a fact no longer loaded is deleted; new concepts go into `concepts` with their split element name. `apply_labels(conn, labels)` puts each XBRL concept's standard label onto it and its facts, replaces its `concept_labels`, and returns the concepts no package labels.
 - **Invariants:** **The schema refuses** an instant with a start, a duration without one, an unknown tier or basis, a checked tier with no `verified_by` and `verified_at`, and an `-ai` tier marked checked; a filing holds an `xbrl` fact once (partial unique index).
+- **History:** `concept_labels` and `apply_labels` (2026-10-23).
+- **Decided in:** LOG.md 10-23
 
 #### `facts.check`
 - **At:** `src/aigent/facts/check.py`
@@ -943,8 +953,34 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.build`
 - **At:** `src/aigent/facts/build.py`
-- **Is:** module, with `__main__.py` (`facts.__main__`). `build(conn, xbrl_dir, get, tickers, years, writer, now, fundamentals) → Report`.
-- **Contract:** Fetch unless `get` is None (manifest saved after each company), then load every manifest entry in scope in one transaction, refusing a file not on disk, whose SHA-256 is not the manifest's, or unreadable; then the fundamentals check. A failed listing or download is reported and the rest build. `__main__` writes `corpus/.cache/facts-build-report.json`, with `written_by` = `xbrl-loader@<commit>` and `run_id` = `build-<time>`.
+- **Is:** module, with `__main__.py` (`facts.__main__`). `build(conn, xbrl_dir, get, tickers, years, writer, now, fundamentals, taxonomy_dir, packages) → Report`.
+- **Contract:** Fetch unless `get` is None (manifest saved after each company), then load every manifest entry in scope in one transaction, refusing a file not on disk, whose SHA-256 is not the manifest's, or unreadable; then `label_all`: fetch the taxonomy packages not cached (unless `get` is None) and label every concept from them; then the fundamentals check. A failed listing or download is reported and the rest build. **A taxonomy package that cannot be fetched or read is reported and nothing is relabelled**, so a partial set never overrides a label; an offline build with no packages cached says so. `__main__` writes `corpus/.cache/facts-build-report.json`, with `written_by` = `xbrl-loader@<commit>` and `run_id` = `build-<time>`.
+- **History:** 2026-10-22: created. Labelling (2026-10-23): the first run labelled all 281 concepts, 159 aliases.
+- **Decided in:** LOG.md 10-22, 10-23
+
+#### `facts.taxonomy`
+- **At:** `src/aigent/facts/taxonomy.py`
+- **Is:** module. **NSE's XBRL taxonomy packages, for the words each concept is labelled with.** `fetch_packages` keeps each under `corpus/.cache/taxonomy/<name>.zip` with URL, SHA-256 and fetch time in a sorted `manifest.json`, never refetching a package held from the same URL; `labels_in` reads every label linkbase in a zip without unpacking it; `merged` makes one `Labels(standard, aliases)` per concept; `load_labels` reads the cached packages in priority order.
+- **Contract:** The first package in order with a standard label for a concept gives it; every other label of any role (terse, total, net, negated…) in any package is an alias, the standard one excepted. A concept no package labels with a standard label gets no entry. `load_labels` refuses a package not cached or whose SHA-256 is not the manifest's. Labels are keyed by element name, so bank and non-bank packages merge into one set.
+- **Gotchas:** A loc's fragment is `prefix_Element`; prefixes hold hyphens, never underscores, so it is split at the first `_`. SEBI's 2026-01-31 taxonomy, which 16 of the 192 filings use, is not published as a package (only the Excel filing tool is); every concept those filings use is labelled by the 2025 packages. The Ind AS and Banking packages both hold a `core/` folder with different label files, so they are read separately, never unpacked into one place.
+- **History:** 2026-10-23: created (Vedant: "lets just do it right the first time", over measuring split names first). All 281 concepts labelled; 53 differ between packages only in punctuation ("Borrowings, current" / "Borrowings current"); element names' typos are spelled right in their labels ("Itmes" → "items").
+- **Decided in:** LOG.md 10-23 · `docs/facts-db.md`
+
+#### `facts.lookup`
+- **At:** `src/aigent/facts/lookup.py`
+- **Is:** module. **Looking facts up.** `Lookup(db, index, run_id, asked_by)` called with company, year, `what`, basis, period and segment returns up to `FACTS_LOOKUP_K` `Found` facts or raises `NotFound`, logging every call in `lookups`.
+- **Contract:** `Period` is `year`, `Q1`-`Q4`, `H1`, `9M`; `span(year, period)` is its first and last day in the financial year ending in March of `year` (Q1 2025 is April to June 2024). `what` is ranked against every concept's text (`concept_texts`: its standard label, then its aliases) by a `ConceptIndex`, the retrieval stack's `FACTS_MATCH_METHOD` ranker over an `Inventory` of one `Chunk` per concept, built once per `Lookup` under a lock, its vectors cached. `find` then fetches, for each ranked concept in order, the one fact for exactly that company, basis, segment and period — a duration from the period's first to last day, an instant at its last day — and keeps the first `k`. **A checked tier answers before this run's own `-ai` rows; another run's `-ai` rows never answer**; a period filed twice is answered from the earliest filing, as originally reported. `segment_of` names the segment as filed: the same words in any case, else the one segment holding them; several or none is `NotFound` listing what is filed. `cite_as` is `FACT:{ticker}:{year}:{basis}:{period}:{concept}[:{segment}]`; `source` names the filing's period and URL. Nothing found is `NotFound` naming the three closest labels. A database not built is `NotFound`, and is not created. `concept_index(embedder)` is how `Lookup` builds its index, the local embedder by default.
+- **Gotchas:** Many concepts are filed only year to date: profit attributable to owners has H1, 9M and year but no quarter alone in the 2020 taxonomy's filings, so a Q2 or Q3 question finds nothing for it and answers with the next concept ranked. `found` in `lookups` means a fact came back, not that it was the figure meant.
+- **History:** 2026-10-23: created (Vedant chose named periods, the enum, over year-and-quarter only and explicit dates).
+- **Decided in:** LOG.md 10-23 · `docs/facts-db.md`
+
+#### `facts.reference`
+- **At:** `src/aigent/facts/reference.py`
+- **Is:** module. **The frozen fundamentals**: `evals/reference/fundamentals.json` loaded as `Fundamental`s keyed (ticker, year, metric) — revenue from operations, profit attributable to the parent's owners, basic EPS and the year's dividend per share, consolidated, each year from its own report as originally reported, in full rupees — every one with the `doc_id` and PDF page it is printed on.
+- **Contract:** `load_fundamentals` reads the table; `facts.check` checks the database against it.
+- **Gotchas:** `tests.facts.test_reference` checks every printed number is on its cited page, run wherever the filings are fetched.
+- **History:** 2026-10-23: moved from `analyst.fundamentals`, unchanged, when the tool moved onto the database.
+- **Decided in:** LOG.md 10-12, 10-23
 
 #### `extraction.figures`
 - **At:** `src/aigent/extraction/figures.py`
@@ -2651,7 +2687,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **Decided in:** LOG.md 09-21, 09-22, 09-28, 10-07
 
 #### `tests.conftest.FakeAnthropic`
-- **At:** `tests/conftest.py:405`
+- **At:** `tests/conftest.py:418`
 - **Is:** fixtures `FakeAnthropic` / `make_llm`, free. A client whose reply is a function of **what was sent** — model, system, messages, schema — and which records each call's top-level `cache_control`, from `extra_body` too, rather than of arrival order, so a concurrent batch gets the answers meant for it.
 - **Contract:** Fakes `create`, `parse`, `stream` and `count_tokens`, and a reply may be a whole `Message` to script tool use, or an exception to raise. **`beta.messages.tool_runner` returns the SDK's real `BetaToolRunner`** over the fake, putting the tools it runs on the wire before raw server tools, as the SDK does, so `run_tools` is tested against the runner's own loop rather than a copy of it; `tool_turn`, `turns` and `tool_results` script and read a tool conversation. `input_tokens` and `count_error` decide what the free count says, which is how the catalogue tests provoke a rejection or an oversized request. `make_llm` wraps it in an `Llm` with a budget of its own.
 - **History:** Also home to `FakeSearch` and its `search` fixture (one passage per report), moved up from `tests/workflows/conftest.py` when the agent needed it too.
@@ -2713,12 +2749,12 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **Decided in:** LOG.md 10-07
 
 #### `tests.conftest.make_judge`
-- **At:** `tests/conftest.py:124`
+- **At:** `tests/conftest.py:137`
 - **Is:** fixture, free. The one scripted `LlmJudge` fixture: a verdict decided in the test, a fixed `JUDGE_USAGE`, and a log of prompts, output caps and pre-flight counts; `client=` puts it on another client.
 - **Contract:** Shared so the grader tests and the runner tests cannot drift apart about what a judge costs.
 
 #### `tests.conftest.CAPPED`
-- **At:** `tests/conftest.py:144`
+- **At:** `tests/conftest.py:157`
 - **Is:** client and fixture (`CAPPED` / `capped`), free. The Anthropic client under another name, with `ANSWER` and `JUDGE` caps no default has, registered in `CLIENTS` for one test by the `capped` fixture.
 - **Contract:** What lets a test tell which client's cap a call went out with — the import-time constant or its own.
 - **History:** 2026-09-28: created.
@@ -2741,12 +2777,12 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **Decided in:** LOG.md 10-07
 
 #### `tests.conftest.KeywordReranker`
-- **At:** `tests/conftest.py:531`
+- **At:** `tests/conftest.py:544`
 - **Is:** fixture class. The shared fake cross-encoder: score a passage by how many query words it holds.
 - **Contract:** Crude, and crucially a **different ordering** from `BagOfWordsEmbedder`'s, so a rerank test can prove the second stage moved something.
 
 #### `tests.conftest.BagOfWordsEmbedder`
-- **At:** `tests/conftest.py:551`
+- **At:** `tests/conftest.py:564`
 - **Is:** fixture class, free. The shared fake embedder: words hashed into 32 buckets by **CRC32, not `hash`**, which Python randomises per process — a fake that embeds differently on Tuesday is worse than no fake.
 - **Contract:** Similarity is real if crude, so a test can say "this query should find that chunk" without importing torch. `normalise=False` breaks the contract on purpose, for the test that the dense index notices.
 
@@ -2869,7 +2905,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **Is:** test module, free. The MCP server through the SDK's own `Client`, in process, over `conftest.FakeSearch` and `conftest.box`.
 - **Contract:** Six tools, each described as the agent's, with the file tools' annotations; three searches (every report, one report, a trimmed query); four search refusals before any search; an empty result said so; `LazySearch` building nothing until the first call, then once; a read arriving fenced; a write the next read returns; and four file refusals (missing, a read out, a write out, an overwrite) that change nothing and carry no doubled `Error:`. Also `conftest.FakeFilings` (scoped by `filings.scope`, so it refuses as the real search does): three filings searches (all, one company and year with the query trimmed, a report with no passage) arriving fenced; four refused before any search (an empty query, a company, a year, a year sent as a number); a search that raises and a figure the given table lacks, each an error; the served enums equal to the in-process tools'; a fundamentals lookup with its `cite_as` and source page; three lookups and one expression refused without a doubled `Error:`; a sum; and `LazyFilings` refusing a scope before building, then building once. Every guard mutation-checked.
 - **Gotchas:** Live stdio runs are in `LOG.md`, not here.
-- **History:** 2026-10-07; files 2026-10-08. **Since 2026-10-13 also** the filings tests; every new guard mutation-checked.
+- **History:** 2026-10-07; files 2026-10-08. **Since 2026-10-13 also** the filings tests; every new guard mutation-checked. `fundamentals` over the facts database through `facts_lookup` (2026-10-23): a quarter's facts and what to cite, and six refusals (a company, a year, a period, no figure through the input guard, nothing held, code not sums).
 - **Decided in:** LOG.md 10-07, 10-08, 10-13
 
 #### `tests.test_mcp_client`
@@ -2905,8 +2941,15 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **At:** `tests/analyst/test_toolbox.py`
 - **Is:** test module, free. The toolbox over scripted specialists.
 - **Contract:** A search result's passages read back with their ids; the tool list and the card's arguments; a call as one job whose figures come back with their cited passages added as evidence; an answer neither model passes as an error adding no evidence; an exact repeat of a failed call refused unrun; a succeeded call made again; six bad calls (no question, no ticker, a company or year not filed, a year not a number, no year) as error results reaching no model; an unreachable specialist raising; other tools passing through; and, over the real in-process MCP server, the specialist's own search scoped to the report and feeding what it cites. Every guard mutation-checked. Since the split into `analyst.experts`: each card's `Specialist for / Use it / Limits` shape; two tools sharing a name refused; and `experts` building every `BUILDERS` row on its own client with the served dispatch and the generalist as fallback, the list in sorted order.
-- **History:** 2026-10-13; `extract_figures`' tests rewritten 2026-10-19.
-- **Decided in:** LOG.md 10-13, 10-19
+- **History:** 2026-10-13; `extract_figures`' tests rewritten 2026-10-19. Each fact of a fundamentals answer kept as evidence, malformed answers ignored (2026-10-23).
+- **Decided in:** LOG.md 10-13, 10-19, 10-23
+
+#### `tests.analyst.test_fundamentals`
+- **At:** `tests/analyst/test_fundamentals.py`
+- **Is:** test module, free. The `fundamentals` tool over the root `conftest`'s `facts_lookup`, 11 tests.
+- **Contract:** An answer is the facts found, each recorded by its `cite_as`; a segment and a basis reach the lookup; an eight-row table of bad calls (a company, a year, a non-numeric year, no figure, a period, a basis, a segment not a name, nothing held), each an `Error:` message recording nothing; the schema held to `FACTS_TICKERS`, `FACTS_YEARS`, `PERIODS`, `BASES` and the served `Literal`s, every field required.
+- **History:** 2026-10-12: created over the frozen table. 2026-10-23: rewritten over the facts database; the table's own tests moved to `tests.facts.test_reference`.
+- **Decided in:** LOG.md 10-12, 10-23
 
 #### `tests.analyst.test_teach`
 - **At:** `tests/analyst/test_teach.py`
@@ -2945,9 +2988,9 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 
 #### `tests.facts`
 - **At:** `tests/facts/__init__.py`
-- **Is:** test package `tests/facts/`, free and offline. **The facts database's step 1**, 95 tests.
+- **Is:** test package `tests/facts/`, free and offline. **The facts database**, 179 tests.
 - **Contract:** `conftest`: an XBRL builder (`duration`, `instant`, `num`, `nil`, `text`, `stated`, `filing`, `DECEMBER`), `FakeNse` scripted by URL with `listings(symbol, legacy, integrated pages)`, `fundamental`, and two real ITC filings trimmed to a dozen concepts in `fixtures/` (FY24's March quarter in the 2020 taxonomy, FY26's December in the integrated one). `test_xbrl`: each fact of the saved samples with its period (the stated year, opening and closing cash, a segment, a `D_` context), what becomes an issue, what is left out quietly, a first quarter, a name filed with a unit. `test_nse`: the chosen filings (latest broadcast, years, governance dropped), paging, the symbol, the financial year, the cache, revisions, the sorted manifest, the polite getter. `test_store`: sync's add, keep, change and remove, the schema's refusals and acceptances. `test_check`: the fundamentals' four outcomes, sums with optional terms, tolerance. `test_build`: end to end, cached, offline, and each failure as data.
-- **History:** 2026-10-22: created. **Every guard mutation-checked in a scratch copy, 49 of 49.**
+- **History:** 2026-10-22: created. **Every guard mutation-checked in a scratch copy, 49 of 49.** 2026-10-23, step 2: `test_taxonomy` (labels read by concept and role, a hyphenated prefix, a five-row merge table, fetched once and again on a new URL, the sorted manifest, priority order, a package not cached or whose digest moved refused), `test_lookup` (a seven-row period table, matching by label and alias, exact fetch by period and basis in tables, a balance at the period's end, segments named and refused in tables, what to cite, the earliest filing, another run's unchecked read, `k`, every call logged, the closest labels, a database not built, the index built once), `test_reference` (the frozen table, moved), the build's labelling (labelled, offline from the cache, offline with nothing cached, a fetch or zip failure relabelling nothing), `apply_labels`, and a column's descriptions being no segment; `facts_db` and `facts_lookup` in the root `conftest` for the tool, toolbox and server tests. Every new guard mutation-checked in a scratch copy, 43 of 44; the one left, `toolbox._lookup`'s list check, only narrows a type and cannot change what it returns.
 - **Decided in:** LOG.md 10-22
 
 ### 2.13 Non-code nodes
@@ -3068,16 +3111,17 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **History:** 2026-10-22, Vedant's pivot from the v4 specialist.
 - **Decided in:** LOG.md 10-22
 
-#### corpus cache: `corpus/.cache/xbrl/`, `facts.sqlite`
-- **Is:** git-ignored data. 192 NSE XBRL results filings (eight companies, FY24-FY26, every quarter, both bases) with `manifest.json`, and the database built from them.
-- **Contract:** Rebuilt offline with `python -m aigent.facts build --offline`.
+#### corpus cache: `corpus/.cache/xbrl/`, `taxonomy/`, `facts.sqlite`
+- **Is:** git-ignored data. 192 NSE XBRL results filings (eight companies, FY24-FY26, every quarter, both bases) with `manifest.json`; the four taxonomy packages with theirs (`taxonomy/`); and the database built from them.
+- **Contract:** Rebuilt offline with `python -m aigent.facts build --offline`. `lookups` in the database is the demand log, written by every `fundamentals` call; delete rows a smoke test wrote.
+- **History:** `taxonomy/` (2026-10-23).
 
 #### `evals/reference/fundamentals.json`
 - **At:** `evals/reference/fundamentals.json`
-- **Is:** reference data. **The capstone's frozen fundamentals**: 24 figures, 4 metrics × 2 years × 3 companies, each with the PDF page in its own year's report.
-- **Contract:** Sorted by ticker, year and metric with one field order per entry, both checked by tests.
-- **History:** 2026-10-12: created. Segment margins and a share price were left out: no task needs them yet, and a price is a fact no filing passage can confirm.
-- **Decided in:** LOG.md 10-12
+- **Is:** reference data. **The frozen fundamentals**: 24 figures, 4 metrics × 2 years × 3 companies, each with the PDF page in its own year's report; read by `facts.reference`.
+- **Contract:** Sorted by ticker, year and metric with one field order per entry, both checked by tests. The facts database's build checks itself against it (18 equal; the 6 dividends per share are not filed in XBRL).
+- **History:** 2026-10-12: created as the `fundamentals` tool's table. Segment margins and a share price were left out: no task needs them yet, and a price is a fact no filing passage can confirm. 2026-10-23: no longer the tool's table, only the database's check.
+- **Decided in:** LOG.md 10-12, 10-23
 
 #### `docs/context-management.md`
 - **At:** `docs/context-management.md`
@@ -3266,6 +3310,8 @@ analyst.filings —imports→ retrieval.corpus.{MANIFEST, load_corpus}
 analyst.filings —imports→ retrieval.keys.keyed_search
 analyst.filings —imports→ tools.fence
 analyst.fundamentals —imports→ anthropic.types.ToolParam
+analyst.fundamentals —imports→ facts.cfg_facts.{FACTS_TICKERS, FACTS_YEARS}
+analyst.fundamentals —imports→ facts.lookup.{BASES, Basis, Lookup, NotFound, PERIODS, Period}
 analyst.graph —imports→ analyst.cfg_analyst.{CRITIC_MODEL, GENERALIST_CALM, GENERALIST_MODEL, GENERALIST_THINKING, MAX_CRITIC_REVISIONS, max_tokens}
 analyst.graph —imports→ analyst.memo.{Judged, Memo, Review}
 analyst.graph —imports→ analyst.router.Routing
@@ -3430,20 +3476,29 @@ extraction.synthetic —imports→ evals.dataset.load_jsonl
 extraction.synthetic —imports→ extraction.headlines.{DATASET, Extraction, METRICS, VARIANTS, headline_request, load_directory, word_runs}
 extraction.synthetic —imports→ llm.adapters.{build, spec}
 extraction.synthetic —imports→ llm.adapters.openai.OpenAI
-facts.__main__ —imports→ analyst.fundamentals.load_fundamentals
 facts.__main__ —imports→ facts.build.build
-facts.__main__ —imports→ facts.cfg_facts.{FACTS_TICKERS, FACTS_YEARS}
+facts.__main__ —imports→ facts.cfg_facts.{FACTS_TICKERS, FACTS_YEARS, TAXONOMY_PACKAGES}
 facts.__main__ —imports→ facts.nse.{XBRL_DIR, polite_get}
+facts.__main__ —imports→ facts.reference.load_fundamentals
 facts.__main__ —imports→ facts.store.{FACTS_DB, Writer, connect}
-facts.build —imports→ analyst.fundamentals.Fundamental
+facts.__main__ —imports→ facts.taxonomy.TAXONOMY_DIR
 facts.build —imports→ facts.check.{Checked, check_fundamentals, check_sums}
 facts.build —imports→ facts.nse.{Get, fetch, list_filings, read_manifest, write_manifest}
-facts.build —imports→ facts.store.{FilingRow, Synced, Writer, sync_xbrl_facts, upsert_filing}
+facts.build —imports→ facts.reference.Fundamental
+facts.build —imports→ facts.store.{FilingRow, Synced, Writer, apply_labels, sync_xbrl_facts, upsert_filing}
+facts.build —imports→ facts.taxonomy.{fetch_packages, load_labels}
 facts.build —imports→ facts.xbrl.parse
-facts.check —imports→ analyst.fundamentals.Fundamental
 facts.check —imports→ facts.cfg_facts.{FILING_SUMS, FUNDAMENTALS_CONCEPTS}
+facts.check —imports→ facts.reference.Fundamental
+facts.lookup —imports→ facts.cfg_facts.{FACTS_LOOKUP_K, FACTS_MATCH_DEPTH, FACTS_MATCH_METHOD}
+facts.lookup —imports→ facts.store.{CHECKED_TIERS, connect}
+facts.lookup —imports→ retrieval.chunk.{Chunk, Inventory}
+facts.lookup —imports→ retrieval.embed.Embedder
+facts.lookup —imports→ retrieval.rank.{Indexes, Ranker, build_ranker}
 facts.nse —imports→ facts.cfg_facts.{NSE_INTEGRATED_LISTING, NSE_LEGACY_LISTING, NSE_PAGE_SIZE, NSE_REQUEST_INTERVAL_S, NSE_SYMBOLS, NSE_TIMEOUT_S, NSE_USER_AGENT}
+facts.store —imports→ facts.taxonomy.Labels
 facts.store —imports→ facts.xbrl.{Fact, label_of}
+facts.taxonomy —imports→ facts.nse.Get
 facts.xbrl —imports→ facts.cfg_facts.XBRL_SKIP_CONTEXTS
 guardrails —imports→ config.{MAX_ANSWER_CHARS, MAX_TASK_CHARS}
 guardrails —imports→ errors.GuardrailTripped
@@ -3517,9 +3572,11 @@ mcp_client —imports→ mcp.server.mcpserver.MCPServer
 mcp_client —imports→ mcp.types.TextContent
 mcp_client —imports→ tools.fence
 mcp_server —imports→ analyst.filings.{FilingSearch, SEARCH_FILINGS_TOOL, build_filings_search}
-mcp_server —imports→ analyst.fundamentals.{FUNDAMENTALS_TOOL, FinancialYear, FundamentalsTool, Metric, Table, Ticker, load_fundamentals}
+mcp_server —imports→ analyst.fundamentals.{Company, FUNDAMENTALS_TOOL, FinancialYear, FundamentalsTool}
 mcp_server —imports→ config.{MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME}
 mcp_server —imports→ errors.GuardrailTripped
+mcp_server —imports→ facts.lookup.{Basis, Lookup, Period, concept_index}
+mcp_server —imports→ facts.store.FACTS_DB
 mcp_server —imports→ guardrails
 mcp_server —imports→ mcp.server.mcpserver.MCPServer
 mcp_server —imports→ mcp.server.mcpserver.exceptions.ToolError
@@ -3725,6 +3782,7 @@ when a module's independence is load-bearing, and keep the lines sorted by impor
 - `retrieval.rank` —never-imports→ `llm`
 - `retrieval.rerank` —never-imports→ `llm`
 - `retrieval.sparse` —never-imports→ `llm`
+- `facts` —never-imports→ `analyst`
 - `facts.xbrl` —only-imports→ `facts.cfg_facts`
 - `facts.cfg_facts` —only-imports→ nothing
 - `llm.pricing` —never-imports→ `anthropic`, `openai`
@@ -4043,12 +4101,10 @@ The rules the code encodes. Breaking one of these is a regression even when test
 - **Decided in:** LOG.md 10-08
 
 #### Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
-- **Is:** A period comes from the filing's own stated reporting periods, never from a 2020-taxonomy context's dates; a fact whose period cannot be settled is reported, not guessed.
-- **Contract:** XBRL is the source of truth and is never compared with the PDF. A rebuild keeps an unchanged fact's row id, and only a person moves a fact into a checked tier, which the schema enforces. Fetching is free but scraping: every file is cached, never refetched, one request a second.
-- **History:** 2026-10-22.
-- **Decided in:** LOG.md 10-22
-
----
+- **Is:** A period comes from the filing's own stated reporting periods, never from a 2020-taxonomy context's dates; a fact whose period cannot be settled is reported, not guessed. A segment comes only from a dimensional context.
+- **Contract:** XBRL is the source of truth and is never compared with the PDF. A rebuild keeps an unchanged fact's row id, and only a person moves a fact into a checked tier, which the schema enforces. A lookup answers with exactly the company, period, basis and segment asked, never a near one, and never with another run's unchecked row. Fetching is free but scraping: every file is cached, never refetched, one request a second.
+- **History:** 2026-10-22. Segments and lookups (2026-10-23).
+- **Decided in:** LOG.md 10-22, 10-23
 
 ## 5. Where the next work attaches
 
@@ -4057,10 +4113,10 @@ Anchors the code already names, so a future session can find the intended seam r
 ### 5.1 Open seams
 
 #### Seam: Facts database — step 2
-- **Is:** open. `fundamentals` rebuilt over `facts.sqlite`: match `what` to `concepts` labels by meaning, fetch exactly by ticker, basis, segment and period, cite `FACT:…`, log each call in `lookups`; then the coverage eval and the analyst run.
+- **Is:** partly open. Built 2026-10-23: `fundamentals` over `facts.sqlite` (`facts.lookup`), its labels from NSE's taxonomy. **Still open:** the coverage eval (held, found at rank 1 and in the top 5 for the question's own words, exact) and the analyst run with it.
 - **Contract:** The lookup order is in the design.
-- **Named at:** `docs/facts-db.md` § Lookup, `facts/store.py`
-- **Decided in:** `docs/facts-db.md`
+- **Named at:** `docs/facts-db.md` § Lookup, `facts/lookup.py`
+- **Decided in:** LOG.md 10-23 · `docs/facts-db.md`
 
 #### Seam: Week 6 — LangGraph agent
 - **Is:** open. Same two symbols; `llm.core.run_tools` is the reference semantics to preserve.

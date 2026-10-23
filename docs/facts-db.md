@@ -78,9 +78,14 @@ concepts  concept, label, statement, kind ('xbrl' | 'row' | 'read'), xbrl_concep
 - **concept**: the XBRL element (`RevenueFromOperations`) for XBRL facts; for PDF facts, the row
   label normalised (case, whitespace, footnote marks), so the same row in two years shares one; for
   a read fact, the model's metric and description.
-- **label**: the words a human reads: the taxonomy's label for an XBRL concept (from NSE's
-  published taxonomy files; failing that, the element name split into words), the printed row
-  label for a PDF fact.
+- **label**: the words a human reads: the taxonomy's label for an XBRL concept, the printed row
+  label for a PDF fact. **Built 10-23** (Vedant: do it right first, over measuring split element
+  names): NSE's four taxonomy packages for the versions the filings use (SEBI's 2025 Ind AS and
+  banking, BSE's 2020 Ind AS and 2019 banking) label all 281 concepts; one label per concept, the
+  first package in that order winning, every other label an alias in `concept_labels`. Bank and
+  non-bank packages label concepts by the same names, so they make one set. SEBI's 2026-01-31
+  taxonomy (16 of the 192 filings) is not published as a package, and the 2025 one labels every
+  concept those filings use. Element names that are misspelt are labelled right ("Itmes").
 - **period**: the context id says which column (`One…` the quarter, `Four…` the year to date, `…I`
   an instant, `PY_I` the prior year-end), and each filing states each column's period in words
   (`DateOfStart/EndOfReportingPeriod` on `OneD` and `FourD`; a June quarter has only `One`). In the
@@ -169,17 +174,26 @@ The generalist's existing `fundamentals` tool keeps its name (Vedant) and is reb
 database; its fixed four-metric, three-company table becomes any concept, company and year:
 
 ```text
-fundamentals(company, year, what, basis = "consolidated", segment = null, period = "year")
-→ up to 5 facts: cite_as, value, unit, label, period, basis, segment, tier, source
+fundamentals(company, year, what, period = "year", basis = "consolidated", segment = null)
+→ up to 5 facts: cite_as, label, value, unit, period, basis, segment, tier, source
 ```
 
+`period` is one of `year`, `Q1`-`Q4`, `H1`, `9M` (Vedant, 10-23, over year-and-quarter only and
+explicit dates): code turns it into dates in the April-March year, and a balance-sheet item is
+answered as at the period's last day, so the model needs neither the calendar nor which items are
+instants. Many concepts are filed only year to date (profit attributable to owners has H1, 9M and
+year, no quarter alone, in the 2020 taxonomy's filings).
+
 1. **Match `what` to concepts by meaning**: embed it with the search embedder and rank the
-   concepts' labels (a few thousand), hybrid with BM25 as the filings search is. "Net profit" finds
+   concepts' labels (281 XBRL concepts so far), hybrid with BM25 as the filings search is. A
+   concept's text is its standard label from NSE's taxonomy packages plus every other label they
+   give it. "Net profit" finds
    `ProfitOrLossAttributableToOwnersOfParent` and the PDF row "Profit for the year attributable to
    owners".
 2. **Fetch exactly**: SQL over the matched concepts for that company, year, basis, segment and
    period. Nothing is returned for a different year or basis, however similar the words.
-3. **Cite**: `cite_as` is `FACT:{ticker}:{fy}:{basis}:{concept}[:{segment}]`; a memo claim may cite
+3. **Cite**: `cite_as` is `FACT:{ticker}:{fy}:{basis}:{period}:{concept}[:{segment}]` (the period
+   added 10-23, since a concept holds a fact per period); a memo claim may cite
    it as it cites a passage id today, and the critic is shown the fact and its source (the NSE
    filing's URL, the PDF page and row, or a read fact's passage).
 
@@ -257,6 +271,9 @@ against the current run: accuracy, tool calls and cost per question.
    every filing's sums holding; four HDFC Bank FY24 H1 filings reference a context they never
    define and their facts are reported, not loaded. Numbers in `LOG.md`.
 2. `fundamentals` rebuilt over the XBRL facts, its coverage eval, and the analyst run with it.
+   **The tool built 10-23** (`aigent.facts.lookup`, labels from the taxonomy); building it found
+   that step 1 had filed every quarter-alone fact under the segment "INR" (the quarter column's
+   currency text read as a segment name), now fixed. The coverage eval and the analyst run remain.
 3. PDF table facts for what XBRL lacks, and their totals check.
 4. Write-back, with its guards and the frozen copy for evals.
 5. Decide on the specialist from the measurements.
@@ -275,8 +292,20 @@ against the current run: accuracy, tool calls and cost per question.
 - **Sessions**: `run_id` identifies a session; one row per fact per writer per run.
 - **Demand**: every lookup logged in `lookups`, to rank concepts for verification.
 
+## Decided (10-23)
+
+- **Periods** (Vedant): named, `year`, `Q1`-`Q4`, `H1`, `9M`; balances at the period's end.
+- **Labels** (Vedant): NSE's taxonomy labels, fetched and cached, before the lookup existed.
+- **Which filing answers a year** (finance, mine): as originally reported, from the period's own
+  filing. Prior-year comparatives are not loaded, so a period is filed once except for opening
+  balances, which repeat identically; a repeat is answered from the earliest filing. ITC's FY24
+  restated for the hotels demerger is only in the FY25 PDF, not in XBRL.
+
 ## Open
 
+- **What `found` means**: a lookup logs `found` when any fact comes back, though the nearest label
+  may not be the figure asked (a dividend per share, which XBRL does not file, returns "Adjustments
+  for dividend income"). The coverage eval measures how often; a relevance floor waits on it.
 - **The vote**: the polling job's rule for preferring a value, decided once there are rows to vote on.
   If it needs to tell a blind read from one changed after a mismatch, a column for the row shown
   is added then.

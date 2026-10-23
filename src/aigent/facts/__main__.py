@@ -8,11 +8,12 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from aigent.analyst.fundamentals import load_fundamentals
 from aigent.facts.build import build
-from aigent.facts.cfg_facts import FACTS_TICKERS, FACTS_YEARS
+from aigent.facts.cfg_facts import FACTS_TICKERS, FACTS_YEARS, TAXONOMY_PACKAGES
 from aigent.facts.nse import XBRL_DIR, polite_get
+from aigent.facts.reference import load_fundamentals
 from aigent.facts.store import FACTS_DB, Writer, connect
+from aigent.facts.taxonomy import TAXONOMY_DIR
 
 REPORT = FACTS_DB.with_name("facts-build-report.json")
 
@@ -49,6 +50,8 @@ def main(argv: list[str] | None = None) -> None:
         writer,
         now,
         load_fundamentals().values(),
+        TAXONOMY_DIR,
+        TAXONOMY_PACKAGES,
     )
     REPORT.write_text(json.dumps(report.as_json(), indent=1, default=str) + "\n", encoding="utf-8")
     print(report.summary())

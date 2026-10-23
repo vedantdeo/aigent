@@ -16,8 +16,9 @@ from mcp.types import CallToolResult, TextContent, Tool
 from aigent import mcp_server
 from aigent.analyst import filings
 from aigent.analyst.filings import SEARCH_FILINGS_TOOL
-from aigent.analyst.fundamentals import FUNDAMENTALS_TOOL, load_fundamentals
+from aigent.analyst.fundamentals import FUNDAMENTALS_TOOL
 from aigent.config import MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME
+from aigent.facts.lookup import Lookup
 from aigent.mcp_server import LazyFilings, LazySearch, build_server
 from aigent.report_tools import SEARCH_TOOL
 from aigent.retrieval.chunk import Chunk
@@ -32,12 +33,12 @@ def _with_client[Result](
     use: Callable[[Client], Awaitable[Result]],
     sandbox: Path | None = None,
     filing_search: filings.Search | None = None,
+    lookup: Lookup | None = None,
 ) -> Result:
     async def run() -> Result:
         asked = filing_search or FakeFilings()
-        server = (
-            build_server(search, asked) if sandbox is None else build_server(search, asked, sandbox)
-        )
+        box = {} if sandbox is None else {"sandbox": sandbox}
+        server = build_server(search, asked, lookup=lookup, **box)
         async with Client(server) as client:
             return await use(client)
 
@@ -50,9 +51,10 @@ def _call(
     tool: str = "search_reports",
     sandbox: Path | None = None,
     filing_search: filings.Search | None = None,
+    lookup: Lookup | None = None,
 ) -> CallToolResult:
     return _with_client(
-        search, lambda client: client.call_tool(tool, arguments), sandbox, filing_search
+        search, lambda client: client.call_tool(tool, arguments), sandbox, filing_search, lookup
     )
 
 
@@ -86,7 +88,7 @@ def test_the_server_offers_six_tools_described_as_the_agent_sees_them(
     assert tools["write_file"].annotations and not tools["write_file"].annotations.read_only_hint
     assert tools["write_file"].input_schema["required"] == ["file_path", "content"]
     assert tools["search_filings"].input_schema["required"] == ["query"], "scope defaults to all"
-    assert tools["fundamentals"].input_schema["required"] == ["ticker", "metric", "year"]
+    assert tools["fundamentals"].input_schema["required"] == ["company", "year", "what"]
     for served, ours in (
         ("search_filings", SEARCH_FILINGS_TOOL),
         ("fundamentals", FUNDAMENTALS_TOOL),
@@ -226,14 +228,22 @@ def test_a_filings_search_that_fails_is_an_error_not_an_answer(search: FakeSearc
     assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
 
 
-def test_a_fundamentals_lookup_returns_the_figure_and_what_to_cite(search: FakeSearch) -> None:
-    arguments: dict[str, object] = {"ticker": "ITC", "metric": "dividend", "year": "2025"}
+def test_a_fundamentals_lookup_returns_the_facts_and_what_to_cite(
+    search: FakeSearch, facts_lookup: Lookup
+) -> None:
+    arguments: dict[str, object] = {
+        "company": "ITC",
+        "year": "2025",
+        "what": "  revenue from operations  ",
+        "period": "Q4",
+    }
 
-    result = _call(search, arguments, "fundamentals")
+    result = _call(search, arguments, "fundamentals", lookup=facts_lookup)
 
-    found = cast(dict[str, object], json.loads(_text(result)))
-    assert not result.is_error and found["cite_as"] == "ITC:2025:dividend", found
-    assert found["value"] == 14.35 and found["source"] == "ITC-FY25 p51", found
+    found = cast(dict[str, list[dict[str, object]]], json.loads(_text(result)))["facts"][0]
+    assert not result.is_error, _text(result)
+    assert found["cite_as"] == "FACT:ITC:2025:consolidated:Q4:RevenueFromOperations", found
+    assert found["value"] == 204.0, found
 
 
 @pytest.mark.parametrize(
@@ -241,44 +251,43 @@ def test_a_fundamentals_lookup_returns_the_figure_and_what_to_cite(search: FakeS
     [
         pytest.param(
             "fundamentals",
-            {"ticker": "INFY", "metric": "revenue", "year": "2025"},
+            {"company": "INFY", "year": "2025", "what": "revenue"},
             "INFY",
-            id="a company the table lacks",
+            id="a company the database lacks",
         ),
         pytest.param(
             "fundamentals",
-            {"ticker": "ITC", "metric": "ebitda", "year": "2025"},
-            "ebitda",
-            id="a metric the table lacks",
-        ),
-        pytest.param(
-            "fundamentals",
-            {"ticker": "ITC", "metric": "revenue", "year": "2019"},
+            {"company": "ITC", "year": "2019", "what": "revenue"},
             "2019",
-            id="a year the table lacks",
+            id="a year the database lacks",
+        ),
+        pytest.param(
+            "fundamentals",
+            {"company": "ITC", "year": "2025", "what": "revenue", "period": "Q5"},
+            "Q5",
+            id="a period that is not one",
+        ),
+        pytest.param(
+            "fundamentals",
+            {"company": "ITC", "year": "2025", "what": ""},
+            "empty",
+            id="no figure named, refused by the input guard",
+        ),
+        pytest.param(
+            "fundamentals",
+            {"company": "WIPRO", "year": "2025", "what": "revenue from operations"},
+            "Closest labels filed",
+            id="a figure the database does not hold",
         ),
         pytest.param("calculate", {"expression": "__import__('os')"}, "", id="code, not sums"),
     ],
 )
 def test_a_bad_lookup_or_sum_is_refused_with_its_reason(
-    search: FakeSearch, tool: str, arguments: dict[str, object], says: str
+    search: FakeSearch, facts_lookup: Lookup, tool: str, arguments: dict[str, object], says: str
 ) -> None:
-    result = _call(search, arguments, tool)
+    result = _call(search, arguments, tool, lookup=facts_lookup)
 
     assert result.is_error and says in _text(result), _text(result)
-    assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
-
-
-def test_a_figure_the_given_table_lacks_is_an_error_not_an_answer(search: FakeSearch) -> None:
-    async def run() -> CallToolResult:
-        only_fy25 = {key: value for key, value in load_fundamentals().items() if key[1] == 2025}
-        async with Client(build_server(search, FakeFilings(), table=only_fy25)) as client:
-            arguments = {"ticker": "ITC", "metric": "eps", "year": "2024"}
-            return await client.call_tool("fundamentals", arguments)
-
-    result = anyio.run(run)
-
-    assert result.is_error and "no 2024 figures for ITC" in _text(result), _text(result)
     assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
 
 

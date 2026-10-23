@@ -3,14 +3,16 @@ facts database's tests."""
 
 from __future__ import annotations
 
+import io
 import json
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
-from aigent.analyst.fundamentals import Fundamental
 from aigent.facts.cfg_facts import NSE_INTEGRATED_LISTING, NSE_LEGACY_LISTING, NSE_PAGE_SIZE
+from aigent.facts.reference import Fundamental
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LEGACY_Q4 = FIXTURES / "ITC-2024-03-31-C.xml"  # 2020 BSE taxonomy, FY24's March quarter
@@ -145,3 +147,38 @@ def fundamental(ticker: str, year: int, metric: str, value: float) -> Fundamenta
         page=1,
         note=None,
     )
+
+
+_ROLE = "http://www.xbrl.org/2003/role/"
+
+
+def label_linkbase(labels: dict[str, list[tuple[str, str]]], prefix: str = "in-capmkt") -> str:
+    """A label linkbase giving each concept its (role, text) labels."""
+    parts: list[str] = []
+    for n, (concept, roles) in enumerate(sorted(labels.items())):
+        parts.append(
+            f'<link:loc xlink:type="locator" xlink:href="x.xsd#{prefix}_{concept}" '
+            f'xlink:label="loc{n}"/>'
+            f'<link:labelArc xlink:type="arc" xlink:from="loc{n}" xlink:to="lab{n}"/>'
+        )
+        parts.extend(
+            f'<link:label xlink:type="resource" xlink:label="lab{n}" xlink:role="{_ROLE}{role}" '
+            f'xml:lang="en">{text}</link:label>'
+            for role, text in roles
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" '
+        'xmlns:xlink="http://www.w3.org/1999/xlink"><link:labelLink xlink:type="extended">'
+        + "".join(parts)
+        + "</link:labelLink></link:linkbase>"
+    )
+
+
+def label_package(labels: dict[str, list[tuple[str, str]]], name: str = "core/x-lab.xml") -> bytes:
+    """A zipped taxonomy package holding one label linkbase, and a schema that is not one."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(name, label_linkbase(labels))
+        archive.writestr("core/x.xsd", "<schema/>")
+    return buffer.getvalue()

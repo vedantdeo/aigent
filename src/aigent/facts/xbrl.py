@@ -118,7 +118,10 @@ def _stated_periods(texts: dict[str, dict[str, str]]) -> dict[str, tuple[date, d
 
 
 def _segment(ctx_id: str, ctx: _Context, texts: dict[str, dict[str, str]]) -> str | None:
-    """The context's own description (a segment's or an expense's name), else its member."""
+    """A dimensional context's own description (a segment's or an expense's name), else its
+    member; a context with no member has none, whatever it describes (its currency, say)."""
+    if not ctx.members:
+        return None
     for concept, text in sorted(texts.get(ctx_id, {}).items()):
         if concept.startswith("Description") and text:
             return text

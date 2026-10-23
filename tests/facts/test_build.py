@@ -15,13 +15,24 @@ from aigent.facts.build import Report, build
 from aigent.facts.nse import read_manifest, write_manifest
 from aigent.facts.store import Writer, connect
 
-from .conftest import INTEGRATED_Q3, LEGACY_Q4, FakeNse, fundamental, integrated_row, legacy_row
+from .conftest import (
+    INTEGRATED_Q3,
+    LEGACY_Q4,
+    FakeNse,
+    fundamental,
+    integrated_row,
+    label_package,
+    legacy_row,
+)
 
 NOW = datetime(2026, 10, 22, 12, 0, 0)
 WRITER = Writer("xbrl-loader@abc1234", "2026-10-22T12:00:00+05:30", "build-1")
 MAR = "https://x/itc-2024-03-31-c.xml"
 DEC = "https://x/itc-2025-12-31-c.xml"
 ITC_FY24_REVENUE = fundamental("ITC", 2024, "revenue", 768404900000.0)
+TAXONOMY = "https://x/taxonomy.zip"
+PACKAGES = (("labels", TAXONOMY),)
+LABELLED = label_package({"RevenueFromOperations": [("label", "Revenue from operations (filed)")]})
 
 
 @pytest.fixture
@@ -31,7 +42,11 @@ def scripted(nse: FakeNse) -> FakeNse:
         legacy=[legacy_row("31-Mar-2024", "Consolidated", MAR, "23-May-2024 05:03:07")],
         integrated=[[integrated_row("31-DEC-2025", "Consolidated", DEC, "29-Jan-2026 06:52:14")]],
     )
-    nse.answers |= {MAR: LEGACY_Q4.read_bytes(), DEC: INTEGRATED_Q3.read_bytes()}
+    nse.answers |= {
+        MAR: LEGACY_Q4.read_bytes(),
+        DEC: INTEGRATED_Q3.read_bytes(),
+        TAXONOMY: LABELLED,
+    }
     return nse
 
 
@@ -43,7 +58,18 @@ def conn(tmp_path: Path) -> sqlite3.Connection:
 def _build(
     conn: sqlite3.Connection, xbrl: Path, get: FakeNse | None, tickers: tuple[str, ...] = ("ITC",)
 ) -> Report:
-    return build(conn, xbrl, get, tickers, (2024, 2026), WRITER, NOW, [ITC_FY24_REVENUE])
+    return build(
+        conn,
+        xbrl,
+        get,
+        tickers,
+        (2024, 2026),
+        WRITER,
+        NOW,
+        [ITC_FY24_REVENUE],
+        xbrl.parent / "taxonomy",
+        PACKAGES,
+    )
 
 
 def test_a_build_fetches_loads_and_checks(
@@ -156,3 +182,58 @@ def test_a_cached_file_out_of_scope_is_not_loaded(
         (xbrl / name).write_bytes((xbrl / "ITC-2024-03-31-C.xml").read_bytes())
     report = _build(conn, xbrl, None)
     assert [x.name for x in report.loaded] == ["ITC-2024-03-31-C.xml", "ITC-2025-12-31-C.xml"]
+
+
+def test_a_build_labels_its_concepts_from_the_taxonomy(
+    scripted: FakeNse, conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    report = _build(conn, tmp_path / "xbrl", scripted)
+    assert (report.taxonomy_fetched, report.taxonomy_failures) == (["labels"], [])
+    assert "RevenueFromOperations" not in report.unlabelled and report.unlabelled
+    label = conn.execute(
+        "SELECT label FROM concepts WHERE concept = 'RevenueFromOperations'"
+    ).fetchone()
+    assert label == ("Revenue from operations (filed)",)
+    assert "taxonomy 1 packages fetched, 0 failures" in report.summary()
+
+
+def test_an_offline_build_labels_from_the_cached_packages(
+    scripted: FakeNse, conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    _build(conn, tmp_path / "xbrl", scripted)
+    report = _build(conn, tmp_path / "xbrl", None)
+    assert (report.taxonomy_fetched, report.taxonomy_failures) == ([], [])
+    assert TAXONOMY in scripted.calls and scripted.calls.count(TAXONOMY) == 1
+
+
+def test_an_offline_build_with_no_packages_cached_says_so_and_asks_nse_nothing(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    report = _build(conn, tmp_path / "xbrl", None)
+    assert report.taxonomy_failures == [
+        "taxonomy package labels is not cached; build without --offline"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("answer", "failure"),
+    [
+        pytest.param(OSError("HTTP Error 503"), "fetch failed", id="a package that fails to fetch"),
+        pytest.param(b"not a zip", "zip", id="a package that is not a zip"),
+    ],
+)
+def test_a_taxonomy_failure_is_reported_and_nothing_is_relabelled(
+    scripted: FakeNse,
+    conn: sqlite3.Connection,
+    tmp_path: Path,
+    answer: bytes | Exception,
+    failure: str,
+) -> None:
+    scripted.answers[TAXONOMY] = answer
+    report = _build(conn, tmp_path / "xbrl", scripted)
+    assert len(report.taxonomy_failures) == 1 and failure in report.taxonomy_failures[0]
+    assert report.unlabelled == []
+    label = conn.execute(
+        "SELECT label FROM concepts WHERE concept = 'RevenueFromOperations'"
+    ).fetchone()
+    assert label == ("Revenue from operations",)

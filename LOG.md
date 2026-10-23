@@ -2137,3 +2137,25 @@
   `agent`'s History; two seams in §5 were out of date (`v0.1-rag` is tagged; the repos went public
   on 10-09). 346 KB → 441 KB, the growth being the generated contents (20 KB) and import edges
   (36 KB) and the field labels.
+- 10-23: **`fundamentals` rebuilt over the facts database, $0.00; a step-1 bug found on the way.**
+  Labels first (Vedant: do it right first): NSE's four taxonomy packages for the versions our
+  filings use, fetched once (four requests) and cached, label all 281 concepts; 53 differ between
+  packages only in punctuation, 159 aliases kept for matching; bank and non-bank packages merge
+  into one set by element name. SEBI's 2026-01-31 taxonomy is not published as a package, but the
+  2025 one labels every concept its 16 filings use. Then `facts.lookup`: named periods (Vedant:
+  `year`, `Q1`-`Q4`, `H1`, `9M`, over year-and-quarter only and explicit dates), `what` ranked
+  against labels with the retrieval stack's hybrid ranker, an exact SQL fetch, every call logged
+  in `lookups`. **The first quarter query found nothing: every quarter-alone fact was filed under
+  the segment "INR"**, because `xbrl._segment` read the quarter column's
+  `DescriptionOfPresentationCurrency` as a segment name; 8,753 facts moved back to no segment on
+  rebuild. Step 1's checks compared full years only and its trimmed fixture held no currency text,
+  so nothing caught it. Smoke on the real database (local embedder, free): ITC FY25 profit
+  attributable to owners, revenue, EPS and HDFC Bank's interest earned at rank 1; ITC Q3 profit
+  ₹4,935 cr, Q1 revenue, standalone H1, 9M, Wipro FY26 Q2 and a segment by part of its name all
+  right; a dividend per share (not in XBRL) returns near labels, which the tool's description
+  sends to search. Which filing answers a year (my call): as originally reported, the period's own
+  filing. The frozen 24-figure table moved to `facts.reference`, the build's check, so `facts`
+  imports nothing from `analyst` (a checked rule). 179 facts tests and 11 tool tests; every new
+  guard mutation-checked in a scratch copy, 43 of 44, the one left only narrowing a type. Next:
+  the coverage eval, then the analyst run with the new tool (paid; dry run first).
+

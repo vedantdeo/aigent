@@ -9,7 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from aigent.facts.store import FilingRow, Writer, connect, sync_xbrl_facts, upsert_filing
+from aigent.facts.store import (
+    FilingRow,
+    Writer,
+    apply_labels,
+    connect,
+    sync_xbrl_facts,
+    upsert_filing,
+)
+from aigent.facts.taxonomy import Labels
 from aigent.facts.xbrl import Fact
 
 WRITER = Writer("xbrl-loader@abc1234", "2026-10-22T12:00:00+05:30", "build-1")
@@ -166,3 +174,25 @@ def test_one_filing_holds_an_xbrl_fact_once(conn: sqlite3.Connection) -> None:
                SELECT filing_id, ticker, basis, concept, label, period_kind, period_end, 7.0,
                       unit, tier, written_by, written_at, 'build-2' FROM facts"""
         )
+
+
+def test_labels_go_onto_concepts_and_facts_and_aliases_are_replaced(
+    conn: sqlite3.Connection,
+) -> None:
+    sync_xbrl_facts(conn, _filing(conn), "ITC", "consolidated", [REVENUE, ASSETS], WRITER)
+    apply_labels(conn, {"RevenueFromOperations": Labels("Revenue (official)", {"Old alias"})})
+    unlabelled = apply_labels(
+        conn, {"RevenueFromOperations": Labels("Revenue (official)", {"Sales", "Turnover"})}
+    )
+    assert unlabelled == ["Assets"]
+    assert conn.execute("SELECT concept, label FROM concepts ORDER BY concept").fetchall() == [
+        ("Assets", "Assets"),
+        ("RevenueFromOperations", "Revenue (official)"),
+    ]
+    assert conn.execute(
+        "SELECT label FROM facts WHERE concept = 'RevenueFromOperations'"
+    ).fetchall() == [("Revenue (official)",)]
+    assert conn.execute("SELECT concept, label FROM concept_labels ORDER BY label").fetchall() == [
+        ("RevenueFromOperations", "Sales"),
+        ("RevenueFromOperations", "Turnover"),
+    ]
