@@ -233,13 +233,19 @@ failures), so a wrong read would become a permanent wrong answer. The guards:
 
 ## How it is measured
 
-A coverage eval, free, in the retrieval eval's style:
+A coverage eval, free: `python -m aigent.facts coverage` (`aigent.facts.coverage`), writing
+`evals/reports/coverage-<time>.md` and its rows.
 
 - **Held**: of the 24 fundamentals, the 34 table questions' figures and the v3 teacher labels
   (named metrics), how many are a fact in the database.
 - **Found**: of those held, how many `fundamentals` returns in its top 5 for the question's own
   words, and at rank 1.
 - **Exact**: the value equal to the label's, scale included.
+
+Each figure is asked twice: in its fuller words (a fundamental's definition, a question as written)
+and by its metric word. A fundamental is held by its XBRL concept and period; every other figure by
+value, in its own unit and against facts filed to within 1% of it, sign aside. The lookup is given
+the basis and segment of the fact that holds the figure, so found measures `what` alone.
 
 Then the analyst eval as today, with the rebuilt `fundamentals` in place of the frozen table,
 against the current run: accuracy, tool calls and cost per question.
@@ -273,7 +279,9 @@ against the current run: accuracy, tool calls and cost per question.
 2. `fundamentals` rebuilt over the XBRL facts, its coverage eval, and the analyst run with it.
    **The tool built 10-23** (`aigent.facts.lookup`, labels from the taxonomy); building it found
    that step 1 had filed every quarter-alone fact under the segment "INR" (the quarter column's
-   currency text read as a segment name), now fixed. The coverage eval and the analyst run remain.
+   currency text read as a segment name), now fixed. **The coverage eval built 10-25**: by
+   definition 18 of 24 fundamentals held, 12 of 18 at rank 1, all 18 in the top 5 and exact. The
+   analyst run remains.
 3. PDF table facts for what XBRL lacks, and their totals check.
 4. Write-back, with its guards and the frozen copy for evals.
 5. Decide on the specialist from the measurements.
@@ -301,7 +309,21 @@ against the current run: accuracy, tool calls and cost per question.
   balances, which repeat identically; a repeat is answered from the earliest filing. ITC's FY24
   restated for the hotels demerger is only in the FY25 PDF, not in XBRL.
 
+## Decided (10-25)
+
+- **Headline** (Vedant): the 24 frozen fundamentals; the tables and teacher labels reported apart,
+  the teacher's split into results-format metrics and the rest.
+- **Words asked** (Vedant): both the fuller words and the metric word, side by side.
+- **Found** (Vedant): the right concept and period for the fundamentals, the right value for the
+  rest, which map to no concept.
+- **Table figures** (finance, mine): one per question, by hand, the first where a row gives two;
+  ten-year series and years outside FY24-FY26 left out.
+
 ## Open
+
+- **Ratios as filed**: Reliance and Tata Motors file debt to equity and the coverage ratios divided
+  by 100 (0.0041 for a printed 0.41), Power Grid as printed, HDFC Bank's consolidated ratios as 0.0.
+  Stored as filed, so ratio facts answer wrongly until a check or a correction catches them.
 
 - **What `found` means**: a lookup logs `found` when any fact comes back, though the nearest label
   may not be the figure asked (a dividend per share, which XBRL does not file, returns "Adjustments

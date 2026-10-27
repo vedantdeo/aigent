@@ -2158,4 +2158,27 @@
   imports nothing from `analyst` (a checked rule). 179 facts tests and 11 tool tests; every new
   guard mutation-checked in a scratch copy, 43 of 44, the one left only narrowing a type. Next:
   the coverage eval, then the analyst run with the new tool (paid; dry run first).
+- 10-25: **the facts database's coverage eval, $0.00 (local models only, 47 s).** Vedant's calls:
+  the headline is the 24 frozen fundamentals, the table questions and teacher labels reported
+  apart; each figure asked two ways, the fuller words (a fundamental's definition, a question as
+  written) and the metric word; found means the right concept and period for the fundamentals
+  (each mapped to its XBRL concept) and the right value for the rest (no mapping exists). Mine:
+  the 34 table figures written by hand into `evals/reference/table-figures.json` (3 left out: a
+  FY16 figure and two ten-year series), each checked by a test to be printed in its quote; teacher
+  labels scored when a named metric, an amount in rupees, FY24-FY26 and a readable precision, and
+  split into results-format metrics and the rest. **The first run matched by value across units**:
+  a 3.03 current ratio "held" by a rupee fact rounded to ₹1 lakh. Fixed before any number was
+  kept: a figure matches only facts in its unit, filed to within 1% of it. Results, out of held:
+  **fundamentals asked by definition 18/24 held, 12/18 found at rank 1, 18/18 in the top 5, 18/18
+  exact**; by the bare word 6/18 (`eps` returns Inventories, `profit` returns profit before tax).
+  EPS sits at rank 3, behind the continuing-operations EPS concepts. Tables: 15/31 held, found at
+  1 10/15 asked and 14/15 by word; ITC's profit including discontinued operations ranks below the
+  discontinued line. Teacher, results metrics: 291/747 held, 165/291 at rank 1 asked, 236/291 in
+  the top 5. **Found in passing: Reliance and Tata Motors file their ratios divided by 100** in
+  XBRL (debt to equity 0.0041 and 0.0054 for a printed 0.41 and 0.54), Power Grid files them as
+  printed, and HDFC Bank's consolidated ratios are all 0.0; the loader stores what is filed, so
+  ratio facts are not to be trusted yet. The eval deletes the `lookups` rows it writes, even on a
+  failure. 66 tests; 29 of 30 mutants killed in a scratch copy, the one left (a found fact's basis
+  in its key) unable to fail because a lookup returns only the basis it was asked. Next: the
+  analyst run with the new tool (paid; dry run first).
 

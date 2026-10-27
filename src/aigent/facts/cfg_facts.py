@@ -74,3 +74,28 @@ TAXONOMY_PACKAGES: tuple[tuple[str, str], ...] = (
 FACTS_MATCH_METHOD = "hybrid"
 FACTS_MATCH_DEPTH = 20
 FACTS_LOOKUP_K = 5
+
+# Coverage eval: each frozen metric asked in its definition's words, and which teacher metrics the
+# results format files (the rest are scored apart). Found is reported at rank 1 and at the tool's k.
+COVERAGE_DEFINITIONS: dict[str, str] = {
+    "dividend": "dividend per share for the year",
+    "eps": "basic earnings per share",
+    "profit": "profit attributable to owners of the parent",
+    "revenue": "revenue from operations",
+}
+COVERAGE_RESULTS_METRICS: tuple[str, ...] = (
+    "capex",
+    "cash_flow",
+    "debt",
+    "eps",
+    "profit",
+    "revenue",
+)
+COVERAGE_FOUND_AT: tuple[int, ...] = (1, FACTS_LOOKUP_K)
+COVERAGE_MAX_ROUNDING = (
+    0.01  # by value, a fact rounded by more than this share of a figure cannot match
+)
+COVERAGE_TEACHER_UNITS: dict[str, tuple[str, ...]] = {
+    "dividend": ("INR", "INRPerShare"),
+    "eps": ("INRPerShare",),
+}
