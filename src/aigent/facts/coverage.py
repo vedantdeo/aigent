@@ -26,7 +26,6 @@ from aigent.facts.cfg_facts import (
 from aigent.facts.check import tolerance
 from aigent.facts.lookup import Lookup, NotFound, span
 from aigent.facts.reference import Fundamental
-from aigent.facts.store import CHECKED_TIERS
 
 REPO = Path(__file__).resolve().parents[3]
 TABLE_QUESTIONS = REPO / "evals" / "datasets" / "retrieval-tables.jsonl"
@@ -282,19 +281,19 @@ def _telling(value: float, figure: Figure, decimals: int | None) -> bool:
 
 
 def holdings(conn: sqlite3.Connection, figure: Figure) -> list[Holding]:
-    """The answerable facts for the figure's company and year that hold it, consolidated and
-    unsegmented first, each concept once from its earliest filing."""
+    """The facts of any tier for the figure's company and year that hold it, consolidated and
+    unsegmented first, each concept once from its earliest filing; the eval measures matching,
+    not trust."""
     start, end = span(figure.year, "year")
-    checked = ", ".join("?" for _ in CHECKED_TIERS)
     rows = conn.execute(
-        f"""SELECT f.concept, f.basis, f.segment, f.value, f.decimals, f.unit
+        """SELECT f.concept, f.basis, f.segment, f.value, f.decimals, f.unit
             FROM facts f LEFT JOIN filings fl ON fl.id = f.filing_id
-            WHERE f.ticker = ? AND (f.tier = 'xbrl' OR f.tier IN ({checked}))
+            WHERE f.ticker = ?
               AND ((f.period_kind = 'duration' AND f.period_start = ? AND f.period_end = ?)
                    OR (f.period_kind = 'instant' AND f.period_end = ?))
             ORDER BY f.basis != 'consolidated', f.segment IS NOT NULL, f.segment, f.concept,
                      fl.period_end""",
-        (figure.ticker, *CHECKED_TIERS, start.isoformat(), end.isoformat(), end.isoformat()),
+        (figure.ticker, start.isoformat(), end.isoformat(), end.isoformat()),
     ).fetchall()
     held: dict[tuple[str, str, str | None], Holding] = {}
     for concept, basis, segment, value, decimals, unit in rows:

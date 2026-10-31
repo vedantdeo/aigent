@@ -395,7 +395,11 @@ def test_a_teacher_figure_repeated_with_its_question_counts_once(tmp_path: Path)
         ),
         pytest.param(by_value(3.03, ("INRPerShare",)), [], id="the same number in another unit"),
         pytest.param(by_value(31_000_000, tol=5e6), [], id="a fact rounded too coarsely to tell"),
-        pytest.param(by_value(14.35, ("INRPerShare",)), [], id="another run's unchecked read"),
+        pytest.param(
+            by_value(14.35, ("INRPerShare",)),
+            [("DividendPerShare", "consolidated", None)],
+            id="an unchecked read counts, matching not trust being measured",
+        ),
     ],
 )
 def test_a_figure_is_held_by_the_facts_that_match_it(

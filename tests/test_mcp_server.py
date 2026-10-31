@@ -16,7 +16,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 from aigent import mcp_server
 from aigent.analyst import filings
 from aigent.analyst.filings import SEARCH_FILINGS_TOOL
-from aigent.analyst.fundamentals import FUNDAMENTALS_TOOL
+from aigent.analyst.fundamentals import COMPARE_TOOL, FUNDAMENTALS_TOOL
 from aigent.config import MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME
 from aigent.facts.lookup import Lookup
 from aigent.mcp_server import LazyFilings, LazySearch, build_server
@@ -62,7 +62,7 @@ def _text(result: CallToolResult) -> str:
     return "".join(cast(TextContent, block).text for block in result.content)
 
 
-def test_the_server_offers_six_tools_described_as_the_agent_sees_them(
+def test_the_server_offers_seven_tools_described_as_the_agent_sees_them(
     search: FakeSearch,
 ) -> None:
     async def listed(client: Client) -> tuple[list[Tool], str | None, str]:
@@ -80,6 +80,7 @@ def test_the_server_offers_six_tools_described_as_the_agent_sees_them(
         "search_reports": SEARCH_TOOL.get("description"),
         "search_filings": SEARCH_FILINGS_TOOL.get("description"),
         "fundamentals": FUNDAMENTALS_TOOL.get("description"),
+        "compare_unverified": COMPARE_TOOL.get("description"),
         "calculate": CALCULATOR_TOOL.get("description"),
         "read_file": READ_FILE_TOOL.get("description"),
         "write_file": WRITE_FILE_TOOL.get("description"),
@@ -89,6 +90,9 @@ def test_the_server_offers_six_tools_described_as_the_agent_sees_them(
     assert tools["write_file"].input_schema["required"] == ["file_path", "content"]
     assert tools["search_filings"].input_schema["required"] == ["query"], "scope defaults to all"
     assert tools["fundamentals"].input_schema["required"] == ["company", "year", "what"]
+    assert tools["compare_unverified"].input_schema["required"] == ["lookup_id", "my_value", "how"]
+    assert tools["compare_unverified"].annotations
+    assert tools["compare_unverified"].annotations.read_only_hint
     for served, ours in (
         ("search_filings", SEARCH_FILINGS_TOOL),
         ("fundamentals", FUNDAMENTALS_TOOL),
@@ -229,7 +233,7 @@ def test_a_filings_search_that_fails_is_an_error_not_an_answer(search: FakeSearc
 
 
 def test_a_fundamentals_lookup_returns_the_facts_and_what_to_cite(
-    search: FakeSearch, facts_lookup: Lookup
+    search: FakeSearch, checked_facts_lookup: Lookup
 ) -> None:
     arguments: dict[str, object] = {
         "company": "ITC",
@@ -238,7 +242,7 @@ def test_a_fundamentals_lookup_returns_the_facts_and_what_to_cite(
         "period": "Q4",
     }
 
-    result = _call(search, arguments, "fundamentals", lookup=facts_lookup)
+    result = _call(search, arguments, "fundamentals", lookup=checked_facts_lookup)
 
     found = cast(dict[str, list[dict[str, object]]], json.loads(_text(result)))["facts"][0]
     assert not result.is_error, _text(result)
@@ -387,3 +391,21 @@ def test_a_bad_file_call_is_refused_with_its_reason_and_changes_nothing(
     assert ": Error:" not in _text(result), "the SDK prefixes its own Error"
     assert (box / "notes.txt").read_text(encoding="utf-8") == "hello from the sandbox\n"
     assert not (box.parent / "planted.txt").exists()
+
+
+def test_an_unverified_figure_is_compared_only_after_the_agents_own(
+    search: FakeSearch, facts_lookup: Lookup
+) -> None:
+    asked: dict[str, object] = {"company": "ITC", "year": "2025", "what": "revenue from operations"}
+
+    async def session(client: Client) -> tuple[str, str]:
+        looked = _text(await client.call_tool("fundamentals", asked))
+        lookup_id = json.loads(looked)["lookup_id"]
+        mine = {"lookup_id": lookup_id, "my_value": 816.0, "how": "ITC-FY25#0412, in crore"}
+        return looked, _text(await client.call_tool("compare_unverified", mine))
+
+    looked, compared = _with_client(search, session, lookup=facts_lookup)
+
+    assert json.loads(looked)["facts"] == [], looked
+    [entry, *_] = json.loads(compared)["unverified"]
+    assert entry["agrees"] is True and "cite_as" not in entry, entry

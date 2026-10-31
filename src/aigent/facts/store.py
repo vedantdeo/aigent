@@ -14,24 +14,16 @@ from aigent.facts.xbrl import Fact, label_of
 
 FACTS_DB = Path(__file__).resolve().parents[3] / "corpus" / ".cache" / "facts.sqlite"
 
-TIERS = ("xbrl", "pdf-cell-ai", "pdf-cell", "pdf-read-ai", "pdf-read", "derived-ai", "derived")
-CHECKED_TIERS = ("pdf-cell", "pdf-read", "derived")
+XBRL_TIERS = ("xbrl-ai", "xbrl-pdf", "xbrl")  # as loaded, its document agreeing, a person's check
+TIERS = (*XBRL_TIERS, "pdf-cell-ai", "pdf-cell", "pdf-read-ai", "pdf-read", "derived-ai", "derived")
+CHECKED_TIERS = ("xbrl-pdf", "xbrl", "pdf-cell", "pdf-read", "derived")  # trusted; name a checker
 
 _TIER_LIST = ", ".join(f"'{t}'" for t in TIERS)
 _CHECKED_LIST = ", ".join(f"'{t}'" for t in CHECKED_TIERS)
+_XBRL_LIST = ", ".join(f"'{t}'" for t in XBRL_TIERS)
 
-SCHEMA = f"""
-CREATE TABLE IF NOT EXISTS filings (
-    id INTEGER PRIMARY KEY,
-    ticker TEXT NOT NULL,
-    fy INTEGER NOT NULL,
-    period_end TEXT NOT NULL,
-    basis TEXT NOT NULL CHECK (basis IN ('consolidated', 'standalone')),
-    source TEXT NOT NULL CHECK (source IN ('xbrl', 'pdf')),
-    origin TEXT NOT NULL UNIQUE,
-    sha256 TEXT,
-    fetched TEXT
-);
+SCHEMA_VERSION = 3  # 2: an xbrl row may carry verified_by; 3: xbrl-ai and xbrl-pdf
+_FACTS = f"""
 CREATE TABLE IF NOT EXISTS facts (
     id INTEGER PRIMARY KEY,
     filing_id INTEGER REFERENCES filings(id),
@@ -59,12 +51,27 @@ CREATE TABLE IF NOT EXISTS facts (
     verified_by TEXT,
     verified_at TEXT,
     CHECK ((period_kind = 'instant') = (period_start IS NULL)),
-    CHECK ((tier IN ({_CHECKED_LIST})) = (verified_by IS NOT NULL AND verified_at IS NOT NULL))
+    CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
+    CHECK ((tier IN ({_CHECKED_LIST})) = (verified_by IS NOT NULL))
 );
-CREATE UNIQUE INDEX IF NOT EXISTS facts_xbrl_once ON facts (
+"""
+
+SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS filings (
+    id INTEGER PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    fy INTEGER NOT NULL,
+    period_end TEXT NOT NULL,
+    basis TEXT NOT NULL CHECK (basis IN ('consolidated', 'standalone')),
+    source TEXT NOT NULL CHECK (source IN ('xbrl', 'pdf')),
+    origin TEXT NOT NULL UNIQUE,
+    sha256 TEXT,
+    fetched TEXT
+);
+{_FACTS}CREATE UNIQUE INDEX IF NOT EXISTS facts_xbrl_once ON facts (
     filing_id, concept, period_kind, COALESCE(period_start, ''), period_end,
     COALESCE(segment, ''), unit
-) WHERE tier = 'xbrl';
+) WHERE tier IN ({_XBRL_LIST});
 CREATE INDEX IF NOT EXISTS facts_lookup ON facts (ticker, basis, concept, period_end);
 CREATE TABLE IF NOT EXISTS derived_from (
     fact_id INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
@@ -132,13 +139,42 @@ class Synced:
 
 
 def connect(path: Path = FACTS_DB) -> sqlite3.Connection:
-    """The database, its schema created if missing; WAL, since runs write while others read."""
+    """The database, its schema created if missing and migrated if older; WAL, since runs write
+    while others read."""
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    if conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
+        _rebuild_facts(conn)
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+# An `xbrl` row from before version 3, by its check: none, its document's alone, or a person's.
+_XBRL_TIER_OF = """CASE WHEN tier != 'xbrl' THEN tier
+    WHEN verified_by IS NULL THEN 'xbrl-ai'
+    WHEN verified_by LIKE 'pdf:%' AND instr(verified_by, '+') = 0 THEN 'xbrl-pdf'
+    ELSE 'xbrl' END"""
+
+
+def _rebuild_facts(conn: sqlite3.Connection) -> None:
+    """Re-creates `facts` under the current constraints, every row and id kept and an old `xbrl`
+    row given its tier; SQLite cannot alter a CHECK in place. Run with foreign keys off, as
+    SQLite's procedure requires."""
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(facts)")]
+    selected = ", ".join(_XBRL_TIER_OF if c == "tier" else c for c in columns)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript(
+        "BEGIN;"
+        + _FACTS.replace("IF NOT EXISTS facts", "facts_next")
+        + f"INSERT INTO facts_next ({', '.join(columns)}) SELECT {selected} FROM facts;"
+        "DROP TABLE facts;"
+        "ALTER TABLE facts_next RENAME TO facts;"
+        + SCHEMA
+        + f"PRAGMA user_version = {SCHEMA_VERSION};"
+        "COMMIT;"
+    )
 
 
 def upsert_filing(conn: sqlite3.Connection, row: FilingRow) -> int:
@@ -177,13 +213,14 @@ def sync_xbrl_facts(
     facts: Iterable[Fact],
     writer: Writer,
 ) -> Synced:
-    """Makes the filing's `xbrl` rows equal `facts`: an unchanged fact keeps its row, a changed
-    value is updated and re-attributed, a fact no longer loaded is deleted."""
+    """Makes the filing's XBRL rows equal `facts`: a new fact is `xbrl-ai`, an unchanged one keeps
+    its row and tier, a changed value is updated, re-attributed and `xbrl-ai` again, unchecked, and
+    a fact no longer loaded is deleted."""
     held: dict[tuple[str, str, str, str, str, str], tuple[int, float, int | None]] = {}
     for fid, concept, kind, start, end, segment, unit, value, decimals in conn.execute(
-        """SELECT id, concept, period_kind, period_start, period_end, segment, unit, value,
+        f"""SELECT id, concept, period_kind, period_start, period_end, segment, unit, value,
                   decimals
-           FROM facts WHERE filing_id = ? AND tier = 'xbrl'""",
+           FROM facts WHERE filing_id = ? AND tier IN ({_XBRL_LIST})""",
         (filing_id,),
     ):
         held[_fact_key(concept, kind, start, end, segment, unit)] = (fid, value, decimals)
@@ -197,9 +234,10 @@ def sync_xbrl_facts(
             out.kept += 1
             continue
         if prior is not None:
-            conn.execute(
+            conn.execute(  # a revised value was never checked, so it is xbrl-ai again
                 """UPDATE facts SET value = ?, decimals = ?, written_by = ?, written_at = ?,
-                          run_id = ? WHERE id = ?""",
+                          run_id = ?, tier = 'xbrl-ai', verified_by = NULL, verified_at = NULL
+                   WHERE id = ?""",
                 (
                     fact.value,
                     fact.decimals,
@@ -215,7 +253,7 @@ def sync_xbrl_facts(
             """INSERT INTO facts (filing_id, ticker, basis, concept, label, period_kind,
                       period_start, period_end, segment, value, unit, decimals, tier,
                       written_by, written_at, run_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'xbrl', ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'xbrl-ai', ?, ?, ?)""",
             (
                 filing_id,
                 ticker,
@@ -258,7 +296,7 @@ def apply_labels(conn: sqlite3.Connection, labels: Mapping[str, Labels]) -> list
             continue
         conn.execute("UPDATE concepts SET label = ? WHERE concept = ?", (found.standard, concept))
         conn.execute(
-            "UPDATE facts SET label = ? WHERE concept = ? AND tier = 'xbrl'",
+            f"UPDATE facts SET label = ? WHERE concept = ? AND tier IN ({_XBRL_LIST})",
             (found.standard, concept),
         )
         conn.execute("DELETE FROM concept_labels WHERE concept = ?", (concept,))

@@ -7,6 +7,7 @@ from __future__ import annotations
 FACTS_TICKERS: tuple[str, ...] = (
     "BAJAJ-AUTO",
     "HDFCBANK",
+    "ICICIBANK",
     "ITC",
     "POWERGRID",
     "RELIANCE",
@@ -16,6 +17,7 @@ FACTS_TICKERS: tuple[str, ...] = (
 )
 FACTS_YEARS: tuple[int, ...] = (2024, 2025, 2026)  # the year a FY ends: 2025 is FY 2024-25
 NSE_SYMBOLS: dict[str, str] = {"TATAMOTORS": "TMPV"}  # files under its post-demerger symbol
+VERIFY_TICKERS: tuple[str, ...] = ("HDFCBANK", "ICICIBANK")  # XBRL cross-checked against filings
 
 # NSE: results up to Dec 2024 are in the old listing, SEBI's integrated filing from Mar 2025.
 NSE_LEGACY_LISTING = (
@@ -33,6 +35,30 @@ NSE_USER_AGENT = (
 )
 NSE_REQUEST_INTERVAL_S = 1.0  # at most one request a second
 NSE_TIMEOUT_S = 30.0
+
+# Cross-check documents: a page with fewer characters in its text layer is text-less, and a PDF
+# with more than this share of such pages is refused as a scan.
+VERIFY_MIN_TEXT_CHARS = 200
+VERIFY_MAX_TEXT_LESS_SHARE = 0.10
+
+# Cross-check: a row label shares this share of a fact's label words to count as its row, a
+# printed figure needs this many significant digits to count without one, and agreements are
+# sampled for a person at this size and seed.
+CROSSCHECK_LABEL_MIN = 0.6
+CROSSCHECK_DIFFER_LABEL_MIN = 0.6
+CROSSCHECK_DISTINCT_DIGITS = 5
+CROSSCHECK_SAMPLE = 30
+CROSSCHECK_SEED = 20261101
+CROSSCHECK_SCALES: dict[str, float] = {"crore": 1e7, "lac": 1e5, "lakh": 1e5, "million": 1e6}
+# Words read in full before labels are compared, and pairs where a fact naming one never takes a
+# row naming only the other.
+CROSSCHECK_SYNONYMS: dict[str, str] = {
+    "crar": "capital adequacy ratio",
+    "eps": "earnings per share",
+    "npa": "non performing assets",
+    "npas": "non performing assets",
+}
+CROSSCHECK_EXCLUSIVE: tuple[tuple[str, str], ...] = (("basic", "diluted"), ("gross", "net"))
 
 # Loading: contexts whose id holds one of these are not results-format facts and are skipped.
 XBRL_SKIP_CONTEXTS: tuple[str, ...] = ("RelatedPartyTransaction",)
@@ -74,6 +100,7 @@ TAXONOMY_PACKAGES: tuple[tuple[str, str], ...] = (
 FACTS_MATCH_METHOD = "hybrid"
 FACTS_MATCH_DEPTH = 20
 FACTS_LOOKUP_K = 5
+COMPARE_AGREE_SHARE = 0.005  # an agent's own figure agrees with an unverified one within this share
 
 # Coverage eval: each frozen metric asked in its definition's words, and which teacher metrics the
 # results format files (the rest are scored apart). Found is reported at rank 1 and at the tool's k.

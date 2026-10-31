@@ -102,13 +102,15 @@ concepts  concept, label, statement, kind ('xbrl' | 'row' | 'read'), xbrl_concep
   file's text facts. A PDF fact's segment is its row or column header when the table is a segment
   table.
 - **XBRL is the source of truth** (Vedant): a concept and period an XBRL file holds is not loaded
-  from the PDF, and the two are never compared.
+  from the PDF. Since 10-31 every XBRL fact is compared with its filed document (see Cross-check).
 - **tier** (Vedant, 10-22) says where a fact came from and whether a person has checked it, and
   is returned with every fact:
 
   | tier | meaning |
   |---|---|
-  | `xbrl` | from the NSE XBRL filing; the source of truth, no check needed |
+  | `xbrl-ai` | from the NSE XBRL filing, not confirmed: unchecked, or disagreeing with its document |
+  | `xbrl-pdf` | an XBRL fact its filed results document agrees with (`verified_by` `pdf:<document>`) |
+  | `xbrl` | an XBRL fact a person checked (`verified_by` the name, or `pdf:<document>+<name>`) |
   | `pdf-cell-ai` | a parsed PDF table cell, not yet checked by a person |
   | `pdf-cell` | a `pdf-cell-ai` fact a person has checked |
   | `pdf-read-ai` | a figure a model read from a PDF passage in a run, not yet checked |
@@ -197,7 +199,16 @@ year, no quarter alone, in the 2020 taxonomy's filings).
    it as it cites a passage id today, and the critic is shown the fact and its source (the NSE
    filing's URL, the PDF page and row, or a read fact's passage).
 
-**Which row answers** (Vedant, 10-22), for a fact (ticker, basis, concept, segment, period):
+**Only trusted tiers are shown** (Vedant, 11-01): `xbrl-pdf`, `xbrl`, `pdf-cell`, `pdf-read` and
+`derived`. Everything else is unverified and is never quoted. `fundamentals` returns the verified
+facts alone, with a `lookup_id`; the unverified ones it found are held by the harness for that
+lookup, not queried again. With nothing verified, the agent works the figure out from the filings
+itself, blind, then calls `compare_unverified` with the `lookup_id`, its own figure and how it got
+it, and only then sees the held entries, each marked as agreeing with its figure or not, with no
+`cite_as`, so none can be cited. It cites the passages its own figure came from.
+
+**Which row answers** (Vedant, 10-22; superseded for display by the rule above), for a fact
+(ticker, basis, concept, segment, period):
 
 1. **`xbrl` or a checked tier** (`pdf-cell`, `pdf-read`, `derived`): the answer; nothing is read.
 2. **An `-ai` row from this run**: the answer, so a run stays consistent with itself.
@@ -267,8 +278,58 @@ against the current run: accuracy, tool calls and cost per question.
   least 80% (ITC, Reliance, Tata Motors FY25), so removal frees almost nothing and cannot carry a
   smaller model. The 10-21 screen's numbers stand for that question if it returns (hybrid hit@5:
   `bge-small` 0.636, tables 0.47; `bge-large` 0.773, tables 0.62).
-- **Comparing XBRL against the PDF**: dropped once XBRL was made the source of truth.
+- **Comparing XBRL against the PDF**: dropped once XBRL was made the source of truth; restored
+  10-31 as the cross-check, once the ratios showed XBRL is not clean.
+- **OCR for scanned filings** (10-31): the same filings are on SEC EDGAR as text.
 - **Free-form SQL and a vector database as the store**: see Lookup.
+
+## Cross-check: every XBRL fact against its filed document (Vedant, 10-31)
+
+XBRL is no longer taken on trust: Reliance and Tata Motors file their ratios divided by 100 and HDFC
+Bank its consolidated ratios as 0.0 (10-25). Vedant: "every number in xbrl needs to be cross checked
+against pdf … we need human level verification." Policy (b), his pick: **a machine compares every
+XBRL fact with the cell the company printed; a person checks every disagreement, a random sample of
+agreements and the most-asked facts.** A fact is verified when the two agree or a person signs it
+off.
+
+**Scope, to start** (Vedant, 10-31: one sector, cheaper and easier to benchmark): HDFC Bank and
+ICICI Bank, FY24 to FY26, consolidated and standalone, every quarter: 48 XBRL filings.
+
+**The documents** (`aigent.facts.documents`, built 10-31), under `corpus/verify/`, apart from the
+retrieval corpus and the training reports:
+
+- **Results, one per quarter and company (24)**: the results filing itself, not the press release or
+  the board-meeting notice: the first filing after the quarter's end on NSE's announcements feed.
+  Nine of HDFC Bank's twelve and 16 pages of ICICI Bank's Sep-2024 are **scans** with no text layer,
+  and so are HDFC Bank's press releases; for those ten quarters the same filing is taken from **SEC
+  EDGAR**, where both banks file it as a 6-K exhibit for their ADRs, as HTML. OCR was tried
+  (RapidOCR read HDFC Bank's Jun-2023 statement cleanly, about 60 s for 13 pages) and dropped for
+  the text copies, which carry the identical figures with nothing to misread.
+- **Annual reports (6)**: FY24 to FY26 for both, from NSE; HDFC Bank's FY24 and FY25 are the
+  training set's copies, byte for byte, so their parses are shared.
+- Each entry's `format` (`pdf`, `html`), `pages` and `text_less_pages` are kept in the manifest, and
+  a PDF with more than 10% of its pages text-less is refused as a scan. The annual reports' few
+  (covers, photos, the AGM notice; at most 16 of 585) are never in the statements.
+
+**Matching** (built 11-01, `aigent.facts.crosscheck`), a fact at a time, **value first**: the
+parsed rows' labels are unreliable (merged rows, labels a row off, OCR'd text layers) but their
+figures mostly read. A fact **agrees** on a cell in a table of its basis, in a column whose header
+states its period, equal to the last printed digit at the table's scale, its row carrying its label
+(60% of its words) or the figure distinctive alone (5 significant digits). Otherwise it **differs**
+on its best-labelled cell there, or is **unmatched**. Strict on purpose: an agreement makes a fact
+quotable, and a miss only costs a person's look. A year's facts against the annual report's
+audited statements, a second source, is for later.
+
+**First run (11-01, written)**: 4,144 of 6,784 facts agree and are `xbrl-pdf`; HDFC Bank 2,201 of 3,178 (69%),
+ICICI Bank 1,943 of 3,606 (54%). 534 differ and 2,106 are unmatched. What stays is mostly the data
+or the format, not the matcher: ratios filed /100 (gross NPA 0.0002 for 2.15%), ratios the results
+do not print (CET1, AT1), face value printed in a row's label, zeros the results never print as a
+row, ICICI Bank's segments filed under numbered members, a total segment assets without the
+unallocated, and ICICI Bank's FY24 Q1 and HDFC Bank's FY24 H1 filings, mostly not loaded.
+
+**Measured**: agreement per company, basis and statement, written to
+`evals/reports/crosscheck-<time>.md`; the review queue is every `differ` and `ambiguous`, a random
+sample of `agree`, and the facts most asked for in `lookups`.
 
 ## Steps
 
@@ -282,9 +343,48 @@ against the current run: accuracy, tool calls and cost per question.
    currency text read as a segment name), now fixed. **The coverage eval built 10-25**: by
    definition 18 of 24 fundamentals held, 12 of 18 at rank 1, all 18 in the top 5 and exact. The
    analyst run remains.
-3. PDF table facts for what XBRL lacks, and their totals check.
-4. Write-back, with its guards and the frozen copy for evals.
-5. Decide on the specialist from the measurements.
+3. **The cross-check** (10-31, 11-01): the documents fetched and read (`aigent.facts.documents`);
+   the matching, its report and review queue built (`aigent.facts.crosscheck`), 4,144 of 6,784
+   agreeing and written. Next: a person through the queue.
+4. **To do: verified formulas** (Vedant, 10-31): a `formulas` table of how each derived figure is
+   computed, looked up like `fundamentals`, seeded with common ones, grown by agents as
+   `formula-ai` and made `formula` by a person's check. See Derived figures below.
+5. PDF table facts for what XBRL lacks, and their totals check.
+6. Write-back, with its guards and the frozen copy for evals.
+7. Decide on the specialist from the measurements.
+
+### Derived figures: verified formulas (to do)
+
+A derived fact is trusted today only once a person checks that one fact. A formula checked once
+would cover every fact computed with it: **a derived fact is `derived` when its formula is verified
+and every input is in a trusted tier**, with no per-fact check, and `derived-ai` otherwise.
+
+- **The same shape as facts** (Vedant, 10-31): a formula is `formula-ai` until a person checks it,
+  then `formula`, with `written_by`, `written_at`, `run_id`, `verified_by` and `verified_at` as on
+  a fact. Only a `formula` makes a derived fact trusted.
+- **Looked up like `fundamentals`**: an agent asks in plain words ("net interest margin", "return
+  on equity") and gets the closest formulas, ranked by their names and words as concepts are, each
+  with its tier, expression, period rule and scope, verified ones first.
+- **Grown by agents**: when nothing fits, the agent works the formula out, uses it, and writes it
+  back as a `formula-ai` row: name, words, expression, period rule, scope, and the question that
+  prompted it. Unverified, so any figure computed with it is `derived-ai` and cannot be quoted.
+  Duplicate `-ai` rows are kept as the agreement record, as for facts; a bad run's rows go in one
+  delete by `run_id`. A written formula must parse and name only concepts the database holds.
+- **Seeded, not empty**: a starter set of common formulas written in, as `formula-ai` like any
+  agent's, for Vedant to verify first.
+- **A row**: id, name, words, the expression over concepts (`InterestEarned - InterestExpended`),
+  its period rule (as filed, year to date less year to date, an average of opening and closing
+  balances), its scope (banks, non-banks, all), tier and the provenance fields. A derived fact names
+  its formula's id; `derived_from` keeps its inputs as now.
+- **Why it is not small**: the gaps it fills are among the most asked. Quarter-alone figures from
+  year-to-date ones (Q2 = H1 - Q1; profit attributable to owners has no quarter alone in the 2020
+  taxonomy's filings). Margins, returns on equity and assets, leverage and coverage ratios, and
+  growth. For banks: net interest income, net interest margin, cost to income, credit cost. About
+  30 to 50 formulas look to cover most of what the analyst asks.
+- **It checks XBRL too**: a ratio the filing states (debt to equity, interest coverage) recomputed
+  from its parts would have caught Reliance's and Tata Motors' ratios filed divided by 100.
+- **Care**: Indian reports define some metrics differently (return on equity over closing or
+  average equity), so a formula's words must say which, and bank and non-bank formulas differ.
 
 ## Decided (Vedant, 10-22)
 
@@ -319,6 +419,26 @@ against the current run: accuracy, tool calls and cost per question.
 - **Table figures** (finance, mine): one per question, by hand, the first where a row gives two;
   ten-year series and years outside FY24-FY26 left out.
 
+## Decided (10-31)
+
+- **Verification** (Vedant): policy (b), machine cross-check with a person on every disagreement, a
+  sample of agreements and the most-asked facts.
+- **Scope** (Vedant): HDFC Bank and ICICI Bank, all their quarterly and annual documents.
+- **Scanned filings** (Vedant): read with OCR; then, asked for better documents, the SEC EDGAR text
+  copies replace them, and each document's format is recorded against its name.
+- **Which results document** (finance, mine): the results filing, the first after the quarter's end.
+- **Where a check is recorded** (Vedant): on the `xbrl` row itself, the schema relaxed to let it carry
+  `verified_by`: `pdf:<document>` when its document agrees, the person's name once a person settles
+  a disagreement, `pdf:<document>+<name>` for a sampled agreement a person re-checked. A revised
+  value loses its check on the next build. Existing databases are migrated (`PRAGMA user_version` 2).
+- **Companies** (Vedant): ICICI Bank joins `FACTS_TICKERS`, so `fundamentals` offers nine companies;
+  the cross-check's two are `VERIFY_TICKERS`.
+- **XBRL tiers** (Vedant, 11-01): `xbrl-ai` as loaded; `xbrl-pdf` when its document agrees, and it
+  stays `xbrl-ai` otherwise, so after a cross-check every `xbrl-ai` fact is a disagreement (or not
+  printed) for a person, and a random sample of `xbrl-pdf` is checked too; `xbrl` after a person.
+- **Quoting** (Vedant, 11-01): trusted tiers only; unverified facts held back until the agent has
+  its own figure, then shown through `compare_unverified` (value first, so it cannot peek).
+
 ## Open
 
 - **Ratios as filed**: Reliance and Tata Motors file debt to equity and the coverage ratios divided
@@ -328,6 +448,10 @@ against the current run: accuracy, tool calls and cost per question.
 - **What `found` means**: a lookup logs `found` when any fact comes back, though the nearest label
   may not be the figure asked (a dividend per share, which XBRL does not file, returns "Adjustments
   for dividend income"). The coverage eval measures how often; a relevance floor waits on it.
+- **When the document disagrees**: which value the lookup answers with once a person sides with the
+  printed one (a corrected `pdf-cell` row answering ahead of `xbrl`, or the `xbrl` row withheld).
+- **A fact two documents agree with**: `verified_by` names one document; when the annual report
+  agrees too, which one it names, or both.
 - **The vote**: the polling job's rule for preferring a value, decided once there are rows to vote on.
   If it needs to tell a blind read from one changed after a mismatch, a column for the row shown
   is added then.

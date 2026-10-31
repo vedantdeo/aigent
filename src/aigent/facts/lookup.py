@@ -157,7 +157,7 @@ def find(
     k: int = FACTS_LOOKUP_K,
 ) -> list[Found]:
     """Up to `k` facts, one per concept in the order given, for exactly this company, period, basis
-    and segment. A checked fact answers first, then this run's own; a period filed twice is
+    and segment, of any tier: a checked fact first, then this run's own; a period filed twice is
     answered from its own filing."""
     start, end = span(year, period)
     checked = ", ".join("?" for _ in CHECKED_TIERS)
@@ -171,8 +171,8 @@ def find(
                   AND COALESCE(f.segment, '') = ?
                   AND ((f.period_kind = 'duration' AND f.period_start = ? AND f.period_end = ?)
                        OR (f.period_kind = 'instant' AND f.period_end = ?))
-                  AND (f.tier = 'xbrl' OR f.tier IN ({checked}) OR f.run_id = ?)
-                ORDER BY CASE WHEN f.tier = 'xbrl' OR f.tier IN ({checked}) THEN 0 ELSE 1 END,
+                ORDER BY CASE WHEN f.tier IN ({checked}) THEN 0 WHEN f.run_id = ? THEN 1
+                         ELSE 2 END,
                          fl.period_end
                 LIMIT 1""",
             (
@@ -185,7 +185,6 @@ def find(
                 end.isoformat(),
                 *CHECKED_TIERS,
                 run_id,
-                *CHECKED_TIERS,
             ),
         ).fetchone()
         if row is None:

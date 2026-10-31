@@ -24,7 +24,7 @@ SPECIALIST_TOOL_TURNS = 6  # two searches, two calculate turns, the answer, one 
 MAX_USD_ANALYST_GENERALIST = 0.40
 MAX_USD_ANALYST_CRITIC = 0.30
 MAX_USD_ANALYST_SPECIALIST = 0.30
-ANALYST_SERVED_TOOLS = ("calculate", "fundamentals", "search_filings")
+ANALYST_SERVED_TOOLS = ("calculate", "compare_unverified", "fundamentals", "search_filings")
 ANALYST_WORKERS = 4  # questions in flight at once, so the specialists' GPU is shared, not idle
 
 # The analyst's own call sites' caps, over the shared table.

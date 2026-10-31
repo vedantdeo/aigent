@@ -2182,3 +2182,70 @@
   in its key) unable to fail because a lookup returns only the basis it was asked. Next: the
   analyst run with the new tool (paid; dry run first).
 
+- 10-31: **the XBRL cross-check's documents, $0.00 (free downloads, local parsing).** Vedant's
+  calls: verify every XBRL number against its filed document, policy (b) (a machine compares, a
+  person checks every disagreement, a sample of agreements and the most-asked facts); start with
+  one sector, HDFC Bank and ICICI Bank, all their quarterly and annual documents FY24-FY26. Fetched:
+  ICICI Bank's 24 XBRL filings (not yet loaded; adding it to `FACTS_TICKERS` widens the analyst's
+  tool), 24 results filings (mine: the results filing itself, the first after the quarter's end on
+  NSE's announcements feed) and 6 annual reports, under `corpus/verify/`. **9 of HDFC Bank's 12
+  results PDFs and 16 pages of ICICI Bank's Sep-2024 are scans**, as are HDFC Bank's press releases;
+  `config.DOCLING_OCR` has always been off. OCR was tried (RapidOCR via Docling, which needed
+  `onnxruntime`: HDFC Bank's Jun-2023 statement read cleanly in 60 s) and dropped, with the package,
+  when Vedant asked for better documents: both banks file the same results with the SEC as 6-K
+  exhibits for their ADRs, in HTML, so the ten scanned quarters come from EDGAR with the identical
+  figures as text. HDFC Bank's Sep and Dec 2024 also have machine-readable ("MRF") copies on NSE.
+  `aigent.facts.documents` records each document's format, page count and text-less pages in the
+  manifest, refuses a PDF over 10% text-less as a scan (the annual reports' photo pages peak at 16
+  of 585; the scans ran 59-96%), and reads HTML through Docling with its own renderer (the corpus's
+  `elements_of` places items by PDF page, and HTML has none). 24 tests; 12 of 12 mutants killed in
+  a scratch copy. Parsed with the corpus's cache (fingerprint unchanged): the 4 new annual reports
+  (5-9 min each) and the 14 text results PDFs. Vedant then decided where a check
+  is recorded: **on the `xbrl` row**, `verified_by` = `pdf:<document>` when the document agrees, the
+  person's name after a disagreement is settled, `pdf:<document>+<name>` for a re-checked sample.
+  The schema now allows it (an `-ai` tier still may not be checked, a checker never without a time),
+  a revised value loses its check on rebuild, and an older database is rebuilt once under the new
+  constraints (`PRAGMA user_version` 2; the real one backed up first, all 34,904 rows and ids kept,
+  integrity and foreign-key checks clean). 8 of 8 mutants killed. **ICICI Bank joins
+  `FACTS_TICKERS`** (Vedant, over narrowing the list to the two banks, which would have emptied the
+  coverage eval and the analyst's companies); the cross-check's two are `VERIFY_TICKERS`. Offline
+  build: 216 filings, 3,606 ICICI Bank facts added, 0 changed; its Jun-2023 filings, both bases,
+  reference contexts they never define (136 issues, as HDFC Bank's FY24 H1), so that quarter is
+  mostly not loaded. Next: the matching.
+- 11-01: **XBRL tiers and verified-only lookups, $0.00.** Vedant: an XBRL fact is `xbrl-ai` until
+  confirmed, `xbrl-pdf` when its filed document agrees, `xbrl` once a person checks it; only
+  `xbrl-pdf`, `xbrl`, `pdf-cell`, `pdf-read` and `derived` may be quoted. The schema's rule is
+  uniform again (a tier is checked exactly when it names its checker), schema version 3 migrates
+  old `xbrl` rows by their check (backed up first; all 38,510 now `xbrl-ai`, rebuild unchanged).
+  Of three ways to enforce the quoting rule he chose the strictest: `fundamentals` shows verified
+  facts only and holds the rest per lookup; with nothing verified the agent works the figure out
+  blind, then `compare_unverified` (his pick of three, over a `my_value` argument on the same tool
+  and a reveal at critique) shows the held entries only once it passes its own figure and how it
+  got it, each marked agreeing within 0.5% or not, with no `cite_as`. **Until the cross-check
+  runs, `fundamentals` returns no verified fact for any company**, and only the two banks are
+  cross-checked. The coverage eval now counts every tier, since it measures matching, not trust.
+  To do (his): a `formulas` table of verified formulas, looked up like `fundamentals`, seeded,
+  grown by agents as `formula-ai`. 26 more mutants, all killed after two tests were added.
+- 11-01: **the XBRL cross-check's matching, $0.00 (local, 8 s for both banks).** `python -m aigent.
+  facts crosscheck [--write]` checks each of HDFC Bank's and ICICI Bank's 6,784 XBRL facts against
+  its quarter's results document, value first, since the parsed rows' labels are unreliable (rows
+  merged, labels a row off, ICICI Bank's text layers themselves OCR'd: "11.GG5.G9", "Bonkinq") but
+  their figures mostly read. Built up on the real documents: 3,523 agreeing at first; then a
+  document-wide scale (ICICI Bank prints "(₹ in crore)" after its first table), "in lac" not "lac"
+  ("place" had made crore tables lakh), a bracket alone negative, rows read by order when they sit
+  a column off their header, a column's own "Q2-2026" over a stray "Six months ended". **A hand
+  audit of 50 agreements found a false one**: an exchange-rate effect of 42.26 matched "proceeds
+  from sale of fixed assets" by value alone; the floor for that went from 4 to 5 significant
+  digits. The tests then found XBRL's `decimals` (ICICI Bank files -7 for figures exact to a lakh)
+  letting a zero agree with anything under half a crore, and a diluted EPS taking the basic row
+  ("EPS" half its words): agreement is now to the printed digit only, 60% of a label's words, EPS
+  and NPA read in full, basic/diluted and gross/net exclusive. **Result: 4,144
+  agree (HDFC Bank 69%, ICICI Bank 54%), 534 differ, 2,106 unmatched**, most of the rest the data
+  or the format: ratios filed /100, ratios not in the results, face value inside a label, zeros
+  never printed, ICICI Bank's numbered segment members. 75 tests; 30 of 31 mutants killed, the
+  last equivalent (a second check rejects two numbers in a cell). **Written at Vedant's go**
+  (database backed up first): 4,144 facts `xbrl-pdf`, each naming its document with its printed
+  figure; integrity clean. Smoke: HDFC Bank's Q4 FY25 interest earned answers verified; ICICI Bank's
+  gross NPA % (filed 0.0002) is held back; ITC answers nothing verified, five held. Report:
+  `evals/reports/crosscheck-20261101-0040.md`. Next: a person through the review queue.
+
