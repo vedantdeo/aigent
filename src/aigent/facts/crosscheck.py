@@ -13,14 +13,17 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from aigent.facts.cfg_facts import (
     CROSSCHECK_DIFFER_LABEL_MIN,
     CROSSCHECK_DISTINCT_DIGITS,
     CROSSCHECK_EXCLUSIVE,
+    CROSSCHECK_GROUP_EXAMPLES,
     CROSSCHECK_LABEL_MIN,
     CROSSCHECK_SCALES,
+    CROSSCHECK_SEED,
+    CROSSCHECK_SPOT_CHECKS,
     CROSSCHECK_SYNONYMS,
 )
 from aigent.facts.documents import VERIFY_DIR, load_verify_document, read_manifest
@@ -28,6 +31,13 @@ from aigent.facts.store import XBRL_TIERS
 from aigent.retrieval.chunk import Document
 
 Outcome = Literal["agree", "differ", "unmatched"]
+Issue = Literal["xbrl zero", "printed x100", "differs", "not printed"]
+Verdict = Literal["right", "wrong", "elsewhere"]
+Status = Literal["applied", "proposed", "refused"]
+VERDICTS: tuple[Verdict, ...] = ("right", "wrong", "elsewhere")
+DECISIONS = (
+    Path(__file__).resolve().parents[3] / "evals" / "reference" / "crosscheck-decisions.jsonl"
+)
 
 _ZERO = {"..", "-", "–", "—", "nil", "0"}
 _MONTHS = {
@@ -132,6 +142,46 @@ class Checked:
     page: int | None = None
     printed: str | None = None
     row_label: str | None = None
+
+
+@dataclass(frozen=True)
+class Group:
+    """Facts not agreed that share a company, concept, segment and issue, for one decision."""
+
+    number: int
+    ticker: str
+    concept: str
+    segment: str | None
+    issue: Issue
+    facts: tuple[Checked, ...]
+
+    @property
+    def id(self) -> str:
+        """`TICKER|Concept|segment|issue`, the segment in lower case: what a decision names."""
+        return f"{self.ticker}|{self.concept}|{(self.segment or '').casefold()}|{self.issue}"
+
+
+@dataclass(frozen=True)
+class Decision:
+    """A person's verdict on a review group: `right` makes its facts `xbrl` once its spot sample is
+    checked; `wrong`, and `elsewhere` (not printed in its results), take it off the queue. With no
+    `decided_by` it is only proposed."""
+
+    id: str
+    verdict: Verdict
+    note: str
+    decided_by: str | None = None
+    spot_checked: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class Ruling:
+    """A decision against this run's groups: applied, proposed, or refused with the reason."""
+
+    decision: Decision
+    group: Group | None
+    status: Status
+    reason: str = ""
 
 
 def number(text: str) -> tuple[float, int, bool] | None:
@@ -504,26 +554,165 @@ def review_sample(checked: Sequence[Checked], size: int, seed: int) -> list[Chec
     )
 
 
+def issue_of(c: Checked) -> Issue:
+    """Why a fact did not agree: XBRL filed a zero, the printed figure is it times 100 (a ratio
+    printed without its % sign), another printed figure differs, or none was found."""
+    if c.value == 0:
+        return "xbrl zero"
+    if c.outcome != "differ":
+        return "not printed"
+    read = number(c.printed or "")
+    if read is not None and abs(read[0] - c.value * 100) <= 0.5 * 10 ** -read[1] + 1e-9:
+        return "printed x100"
+    return "differs"
+
+
+def review_groups(checked: Iterable[Checked]) -> list[Group]:
+    """Every fact not agreed, grouped by company, concept, segment (any case) and issue, largest
+    group first and numbered from 1."""
+    by: dict[tuple[str, str, str, Issue], list[Checked]] = {}
+    for c in checked:
+        if c.outcome != "agree":
+            key = (c.ticker, c.concept, (c.segment or "").casefold(), issue_of(c))
+            by.setdefault(key, []).append(c)
+    ranked = sorted(by.items(), key=lambda item: (-len(item[1]), item[0]))
+    return [
+        Group(i, ticker, concept, facts[0].segment, issue, tuple(facts))
+        for i, ((ticker, concept, _, issue), facts) in enumerate(ranked, 1)
+    ]
+
+
+def spot_sample(
+    group: Group, size: int = CROSSCHECK_SPOT_CHECKS, seed: int = CROSSCHECK_SEED
+) -> tuple[int, ...]:
+    """The group's facts a person checks by hand before a `right` verdict applies; seeded by the
+    group's id, so it changes when the group does."""
+    ids = sorted(c.fact_id for c in group.facts)
+    return tuple(sorted(random.Random(f"{seed}|{group.id}").sample(ids, min(size, len(ids)))))
+
+
+def read_decisions(path: Path = DECISIONS) -> list[Decision]:
+    """The decisions file, one JSON object a line, `//` lines comments; none when it is missing.
+    Raises ValueError on an unknown field or verdict, so a typo cannot pass for no decision."""
+    if not path.exists():
+        return []
+    fields = {"id", "verdict", "note", "decided_by", "spot_checked"}
+    out: list[Decision] = []
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.startswith("//"):
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError(f"{path.name}:{n}: not a JSON object")
+        given = cast(dict[str, object], row)
+        if unknown := set(given) - fields:
+            raise ValueError(f"{path.name}:{n}: unknown fields {sorted(unknown)}")
+        verdict = given.get("verdict")
+        if verdict not in VERDICTS:
+            raise ValueError(f"{path.name}:{n}: verdict {verdict!r} is not one of {VERDICTS}")
+        decided_by = given.get("decided_by")
+        spot = given.get("spot_checked", [])
+        if not isinstance(spot, list) or not all(
+            isinstance(i, int) for i in cast(list[object], spot)
+        ):
+            raise ValueError(f"{path.name}:{n}: spot_checked must be a list of fact ids")
+        out.append(
+            Decision(
+                str(given["id"]),
+                cast(Verdict, verdict),
+                str(given.get("note", "")),
+                None if decided_by is None else str(decided_by),
+                tuple(cast(list[int], spot)),
+            )
+        )
+    return out
+
+
+def rule(groups: Sequence[Group], decisions: Iterable[Decision]) -> list[Ruling]:
+    """Each decision against the group it names: refused when no group has its id, or for `right`,
+    when its `spot_checked` misses a fact of the spot sample or names one outside the group;
+    proposed when nobody decided it; else applied."""
+    by_id = {g.id: g for g in groups}
+    out: list[Ruling] = []
+    for d in decisions:
+        group = by_id.get(d.id)
+        if group is None:
+            out.append(Ruling(d, None, "refused", "no group has this id in this run"))
+            continue
+        if d.decided_by is None:
+            out.append(Ruling(d, group, "proposed"))
+            continue
+        if d.verdict == "right":
+            missing = sorted(set(spot_sample(group)) - set(d.spot_checked))
+            outside = sorted(set(d.spot_checked) - {c.fact_id for c in group.facts})
+            if missing or outside:
+                why = f"spot check missing facts {missing}" if missing else ""
+                why += ("; " if why and outside else "") + (
+                    f"facts {outside} are not in the group" if outside else ""
+                )
+                out.append(Ruling(d, group, "refused", why))
+                continue
+        out.append(Ruling(d, group, "applied"))
+    return out
+
+
+def apply_rulings(conn: sqlite3.Connection, rulings: Iterable[Ruling], now: datetime) -> int:
+    """Makes every `xbrl-ai` fact of an applied `right` group `xbrl`, checked by the person who
+    decided it; returns how many."""
+    stamp = now.isoformat(timespec="seconds")
+    moved = 0
+    with conn:
+        for r in rulings:
+            if r.status != "applied" or r.decision.verdict != "right" or r.group is None:
+                continue
+            for c in r.group.facts:
+                cursor = conn.execute(
+                    """UPDATE facts SET tier = 'xbrl', verified_by = ?, verified_at = ?
+                       WHERE id = ? AND tier = 'xbrl-ai'""",
+                    (r.decision.decided_by, stamp, c.fact_id),
+                )
+                moved += cursor.rowcount
+    return moved
+
+
 def write_report(
-    checked: Sequence[Checked], sample: Sequence[Checked], header: Mapping[str, str], path: Path
+    checked: Sequence[Checked],
+    sample: Sequence[Checked],
+    header: Mapping[str, str],
+    path: Path,
+    rulings: Sequence[Ruling] = (),
 ) -> Path:
-    """The counts per company, basis and outcome, then the review queue: every fact not agreed,
-    and the sampled agreements; every row beside it as JSON lines."""
+    """The counts per company, basis and outcome, the decisions, then the review queue: the groups
+    of facts not agreed or decided, largest first, each group's facts, and the sampled agreements;
+    every row beside it as JSON lines."""
     counts: dict[tuple[str, str], dict[str, int]] = {}
     for c in checked:
         counts.setdefault((c.ticker, c.basis), {"agree": 0, "differ": 0, "unmatched": 0})
         counts[(c.ticker, c.basis)][c.outcome] += 1
+    decided = {r.decision.id for r in rulings if r.status == "applied"}
+    pending = {r.decision.id: r for r in rulings if r.status != "applied"}
+    groups = [g for g in review_groups(checked) if g.id not in decided]
     lines = ["# XBRL cross-check", ""]
     lines += [f"- **{k}:** {v}" for k, v in header.items()]
     lines += ["", "| company | basis | agree | differ | unmatched |", "|---|---|---|---|---|"]
     for (ticker, basis), n in sorted(counts.items()):
         lines.append(f"| {ticker} | {basis} | {n['agree']} | {n['differ']} | {n['unmatched']} |")
-    lines += ["", "## Review queue: not agreed", ""]
-    lines += ["| fact | concept | segment | period | XBRL | printed | outcome | document p. |"]
-    lines += ["|---|---|---|---|---|---|---|---|"]
-    for c in checked:
-        if c.outcome != "agree":
-            lines.append(_row(c))
+    lines += ["", "## Decisions", ""]
+    lines += ["| group id | verdict | status | by | facts | note |", "|---|---|---|---|---|---|"]
+    lines += [_ruling_row(r) for r in sorted(rulings, key=lambda r: r.decision.id)]
+    lines += ["", "## Review queue: groups", ""]
+    lines += [
+        "| group | facts | company | concept | segment | issue | bases | periods | XBRL | printed "
+        "| spot check | decision |"
+    ]
+    lines += ["|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    lines += [_group_row(g, pending.get(g.id)) for g in groups]
+    lines += ["", "## Review queue: not agreed, by group", ""]
+    lines += [
+        "| group | fact | concept | segment | period | XBRL | printed | outcome | document p. |"
+    ]
+    lines += ["|---|---|---|---|---|---|---|---|---|"]
+    lines += [f"| {g.number} {_row(c)}" for g in groups for c in g.facts]
     lines += ["", "## Review queue: sampled agreements", ""]
     lines += ["| fact | concept | segment | period | XBRL | printed | outcome | document p. |"]
     lines += ["|---|---|---|---|---|---|---|---|"]
@@ -533,6 +722,47 @@ def write_report(
     rows = path.with_suffix(".rows.jsonl")
     rows.write_text("".join(json.dumps(asdict(c)) + "\n" for c in checked), encoding="utf-8")
     return path
+
+
+def _ruling_row(r: Ruling) -> str:
+    d = r.decision
+    facts = "" if r.group is None else str(len(r.group.facts))
+    note = d.note if r.status != "refused" else f"{r.reason}. {d.note}"
+    by = d.decided_by or ""
+    return f"| {_cell(d.id)} | {d.verdict} | {r.status} | {by} | {facts} | {_cell(note)} |"
+
+
+def _cell(text: str) -> str:
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def _group_row(g: Group, ruling: Ruling | None) -> str:
+    bases = ", ".join(sorted({c.basis for c in g.facts}))
+    ends = sorted({c.period_end for c in g.facts})
+    periods = ends[0] if len(ends) == 1 else f"{len(ends)}, {ends[0]} to {ends[-1]}"
+    xbrl = _examples(f"{c.value:g} {c.unit}" for c in g.facts)
+    printed = _examples(c.printed for c in g.facts if c.printed)
+    return (
+        f"| {g.number} | {len(g.facts)} | {g.ticker} | {g.concept} | {g.segment or ''} | "
+        f"{g.issue} | {bases} | {periods} | {xbrl} | {printed} | "
+        f"{', '.join(map(str, spot_sample(g)))} | {_cell(_pending(ruling))} |"
+    )
+
+
+def _pending(ruling: Ruling | None) -> str:
+    if ruling is None:
+        return ""
+    d = ruling.decision
+    if ruling.status == "refused":
+        return f"{d.verdict} refused: {ruling.reason}"
+    return f"proposed {d.verdict}: {d.note}"
+
+
+def _examples(values: Iterable[str]) -> str:
+    """Distinct values in first-seen order, cut at `CROSSCHECK_GROUP_EXAMPLES`."""
+    distinct = list(dict.fromkeys(values))
+    shown = "; ".join(distinct[:CROSSCHECK_GROUP_EXAMPLES])
+    return shown + "; …" if len(distinct) > CROSSCHECK_GROUP_EXAMPLES else shown
 
 
 def _row(c: Checked) -> str:

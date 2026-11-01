@@ -2249,3 +2249,32 @@
   gross NPA % (filed 0.0002) is held back; ITC answers nothing verified, five held. Report:
   `evals/reports/crosscheck-20261101-0040.md`. Next: a person through the review queue.
 
+- 11-01, later: **the review queue grouped, $0.00.** Vedant: group it, then work through it largest
+  first. `review_groups` groups the facts not agreed by company, concept, segment (case ignored,
+  since ICICI Bank files "Intersegment" and "intersegment") and issue: `xbrl zero` (a filed 0,
+  whatever printed), `differs` or `not printed`. The report lists the groups, then every queued fact
+  in group order. Re-run without `--write` (outcomes identical fact for fact to 00:40): **394 groups
+  for 2,640 facts**; the 131 of ten or more cover 1,835; 91 are single facts. By issue, XBRL zero
+  1,194, not printed 1,050, differs 396. 11 of 11 mutants killed in a scratch copy. First pass over the 36 largest (958 facts): ICICI
+  Bank's CET1 is right where checkable (year-end standalone equals the press release, 3 of 3) but
+  interim figures exclude the period's profit and print nowhere; face value is printed only inside
+  a row's label; both banks file return on assets in unit INR; most zeros are fillers for lines a
+  bank does not report (segment finance costs, HDFC Bank's consolidated NPAs and ratios, its AT1,
+  about 0.5% by its press release), a few are true (ICICI Bank's exceptional and extraordinary
+  items); ICICI Bank's consolidated results print no analytical ratios.
+- 11-01, later still: **decisions on whole groups, $0.00.** Vedant: a group's `right` verdict covers
+  the group only after a person checks a few of its facts by hand; a fact judged wrong stays
+  `xbrl-ai` and leaves the queue. `evals/reference/crosscheck-decisions.jsonl`, one row per group
+  id (`TICKER|Concept|segment|issue`), sorted and order-checked: `right`, `wrong` or `elsewhere`
+  (not printed in its results), a note, `decided_by` and `spot_checked`. A `right` decision applies
+  only when `spot_checked` covers the group's seeded spot sample (3 facts, re-drawn when the group
+  changes) and names nothing outside it; with no `decided_by` it is a proposal; one naming no group
+  is refused. `--write` makes an applied `right` group's `xbrl-ai` facts `xbrl`, checked by its
+  decider. **HDFC Bank's return on assets showed why a group must be one issue**: 12 facts printed
+  in a % column without the sign (right, and filed in unit INR through Dec-2024) beside H1 FY26,
+  filed as the quarter's 0.0049 for a printed 0.97 (wrong); so `printed x100` splits from `differs`
+  (396 groups now). 18 decisions proposed, none decided: 6 right (face value printed in a label,
+  ICICI Bank's nil exceptional and extraordinary items, HDFC Bank's return on assets), 9 wrong (the
+  filler zeros, HDFC Bank's H1 FY26 return on assets), 3 elsewhere (CET1 and ICICI Bank's AT1,
+  printed only in press releases or not at all), covering 428 facts. 22 of 22 new mutants killed in
+  a scratch copy. Report: `evals/reports/crosscheck-20261101-1302.md`.

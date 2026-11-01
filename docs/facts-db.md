@@ -345,7 +345,7 @@ sample of `agree`, and the facts most asked for in `lookups`.
    analyst run remains.
 3. **The cross-check** (10-31, 11-01): the documents fetched and read (`aigent.facts.documents`);
    the matching, its report and review queue built (`aigent.facts.crosscheck`), 4,144 of 6,784
-   agreeing and written. Next: a person through the queue.
+   agreeing and written. The queue grouped (11-01) by company, concept, segment and issue, 396 groups, worked largest first; a person decides a whole group in `evals/reference/crosscheck-decisions.jsonl`, `right` (made `xbrl` after a seeded spot check of 3 of its facts), `wrong` (stays `xbrl-ai`) or `elsewhere` (not in its results). Next: Vedant through the 18 proposed decisions, then the next groups.
 4. **To do: verified formulas** (Vedant, 10-31): a `formulas` table of how each derived figure is
    computed, looked up like `fundamentals`, seeded with common ones, grown by agents as
    `formula-ai` and made `formula` by a person's check. See Derived figures below.
@@ -436,6 +436,7 @@ and every input is in a trusted tier**, with no per-fact check, and `derived-ai`
 - **XBRL tiers** (Vedant, 11-01): `xbrl-ai` as loaded; `xbrl-pdf` when its document agrees, and it
   stays `xbrl-ai` otherwise, so after a cross-check every `xbrl-ai` fact is a disagreement (or not
   printed) for a person, and a random sample of `xbrl-pdf` is checked too; `xbrl` after a person.
+- **Review groups** (Vedant, 11-01): the queue grouped and worked largest first; one decision covers a group, a `right` one only after a spot check of a few of its facts; a fact judged wrong stays `xbrl-ai` and leaves the queue.
 - **Quoting** (Vedant, 11-01): trusted tiers only; unverified facts held back until the agent has
   its own figure, then shown through `compare_unverified` (value first, so it cannot peek).
 

@@ -49,6 +49,8 @@ CROSSCHECK_DIFFER_LABEL_MIN = 0.6
 CROSSCHECK_DISTINCT_DIGITS = 5
 CROSSCHECK_SAMPLE = 30
 CROSSCHECK_SEED = 20261101
+CROSSCHECK_GROUP_EXAMPLES = 3  # distinct values a review group lists before "…"
+CROSSCHECK_SPOT_CHECKS = 3  # facts of a group a person checks before a `right` verdict applies
 CROSSCHECK_SCALES: dict[str, float] = {"crore": 1e7, "lac": 1e5, "lakh": 1e5, "million": 1e6}
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.
