@@ -10,6 +10,9 @@ from typing import Literal
 
 from aigent.facts.cfg_facts import FILING_SUMS, FUNDAMENTALS_CONCEPTS
 from aigent.facts.reference import Fundamental
+from aigent.facts.store import XBRL_TIERS
+
+_XBRL = ", ".join(f"'{t}'" for t in XBRL_TIERS)
 
 Status = Literal["equal", "differs", "missing", "not in xbrl"]
 
@@ -36,8 +39,8 @@ def check_fundamentals(conn: sqlite3.Connection, table: Iterable[Fundamental]) -
             out.append(Checked(item.key, "not in xbrl", item.value, None))
             continue
         row = conn.execute(
-            """SELECT facts.value, facts.decimals FROM facts JOIN filings ON filings.id = filing_id
-               WHERE facts.ticker = ? AND facts.basis = 'consolidated' AND facts.tier = 'xbrl'
+            f"""SELECT facts.value, facts.decimals FROM facts JOIN filings ON filings.id = filing_id
+               WHERE facts.ticker = ? AND facts.basis = 'consolidated' AND facts.tier IN ({_XBRL})
                  AND concept = ? AND period_kind = 'duration' AND segment IS NULL
                  AND period_start = ? AND facts.period_end = ? AND filings.period_end = ?""",
             (
@@ -61,8 +64,8 @@ def check_sums(conn: sqlite3.Connection, filing_id: int) -> list[str]:
     """Every configured sum the filing breaks, for each period it files all the terms of."""
     terms: dict[tuple[str, str, str], dict[str, tuple[float, int | None]]] = {}
     for concept, kind, start, end, value, decimals in conn.execute(
-        """SELECT concept, period_kind, period_start, period_end, value, decimals FROM facts
-           WHERE filing_id = ? AND tier = 'xbrl' AND segment IS NULL""",
+        f"""SELECT concept, period_kind, period_start, period_end, value, decimals FROM facts
+           WHERE filing_id = ? AND tier IN ({_XBRL}) AND segment IS NULL""",
         (filing_id,),
     ):
         terms.setdefault((kind, start or "", end), {})[concept] = (float(value), decimals)

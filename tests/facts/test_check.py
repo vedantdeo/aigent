@@ -223,3 +223,27 @@ def test_tolerance_is_half_the_last_filed_digit_per_value(
     decimals: list[int | None], allowed: float
 ) -> None:
     assert tolerance(decimals) == pytest.approx(allowed)
+
+
+@pytest.mark.parametrize(
+    ("tier", "checker"),
+    [
+        pytest.param("xbrl-pdf", "pdf:results/ITC-2025-03-31.pdf", id="its document agrees"),
+        pytest.param("xbrl", "vedant", id="a person checked it"),
+    ],
+)
+def test_the_checks_read_a_checked_xbrl_fact(
+    conn: sqlite3.Connection, tier: str, checker: str
+) -> None:
+    fid = _load(
+        conn,
+        [
+            _year("RevenueFromOperations", 2.0, 0),
+            _year("OtherIncome", 1.0, 0),
+            _year("Income", 9.0, 0),
+        ],
+    )
+    conn.execute("UPDATE facts SET tier = ?, verified_by = ?, verified_at = 't'", (tier, checker))
+    [checked] = check_fundamentals(conn, [fundamental("ITC", 2025, "revenue", 2.0)])
+    assert checked.status == "equal", checked
+    assert len(check_sums(conn, fid)) == 1

@@ -25,6 +25,7 @@ from aigent import guardrails
 from aigent.analyst import filings
 from aigent.analyst.filings import SEARCH_FILINGS_TOOL, FilingSearch, build_filings_search
 from aigent.analyst.fundamentals import (
+    COMPARE_TOOL,
     FUNDAMENTALS_TOOL,
     Company,
     FinancialYear,
@@ -69,7 +70,7 @@ def build_server(
         MCP_SERVER_NAME,
         instructions=(
             f"Search three Indian companies' FY25 annual reports:\n{CATALOGUE}\n"
-            "Search their FY24 reports too, by company and year, look up eight companies' "
+            "Search their FY24 reports too, by company and year, look up nine companies' "
             "reported figures, and calculate. Read files from, and create new files in, aigent's "
             "sandbox directory."
         ),
@@ -111,6 +112,19 @@ def build_server(
             "segment": segment,
         }
         return _answered(run_fundamentals(arguments))
+
+    @server.tool(
+        name="compare_unverified",
+        description=COMPARE_TOOL.get("description", ""),
+        annotations=ToolAnnotations(read_only_hint=True),
+    )
+    def compare_unverified(lookup_id: str, my_value: float, how: str) -> str:
+        arguments: dict[str, object] = {
+            "lookup_id": lookup_id,
+            "my_value": my_value,
+            "how": _guarded(how),
+        }
+        return _answered(run_fundamentals.compare(arguments))
 
     def dispatch(name: str, tool_input: dict[str, object]) -> str:
         content, is_error = execute_tool(name, tool_input, sandbox=sandbox, writes=True)

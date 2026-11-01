@@ -1,0 +1,311 @@
+{
+ "_about": "Each table question's figure, for the facts database's coverage eval: the one number its quoted row answers with, as printed (no grouping commas, a bracketed amount negative), times `scale` to full units (1e7 for crore, 0.01 for a percentage). Where a question asks for two, the first. `unit` is the XBRL unit it would be filed in (`vehicles`: none is). `excluded` says why a row is not scored. Sorted by id.",
+ "figures": {
+  "rt-001": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "revenue from operations",
+   "printed": "81612.78",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-002": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "profit for the year",
+   "printed": "35052.48",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-003": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "net cash from operating activities",
+   "printed": "17627.04",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-004": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "total assets",
+   "printed": "88090.68",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-005": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "diluted earnings per share from continuing operations",
+   "printed": "15.76",
+   "scale": 1,
+   "unit": "INRPerShare",
+   "excluded": null
+  },
+  "rt-006": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "current ratio",
+   "printed": "3.03",
+   "scale": 1,
+   "unit": "pure",
+   "excluded": null
+  },
+  "rt-007": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "return on capital employed",
+   "printed": "38.79",
+   "scale": 0.01,
+   "unit": "pure",
+   "excluded": null
+  },
+  "rt-008": {
+   "ticker": "ITC",
+   "year": 2016,
+   "metric": "EBITDA",
+   "printed": null,
+   "scale": null,
+   "unit": null,
+   "excluded": "FY16, before the years the database holds"
+  },
+  "rt-009": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "dividend per share",
+   "printed": null,
+   "scale": null,
+   "unit": null,
+   "excluded": "a series of years, not one figure"
+  },
+  "rt-010": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "segment revenue",
+   "printed": "35893.57",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-011": {
+   "ticker": "ITC",
+   "year": 2025,
+   "metric": "segment result",
+   "printed": "883.11",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-012": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "revenue from operations",
+   "printed": "980136",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-013": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "profit for the year",
+   "printed": "81309",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-014": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "finance costs",
+   "printed": "24269",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-015": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "cash and cash equivalents",
+   "printed": "106502",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-016": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "spectrum",
+   "printed": "147122",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-017": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "segment EBITDA",
+   "printed": "25094",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-018": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "segment revenue from operations",
+   "printed": "131336",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-019": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "segment EBITDA margin",
+   "printed": "8.8",
+   "scale": 0.01,
+   "unit": "pure",
+   "excluded": null
+  },
+  "rt-020": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "debt to equity ratio",
+   "printed": null,
+   "scale": null,
+   "unit": null,
+   "excluded": "a series of years, not one figure"
+  },
+  "rt-021": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "book value per share",
+   "printed": "623.1",
+   "scale": 1,
+   "unit": "INRPerShare",
+   "excluded": null
+  },
+  "rt-022": {
+   "ticker": "RELIANCE",
+   "year": 2025,
+   "metric": "net cash from operating activities",
+   "printed": "79392",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-023": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "wholesale volumes",
+   "printed": "553674",
+   "scale": 1,
+   "unit": "vehicles",
+   "excluded": null
+  },
+  "rt-024": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "wholesale volumes",
+   "printed": "912105",
+   "scale": 1,
+   "unit": "vehicles",
+   "excluded": null
+  },
+  "rt-025": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "wholesale volumes",
+   "printed": "374036",
+   "scale": 1,
+   "unit": "vehicles",
+   "excluded": null
+  },
+  "rt-026": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "retail volumes change",
+   "printed": "-46",
+   "scale": 0.01,
+   "unit": "pure",
+   "excluded": null
+  },
+  "rt-027": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "segment revenue",
+   "printed": "314220",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-028": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "segment EBIT margin",
+   "printed": "1.0",
+   "scale": 0.01,
+   "unit": "pure",
+   "excluded": null
+  },
+  "rt-029": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "free cash flow",
+   "printed": "22348",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-030": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "purchase of property, plant and equipment",
+   "printed": "-37068",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  },
+  "rt-031": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "debt equity ratio",
+   "printed": "0.54",
+   "scale": 1,
+   "unit": "pure",
+   "excluded": null
+  },
+  "rt-032": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "interest service coverage ratio",
+   "printed": "6.54",
+   "scale": 1,
+   "unit": "pure",
+   "excluded": null
+  },
+  "rt-033": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "basic earnings per share from continuing operations",
+   "printed": "65.01",
+   "scale": 1,
+   "unit": "INRPerShare",
+   "excluded": null
+  },
+  "rt-034": {
+   "ticker": "TATAMOTORS",
+   "year": 2025,
+   "metric": "total equity",
+   "printed": "122754",
+   "scale": 10000000.0,
+   "unit": "INR",
+   "excluded": null
+  }
+ }
+}

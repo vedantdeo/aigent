@@ -273,6 +273,33 @@ of this machine. Edit both, or neither.
 - Every run's cost goes in `LOG.md` beside what it bought. Keep that ledger honest — it is the only
   record of what this project has spent.
 
+## Tools for agents are prompts
+
+**The rule: a tool an LLM calls — an MCP tool, a function schema, a CLI an agent drives — is
+designed with the same care as the prompt, and usually more.** If its purpose is not obvious from
+its name, parameters and description alone, it is not obvious to the model either.
+
+- Write the description as a docstring for a new junior developer: example usage, edge cases,
+  input format, and when to use this tool rather than its neighbour.
+- Rename before explaining. A clearer parameter name (`absolute_path`, `max_results`) beats a
+  longer description.
+- Make the wrong call hard to make. Change the arguments so a mistake is impossible or loud —
+  requiring absolute paths ended an agent's relative-path errors outright.
+- Choose formats the model writes easily, not only ones code parses easily: text that looks like
+  the internet (code in markdown, not escaped inside JSON), no counting (exact-string replacement
+  or a rewrite, not a unified diff), and room to think before committing.
+- Return ground truth: what happened, what changed, and errors as data the agent can act on.
+- Keep the toolset small, plain and non-overlapping, with an iteration cap on the loop.
+- Test tools on many inputs and read the transcripts. When an agent misuses a tool, ask first
+  whether the interface invited it, and fix the tool before the prompt.
+
+**Why:** in an agent, most failures are at the agent–computer interface, not in the reasoning.
+Anthropic's SWE-bench agent got more from tuning its tools than its prompt. Source: "Building
+effective agents", Appendix 2 — https://www.anthropic.com/research/building-effective-agents
+
+This section is mirrored verbatim into each project's tracked `CLAUDE.md`, so it survives the loss
+of this machine. Edit both, or neither.
+
 ## Fine-tuning lives in underhood; model calls live in aigent
 
 **The rule (2026-10-12):** everything that trains or prepares training for a model lives in

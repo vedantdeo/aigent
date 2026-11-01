@@ -119,7 +119,7 @@ def test_a_fact_carries_what_to_cite_and_where_it_was_filed(conn: sqlite3.Connec
         "period": {"from": "2024-10-01", "to": "2024-12-31"},
         "basis": "consolidated",
         "segment": None,
-        "tier": "xbrl",
+        "tier": "xbrl-ai",
         "source": f"NSE XBRL results filing, period ended 2024-12-31: {DECEMBER_URL}",
     }
 
@@ -133,18 +133,52 @@ def test_a_balance_filed_twice_is_answered_from_the_earliest_filing(
     assert (found.value, found.source.endswith(DECEMBER_URL)) == (5.0, True)
 
 
+@pytest.mark.parametrize("run_id", ["other-run", "this-run"])
+def test_an_unchecked_read_is_found_in_any_run_for_the_tool_to_hold_back(
+    conn: sqlite3.Connection, run_id: str
+) -> None:
+    [found] = find(conn, "ITC", 2025, "year", "consolidated", None, ["DividendPerShare"], run_id)
+    assert found.tier == "pdf-read-ai"
+
+
 @pytest.mark.parametrize(
-    ("run_id", "held"),
+    ("run_id", "value"),
     [
-        pytest.param("other-run", True, id="a model's read answers in its own run"),
-        pytest.param("this-run", False, id="but not in another run"),
+        pytest.param("this-run", 2.0, id="a checked fact before this run's own read"),
+        pytest.param("mine", 2.0, id="a checked fact before another run's"),
     ],
 )
-def test_an_unchecked_read_answers_only_its_own_run(
-    conn: sqlite3.Connection, run_id: str, held: bool
-) -> None:
-    found = find(conn, "ITC", 2025, "year", "consolidated", None, ["DividendPerShare"], run_id)
-    assert bool(found) is held
+def test_a_checked_fact_comes_first(conn: sqlite3.Connection, run_id: str, value: float) -> None:
+    with conn:
+        for tier, by, val, run in (
+            ("pdf-read-ai", None, 1.0, run_id),
+            ("pdf-read", "vedant", 2.0, "old"),
+            ("pdf-read-ai", None, 3.0, "this-run"),
+        ):
+            conn.execute(
+                """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start,
+                          period_end, value, unit, tier, written_by, written_at, run_id,
+                          verified_by, verified_at)
+                   VALUES ('ITC', 'consolidated', 'Extra', 'Extra', 'duration', '2024-04-01',
+                           '2025-03-31', ?, 'INR', ?, 'w', 't', ?, ?, ?)""",
+                (val, tier, run, by, None if by is None else "t"),
+            )
+    [found] = find(conn, "ITC", 2025, "year", "consolidated", None, ["Extra"], run_id)
+    assert found.value == value, found
+
+
+def test_this_runs_own_unchecked_read_comes_before_another_runs(conn: sqlite3.Connection) -> None:
+    with conn:
+        for val, run in ((1.0, "other"), (2.0, "this-run")):
+            conn.execute(
+                """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start,
+                          period_end, value, unit, tier, written_by, written_at, run_id)
+                   VALUES ('ITC', 'consolidated', 'Extra', 'Extra', 'duration', '2024-04-01',
+                           '2025-03-31', ?, 'INR', 'pdf-read-ai', 'w', 't', ?)""",
+                (val, run),
+            )
+    [found] = find(conn, "ITC", 2025, "year", "consolidated", None, ["Extra"], "this-run")
+    assert found.value == 2.0, found
 
 
 def test_at_most_k_facts_one_per_concept_in_the_order_matched(conn: sqlite3.Connection) -> None:

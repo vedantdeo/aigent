@@ -880,3 +880,22 @@ def facts_lookup(facts_db: Path) -> Lookup:
         asked_by="test",
         clock=lambda: FACTS_NOW,
     )
+
+
+@pytest.fixture
+def checked_facts_lookup(facts_db: Path) -> Lookup:
+    """`facts_lookup` with every XBRL fact agreed by its filed document, so it answers verified."""
+    conn = sqlite3.connect(facts_db)
+    with conn:
+        conn.execute(
+            """UPDATE facts SET tier = 'xbrl-pdf', verified_by = 'pdf:results/ITC.pdf',
+                      verified_at = '2026-10-31' WHERE tier = 'xbrl-ai'"""
+        )
+    conn.close()
+    return Lookup(
+        facts_db,
+        concept_index(BagOfWordsEmbedder()),
+        run_id="this-run",
+        asked_by="test",
+        clock=lambda: FACTS_NOW,
+    )
