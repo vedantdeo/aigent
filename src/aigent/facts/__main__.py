@@ -30,20 +30,19 @@ from aigent.facts.coverage import (
     teacher_figures,
     write_report,
 )
-from aigent.facts.crosscheck import (
+from aigent.facts.crosscheck import apply, crosscheck
+from aigent.facts.lookup import Lookup, concept_index
+from aigent.facts.nse import XBRL_DIR, polite_get
+from aigent.facts.reference import load_fundamentals
+from aigent.facts.review import (
     DECISIONS,
-    apply,
     apply_rulings,
-    crosscheck,
     read_decisions,
     review_groups,
     review_sample,
     rule,
 )
-from aigent.facts.crosscheck import write_report as write_crosscheck_report
-from aigent.facts.lookup import Lookup, concept_index
-from aigent.facts.nse import XBRL_DIR, polite_get
-from aigent.facts.reference import load_fundamentals
+from aigent.facts.review import write_report as write_crosscheck_report
 from aigent.facts.store import FACTS_DB, Writer, connect
 from aigent.facts.taxonomy import TAXONOMY_DIR
 
@@ -117,8 +116,8 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
         "companies": ", ".join(VERIFY_TICKERS),
         "facts": f"{len(checked):,}, {agreed:,} agreeing with their results document",
         "decisions": (
-            f"{status['applied']} applied, {status['proposed']} proposed, "
-            f"{status['refused']} refused"
+            f"{status['applied']} applied, {status['extend']} awaiting a check of new facts, "
+            f"{status['proposed']} proposed, {status['refused']} refused"
         ),
         "written": (
             f"{moved:,} made xbrl-pdf, {checked_by_person:,} made xbrl"

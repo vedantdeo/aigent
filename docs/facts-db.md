@@ -331,6 +331,23 @@ unallocated, and ICICI Bank's FY24 Q1 and HDFC Bank's FY24 H1 filings, mostly no
 `evals/reports/crosscheck-<time>.md`; the review queue is every `differ` and `ambiguous`, a random
 sample of `agree`, and the facts most asked for in `lookups`.
 
+**What the reading gets wrong** (noted 11-02 from the review page; each costs a person's look, none
+a wrong agreement). To fix in the matcher pass:
+
+- **A figure printed in a row's label**: "Paid up equity share capital (Face Value of ₹ 1/- each)
+  759.25". The matcher reads cells only, so XBRL's face value (1) is compared with the paid-up
+  capital (759.25 crore) and *differs* (HDFC Bank 36 facts, ICICI Bank 25). Fix: read
+  `(face value … N each)` out of the label.
+- **OCR'd text layers** (ICICI Bank's PDFs, the company's own OCR): letters in words ("shore
+  capitol", "Bonkinq"), digits ("1,403.1B", "11.GG5.G9", "₹ 2/-" as "21-"), and full stops for
+  thousands commas ("1.404.68"). A garbled label falls under the 60% word match and the fact is
+  *not printed* (ICICI Bank's face value, 15 facts); a garbled figure cannot agree.
+- **Rows merged or a row off**: two printed rows parsed as one, so a label carries the next row's
+  figures (ICICI Bank Dec-2023 standalone: "Paid-up … share capital" read with 221,129.31, a
+  reserves figure), or a nil row ("Exceptional items", all "..") merged into the next row's label.
+- **Columns out of line on scanned pages**: a figure attached to the wrong period's header, so it
+  differs from a neighbouring column's fact.
+
 ## Steps
 
 1. ~~Fetcher and manifest; the XBRL loader; the fact table; the fundamentals check.~~ **Built
@@ -345,7 +362,7 @@ sample of `agree`, and the facts most asked for in `lookups`.
    analyst run remains.
 3. **The cross-check** (10-31, 11-01): the documents fetched and read (`aigent.facts.documents`);
    the matching, its report and review queue built (`aigent.facts.crosscheck`), 4,144 of 6,784
-   agreeing and written. The queue grouped (11-01) by company, concept, segment and issue, 396 groups, worked largest first; a person decides a whole group in `evals/reference/crosscheck-decisions.jsonl`, `right` (made `xbrl` after a seeded spot check of 3 of its facts), `wrong` (stays `xbrl-ai`) or `elsewhere` (not in its results). Next: Vedant through the 18 proposed decisions, then the next groups.
+   agreeing and written. The queue grouped (11-01) by company, concept, segment and issue, 396 groups, worked largest first; a person decides a whole group in `evals/reference/crosscheck-decisions.jsonl`, `right` (made `xbrl` after a seeded spot check of 3 of its facts), `wrong` (stays `xbrl-ai`) or `elsewhere` (not in its results). Decisions carry forward (11-01): `wrong` and `elsewhere` cover whatever the group holds; a `right` one covers only the facts its checks name at their checked values, so a new filing's facts reopen the group for a spot check of their own; a decision for `*` covers every company, a company's own winning. Next: Vedant through the 15 proposed decisions, then the next groups.
 4. **To do: verified formulas** (Vedant, 10-31): a `formulas` table of how each derived figure is
    computed, looked up like `fundamentals`, seeded with common ones, grown by agents as
    `formula-ai` and made `formula` by a person's check. See Derived figures below.
@@ -436,7 +453,7 @@ and every input is in a trusted tier**, with no per-fact check, and `derived-ai`
 - **XBRL tiers** (Vedant, 11-01): `xbrl-ai` as loaded; `xbrl-pdf` when its document agrees, and it
   stays `xbrl-ai` otherwise, so after a cross-check every `xbrl-ai` fact is a disagreement (or not
   printed) for a person, and a random sample of `xbrl-pdf` is checked too; `xbrl` after a person.
-- **Review groups** (Vedant, 11-01): the queue grouped and worked largest first; one decision covers a group, a `right` one only after a spot check of a few of its facts; a fact judged wrong stays `xbrl-ai` and leaves the queue.
+- **Review groups** (Vedant, 11-01): the queue grouped and worked largest first; one decision covers a group, a `right` one only after a spot check of a few of its facts; a fact judged wrong stays `xbrl-ai` and leaves the queue. New facts in a `right` group always get a spot check of their own; any verdict may cover every company.
 - **Quoting** (Vedant, 11-01): trusted tiers only; unverified facts held back until the agent has
   its own figure, then shown through `compare_unverified` (value first, so it cannot peek).
 

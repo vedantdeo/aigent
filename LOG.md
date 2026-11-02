@@ -2278,3 +2278,17 @@
   filler zeros, HDFC Bank's H1 FY26 return on assets), 3 elsewhere (CET1 and ICICI Bank's AT1,
   printed only in press releases or not at all), covering 428 facts. 22 of 22 new mutants killed in
   a scratch copy. Report: `evals/reports/crosscheck-20261101-1302.md`.
+- 11-01, evening: **decisions carried forward to new filings, $0.00.** Vedant: when a filing adds
+  facts to a group decided `right`, the new facts get a spot check of their own (drawn from them
+  alone); any verdict may cover every company, written `*|Concept|segment|issue`, a company's own
+  decision winning. A `right` decision now keeps `checks`, each the group it was made on, its facts
+  as `[fact id, value]` pairs and the ticks; a fact stays confirmed only at its checked value, so a
+  new quarter's facts or a revised value reopen the group as `extend` rather than becoming `xbrl`.
+  `wrong` and `elsewhere` apply to whatever the group holds. The queue, decisions and report moved
+  to `aigent.facts.review` (the cross-check module had passed 770 lines); the tests split to
+  `test_review.py`, the shared database fixture to `conftest`. The 18 proposals merged to 15: 12 for
+  every company, 3 for one bank where the banks differ (AT1 filed 0: wrong for HDFC Bank, whose press
+  release puts it near 0.5%, plausibly true for ICICI Bank). Re-run without `--write`: 21 rulings,
+  all proposed, the `*` decisions reaching three smaller groups of the other bank. The review page
+  (claude.ai artifact) now shows one card per concept, segment and issue across both banks. 25 of
+  25 new mutants killed in a scratch copy.

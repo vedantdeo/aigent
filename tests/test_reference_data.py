@@ -20,8 +20,8 @@ from aigent import errors
 from aigent.analyst.run import PROBE
 from aigent.extraction.headlines import DIRECTORY
 from aigent.facts.coverage import TABLE_FIGURES
-from aigent.facts.crosscheck import DECISIONS
 from aigent.facts.reference import FUNDAMENTALS
+from aigent.facts.review import DECISIONS
 from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 
