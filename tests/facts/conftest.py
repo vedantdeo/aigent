@@ -5,14 +5,19 @@ from __future__ import annotations
 
 import io
 import json
+import sqlite3
 import zipfile
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from aigent.facts.cfg_facts import NSE_INTEGRATED_LISTING, NSE_LEGACY_LISTING, NSE_PAGE_SIZE
+from aigent.facts.crosscheck import Checked
 from aigent.facts.reference import Fundamental
+from aigent.facts.store import FilingRow, Writer, connect, sync_xbrl_facts, upsert_filing
+from aigent.facts.xbrl import Fact as XbrlFact
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LEGACY_Q4 = FIXTURES / "ITC-2024-03-31-C.xml"  # 2020 BSE taxonomy, FY24's March quarter
@@ -182,3 +187,90 @@ def label_package(labels: dict[str, list[tuple[str, str]]], name: str = "core/x-
         archive.writestr(name, label_linkbase(labels))
         archive.writestr("core/x.xsd", "<schema/>")
     return buffer.getvalue()
+
+
+CROSSCHECK_WRITER = Writer("xbrl-loader@abc1234", "2026-10-22T12:00:00+05:30", "build-1")
+CROSSCHECK_Q1 = (date(2024, 4, 1), date(2024, 6, 30))
+
+
+@pytest.fixture
+def crosscheck_db(tmp_path: Path) -> sqlite3.Connection:
+    """Two ICICI Bank filings, Q1 standalone and consolidated, one HDFC Bank, and a quarter with no
+    document."""
+    db = connect(tmp_path / "facts.sqlite")
+    for ticker, end, basis, facts in (
+        (
+            "ICICIBANK",
+            date(2024, 6, 30),
+            "standalone",
+            [
+                XbrlFact(
+                    "InterestEarned", "duration", *CROSSCHECK_Q1, None, 389957800000.0, "INR", -5
+                ),
+                XbrlFact("OtherIncome", "duration", *CROSSCHECK_Q1, None, 99.0, "INR", -5),
+            ],
+        ),
+        (
+            "ICICIBANK",
+            date(2024, 6, 30),
+            "consolidated",
+            [
+                XbrlFact(
+                    "InterestEarned", "duration", *CROSSCHECK_Q1, None, 445816500000.0, "INR", -5
+                )
+            ],
+        ),
+        (
+            "ICICIBANK",
+            date(2024, 9, 30),
+            "standalone",
+            [
+                XbrlFact(
+                    "InterestEarned",
+                    "duration",
+                    date(2024, 7, 1),
+                    date(2024, 9, 30),
+                    None,
+                    1.0,
+                    "INR",
+                    -5,
+                )
+            ],
+        ),
+        (
+            "HDFCBANK",
+            date(2024, 6, 30),
+            "standalone",
+            [XbrlFact("InterestEarned", "duration", *CROSSCHECK_Q1, None, 1.0, "INR", -5)],
+        ),
+    ):
+        fid = upsert_filing(
+            db, FilingRow(ticker, 2025, end, basis, "xbrl", f"{ticker}{end}{basis}", "s", "t")
+        )
+        sync_xbrl_facts(db, fid, ticker, basis, facts, CROSSCHECK_WRITER)
+    db.execute("INSERT INTO concepts (concept, label, kind) VALUES ('X', 'X', 'xbrl')")
+    db.execute(
+        "INSERT INTO concept_labels (concept, label) VALUES ('InterestEarned', 'Interest income')"
+    )
+    db.commit()
+    return db
+
+
+def checked_row(fact_id: int, outcome: str, tier: str = "xbrl-ai") -> Checked:
+    return Checked(
+        fact_id,
+        "ICICIBANK",
+        "standalone",
+        "InterestEarned",
+        None,
+        "2024-04-01",
+        "2024-06-30",
+        1.0,
+        "INR",
+        tier,
+        "results/ICICIBANK-2024-06-30.pdf",
+        outcome,  # type: ignore[arg-type]
+        3,
+        "38,995.78",
+        "Interest earned",
+    )

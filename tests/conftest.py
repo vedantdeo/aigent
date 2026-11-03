@@ -864,7 +864,7 @@ def facts_db(tmp_path: Path) -> Path:
                       period_end, value, unit, tier, written_by, written_at, run_id)
                VALUES ('ITC', 'consolidated', 'DividendPerShare', 'Dividend per share',
                        'duration', '2024-04-01', '2025-03-31', 14.35, 'INRPerShare',
-                       'pdf-read-ai', 'model|agent@x', '2026-10-23', 'other-run')"""
+                       'filed-read-ai', 'model|agent@x', '2026-10-23', 'other-run')"""
         )
         apply_labels(conn, FACTS_LABELS)
     conn.close()
@@ -888,7 +888,7 @@ def checked_facts_lookup(facts_db: Path) -> Lookup:
     conn = sqlite3.connect(facts_db)
     with conn:
         conn.execute(
-            """UPDATE facts SET tier = 'xbrl-pdf', verified_by = 'pdf:results/ITC.pdf',
+            """UPDATE facts SET tier = 'xbrl-filed', verified_by = 'nse-pdf:results/ITC.pdf',
                       verified_at = '2026-10-31' WHERE tier = 'xbrl-ai'"""
         )
     conn.close()

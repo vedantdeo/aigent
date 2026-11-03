@@ -1,13 +1,15 @@
 """`python -m aigent.facts build [--offline]`: build the facts database and write its report.
 `python -m aigent.facts coverage`: score what it holds against the labelled figures; free.
 `python -m aigent.facts crosscheck [--write]`: check the cross-checked companies' XBRL facts against
-their results documents and write the review queue; `--write` makes agreements `xbrl-pdf`."""
+their results documents, rule on the review decisions and write the review queue; `--write` makes
+agreements `xbrl-filed` and the groups decided `right` `xbrl`."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import subprocess
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -28,11 +30,20 @@ from aigent.facts.coverage import (
     teacher_figures,
     write_report,
 )
-from aigent.facts.crosscheck import apply, crosscheck, review_sample
-from aigent.facts.crosscheck import write_report as write_crosscheck_report
+from aigent.facts.crosscheck import apply, crosscheck
+from aigent.facts.documents import origin, read_manifest
 from aigent.facts.lookup import Lookup, concept_index
 from aigent.facts.nse import XBRL_DIR, polite_get
 from aigent.facts.reference import load_fundamentals
+from aigent.facts.review import (
+    DECISIONS,
+    apply_rulings,
+    read_decisions,
+    review_groups,
+    review_sample,
+    rule,
+)
+from aigent.facts.review import write_report as write_crosscheck_report
 from aigent.facts.store import FACTS_DB, Writer, connect
 from aigent.facts.taxonomy import TAXONOMY_DIR
 
@@ -55,7 +66,9 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m aigent.facts")
     parser.add_argument("command", choices=["build", "coverage", "crosscheck"])
     parser.add_argument("--offline", action="store_true", help="load the cache only; no fetching")
-    parser.add_argument("--write", action="store_true", help="crosscheck: record agreements")
+    parser.add_argument(
+        "--write", action="store_true", help="crosscheck: record agreements and decisions"
+    )
     args = parser.parse_args(argv)
     now = datetime.now().astimezone()
     if args.command == "coverage":
@@ -87,29 +100,44 @@ def main(argv: list[str] | None = None) -> None:
     print(f"report: {REPORT}")
 
 
-def cross_check(now: datetime, write: bool) -> None:
-    """Check every cross-checked company's XBRL facts, write the report and review queue, and with
-    `write`, make the agreements `xbrl-pdf`."""
+def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None:
+    """Check every cross-checked company's XBRL facts, rule on the decisions, write the report and
+    review queue, and with `write`, make the agreements `xbrl-filed` and `right` groups `xbrl`."""
     conn = connect(FACTS_DB)
     try:
         checked = crosscheck(conn, VERIFY_TICKERS)
-        moved = apply(conn, checked, now) if write else 0
+        rulings = rule(review_groups(checked), read_decisions(decisions))
+        origins = {name: origin(entry) for name, entry in read_manifest().items()}
+        moved = apply(conn, checked, now, origins) if write else 0
+        checked_by_person = apply_rulings(conn, rulings, now) if write else 0
     finally:
         conn.close()
     agreed = sum(c.outcome == "agree" for c in checked)
+    status = Counter(r.status for r in rulings)
     header = {
         "companies": ", ".join(VERIFY_TICKERS),
         "facts": f"{len(checked):,}, {agreed:,} agreeing with their results document",
-        "written": f"{moved:,} made xbrl-pdf" if write else "no (run with --write to record)",
+        "decisions": (
+            f"{status['applied']} applied, {status['extend']} awaiting a check of new facts, "
+            f"{status['proposed']} proposed, {status['refused']} refused"
+        ),
+        "written": (
+            f"{moved:,} made xbrl-filed, {checked_by_person:,} made xbrl"
+            if write
+            else "no (run with --write to record)"
+        ),
         "commit": _commit(),
         "run": f"{now:%Y-%m-%d %H:%M}",
         "cost": "$0.00 (local parsing only)",
     }
     sample = review_sample(checked, CROSSCHECK_SAMPLE, CROSSCHECK_SEED)
     path = write_crosscheck_report(
-        checked, sample, header, CROSSCHECK_DIR / f"crosscheck-{now:%Y%m%d-%H%M}.md"
+        checked, sample, header, CROSSCHECK_DIR / f"crosscheck-{now:%Y%m%d-%H%M}.md", rulings
     )
-    print(f"{len(checked)} facts, {agreed} agree, {moved} written; report: {path}")
+    print(
+        f"{len(checked)} facts, {agreed} agree, {moved} written xbrl-filed, "
+        f"{checked_by_person} written xbrl; decisions: {header['decisions']}; report: {path}"
+    )
 
 
 def coverage(now: datetime) -> None:

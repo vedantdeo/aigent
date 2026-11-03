@@ -2249,3 +2249,68 @@
   gross NPA % (filed 0.0002) is held back; ITC answers nothing verified, five held. Report:
   `evals/reports/crosscheck-20261101-0040.md`. Next: a person through the review queue.
 
+- 11-01, later: **the review queue grouped, $0.00.** Vedant: group it, then work through it largest
+  first. `review_groups` groups the facts not agreed by company, concept, segment (case ignored,
+  since ICICI Bank files "Intersegment" and "intersegment") and issue: `xbrl zero` (a filed 0,
+  whatever printed), `differs` or `not printed`. The report lists the groups, then every queued fact
+  in group order. Re-run without `--write` (outcomes identical fact for fact to 00:40): **394 groups
+  for 2,640 facts**; the 131 of ten or more cover 1,835; 91 are single facts. By issue, XBRL zero
+  1,194, not printed 1,050, differs 396. 11 of 11 mutants killed in a scratch copy. First pass over the 36 largest (958 facts): ICICI
+  Bank's CET1 is right where checkable (year-end standalone equals the press release, 3 of 3) but
+  interim figures exclude the period's profit and print nowhere; face value is printed only inside
+  a row's label; both banks file return on assets in unit INR; most zeros are fillers for lines a
+  bank does not report (segment finance costs, HDFC Bank's consolidated NPAs and ratios, its AT1,
+  about 0.5% by its press release), a few are true (ICICI Bank's exceptional and extraordinary
+  items); ICICI Bank's consolidated results print no analytical ratios.
+- 11-01, later still: **decisions on whole groups, $0.00.** Vedant: a group's `right` verdict covers
+  the group only after a person checks a few of its facts by hand; a fact judged wrong stays
+  `xbrl-ai` and leaves the queue. `evals/reference/crosscheck-decisions.jsonl`, one row per group
+  id (`TICKER|Concept|segment|issue`), sorted and order-checked: `right`, `wrong` or `elsewhere`
+  (not printed in its results), a note, `decided_by` and `spot_checked`. A `right` decision applies
+  only when `spot_checked` covers the group's seeded spot sample (3 facts, re-drawn when the group
+  changes) and names nothing outside it; with no `decided_by` it is a proposal; one naming no group
+  is refused. `--write` makes an applied `right` group's `xbrl-ai` facts `xbrl`, checked by its
+  decider. **HDFC Bank's return on assets showed why a group must be one issue**: 12 facts printed
+  in a % column without the sign (right, and filed in unit INR through Dec-2024) beside H1 FY26,
+  filed as the quarter's 0.0049 for a printed 0.97 (wrong); so `printed x100` splits from `differs`
+  (396 groups now). 18 decisions proposed, none decided: 6 right (face value printed in a label,
+  ICICI Bank's nil exceptional and extraordinary items, HDFC Bank's return on assets), 9 wrong (the
+  filler zeros, HDFC Bank's H1 FY26 return on assets), 3 elsewhere (CET1 and ICICI Bank's AT1,
+  printed only in press releases or not at all), covering 428 facts. 22 of 22 new mutants killed in
+  a scratch copy. Report: `evals/reports/crosscheck-20261101-1302.md`.
+- 11-01, evening: **decisions carried forward to new filings, $0.00.** Vedant: when a filing adds
+  facts to a group decided `right`, the new facts get a spot check of their own (drawn from them
+  alone); any verdict may cover every company, written `*|Concept|segment|issue`, a company's own
+  decision winning. A `right` decision now keeps `checks`, each the group it was made on, its facts
+  as `[fact id, value]` pairs and the ticks; a fact stays confirmed only at its checked value, so a
+  new quarter's facts or a revised value reopen the group as `extend` rather than becoming `xbrl`.
+  `wrong` and `elsewhere` apply to whatever the group holds. The queue, decisions and report moved
+  to `aigent.facts.review` (the cross-check module had passed 770 lines); the tests split to
+  `test_review.py`, the shared database fixture to `conftest`. The 18 proposals merged to 15: 12 for
+  every company, 3 for one bank where the banks differ (AT1 filed 0: wrong for HDFC Bank, whose press
+  release puts it near 0.5%, plausibly true for ICICI Bank). Re-run without `--write`: 21 rulings,
+  all proposed, the `*` decisions reaching three smaller groups of the other bank. The review page
+  (claude.ai artifact) now shows one card per concept, segment and issue across both banks. 25 of
+  25 new mutants killed in a scratch copy.
+- 11-02: **the first group decided, the results read from SEC copies, tiers renamed, $0.00.**
+  Vedant decided `*|FaceValueOfEquityShareCapital||differs` `right` on the review page (3 spot
+  checks per bank); imported, dry run: 61 facts would become `xbrl`. Asked first whether XBRL is
+  known to disagree with the PDFs: yes, NSE flags mismatches and companies refile (EPS, PAT, a
+  period tagged half-yearly), and XBRL International found wrong scales and filler zeros in Indian
+  filings, so `wrong` verdicts stand, the fact kept as `xbrl-ai`. Then, reviewing ICICI Bank's NPA
+  groups, the evidence was garbled: **every ICICI Bank results PDF and three of HDFC Bank's are scans
+  with the company's OCR text behind them**, which the text-less test missed (render mode 3, found
+  with pdfium). Vedant: swap them for their SEC 6-K copies, after checking they are the same. Online:
+  each 6-K says it is the announcement made to the Indian exchanges; figure by figure, 86% to 99.6%
+  of each PDF's figures are in its copy, and every larger leftover examined was the PDF's OCR
+  misreading what the copy and XBRL agree on (ICICI Bank Mar-2025 investing cash flow "169,581.81)"
+  for (69,581.81)). One copy corrects an earlier read: ICICI Bank's Mar-2025 standalone gross NPA is
+  printed 24,166.18 and filed 24,166.78, a real XBRL difference. Re-run: 4,678 agree, but 28 earlier
+  agreements lost to two HTML layouts, a `%` in its own cell (HDFC Bank) and several statements in
+  one `<table>` (ICICI Bank Mar-2024); both fixed in `facts.documents`, re-run **4,739 of 6,784
+  agree** (ICICI Bank 54% to 68%), one agreement lost (a nil row matched to EPS), all 2,822
+  agreements in the copies found in their raw HTML. Then Vedant: keep sources clear in the database;
+  of two options he chose tiers by trust and source in `verified_by`: schema version 4 renames
+  `xbrl-pdf`, `pdf-cell`, `pdf-read` to `xbrl-filed`, `filed-cell`, `filed-read` and stamps
+  `nse-pdf:` or `sec-6k-html:`; the live database migrated (2,247 and 1,897 rows), a backup kept.
+  2,359 tests; 25 of 25 new mutants killed in a scratch copy. Nothing written by the cross-check yet.

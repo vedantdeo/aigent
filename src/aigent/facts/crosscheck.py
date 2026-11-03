@@ -1,16 +1,14 @@
 """The XBRL cross-check: each fact of a cross-checked company against what its results document
 prints, matched by value at the table's scale, in a column stating the fact's period, in a table for
-its basis. An agreement makes the fact `xbrl-pdf`; anything else stays `xbrl-ai` for a person."""
+its basis. An agreement makes the fact `xbrl-filed`; anything else stays `xbrl-ai` for a person."""
 
 from __future__ import annotations
 
 import bisect
-import json
-import random
 import re
 import sqlite3
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
@@ -477,9 +475,15 @@ def crosscheck(
     return out
 
 
-def apply(conn: sqlite3.Connection, checked: Iterable[Checked], now: datetime) -> int:
-    """Makes each agreeing `xbrl-ai` fact `xbrl-pdf`, naming its document and keeping the printed
-    figure and page; a fact a person checked, or already agreed, is left alone. Returns how many."""
+def apply(
+    conn: sqlite3.Connection,
+    checked: Iterable[Checked],
+    now: datetime,
+    origins: Mapping[str, str],
+) -> int:
+    """Makes each agreeing `xbrl-ai` fact `xbrl-filed`, naming its document as `<origin>:<path>`
+    and keeping the printed figure and page; a fact a person checked, or already agreed, is left
+    alone. Returns how many; a document with no origin raises KeyError and writes nothing."""
     stamp = now.isoformat(timespec="seconds")
     moved = 0
     with conn:
@@ -487,58 +491,10 @@ def apply(conn: sqlite3.Connection, checked: Iterable[Checked], now: datetime) -
             if c.outcome != "agree" or c.tier != "xbrl-ai":
                 continue
             cursor = conn.execute(
-                """UPDATE facts SET tier = 'xbrl-pdf', verified_by = ?, verified_at = ?,
+                """UPDATE facts SET tier = 'xbrl-filed', verified_by = ?, verified_at = ?,
                           printed = ?, page = ?
                    WHERE id = ? AND tier = 'xbrl-ai'""",
-                (f"pdf:{c.document}", stamp, c.printed, c.page, c.fact_id),
+                (f"{origins[c.document]}:{c.document}", stamp, c.printed, c.page, c.fact_id),
             )
             moved += cursor.rowcount
     return moved
-
-
-def review_sample(checked: Sequence[Checked], size: int, seed: int) -> list[Checked]:
-    """A seeded random sample of the agreements, for a person to check."""
-    agreed = [c for c in checked if c.outcome == "agree"]
-    return sorted(
-        random.Random(seed).sample(agreed, min(size, len(agreed))), key=lambda c: c.fact_id
-    )
-
-
-def write_report(
-    checked: Sequence[Checked], sample: Sequence[Checked], header: Mapping[str, str], path: Path
-) -> Path:
-    """The counts per company, basis and outcome, then the review queue: every fact not agreed,
-    and the sampled agreements; every row beside it as JSON lines."""
-    counts: dict[tuple[str, str], dict[str, int]] = {}
-    for c in checked:
-        counts.setdefault((c.ticker, c.basis), {"agree": 0, "differ": 0, "unmatched": 0})
-        counts[(c.ticker, c.basis)][c.outcome] += 1
-    lines = ["# XBRL cross-check", ""]
-    lines += [f"- **{k}:** {v}" for k, v in header.items()]
-    lines += ["", "| company | basis | agree | differ | unmatched |", "|---|---|---|---|---|"]
-    for (ticker, basis), n in sorted(counts.items()):
-        lines.append(f"| {ticker} | {basis} | {n['agree']} | {n['differ']} | {n['unmatched']} |")
-    lines += ["", "## Review queue: not agreed", ""]
-    lines += ["| fact | concept | segment | period | XBRL | printed | outcome | document p. |"]
-    lines += ["|---|---|---|---|---|---|---|---|"]
-    for c in checked:
-        if c.outcome != "agree":
-            lines.append(_row(c))
-    lines += ["", "## Review queue: sampled agreements", ""]
-    lines += ["| fact | concept | segment | period | XBRL | printed | outcome | document p. |"]
-    lines += ["|---|---|---|---|---|---|---|---|"]
-    lines += [_row(c) for c in sample]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    rows = path.with_suffix(".rows.jsonl")
-    rows.write_text("".join(json.dumps(asdict(c)) + "\n" for c in checked), encoding="utf-8")
-    return path
-
-
-def _row(c: Checked) -> str:
-    period = c.period_end if c.period_start is None else f"{c.period_start} to {c.period_end}"
-    where = f"{c.document} p.{c.page}" if c.page else c.document
-    return (
-        f"| {c.fact_id} | {c.concept} | {c.segment or ''} | {period} | {c.value:g} {c.unit} | "
-        f"{c.printed or ''} | {c.outcome} | {where} |"
-    )

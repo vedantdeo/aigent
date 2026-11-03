@@ -102,7 +102,7 @@ def db(tmp_path: Path) -> Path:
                       period_end, value, unit, tier, written_by, written_at, run_id)
                VALUES ('ITC', 'consolidated', 'DividendPerShare', 'Dividend per share',
                        'duration', '2024-04-01', '2025-03-31', 14.35, 'INRPerShare',
-                       'pdf-read-ai', 'model|agent@x', '2026-10-23', 'other-run')"""
+                       'filed-read-ai', 'model|agent@x', '2026-10-23', 'other-run')"""
         )
         apply_labels(conn, LABELS)
     conn.close()

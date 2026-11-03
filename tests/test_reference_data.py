@@ -21,6 +21,7 @@ from aigent.analyst.run import PROBE
 from aigent.extraction.headlines import DIRECTORY
 from aigent.facts.coverage import TABLE_FIGURES
 from aigent.facts.reference import FUNDAMENTALS
+from aigent.facts.review import DECISIONS
 from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 
@@ -87,6 +88,7 @@ ORDERED_FILES = [
     Ordered(DIRECTORY, key="ticker", load=json_keys("companies")),
     Ordered(FUNDAMENTALS, key="ticker", load=json_keys("fundamentals")),
     Ordered(TABLE_FIGURES, key="id", load=json_keys("figures")),
+    Ordered(DECISIONS, key="id", load=jsonl_ids("id")),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(TRAINING_MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(DATASET, key="id", load=jsonl_ids("id")),

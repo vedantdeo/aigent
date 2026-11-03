@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 
@@ -12,7 +13,6 @@ import pytest
 
 from aigent.facts import __main__ as cli
 from aigent.facts.crosscheck import (
-    Checked,
     Column,
     Fact,
     agrees,
@@ -24,16 +24,13 @@ from aigent.facts.crosscheck import (
     facts_to_check,
     label_share,
     number,
-    review_sample,
     sheets,
-    write_report,
 )
-from aigent.facts.store import FilingRow, Writer, connect, sync_xbrl_facts, upsert_filing
-from aigent.facts.xbrl import Fact as XbrlFact
 from aigent.retrieval.chunk import Document, Table
 
-WRITER = Writer("xbrl-loader@abc1234", "2026-10-22T12:00:00+05:30", "build-1")
-Q1 = (date(2024, 4, 1), date(2024, 6, 30))
+from .conftest import CROSSCHECK_Q1, checked_row
+
+Q1 = CROSSCHECK_Q1
 NOW = datetime(2026, 11, 1, 9, 0)
 
 _HEADER = (
@@ -319,70 +316,13 @@ def test_a_fact_records_where_it_agreed() -> None:
     assert (checked.page, checked.row_label) == (1, "Interest earned")
 
 
-@pytest.fixture
-def conn(tmp_path: Path) -> sqlite3.Connection:
-    """Two ICICI Bank filings, Q1 standalone and consolidated, one HDFC Bank, and a quarter with no
-    document."""
-    db = connect(tmp_path / "facts.sqlite")
-    for ticker, end, basis, facts in (
-        (
-            "ICICIBANK",
-            date(2024, 6, 30),
-            "standalone",
-            [
-                XbrlFact("InterestEarned", "duration", *Q1, None, 389957800000.0, "INR", -5),
-                XbrlFact("OtherIncome", "duration", *Q1, None, 99.0, "INR", -5),
-            ],
-        ),
-        (
-            "ICICIBANK",
-            date(2024, 6, 30),
-            "consolidated",
-            [XbrlFact("InterestEarned", "duration", *Q1, None, 445816500000.0, "INR", -5)],
-        ),
-        (
-            "ICICIBANK",
-            date(2024, 9, 30),
-            "standalone",
-            [
-                XbrlFact(
-                    "InterestEarned",
-                    "duration",
-                    date(2024, 7, 1),
-                    date(2024, 9, 30),
-                    None,
-                    1.0,
-                    "INR",
-                    -5,
-                )
-            ],
-        ),
-        (
-            "HDFCBANK",
-            date(2024, 6, 30),
-            "standalone",
-            [XbrlFact("InterestEarned", "duration", *Q1, None, 1.0, "INR", -5)],
-        ),
-    ):
-        fid = upsert_filing(
-            db, FilingRow(ticker, 2025, end, basis, "xbrl", f"{ticker}{end}{basis}", "s", "t")
-        )
-        sync_xbrl_facts(db, fid, ticker, basis, facts, WRITER)
-    db.execute("INSERT INTO concepts (concept, label, kind) VALUES ('X', 'X', 'xbrl')")
-    db.execute(
-        "INSERT INTO concept_labels (concept, label) VALUES ('InterestEarned', 'Interest income')"
-    )
-    db.commit()
-    return db
-
-
 MANIFEST = {"results/ICICIBANK-2024-06-30.pdf": {}, "results/HDFCBANK-2024-06-30.pdf": {}}
 
 
 def test_facts_to_check_are_the_companies_named_with_a_document(
-    conn: sqlite3.Connection,
+    crosscheck_db: sqlite3.Connection,
 ) -> None:
-    facts = facts_to_check(conn, ("ICICIBANK",), MANIFEST)
+    facts = facts_to_check(crosscheck_db, ("ICICIBANK",), MANIFEST)
     assert [(f.basis, f.concept, f.document) for f in facts] == [
         ("consolidated", "InterestEarned", "results/ICICIBANK-2024-06-30.pdf"),
         ("standalone", "InterestEarned", "results/ICICIBANK-2024-06-30.pdf"),
@@ -391,13 +331,15 @@ def test_facts_to_check_are_the_companies_named_with_a_document(
     assert facts[0].labels[1:] == ("Interest income",)
 
 
-def test_facts_to_check_skip_a_fact_not_from_xbrl(conn: sqlite3.Connection) -> None:
-    conn.execute("UPDATE facts SET tier = 'pdf-cell-ai' WHERE concept = 'OtherIncome'")
-    facts = facts_to_check(conn, ("ICICIBANK",), MANIFEST)
+def test_facts_to_check_skip_a_fact_not_from_xbrl(crosscheck_db: sqlite3.Connection) -> None:
+    crosscheck_db.execute("UPDATE facts SET tier = 'filed-cell-ai' WHERE concept = 'OtherIncome'")
+    facts = facts_to_check(crosscheck_db, ("ICICIBANK",), MANIFEST)
     assert "OtherIncome" not in {f.concept for f in facts}
 
 
-def test_crosscheck_reads_each_document_once(conn: sqlite3.Connection, tmp_path: Path) -> None:
+def test_crosscheck_reads_each_document_once(
+    crosscheck_db: sqlite3.Connection, tmp_path: Path
+) -> None:
     (tmp_path / "manifest.json").write_text(json.dumps(MANIFEST), encoding="utf-8")
     loaded: list[str] = []
 
@@ -405,7 +347,7 @@ def test_crosscheck_reads_each_document_once(conn: sqlite3.Connection, tmp_path:
         loaded.append(name)
         return STANDALONE
 
-    checked = crosscheck(conn, ("ICICIBANK",), tmp_path, load)
+    checked = crosscheck(crosscheck_db, ("ICICIBANK",), tmp_path, load)
     assert loaded == ["results/ICICIBANK-2024-06-30.pdf"]
     assert [(c.basis, c.concept, c.outcome) for c in checked] == [
         ("consolidated", "InterestEarned", "unmatched"),
@@ -414,36 +356,20 @@ def test_crosscheck_reads_each_document_once(conn: sqlite3.Connection, tmp_path:
     ]
 
 
-def _checked(fact_id: int, outcome: str, tier: str = "xbrl-ai") -> Checked:
-    return Checked(
-        fact_id,
-        "ICICIBANK",
-        "standalone",
-        "InterestEarned",
-        None,
-        "2024-04-01",
-        "2024-06-30",
-        1.0,
-        "INR",
-        tier,
-        "results/ICICIBANK-2024-06-30.pdf",
-        outcome,  # type: ignore[arg-type]
-        3,
-        "38,995.78",
-        "Interest earned",
-    )
+ORIGINS = {"results/ICICIBANK-2024-06-30.pdf": "nse-pdf"}
 
 
-def test_apply_makes_only_agreements_xbrl_pdf(conn: sqlite3.Connection) -> None:
-    ids = [r[0] for r in conn.execute("SELECT id FROM facts ORDER BY id")]
-    moved = apply(conn, [_checked(ids[0], "agree"), _checked(ids[1], "differ")], NOW)
-    rows = conn.execute(
+def test_apply_makes_only_agreements_xbrl_filed(crosscheck_db: sqlite3.Connection) -> None:
+    ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
+    checked = [checked_row(ids[0], "agree"), checked_row(ids[1], "differ")]
+    moved = apply(crosscheck_db, checked, NOW, ORIGINS)
+    rows = crosscheck_db.execute(
         "SELECT tier, verified_by, verified_at, printed, page FROM facts ORDER BY id"
     ).fetchall()
     assert moved == 1
     assert rows[0] == (
-        "xbrl-pdf",
-        "pdf:results/ICICIBANK-2024-06-30.pdf",
+        "xbrl-filed",
+        "nse-pdf:results/ICICIBANK-2024-06-30.pdf",
         "2026-11-01T09:00:00",
         "38,995.78",
         3,
@@ -451,16 +377,23 @@ def test_apply_makes_only_agreements_xbrl_pdf(conn: sqlite3.Connection) -> None:
     assert rows[1] == ("xbrl-ai", None, None, None, None)
 
 
-def test_apply_leaves_a_persons_check_and_counts_nothing_twice(conn: sqlite3.Connection) -> None:
-    ids = [r[0] for r in conn.execute("SELECT id FROM facts ORDER BY id")]
-    conn.execute(
+def test_apply_leaves_a_persons_check_and_counts_nothing_twice(
+    crosscheck_db: sqlite3.Connection,
+) -> None:
+    ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
+    crosscheck_db.execute(
         "UPDATE facts SET tier = 'xbrl', verified_by = 'vedant', verified_at = 't' WHERE id = ?",
         (ids[1],),
     )
-    first = apply(conn, [_checked(ids[0], "agree"), _checked(ids[1], "agree", "xbrl-ai")], NOW)
-    again = apply(conn, [_checked(ids[0], "agree")], NOW)
+    first = apply(
+        crosscheck_db,
+        [checked_row(ids[0], "agree"), checked_row(ids[1], "agree", "xbrl-ai")],
+        NOW,
+        ORIGINS,
+    )
+    again = apply(crosscheck_db, [checked_row(ids[0], "agree")], NOW, ORIGINS)
     assert (first, again) == (1, 0)
-    assert conn.execute(
+    assert crosscheck_db.execute(
         "SELECT tier, verified_by FROM facts WHERE id = ?", (ids[1],)
     ).fetchone() == (
         "xbrl",
@@ -468,43 +401,63 @@ def test_apply_leaves_a_persons_check_and_counts_nothing_twice(conn: sqlite3.Con
     )
 
 
-def test_the_review_sample_is_seeded_agreements_only() -> None:
-    checked = [_checked(i, "agree" if i % 2 else "differ") for i in range(1, 41)]
-    first, again = review_sample(checked, 5, 7), review_sample(checked, 5, 7)
-    assert first == again and len(first) == 5
-    assert all(c.outcome == "agree" for c in first)
-    assert len(review_sample(checked, 100, 7)) == 20
+@pytest.mark.parametrize(
+    ("document", "origins", "stamp"),
+    [
+        pytest.param(
+            "results/X.pdf", {"results/X.pdf": "nse-pdf"}, "nse-pdf:results/X.pdf", id="an nse pdf"
+        ),
+        pytest.param(
+            "results/X.htm",
+            {"results/X.htm": "sec-6k-html"},
+            "sec-6k-html:results/X.htm",
+            id="an sec copy",
+        ),
+    ],
+)
+def test_apply_stamps_each_agreement_with_its_documents_origin(
+    crosscheck_db: sqlite3.Connection, document: str, origins: dict[str, str], stamp: str
+) -> None:
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    apply(crosscheck_db, [replace(checked_row(first, "agree"), document=document)], NOW, origins)
+    by = crosscheck_db.execute("SELECT verified_by FROM facts WHERE id = ?", (first,)).fetchone()
+    assert by == (stamp,)
 
 
-def test_the_report_counts_and_queues_every_fact_not_agreed(tmp_path: Path) -> None:
-    checked = [_checked(1, "agree"), _checked(2, "differ"), _checked(3, "unmatched")]
-    path = write_report(checked, [checked[0]], {"run": "now"}, tmp_path / "r.md")
-    text = path.read_text(encoding="utf-8")
-    queued, sampled = text.split("## Review queue: sampled agreements")
-    assert "| ICICIBANK | standalone | 1 | 1 | 1 |" in text
-    assert "| 2 |" in queued and "| 3 |" in queued and "| 1 |" not in queued.split("## Review")[-1]
-    assert "| 1 |" in sampled
-    rows = path.with_suffix(".rows.jsonl").read_text(encoding="utf-8").splitlines()
-    assert [json.loads(r)["outcome"] for r in rows] == ["agree", "differ", "unmatched"]
+def test_apply_writes_nothing_for_a_document_with_no_origin(
+    crosscheck_db: sqlite3.Connection,
+) -> None:
+    ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
+    unknown = replace(checked_row(ids[1], "agree"), document="results/NOPE.htm")
+    with pytest.raises(KeyError, match="NOPE"):
+        apply(crosscheck_db, [checked_row(ids[0], "agree"), unknown], NOW, ORIGINS)
+    tiers = [r[0] for r in crosscheck_db.execute("SELECT tier FROM facts ORDER BY id")]
+    assert set(tiers) == {"xbrl-ai"}, tiers
 
 
-@pytest.mark.parametrize(("write", "tier"), [(False, "xbrl-ai"), (True, "xbrl-pdf")])
+@pytest.mark.parametrize(("write", "tier"), [(False, "xbrl-ai"), (True, "xbrl-filed")])
 def test_the_command_records_agreements_only_when_told(
-    conn: sqlite3.Connection,
+    crosscheck_db: sqlite3.Connection,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     write: bool,
     tier: str,
 ) -> None:
-    db = Path(conn.execute("PRAGMA database_list").fetchone()[2])
-    first = conn.execute("SELECT min(id) FROM facts").fetchone()[0]
-    conn.close()
+    db = Path(crosscheck_db.execute("PRAGMA database_list").fetchone()[2])
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    crosscheck_db.close()
     monkeypatch.setattr(cli, "FACTS_DB", db)
     monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
-    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [_checked(first, "agree")])
-    cli.cross_check(NOW, write=write)
-    after = sqlite3.connect(db).execute("SELECT tier FROM facts WHERE id = ?", (first,)).fetchone()
-    assert after == (tier,)
+    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [checked_row(first, "agree")])
+    manifest = {"results/ICICIBANK-2024-06-30.pdf": {"source": "nse", "format": "pdf"}}
+    monkeypatch.setattr(cli, "read_manifest", lambda: manifest)
+    cli.cross_check(NOW, write=write, decisions=tmp_path / "none.jsonl")
+    after = (
+        sqlite3.connect(db)
+        .execute("SELECT tier, verified_by FROM facts WHERE id = ?", (first,))
+        .fetchone()
+    )
+    assert after == (tier, "nse-pdf:results/ICICIBANK-2024-06-30.pdf" if write else None), after
     assert list((tmp_path / "reports").glob("crosscheck-*.md"))
 
 
