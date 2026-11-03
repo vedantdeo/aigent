@@ -27,6 +27,17 @@ MAX_USD_ANALYST_SPECIALIST = 0.30
 ANALYST_SERVED_TOOLS = ("calculate", "compare_unverified", "fundamentals", "search_filings")
 ANALYST_WORKERS = 4  # questions in flight at once, so the specialists' GPU is shared, not idle
 
+# `python -m aigent.analyst.desk`: the graph trimmed to the facts database, on a local page.
+DESK_SERVED_TOOLS = ("fundamentals",)  # `derive` is the desk's own
+DESK_HOST = "127.0.0.1"  # this machine only
+DESK_PORT = 8765
+# Rupee amounts are stated in the largest of these that fits, else in plain rupees; never millions.
+INDIAN_RUPEE_UNITS: tuple[tuple[str, int], ...] = (
+    ("crore", 10**7),
+    ("lakh", 10**5),
+    ("thousand", 10**3),
+)
+
 # The analyst's own call sites' caps, over the shared table.
 MAX_TOKENS: dict[str, int] = {
     "MEMO": 2048,  # a summary, up to a dozen cited claims, caveats

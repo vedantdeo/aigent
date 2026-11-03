@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analyst Desk</title>
+<style>
+:root {
+  --bg: #f4f5f2; --panel: #ffffff; --ink: #1b1f1d; --muted: #5f6763; --line: #d9ddd9;
+  --accent: #24584a; --accent-soft: #e3eeea; --ok: #1f7a46; --ok-soft: #e2f2e8;
+  --bad: #b2362c; --bad-soft: #f8e4e1; --warn: #93620a; --warn-soft: #f6ecd6;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #121614; --panel: #1a201d; --ink: #e4ebe7; --muted: #97a39d; --line: #2d3733;
+  --accent: #7fc4ae; --accent-soft: #1f2f2a; --ok: #72cf98; --ok-soft: #1b3326;
+  --bad: #f08a80; --bad-soft: #3a201e; --warn: #e2b45c; --warn-soft: #36291a; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+.wrap { max-width: 960px; margin: 0 auto; padding: 28px 16px 64px; display: grid; gap: 18px; }
+h1 { font-size: 26px; margin: 0; letter-spacing: -.01em; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 70ch; }
+form { display: flex; gap: 8px; }
+input[type=text] { flex: 1; font: inherit; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+button { font: 600 14px var(--sans); border-radius: 8px; padding: 10px 16px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--bg); }
+button:disabled { opacity: .5; cursor: wait; }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; }
+.examples button { background: var(--panel); color: var(--ink); border-color: var(--line);
+  font-weight: 500; padding: 6px 10px; border-radius: 999px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px;
+  display: grid; gap: 12px; }
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0; }
+.summary { font-size: 17px; }
+.claim { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; }
+.claim:first-of-type { border-top: 0; padding-top: 0; }
+.claim-head { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
+.pill { font: 600 12px var(--sans); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.supported, .xbrl { background: var(--ok-soft); color: var(--ok); }
+.xbrl-filed { background: var(--accent-soft); color: var(--accent); }
+.wrong, .unsupported, .contradicted { background: var(--bad-soft); color: var(--bad); }
+.other { background: var(--warn-soft); color: var(--warn); }
+.reason { color: var(--muted); font-size: 13px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; }
+td.num { font-family: var(--mono); text-align: right; }
+td.src { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--muted); }
+.stats b { color: var(--ink); font-family: var(--mono); }
+.call { font: 12px/1.45 var(--mono); background: var(--bg); border-radius: 6px; padding: 8px 10px; overflow-wrap: anywhere; }
+.call .tool { color: var(--accent); font-weight: 600; }
+.err { color: var(--bad); }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.draft { white-space: pre-wrap; font-size: 14px; }
+.empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Analyst Desk</h1>
+    <p class="sub">Questions about Indian listed companies, answered only from figures in their results filings that have been verified: by the filing agreeing with XBRL, or by a person. A second model checks every claim against the facts it cites.</p>
+  </header>
+
+  <form id="ask">
+    <input type="text" id="q" placeholder="Ask about a company's reported figures…" autocomplete="off" required>
+    <button id="go" type="submit">Ask</button>
+  </form>
+  <div class="examples" id="examples"></div>
+
+  <div id="out"><p class="empty">Each question is a paid call: a few cents, capped per question.</p></div>
+</div>
+
+<script>
+const EXAMPLES = [
+  "What was ICICI Bank's standalone operating profit in FY24 and FY25, and how much did it grow?",
+  "What was ICICI Bank's standalone net interest income and net profit margin in FY25?",
+  "What was HDFC Bank's standalone credit-deposit ratio at March 2025, and how did deposits grow?",
+  "Compare HDFC Bank's and ICICI Bank's standalone net profit for FY25.",
+  "What is the face value of an ICICI Bank share?",
+  "What was HDFC Bank's Additional Tier 1 ratio at March 2025?",
+];
+// The largest that fits, else plain rupees; as in the agent's prompt (cfg_analyst.INDIAN_RUPEE_UNITS).
+const RUPEE_UNITS = [["crore", 1e7], ["lakh", 1e5], ["thousand", 1e3]];
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function money(v, unit) {
+  if (typeof v !== "number") return esc(v);
+  if (unit === "INR") {
+    const scale = RUPEE_UNITS.find(([, size]) => Math.abs(v) >= size);
+    const shown = scale ? v / scale[1] : v;
+    return "₹" + shown.toLocaleString("en-IN", { maximumFractionDigits: 2 }) + (scale ? " " + scale[0] : "");
+  }
+  if (unit === "INRPerShare") return "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 2 }) + "/share";
+  if (unit === "pure") return (v * 100).toFixed(2) + "%";
+  return v.toLocaleString("en-IN") + " " + esc(unit);
+}
+function period(p) {
+  if (!p) return "";
+  return p.as_at ? "at " + p.as_at : p.from + " to " + p.to;
+}
+function tier(t) {
+  const cls = t === "xbrl" || t === "xbrl-filed" ? t : "other";
+  const label = t === "xbrl" ? "checked by a person" : t === "xbrl-filed" ? "filing agrees"
+    : t === "derived" ? "derived here" : t === "derived-ai" ? "derived, unverified" : t;
+  return `<span class="pill ${cls}" title="${esc(t)}">${esc(label)}</span>`;
+}
+function verdict(v) {
+  return v ? `<span class="pill ${esc(v)}">${esc(v)}</span>` : `<span class="pill other">not judged</span>`;
+}
+function facts(list) {
+  if (!list.length) return "";
+  const rows = list.map(f => f.metric
+    ? `<tr><td>${esc(f.metric)}</td><td class="num">${money(f.value, f.unit)}</td><td>${esc(f.period)} ${esc(f.year)}</td><td>${esc(f.basis)}</td><td>${tier("derived")}</td><td class="src">${esc(f.cite_as)} · ${esc(f.formula)}</td></tr>`
+    : f.label
+    ? `<tr><td>${esc(f.label)}</td><td class="num">${money(f.value, f.unit)}</td><td>${esc(period(f.period))}</td><td>${esc(f.basis)}${f.segment ? " · " + esc(f.segment) : ""}</td><td>${tier(f.tier)}</td><td class="src">${esc(f.cite_as)}</td></tr>`
+    : `<tr><td colspan="6" class="src">${esc(f.cite_as)}: not a fact this run looked up</td></tr>`).join("");
+  return `<div class="table-wrap"><table><thead><tr><th>fact</th><th>value</th><th>period</th><th>basis</th><th>tier</th><th>cite</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function calls(list) {
+  return list.map(c => {
+    const r = c.result;
+    let said = c.error ? `<span class="err">${esc(typeof r === "string" ? r : JSON.stringify(r))}</span>` : "";
+    if (!c.error && r && typeof r === "object" && Array.isArray(r.facts))
+      said = `${r.facts.length} verified · ${r.unverified_held} unverified held back`;
+    else if (!c.error && r && typeof r === "object" && r.plan_id)
+      said = `plan ${esc(r.plan_id)}: ${esc(r.metric)} = ${esc(r.formula)}; fetch ${r.fetch.map(f => esc(f.variable) + " = " + esc(f.fundamentals.what) + " " + esc(f.fundamentals.period) + " " + esc(f.fundamentals.year)).join(", ")}`;
+    else if (!c.error && r && typeof r === "object" && r.metric === null)
+      said = `no metric fits`;
+    else if (!c.error && r && typeof r === "object" && r.cite_as && r.metric)
+      said = `${esc(r.cite_as)}: ${esc(r.metric)} = ${money(r.value, r.unit)}`;
+    else if (!c.error && r && typeof r === "object" && r.defined)
+      said = `defined ${esc(r.defined)} (${esc(r.tier)})`;
+    else if (!c.error && r && typeof r === "object" && r.proposed)
+      said = `proposed formula ${esc(r.proposed)} (${esc(r.tier)})`;
+    else if (!c.error) said = esc(typeof r === "string" ? r.slice(0, 200) : JSON.stringify(r).slice(0, 200));
+    return `<div class="call"><span class="tool">${esc(c.tool)}</span>(${esc(JSON.stringify(c.arguments))}) → ${said} <span class="reason">${c.seconds}s</span></div>`;
+  }).join("");
+}
+
+function render(a, seconds) {
+  const spent = Object.values(a.spent || {}).reduce((n, v) => n + v, 0);
+  const supported = a.claims.filter(c => c.verdict === "supported").length;
+  let html = "";
+  if (a.error) html += `<div class="card"><h2>Stopped</h2><p class="err">${esc(a.error)}</p></div>`;
+  if (a.summary) {
+    html += `<div class="card"><h2>Answer</h2><p class="summary">${esc(a.summary)}</p>
+      <div class="stats"><span><b>${supported}/${a.claims.length}</b> claims supported</span><span><b>${a.held_back}</b> unverified held back</span><span><b>${a.written.length}</b> written back</span><span><b>$${spent.toFixed(4)}</b> spent</span><span><b>${seconds.toFixed(0)}s</b></span></div></div>`;
+    html += `<div class="card"><h2>Claims, each checked by the critic</h2>` + a.claims.map(c => `
+      <div class="claim"><div class="claim-head"><span>${esc(c.text)}</span>${verdict(c.verdict)}</div>
+      ${c.reason ? `<div class="reason">${esc(c.reason)}</div>` : ""}${facts(c.facts)}</div>`).join("") + `</div>`;
+    if (a.written.length || a.skipped.length) html += `<div class="card"><h2>Written back to the database</h2>
+      <p class="reason">Each computed figure a supported claim cites, as an unverified fact under its metric's name, linked to the facts it was computed from. It is not quoted as verified until a person checks the metric.</p>
+      ${a.written.map(w => `<div class="call"><span class="tool">fact ${w.fact_id}</span> ${esc(w.metric)}, ${esc(w.period)} = ${money(w.value, w.unit)} ${tier(w.tier)}<br>${esc(w.formula)} of ${w.inputs.map(esc).join(", ")}</div>`).join("")}
+      ${a.skipped.map(k => `<div class="call"><span class="err">not written</span> ${esc(k.metric)}: ${esc(k.reason)}</div>`).join("")}</div>`;
+    if (a.caveats.length) html += `<div class="card"><h2>Caveats</h2>${a.caveats.map(c => `<p>${esc(c)}</p>`).join("")}</div>`;
+  } else if (!a.error) {
+    html += `<div class="card"><h2>No memo</h2><p>${esc(a.stopped || "The agent wrote no cited claims.")}</p></div>`;
+  }
+  html += `<div class="card"><h2>Tool calls</h2>${calls(a.calls) || '<p class="empty">None.</p>'}
+    ${a.draft ? `<details><summary>The agent's own answer, before the memo</summary><p class="draft">${esc(a.draft)}</p></details>` : ""}</div>`;
+  $("#out").innerHTML = html;
+}
+
+async function ask(question) {
+  $("#q").value = question;
+  $("#go").disabled = true;
+  const began = performance.now();
+  const tick = setInterval(() => { $("#out").innerHTML = `<p class="empty">Researching, writing and checking… ${((performance.now() - began) / 1000).toFixed(0)}s</p>`; }, 500);
+  try {
+    const res = await fetch("/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+    const body = await res.json();
+    clearInterval(tick);
+    if (!res.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : res.statusText);
+    render(body, (performance.now() - began) / 1000);
+  } catch (err) {
+    clearInterval(tick);
+    $("#out").innerHTML = `<div class="card"><h2>Failed</h2><p class="err">${esc(err.message || err)}</p></div>`;
+  } finally {
+    $("#go").disabled = false;
+  }
+}
+
+$("#examples").innerHTML = EXAMPLES.map((e, i) => `<button type="button" data-i="${i}">${esc(e)}</button>`).join("");
+$("#examples").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) ask(EXAMPLES[b.dataset.i]); });
+$("#ask").addEventListener("submit", e => { e.preventDefault(); const q = $("#q").value.trim(); if (q) ask(q); });
+</script>
+</body>
+</html>

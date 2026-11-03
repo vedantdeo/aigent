@@ -364,3 +364,22 @@ def test_a_person_s_rejection_becomes_a_constraint_and_their_approval_ends_the_r
     done = analysed(state, tools)
     assert done.review == Review(approved=True) and done.revisions == 0
     assert state["notes"] == [note]
+
+
+@pytest.mark.parametrize(
+    ("prompt", "system"),
+    [
+        pytest.param(None, RESEARCH, id="the capstone's prompt by default"),
+        pytest.param("Only the database.", "Only the database.", id="the prompt given"),
+    ],
+)
+def test_the_generalist_researches_on_the_prompt_it_is_given(
+    make_llm: MakeLlm, prompt: str | None, system: str
+) -> None:
+    writer, sent = make_llm(generalist(memo(RIGHT)))
+    critic = make_llm(judging)[0]
+    if prompt is None:
+        run(writer, critic, box(search), QUESTION)
+    else:
+        run(writer, critic, box(search), QUESTION, research_prompt=prompt)
+    assert sent.sent[0].system == system

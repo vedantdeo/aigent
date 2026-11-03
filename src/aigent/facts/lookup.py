@@ -100,10 +100,15 @@ class ConceptIndex:
             for i, (concept, text) in enumerate(sorted(texts.items()))
         )
         inventory = Inventory("facts-concepts", chunks, {c.id: c for c in chunks})
+        self.concepts = frozenset(texts)
         self._ranker: Ranker = build_ranker(method, Indexes.build(inventory, embedder, cache=cache))
 
     def match(self, what: str, k: int = FACTS_MATCH_DEPTH) -> list[str]:
-        return [hit.chunk_id for hit in self._ranker.rank(what, k)]
+        """The concepts closest to `what`, an exact concept name first."""
+        ranked = [hit.chunk_id for hit in self._ranker.rank(what, k)]
+        if what in self.concepts:
+            return [what, *(c for c in ranked if c != what)][:k]
+        return ranked
 
 
 def concept_texts(conn: sqlite3.Connection) -> dict[str, str]:

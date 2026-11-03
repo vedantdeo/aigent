@@ -54,6 +54,22 @@ def test_a_concept_is_matched_by_its_label_and_its_aliases(conn: sqlite3.Connect
 
 
 @pytest.mark.parametrize(
+    ("what", "first"),
+    [
+        pytest.param("Assets", "Assets", id="an exact concept name first"),
+        pytest.param("RevenueFromOperations", "RevenueFromOperations", id="a long one too"),
+        pytest.param("assets", "Assets", id="words still ranked"),
+    ],
+)
+def test_an_exact_concept_name_is_matched_first(
+    conn: sqlite3.Connection, what: str, first: str
+) -> None:
+    index = ConceptIndex(concept_texts(conn), BagOfWordsEmbedder())
+    matched = index.match(what, k=3)
+    assert matched[0] == first and len(matched) <= 3 and len(set(matched)) == len(matched)
+
+
+@pytest.mark.parametrize(
     ("period", "basis", "value", "start"),
     [
         pytest.param("year", "consolidated", 816.0, "2024-04-01", id="a year"),

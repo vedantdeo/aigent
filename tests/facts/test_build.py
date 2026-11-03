@@ -105,6 +105,9 @@ def test_a_second_build_fetches_nothing_and_changes_nothing(
     assert {(x.synced.added, x.synced.changed, x.synced.removed) for x in again.loaded} == {
         (0, 0, 0)
     }
+    assert "(0 added, 0 changed, 0 removed, 0 derived dropped)" in again.summary()
+    again.loaded[0].synced.derived_dropped = 2
+    assert "2 derived dropped" in again.summary(), "the summary counts what a revision dropped"
 
 
 def test_an_offline_build_loads_the_cache_without_asking_nse(

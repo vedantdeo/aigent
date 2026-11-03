@@ -36,6 +36,10 @@ compare = [
     "langchain-huggingface>=1.2.2",
     "langchain-text-splitters>=1.1.2",
 ]
+desk = [
+    "fastapi>=0.141.1",
+    "uvicorn>=0.54.0",
+]
 dev = [
     "pyright>=1.1.411",
     "pytest>=9.1.1",

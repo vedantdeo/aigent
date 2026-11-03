@@ -1,4 +1,5 @@
-"""The facts database's schema guards and the build's sync of a filing's XBRL rows."""
+"""The facts database's schema guards, the build's sync of a filing's XBRL rows, and an agent's
+derived facts and formulas."""
 
 from __future__ import annotations
 
@@ -11,12 +12,16 @@ import pytest
 
 from aigent.facts.store import (
     SCHEMA_VERSION,
+    DerivedRow,
     FilingRow,
     Writer,
     apply_labels,
     connect,
     sync_xbrl_facts,
     upsert_filing,
+    write_derived,
+    write_derived_concept,
+    write_formula,
 )
 from aigent.facts.taxonomy import Labels
 from aigent.facts.xbrl import Fact
@@ -381,3 +386,231 @@ def test_a_checked_xbrl_fact_is_labelled_and_held_once(
                       period_end, 7.0, unit, tier, written_by, written_at, 'build-2',
                       verified_by, verified_at FROM facts"""
         )
+
+
+GROWTH = DerivedRow(
+    "ITC",
+    "consolidated",
+    "DerivedGrowth",
+    "Revenue growth, FY25",
+    "2024-04-01",
+    "2025-03-31",
+    None,
+    0.1,
+    "pure",
+    '{"formula_id": 1}',
+)
+
+
+def _checked(conn: sqlite3.Connection, tier: str) -> list[int]:
+    """The ids of the two synced facts, set to `tier` (a checked one names a checker)."""
+    sync_xbrl_facts(conn, _filing(conn), "ITC", "consolidated", [REVENUE, ASSETS], WRITER)
+    by = None if tier.endswith("-ai") else "nse-pdf:x"
+    conn.execute("UPDATE facts SET tier = ?, verified_by = ?, verified_at = ?", (tier, by, by))
+    return [r[0] for r in conn.execute("SELECT id FROM facts ORDER BY id")]
+
+
+def test_write_formula_writes_a_new_formula_and_reuses_a_held_one(
+    conn: sqlite3.Connection,
+) -> None:
+    first = write_formula(conn, "growth", "(a - b) / b", ["a", "b"], "How much?", WRITER)
+    again = write_formula(conn, "growth", "(a - b) / b", ["a", "b"], "Again?", WRITER)
+    other = write_formula(conn, "growth", "a / b - 1", ["a", "b"], None, WRITER)
+    assert first[1] and not again[1] and other[1], (first, again, other)
+    assert first[0] == again[0] != other[0]
+    assert conn.execute(
+        "SELECT name, expression, variables, tier, question, written_by, run_id FROM formulas "
+        "WHERE id = ?",
+        (first[0],),
+    ).fetchone() == (
+        "growth",
+        "(a - b) / b",
+        "a, b",
+        "formula-ai",
+        "How much?",
+        WRITER.written_by,
+        "build-1",
+    )
+
+
+@pytest.mark.parametrize(
+    ("tier", "by", "at"),
+    [
+        pytest.param("formula", None, None, id="a checked formula with no checker"),
+        pytest.param("formula-ai", "vedant", "t", id="an agent's formula marked checked"),
+        pytest.param("formula", "vedant", None, id="a checker with no time"),
+        pytest.param("equation", None, None, id="an unknown tier"),
+    ],
+)
+def test_the_formulas_table_refuses_a_row_that_breaks_a_rule(
+    conn: sqlite3.Connection, tier: str, by: str | None, at: str | None
+) -> None:
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """INSERT INTO formulas (name, expression, variables, tier, written_by, written_at,
+                      run_id, verified_by, verified_at)
+               VALUES ('g', 'a', 'a', ?, 'w', 't', 'r', ?, ?)""",
+            (tier, by, at),
+        )
+
+
+def test_write_derived_writes_a_derived_ai_fact_linked_to_its_inputs(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = _checked(conn, "xbrl-filed")
+    fact_id = write_derived(conn, GROWTH, [ids[0], ids[1], ids[0]], WRITER)
+    assert conn.execute(
+        """SELECT ticker, basis, concept, label, period_kind, period_start, period_end, value,
+                  unit, tier, formula, written_by, run_id, verified_by FROM facts WHERE id = ?""",
+        (fact_id,),
+    ).fetchone() == (
+        "ITC",
+        "consolidated",
+        "DerivedGrowth",
+        "Revenue growth, FY25",
+        "duration",
+        "2024-04-01",
+        "2025-03-31",
+        0.1,
+        "pure",
+        "derived-ai",
+        '{"formula_id": 1}',
+        WRITER.written_by,
+        "build-1",
+        None,
+    )
+    linked = conn.execute(
+        "SELECT input_fact_id FROM derived_from WHERE fact_id = ? ORDER BY input_fact_id",
+        (fact_id,),
+    ).fetchall()
+    assert linked == [(ids[0],), (ids[1],)], "each input once"
+
+
+def test_write_derived_writes_an_instant_without_a_start(conn: sqlite3.Connection) -> None:
+    ids = _checked(conn, "xbrl")
+    at = replace(GROWTH, period_start=None)
+    fact_id = write_derived(conn, at, ids[:1], WRITER)
+    kind = conn.execute("SELECT period_kind FROM facts WHERE id = ?", (fact_id,)).fetchone()
+    assert kind == ("instant",)
+
+
+@pytest.mark.parametrize(
+    ("tier", "inputs"),
+    [
+        pytest.param("xbrl-ai", [0], id="an unchecked input"),
+        pytest.param("xbrl-filed", [999], id="a missing input"),
+        pytest.param("xbrl-filed", [], id="no input"),
+    ],
+)
+def test_write_derived_refuses_and_writes_nothing(
+    conn: sqlite3.Connection, tier: str, inputs: list[int]
+) -> None:
+    ids = _checked(conn, tier)
+    given = [ids[i] if i < len(ids) else i for i in inputs]
+    with pytest.raises(ValueError):
+        write_derived(conn, GROWTH, given, WRITER)
+    assert conn.execute("SELECT count(*) FROM facts WHERE tier = 'derived-ai'").fetchone() == (0,)
+    assert conn.execute("SELECT count(*) FROM derived_from").fetchone() == (0,)
+
+
+@pytest.mark.parametrize(
+    ("loaded", "dropped"),
+    [
+        pytest.param([REVENUE, ASSETS], 0, id="an unchanged filing keeps the derived fact"),
+        pytest.param([replace(REVENUE, value=101.0), ASSETS], 1, id="a revised input drops it"),
+        pytest.param([replace(REVENUE, decimals=-7), ASSETS], 1, id="an input re-filed drops it"),
+        pytest.param([ASSETS], 1, id="a removed input drops it, where it once failed"),
+        pytest.param(
+            [REVENUE, replace(ASSETS, value=51.0)], 0, id="another fact's change keeps it"
+        ),
+    ],
+)
+def test_a_rebuild_drops_derived_facts_whose_input_changed(
+    conn: sqlite3.Connection, loaded: list[Fact], dropped: int
+) -> None:
+    conn.execute("PRAGMA foreign_keys = ON")
+    revenue, _ = _checked(conn, "xbrl-filed")
+    formula_id, _ = write_formula(conn, "growth", "a / 2", ["a"], None, WRITER)
+    derived = write_derived(conn, GROWTH, [revenue], WRITER)
+
+    synced = sync_xbrl_facts(conn, _filing(conn), "ITC", "consolidated", loaded, WRITER)
+
+    assert synced.derived_dropped == dropped, synced
+    held = conn.execute("SELECT count(*) FROM facts WHERE id = ?", (derived,)).fetchone()
+    links = conn.execute("SELECT count(*) FROM derived_from WHERE fact_id = ?", (derived,))
+    assert (held, links.fetchone()) == ((1 - dropped,), (1 - dropped,))
+    assert conn.execute("SELECT id FROM formulas").fetchall() == [(formula_id,)], "kept"
+
+
+def test_write_metric_writes_a_new_metric_and_holds_the_first_by_name(
+    conn: sqlite3.Connection,
+) -> None:
+    assert write_derived_concept(
+        conn, "NetMargin", "net over income", "ratio", "{}", "Why?", WRITER
+    )
+    assert not write_derived_concept(conn, "NetMargin", "another", "growth", "{}", None, WRITER)
+    assert conn.execute(
+        "SELECT name, label, formula, tier, question, written_by, run_id FROM derived_concepts"
+    ).fetchall() == [
+        (
+            "NetMargin",
+            "net over income",
+            "ratio",
+            "derived-concept-ai",
+            "Why?",
+            WRITER.written_by,
+            "build-1",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("tier", "by", "at"),
+    [
+        pytest.param("derived-concept", None, None, id="a checked metric with no checker"),
+        pytest.param("derived-concept-ai", "vedant", "t", id="an agent's metric marked checked"),
+        pytest.param("derived-concept", "vedant", None, id="a checker with no time"),
+        pytest.param("measure", None, None, id="an unknown tier"),
+    ],
+)
+def test_the_derived_concepts_table_refuses_a_row_that_breaks_a_rule(
+    conn: sqlite3.Connection, tier: str, by: str | None, at: str | None
+) -> None:
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """INSERT INTO derived_concepts (name, label, formula, bindings, tier, written_by,
+                      written_at, run_id, verified_by, verified_at)
+               VALUES ('M', 'm', 'ratio', '{}', ?, 'w', 't', 'r', ?, ?)""",
+            (tier, by, at),
+        )
+
+
+def test_an_older_metrics_table_becomes_derived_concepts(tmp_path: Path) -> None:
+    path = tmp_path / "old.sqlite"
+    old = connect(path)
+    with old:
+        old.execute("DROP TABLE derived_concepts")
+        old.execute(
+            """CREATE TABLE metrics (name TEXT PRIMARY KEY, label TEXT NOT NULL,
+                  formula TEXT NOT NULL, bindings TEXT NOT NULL, tier TEXT NOT NULL,
+                  question TEXT, written_by TEXT NOT NULL, written_at TEXT NOT NULL,
+                  run_id TEXT NOT NULL, verified_by TEXT, verified_at TEXT)"""
+        )
+        old.executemany(
+            "INSERT INTO metrics VALUES (?, 'l', 'ratio', '{}', ?, NULL, 'w', 't', 'r', ?, ?)",
+            [("Unchecked", "metric-ai", None, None), ("Checked", "metric", "vedant", "t")],
+        )
+    old.close()
+
+    conn = connect(path)
+
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "metrics" not in tables and "derived_concepts" in tables
+    assert conn.execute(
+        "SELECT name, tier, verified_by FROM derived_concepts ORDER BY name"
+    ).fetchall() == [
+        ("Checked", "derived-concept", "vedant"),
+        ("Unchecked", "derived-concept-ai", None),
+    ]
+    conn.close()
+    assert connect(path).execute("SELECT count(*) FROM derived_concepts").fetchone() == (2,)

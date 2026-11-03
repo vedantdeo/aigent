@@ -1,10 +1,11 @@
-"""The facts database in SQLite: its schema, and the build's writes. A rebuild keeps each XBRL
-fact's row while its value holds, so what points at a fact survives it."""
+"""The facts database in SQLite: its schema, the build's writes, and an agent's derived facts and
+formulas. A rebuild keeps each XBRL fact's row while its value holds, so what points at a fact
+survives it."""
 
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -20,6 +21,11 @@ TIERS = (
     *("filed-cell-ai", "filed-cell", "filed-read-ai", "filed-read", "derived-ai", "derived"),
 )
 CHECKED_TIERS = ("xbrl-filed", "xbrl", "filed-cell", "filed-read", "derived")  # name a checker
+FORMULA_TIERS = ("formula-ai", "formula")  # an agent's, a person's check
+DERIVED_CONCEPT_TIERS = (
+    "derived-concept-ai",
+    "derived-concept",
+)  # defined by an agent or seeded unchecked; a person's check
 
 _TIER_LIST = ", ".join(f"'{t}'" for t in TIERS)
 _CHECKED_LIST = ", ".join(f"'{t}'" for t in CHECKED_TIERS)
@@ -107,6 +113,37 @@ CREATE TABLE IF NOT EXISTS lookups (
     concept TEXT,
     found INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS formulas (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    expression TEXT NOT NULL,
+    variables TEXT NOT NULL,
+    tier TEXT NOT NULL CHECK (tier IN ('formula-ai', 'formula')),
+    question TEXT,
+    written_by TEXT NOT NULL,
+    written_at TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    verified_by TEXT,
+    verified_at TEXT,
+    UNIQUE (name, expression),
+    CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
+    CHECK ((tier = 'formula') = (verified_by IS NOT NULL))
+);
+CREATE TABLE IF NOT EXISTS derived_concepts (
+    name TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    formula TEXT NOT NULL,
+    bindings TEXT NOT NULL,
+    tier TEXT NOT NULL CHECK (tier IN ('derived-concept-ai', 'derived-concept')),
+    question TEXT,
+    written_by TEXT NOT NULL,
+    written_at TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    verified_by TEXT,
+    verified_at TEXT,
+    CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
+    CHECK ((tier = 'derived-concept') = (verified_by IS NOT NULL))
+);
 """
 
 
@@ -131,6 +168,22 @@ class Writer:
     run_id: str
 
 
+@dataclass(frozen=True)
+class DerivedRow:
+    """A figure an agent computed from checked facts, as its `facts` row will hold it."""
+
+    ticker: str
+    basis: str
+    concept: str
+    label: str
+    period_start: str | None
+    period_end: str
+    segment: str | None
+    value: float
+    unit: str
+    formula: str
+
+
 @dataclass
 class Synced:
     """What syncing a filing's XBRL facts did."""
@@ -139,6 +192,23 @@ class Synced:
     kept: int = 0
     changed: int = 0
     removed: int = 0
+    derived_dropped: int = 0  # derived facts computed from a changed or removed fact
+
+
+def _rename_metrics(conn: sqlite3.Connection) -> None:
+    """Moves an older `metrics` table's rows into `derived_concepts`, tiers renamed; drops it."""
+    held = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'metrics'")
+    if held.fetchone() is None:
+        return
+    columns = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(metrics)"))
+    tiered = columns.replace(
+        "tier", "CASE tier WHEN 'metric' THEN 'derived-concept' ELSE 'derived-concept-ai' END"
+    )
+    with conn:
+        conn.execute(
+            f"INSERT OR IGNORE INTO derived_concepts ({columns}) SELECT {tiered} FROM metrics"
+        )
+        conn.execute("DROP TABLE metrics")
 
 
 def connect(path: Path = FACTS_DB) -> sqlite3.Connection:
@@ -150,6 +220,7 @@ def connect(path: Path = FACTS_DB) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     if conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
         _rebuild_facts(conn)
+    _rename_metrics(conn)
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
@@ -220,6 +291,20 @@ def _fact_key(
     return (concept, kind, start or "", end, segment or "", unit)
 
 
+def _drop_derived_from(conn: sqlite3.Connection, fact_id: int) -> int:
+    """Deletes every derived fact computed from `fact_id`, its links going by the schema's cascade;
+    how many."""
+    derived = [
+        r[0]
+        for r in conn.execute(
+            "SELECT DISTINCT fact_id FROM derived_from WHERE input_fact_id = ?", (fact_id,)
+        )
+    ]
+    for did in derived:
+        conn.execute("DELETE FROM facts WHERE id = ?", (did,))
+    return len(derived)
+
+
 def sync_xbrl_facts(
     conn: sqlite3.Connection,
     filing_id: int,
@@ -230,7 +315,8 @@ def sync_xbrl_facts(
 ) -> Synced:
     """Makes the filing's XBRL rows equal `facts`: a new fact is `xbrl-ai`, an unchanged one keeps
     its row and tier, a changed value is updated, re-attributed and `xbrl-ai` again, unchecked, and
-    a fact no longer loaded is deleted."""
+    a fact no longer loaded is deleted. A derived fact computed from a changed or deleted fact is
+    deleted first; its formula stays."""
     held: dict[tuple[str, str, str, str, str, str], tuple[int, float, int | None]] = {}
     for fid, concept, kind, start, end, segment, unit, value, decimals in conn.execute(
         f"""SELECT id, concept, period_kind, period_start, period_end, segment, unit, value,
@@ -249,6 +335,7 @@ def sync_xbrl_facts(
             out.kept += 1
             continue
         if prior is not None:
+            out.derived_dropped += _drop_derived_from(conn, prior[0])
             conn.execute(  # a revised value was never checked, so it is xbrl-ai again
                 """UPDATE facts SET value = ?, decimals = ?, written_by = ?, written_at = ?,
                           run_id = ?, tier = 'xbrl-ai', verified_by = NULL, verified_at = NULL
@@ -293,6 +380,7 @@ def sync_xbrl_facts(
         )
         out.added += 1
     for fid, _, _ in held.values():
+        out.derived_dropped += _drop_derived_from(conn, fid)
         conn.execute("DELETE FROM facts WHERE id = ?", (fid,))
         out.removed += 1
     return out
@@ -320,3 +408,104 @@ def apply_labels(conn: sqlite3.Connection, labels: Mapping[str, Labels]) -> list
             [(concept, alias) for alias in sorted(found.aliases)],
         )
     return unlabelled
+
+
+def write_formula(
+    conn: sqlite3.Connection,
+    name: str,
+    expression: str,
+    variables: Sequence[str],
+    question: str | None,
+    writer: Writer,
+) -> tuple[int, bool]:
+    """The formula's id, and whether this call wrote it: a new one goes in as `formula-ai`, and
+    one already held under the same name and expression is reused as it stands."""
+    held = conn.execute(
+        "SELECT id FROM formulas WHERE name = ? AND expression = ?", (name, expression)
+    ).fetchone()
+    if held is not None:
+        return int(held[0]), False
+    cursor = conn.execute(
+        """INSERT INTO formulas (name, expression, variables, tier, question, written_by,
+                  written_at, run_id)
+           VALUES (?, ?, ?, 'formula-ai', ?, ?, ?, ?)""",
+        (
+            name,
+            expression,
+            ", ".join(variables),
+            question,
+            writer.written_by,
+            writer.written_at,
+            writer.run_id,
+        ),
+    )
+    return int(cursor.lastrowid or 0), True
+
+
+def write_derived(
+    conn: sqlite3.Connection, row: DerivedRow, inputs: Sequence[int], writer: Writer
+) -> int:
+    """Writes `row` as a `derived-ai` fact linked to the facts it was computed from, and returns
+    its id. ValueError, writing nothing, if an input is missing or in no checked tier."""
+    marks = ", ".join("?" for _ in inputs)
+    tiers = dict(conn.execute(f"SELECT id, tier FROM facts WHERE id IN ({marks})", tuple(inputs)))
+    missing = [i for i in inputs if i not in tiers]
+    unchecked = [i for i in inputs if i in tiers and tiers[i] not in CHECKED_TIERS]
+    if not inputs or missing or unchecked:
+        raise ValueError(f"derived from no input, missing {missing} or unchecked {unchecked}")
+    cursor = conn.execute(
+        """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start, period_end,
+                  segment, value, unit, tier, formula, written_by, written_at, run_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'derived-ai', ?, ?, ?, ?)""",
+        (
+            row.ticker,
+            row.basis,
+            row.concept,
+            row.label,
+            "instant" if row.period_start is None else "duration",
+            row.period_start,
+            row.period_end,
+            row.segment,
+            row.value,
+            row.unit,
+            row.formula,
+            writer.written_by,
+            writer.written_at,
+            writer.run_id,
+        ),
+    )
+    fact_id = int(cursor.lastrowid or 0)
+    conn.executemany(
+        "INSERT INTO derived_from (fact_id, input_fact_id) VALUES (?, ?)",
+        [(fact_id, i) for i in dict.fromkeys(inputs)],
+    )
+    return fact_id
+
+
+def write_derived_concept(
+    conn: sqlite3.Connection,
+    name: str,
+    label: str,
+    formula: str,
+    bindings: str,
+    question: str | None,
+    writer: Writer,
+) -> bool:
+    """Writes a derived concept as `derived-concept-ai`; False, writing nothing, when one is
+    already held by that name, whatever it says."""
+    cursor = conn.execute(
+        """INSERT OR IGNORE INTO derived_concepts (name, label, formula, bindings, tier, question,
+                  written_by, written_at, run_id)
+           VALUES (?, ?, ?, ?, 'derived-concept-ai', ?, ?, ?, ?)""",
+        (
+            name,
+            label,
+            formula,
+            bindings,
+            question,
+            writer.written_by,
+            writer.written_at,
+            writer.run_id,
+        ),
+    )
+    return cursor.rowcount == 1
