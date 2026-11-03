@@ -2314,3 +2314,102 @@
   `xbrl-pdf`, `pdf-cell`, `pdf-read` to `xbrl-filed`, `filed-cell`, `filed-read` and stamps
   `nse-pdf:` or `sec-6k-html:`; the live database migrated (2,247 and 1,897 rows), a backup kept.
   2,359 tests; 25 of 25 new mutants killed in a scratch copy. Nothing written by the cross-check yet.
+- 11-03: **the analyst desk, for a demo, $0.00 so far.** Vedant, ahead of an interview, chose the
+  capstone's graph trimmed to the facts database, served on a local page, with Sonnet 5.
+  `analyst.desk`: research on `fundamentals` and `calculate` only (no filings search, so no
+  `compare_unverified`, which needs a figure worked out from the filings), the memo, and the critic
+  on each claim; the page shows each claim's verdict with the facts it cites (value, period,
+  basis, tier, cite), the tool calls, how many unverified entries were held back, and the spend.
+  The graph takes `research_prompt`. Checked free against the real MCP server: ICICI Bank's FY25
+  operating profit comes back `xbrl-filed`, its face value `xbrl`, HDFC Bank's AT1 as 0 verified
+  and 5 held back; the first lookup loads the embedder in about 11 s. Each question is capped at
+  $0.70 ($0.40 generalist, $0.30 critic). 2,383 tests; 15 of 15 mutants killed in a scratch copy.
+- 11-03, evening: **derived figures and formulas written back, $0.00 so far.** Vedant: the desk
+  should write what it computes, and the formulas. `calculate` gave way to `derive`
+  (`analyst.derive`): the agent names a formula ("year-on-year growth", `(current - previous) /
+  previous`) and passes verified facts by cite; the values are filled in from the facts, so the
+  model never retypes a figure, and the result gets a `DERIVED:` cite the critic reads with its
+  inputs. Each derived figure a supported claim cites is written as `derived-ai` (inputs in
+  `derived_from`, the period of its latest input) and its formula as `formula-ai` in a new
+  `formulas` table, reused when held; figures across companies are skipped. The prompt now
+  mentions held-back entries only when a needed figure has none verified, and the server makes one
+  free lookup at start so the first question does not wait 11 s for the embedder. 2,416 tests;
+  23 of 23 new mutants killed in a scratch copy, two of them only after tests were added.
+- 11-03, later: **the check question, $0.064 (Sonnet $0.031, Opus $0.033), 36 s.** ICICI Bank's
+  operating profit FY24 to FY25: three claims supported, the growth derived by `derive` and written
+  back (fact 48550, `derived-ai`, inputs the two `xbrl-filed` facts; formula 1, "year-on-year
+  growth", `formula-ai`). Its summary wrote "Rs 5,81,307.6 million"; Vedant: Indian units. The
+  prompt now asks for the largest of crore, lakh and thousand that fits (`INDIAN_RUPEE_UNITS`),
+  else plain rupees, never millions; the page scales the same way. 2,419 tests.
+- 11-03, later still: **what writes to the facts database, and a rebuild made safe, $0.00.** Asked
+  what flows in: the build (XBRL), `crosscheck --write` (agreements and page decisions), every desk
+  question (`derived-ai` and `formula-ai`, straight after the critic, no person in between) and
+  every `fundamentals` call (`lookups`). Found on a copy of the database: once a derived fact
+  pointed at an input, a rebuild that removed that input failed `FOREIGN KEY constraint failed`,
+  and one that revised it left the derived value stale. The sync now deletes a derived fact whose
+  input is revised, re-filed or removed (`Synced.derived_dropped`, in the build's summary), its
+  formula kept. Vedant: keep identical derived rows from repeated questions. 2,424 tests; 4 of 4
+  mutants killed, a fifth (deleting the links by hand) dropped since the cascade already does it.
+- 11-03, night: **formulas as code, metrics as data, figures planned, fetched and computed,
+  $0.00.** Vedant's design, refined in four steps: metrics are generic (growth of X is a named
+  metric Y, neither tied to a period); computing splits into a plan that says which facts to read,
+  `fundamentals` reading them, and a compute step; a formula travels by name, not as a lambda
+  through the model (it would have to be retyped by the model and `eval`ed); the formulas are a
+  library of code, and `growth` is plain growth, the year-on-year part living in the metric's
+  offsets. Built: `facts.formulas` (growth, ratio, difference, total), `facts.metrics` (offsets
+  `t`, `t-1y`, `t-1q`, plans, ranking, checks, seeding) and a `metrics` table; nine bank metrics
+  seeded; `plan_metric`, `compute_metric`, `define_metric` and `propose_formula` replacing
+  `derive`; `fundamentals` putting an exact concept name first; the write-back under the metric's
+  name. Calls on my side: growth over a negative base divides by its size (a loss halved is
+  growth); definitions and proposals are written at once, being definitions, not figures. A
+  period check missed "ProfitQ3" until a test caught it. 2,492 tests; 33 of 33 mutants killed in
+  a scratch copy, one after its test was added.
+- 11-03, night, later: **the metric design's smoke run, $0.061 (Sonnet $0.037, Opus $0.024),
+  44 s.** First the `derive` leftovers deleted at Vedant's ask (fact 48550, its links, formula
+  row 1). Then ICICI Bank's operating profit growth FY24 to FY25: `plan_metric` found
+  `OperatingProfitBeforeProvisionAndContingenciesGrowth` and its two fetches, `fundamentals`
+  read exactly those facts, `compute_metric` returned 0.1577; three claims supported, amounts in
+  crore. Written as `derived-ai` under the metric's name for FY25, linked to the two
+  `xbrl-filed` inputs (SQLite reused the deleted row's id, 48550).
+- 11-03, night, last: **metrics renamed derived concepts, $0.00.** Vedant: the table is
+  `derived_concepts`, beside `concepts`; code and database renamed (`facts.derived_concepts`,
+  `DerivedConcept`, `write_derived_concept`, tiers `derived-concept-ai` and `derived-concept`,
+  the seed file `derived-concepts.jsonl`), the agent's tools kept as `plan_metric`,
+  `compute_metric` and `define_metric`, since "metric" is how an analyst asks. `connect` moves an
+  older `metrics` table across, tiers renamed; 4 of 4 mutants killed.
+- 11-03, night, after the commit (`86ffc38`): **`formulas` renamed `formula_proposals`, and the
+  first derived concept checked, $0.00.** The table held only the agent's proposals for the
+  library (formulas themselves are code), so the name misled; the migration generalised to move
+  both renamed tables. `python -m aigent.facts verify-concept` shows a concept's bindings and
+  records a person's check: Vedant checked `OperatingProfitBeforeProvisionAndContingenciesGrowth`
+  (`derived-concept`). The figure it produced is still `derived-ai`: the rule making a computed
+  figure trusted, once its concept is checked and its inputs are, is not built yet. 2,498 tests.
+- 11-03, night, last of all: **the trust rule, $0.00.** Asked whether the smoke query now runs
+  entirely on checked logic: not yet. The inputs are `xbrl-filed` (machine-checked; Vedant: that
+  tier counts as checked), the library and planner are code awaiting his PR review, the concept is
+  his check, and the figure was still `derived-ai`. Now a figure is `derived` when its concept is
+  `derived-concept` and every input is in a checked tier, naming `<concept>@<person>`; checking a
+  concept promotes figures already computed with it. Re-running his check promoted fact 48550
+  (0.1577) to `derived`. 2,504 tests; 7 of 7 mutants killed.
+- 11-03, late: **the ten-question test, $1.01, and its fixes, $0.00.** Seven new derived concepts
+  defined, computed and supported (21/21 claims, values exact); #8 cost-to-income stopped at a
+  derived input and proposed a formula; #9 showed nothing though its draft explained; #10 refused
+  an unverified input correctly. Fixed: derived concepts now have a scope (Vedant: `banking`,
+  `ind-as`, the taxonomy a company files under; 68 concepts only banks file, 144 only others);
+  `plan_metric` plans only an exact name or a metric holding every word asked, else lists the
+  closest; a binding may name a derived concept of the same scope, planned and evaluated
+  recursively; the page shows the draft when nothing is cited. Live table migrated, every row
+  `banking`; `EffectiveTaxRate` moved to `ind-as`, `EffectiveTaxRateBank` renamed into `banking`.
+  2,526 tests; 16 of 16 mutants killed.
+- 11-03, later: **scope lists and `*`, and cost-to-income computable, $0.00.** Vedant: a derived
+  concept's scope may be several, joined by commas, or `*`, so formulas common to both families
+  collapse; matched on whole scope names, not substrings (an `nbfc-ind-as` would contain `ind-as`).
+  A multi-scope concept's inputs must be filed or derived in every scope it names; a name is held
+  once in any overlapping scope; the schema's fixed list went (the table rebuilt). Few seeds can
+  collapse: banks file `ProfitLossForThePeriod`, others `ProfitLossForPeriod`; only `Income`,
+  `OtherIncome` and `TaxExpense` among the common ones, so the agent's
+  `OtherIncomeToTotalIncomeRatio` became `*`. Seeded `NetTotalIncome` = total(NetInterestIncome,
+  OtherIncome) and `CostToIncomeRatio` = ratio(OperatingExpenses, NetTotalIncome); seeding now
+  runs in passes so a concept may build on one later in the sorted file. The agent's
+  `CostToIncomeDenominator`, its figure and the `CostToIncomeRatio` proposal deleted. 2,541 tests.
+

@@ -385,6 +385,37 @@ a wrong agreement). To fix in the matcher pass:
 
 ### Derived figures: verified formulas (to do)
 
+**Started 11-03, for the analyst desk (Vedant's design).** Three layers:
+
+- **Formulas are code**: `facts.formulas`, plain arithmetic over named inputs (`growth`,
+  `ratio`, `difference`, `total`), no finance and no period, checked once by unit tests and
+  review. An agent cannot add one; it can only propose one (`formula-ai` in `formulas`) for a
+  person to write.
+- **Metrics are data**: a named, period-agnostic figure (`OperatingProfitBeforeProvisionAnd
+  ContingenciesGrowth`) defined as a library formula over concepts, each input at an offset from
+  the period asked (`t`, `t-1y`, `t-1q`), in `derived_concepts` as `derived-concept-ai` until a
+  person checks the bindings. Nine are seeded from `evals/reference/derived-concepts.jsonl`; an
+  agent may define more. The agent's tools still say metric.
+- **Figures are computed in three steps**: `plan_metric` names the facts to read, the agent reads
+  them with `fundamentals`, and `compute_metric` checks each against the plan and calls the
+  library formula on their stored values. A figure a supported claim cites is written as
+  `derived-ai` under the metric's name, linked to its inputs.
+
+**Scopes, strict plans, metrics on metrics (11-03, after the ten-question test):** a derived
+concept holds within a scope, the taxonomy its companies file under (`banking`, `ind-as`; Vedant,
+over alternatives per variable and a global equivalence table, since whether two concepts stand in
+for each other depends on the metric); a plan is made only for an exact name or a concept holding
+every word asked; and an input may be a derived concept of the same scope.
+
+**The trust rule (11-03):** a figure is `derived` (trusted, quotable) when its derived concept is
+checked by a person and every input is in a checked tier, `xbrl-filed` included (Vedant); checking
+a concept promotes the figures already computed with it. The library's code is checked by review.
+Not yet: derived concepts of derived concepts, and quarter rules beyond the quarter and the year
+before.
+A rebuild deletes a derived fact whose input was revised or removed (the formula stays), so a
+figure never outlives what it was computed from. Identical derived rows from repeated questions are
+kept (Vedant, 11-03: few questions repeat beyond smoke tests, and those are checked by hand).
+
 A derived fact is trusted today only once a person checks that one fact. A formula checked once
 would cover every fact computed with it: **a derived fact is `derived` when its formula is verified
 and every input is in a trusted tier**, with no per-fact check, and `derived-ai` otherwise.

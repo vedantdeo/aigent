@@ -57,13 +57,15 @@ class Report:
         added = sum(x.synced.added for x in self.loaded)
         changed = sum(x.synced.changed for x in self.loaded)
         removed = sum(x.synced.removed for x in self.loaded)
+        dropped = sum(x.synced.derived_dropped for x in self.loaded)
         counts: dict[str, int] = {}
         for item in self.fundamentals:
             counts[item.status] = counts.get(item.status, 0) + 1
         lines = [
             f"fetched {len(self.fetched)} files, {len(self.fetch_failures)} fetch failures",
             f"loaded {len(self.loaded)} filings, {sum(x.facts for x in self.loaded)} facts "
-            f"({added} added, {changed} changed, {removed} removed), "
+            f"({added} added, {changed} changed, {removed} removed, "
+            f"{dropped} derived dropped), "
             f"{sum(x.skipped for x in self.loaded)} out of scope, "
             f"{len(self.load_failures)} unreadable",
             f"issues {sum(len(x.issues) for x in self.loaded)}, "

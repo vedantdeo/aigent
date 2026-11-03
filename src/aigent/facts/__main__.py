@@ -44,7 +44,7 @@ from aigent.facts.review import (
     rule,
 )
 from aigent.facts.review import write_report as write_crosscheck_report
-from aigent.facts.store import FACTS_DB, Writer, connect
+from aigent.facts.store import FACTS_DB, Writer, connect, verify_derived_concept
 from aigent.facts.taxonomy import TAXONOMY_DIR
 
 REPORT = FACTS_DB.with_name("facts-build-report.json")
@@ -64,7 +64,10 @@ def _commit() -> str:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m aigent.facts")
-    parser.add_argument("command", choices=["build", "coverage", "crosscheck"])
+    parser.add_argument("command", choices=["build", "coverage", "crosscheck", "verify-concept"])
+    parser.add_argument("--name", help="verify-concept: the derived concept checked")
+    parser.add_argument("--scope", help="verify-concept: its scope, banking or ind-as")
+    parser.add_argument("--by", help="verify-concept: who checked its bindings")
     parser.add_argument("--offline", action="store_true", help="load the cache only; no fetching")
     parser.add_argument(
         "--write", action="store_true", help="crosscheck: record agreements and decisions"
@@ -76,6 +79,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "crosscheck":
         cross_check(now, write=args.write)
+        return
+    if args.command == "verify-concept":
+        verify_concept(str(args.name or ""), str(args.scope or ""), str(args.by or ""), now)
         return
     writer = Writer(
         written_by=f"xbrl-loader@{_commit()}",
@@ -98,6 +104,30 @@ def main(argv: list[str] | None = None) -> None:
     REPORT.write_text(json.dumps(report.as_json(), indent=1, default=str) + "\n", encoding="utf-8")
     print(report.summary())
     print(f"report: {REPORT}")
+
+
+def verify_concept(name: str, scope: str, by: str, now: datetime) -> None:
+    """Records a person's check of a derived concept's bindings, after showing them."""
+    conn = connect(FACTS_DB)
+    try:
+        row = conn.execute(
+            "SELECT label, formula, bindings, tier FROM derived_concepts "
+            "WHERE name = ? AND scope = ?",
+            (name, scope),
+        ).fetchone()
+        if row is None:
+            raise SystemExit(f"no derived concept {name!r} in scope {scope!r}")
+        print(f"{name} [{scope}]: {row[0]}\n  {row[1]} {row[2]}\n  was {row[3]}")
+        try:
+            changed, promoted = verify_derived_concept(
+                conn, name, scope, by, now.isoformat(timespec="seconds")
+            )
+        except ValueError as bad:
+            raise SystemExit(str(bad)) from None
+    finally:
+        conn.close()
+    print(f"now derived-concept, checked by {by}" if changed else "already checked; unchanged")
+    print(f"{promoted} computed figures made derived")
 
 
 def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None:

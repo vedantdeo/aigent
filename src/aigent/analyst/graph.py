@@ -151,12 +151,14 @@ def build(
     model: str | None = GENERALIST_MODEL,
     thinking: Thinking | None = GENERALIST_THINKING,
     calm: bool = False,
+    research_prompt: str = RESEARCH,
 ) -> CompiledStateGraph[State, None, State, State]:
     """The graph, compiled. With `approve`, the gate asks it; without, the gate interrupts and
     waits to be resumed with `{"approved": …, "note": …}`, which needs a `checkpointer`. The
     generalist is asked as `model`, or its client's own if None, thinking as `thinking` says; with
     `calm`, it stops thinking once a specialist has answered, for the rest of research, and never
-    thinks writing the memo."""
+    thinks writing the memo. `research_prompt` is the generalist's system prompt while it
+    researches."""
     dispatch = tracing.traced_tools(toolbox, {"search_filings": "retriever"})
     memo_cap = max_tokens("MEMO", spec(generalist.client))
     verdict_cap = max_tokens("VERDICT", spec(critic.client))
@@ -172,7 +174,7 @@ def build(
             "research",
             [{"role": "user", "content": _brief(state, toolbox)}],
             max_tokens("TOOL_LOOP", spec(generalist.client)),
-            system=RESEARCH,
+            system=research_prompt,
             model=model,
             tools=toolbox.tools,
             thinking=thinking_now(),
@@ -320,6 +322,7 @@ def run(
     model: str | None = GENERALIST_MODEL,
     thinking: Thinking | None = GENERALIST_THINKING,
     calm: bool = False,
+    research_prompt: str = RESEARCH,
 ) -> Analysed:
     """One question through the graph with no one at the gate, as an eval runs it."""
     graph = build(
@@ -330,5 +333,6 @@ def run(
         model=model,
         thinking=thinking,
         calm=calm,
+        research_prompt=research_prompt,
     )
     return analysed(cast(State, graph.invoke(begin(question))), toolbox)
