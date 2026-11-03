@@ -1,6 +1,6 @@
 """The XBRL cross-check: each fact of a cross-checked company against what its results document
 prints, matched by value at the table's scale, in a column stating the fact's period, in a table for
-its basis. An agreement makes the fact `xbrl-pdf`; anything else stays `xbrl-ai` for a person."""
+its basis. An agreement makes the fact `xbrl-filed`; anything else stays `xbrl-ai` for a person."""
 
 from __future__ import annotations
 
@@ -475,9 +475,15 @@ def crosscheck(
     return out
 
 
-def apply(conn: sqlite3.Connection, checked: Iterable[Checked], now: datetime) -> int:
-    """Makes each agreeing `xbrl-ai` fact `xbrl-pdf`, naming its document and keeping the printed
-    figure and page; a fact a person checked, or already agreed, is left alone. Returns how many."""
+def apply(
+    conn: sqlite3.Connection,
+    checked: Iterable[Checked],
+    now: datetime,
+    origins: Mapping[str, str],
+) -> int:
+    """Makes each agreeing `xbrl-ai` fact `xbrl-filed`, naming its document as `<origin>:<path>`
+    and keeping the printed figure and page; a fact a person checked, or already agreed, is left
+    alone. Returns how many; a document with no origin raises KeyError and writes nothing."""
     stamp = now.isoformat(timespec="seconds")
     moved = 0
     with conn:
@@ -485,10 +491,10 @@ def apply(conn: sqlite3.Connection, checked: Iterable[Checked], now: datetime) -
             if c.outcome != "agree" or c.tier != "xbrl-ai":
                 continue
             cursor = conn.execute(
-                """UPDATE facts SET tier = 'xbrl-pdf', verified_by = ?, verified_at = ?,
+                """UPDATE facts SET tier = 'xbrl-filed', verified_by = ?, verified_at = ?,
                           printed = ?, page = ?
                    WHERE id = ? AND tier = 'xbrl-ai'""",
-                (f"pdf:{c.document}", stamp, c.printed, c.page, c.fact_id),
+                (f"{origins[c.document]}:{c.document}", stamp, c.printed, c.page, c.fact_id),
             )
             moved += cursor.rowcount
     return moved

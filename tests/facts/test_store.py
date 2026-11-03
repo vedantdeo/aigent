@@ -111,7 +111,7 @@ _ROW = {
     "period_end": "2025-03-31",
     "value": 1.0,
     "unit": "INR",
-    "tier": "pdf-cell-ai",
+    "tier": "filed-cell-ai",
     "written_by": "w",
     "written_at": "t",
     "run_id": "r",
@@ -125,19 +125,21 @@ _ROW = {
     [
         pytest.param({"period_kind": "instant"}, id="a balance with a start date"),
         pytest.param({"period_start": None}, id="a duration with no start date"),
-        pytest.param({"tier": "pdf-cell"}, id="a checked tier nobody checked"),
+        pytest.param({"tier": "filed-cell"}, id="a checked tier nobody checked"),
         pytest.param(
             {"verified_by": "vedant", "verified_at": "t"}, id="an -ai tier marked checked"
         ),
-        pytest.param({"tier": "pdf-cell", "verified_by": "vedant"}, id="checked with no time"),
+        pytest.param({"tier": "filed-cell", "verified_by": "vedant"}, id="checked with no time"),
         pytest.param({"tier": "xbrl"}, id="a person's xbrl tier with nobody named"),
-        pytest.param({"tier": "xbrl-pdf"}, id="a document's agreement with no document named"),
+        pytest.param({"tier": "xbrl-filed"}, id="a document's agreement with no document named"),
         pytest.param(
-            {"tier": "xbrl-ai", "verified_by": "pdf:x.htm", "verified_at": "t"},
+            {"tier": "xbrl-ai", "verified_by": "sec-6k-html:x.htm", "verified_at": "t"},
             id="an unseen xbrl fact marked checked",
         ),
-        pytest.param({"tier": "xbrl-pdf", "verified_by": "pdf:x.htm"}, id="xbrl checked, no time"),
-        pytest.param({"tier": "xbrl-pdf", "verified_at": "t"}, id="a time and no checker"),
+        pytest.param(
+            {"tier": "xbrl-filed", "verified_by": "sec-6k-html:x.htm"}, id="xbrl checked, no time"
+        ),
+        pytest.param({"tier": "xbrl-filed", "verified_at": "t"}, id="a time and no checker"),
         pytest.param({"tier": "guess"}, id="a tier that does not exist"),
         pytest.param({"basis": "group"}, id="a basis that does not exist"),
     ],
@@ -158,12 +160,16 @@ def test_the_schema_refuses_a_row_that_breaks_a_rule(
     [
         pytest.param({}, id="an unchecked cell"),
         pytest.param(
-            {"tier": "pdf-read", "verified_by": "vedant", "verified_at": "t"}, id="a checked read"
+            {"tier": "filed-read", "verified_by": "vedant", "verified_at": "t"}, id="a checked read"
         ),
         pytest.param({"period_kind": "instant", "period_start": None}, id="a balance"),
         pytest.param({"tier": "xbrl-ai"}, id="an xbrl fact nobody has seen"),
         pytest.param(
-            {"tier": "xbrl-pdf", "verified_by": "pdf:results/X-2025-03-31.pdf", "verified_at": "t"},
+            {
+                "tier": "xbrl-filed",
+                "verified_by": "nse-pdf:results/X-2025-03-31.pdf",
+                "verified_at": "t",
+            },
             id="an xbrl fact its document agrees with",
         ),
         pytest.param(
@@ -230,27 +236,57 @@ CREATE TABLE derived_from (fact_id INTEGER NOT NULL REFERENCES facts(id) ON DELE
     input_fact_id INTEGER NOT NULL REFERENCES facts(id), PRIMARY KEY (fact_id, input_fact_id));
 """
 
-# An older database's rows, by id: (tier, verified_by) before, the tier after.
+# An older database's rows, by id: (tier, verified_by) before, then after.
 _MIGRATED = [
-    (7, "xbrl", None, "xbrl-ai"),
-    (8, "xbrl", "pdf:results/ITC-2025-03-31.pdf", "xbrl-pdf"),
-    (9, "xbrl", "vedant", "xbrl"),
-    (10, "xbrl", "pdf:results/ITC-2025-03-31.pdf+vedant", "xbrl"),
-    (11, "pdf-cell", "vedant", "pdf-cell"),
-    (12, "pdf-read-ai", None, "pdf-read-ai"),
+    (7, "xbrl", None, "xbrl-ai", None),
+    (
+        8,
+        "xbrl",
+        "pdf:results/ITC-2025-03-31.pdf",
+        "xbrl-filed",
+        "nse-pdf:results/ITC-2025-03-31.pdf",
+    ),
+    (9, "xbrl", "vedant", "xbrl", "vedant"),
+    (
+        10,
+        "xbrl",
+        "pdf:results/ITC-2025-03-31.pdf+vedant",
+        "xbrl",
+        "nse-pdf:results/ITC-2025-03-31.pdf+vedant",
+    ),
+    (11, "pdf-cell", "vedant", "filed-cell", "vedant"),
+    (12, "pdf-read-ai", None, "filed-read-ai", None),
+    (13, "xbrl-ai", None, "xbrl-ai", None),
+    (
+        14,
+        "xbrl-pdf",
+        "pdf:results/X-2024-03-31.pdf",
+        "xbrl-filed",
+        "nse-pdf:results/X-2024-03-31.pdf",
+    ),
+    (
+        15,
+        "xbrl-pdf",
+        "pdf:results/X-2023-12-31.htm",
+        "xbrl-filed",
+        "sec-6k-html:results/X-2023-12-31.htm",
+    ),
+    (16, "pdf-cell-ai", None, "filed-cell-ai", None),
+    (17, "pdf-read", "vedant", "filed-read", "vedant"),
 ]
 
 
-@pytest.fixture
-def old_db(tmp_path: Path) -> Path:
-    """A database from before schema version 3, one row per way an old row can be checked."""
+@pytest.fixture(params=[pytest.param(0, id="unversioned"), pytest.param(3, id="version 3")])
+def old_db(tmp_path: Path, request: pytest.FixtureRequest) -> Path:
+    """A database from before schema version 4, one row per way an old row can be checked."""
     path = tmp_path / "old.sqlite"
     old = sqlite3.connect(path)
     old.executescript(_OLD_FACTS)
+    old.execute(f"PRAGMA user_version = {request.param}")
     old.execute(
         "INSERT INTO filings VALUES (1, 'ITC', 2025, '2025-03-31', 'c', 'xbrl', 'u', 's', 't')"
     )
-    for fid, tier, by, _ in _MIGRATED:
+    for fid, tier, by, *_ in _MIGRATED:
         old.execute(
             """INSERT INTO facts (id, filing_id, ticker, basis, concept, label, period_kind,
                       period_end, value, unit, tier, written_by, written_at, run_id, verified_by,
@@ -266,18 +302,18 @@ def old_db(tmp_path: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("fid", "before", "after"),
+    ("fid", "after"),
     [
-        pytest.param(fid, (tier, by), after, id=f"{tier} checked by {by}")
-        for fid, tier, by, after in _MIGRATED
+        pytest.param(fid, (tier_after, by_after), id=f"{tier} checked by {by}")
+        for fid, tier, by, tier_after, by_after in _MIGRATED
     ],
 )
-def test_an_older_database_gives_each_row_its_tier(
-    old_db: Path, fid: int, before: tuple[str, str | None], after: str
+def test_an_older_database_gives_each_row_its_tier_and_stamp(
+    old_db: Path, fid: int, after: tuple[str, str | None]
 ) -> None:
     conn = connect(old_db)
-    tier, by = conn.execute("SELECT tier, verified_by FROM facts WHERE id = ?", (fid,)).fetchone()
-    assert (tier, by) == (after, before[1]), (tier, by)
+    row = conn.execute("SELECT tier, verified_by FROM facts WHERE id = ?", (fid,)).fetchone()
+    assert row == after, row
 
 
 def test_an_older_database_keeps_its_rows_links_and_indexes(old_db: Path) -> None:
@@ -301,7 +337,9 @@ def test_an_older_database_keeps_its_rows_links_and_indexes(old_db: Path) -> Non
     ("value", "kept"),
     [
         pytest.param(
-            100.0, ("xbrl-pdf", "pdf:results/ITC-2025-03-31.pdf", "t"), id="an unchanged value"
+            100.0,
+            ("xbrl-filed", "nse-pdf:results/ITC-2025-03-31.pdf", "t"),
+            id="an unchanged value",
         ),
         pytest.param(101.0, ("xbrl-ai", None, None), id="a revised value"),
     ],
@@ -312,7 +350,7 @@ def test_a_rebuild_keeps_a_check_only_while_the_value_holds(
     fid = _filing(conn)
     sync_xbrl_facts(conn, fid, "ITC", "consolidated", [REVENUE], WRITER)
     conn.execute(
-        """UPDATE facts SET tier = 'xbrl-pdf', verified_by = 'pdf:results/ITC-2025-03-31.pdf',
+        """UPDATE facts SET tier = 'xbrl-filed', verified_by = 'nse-pdf:results/ITC-2025-03-31.pdf',
                   verified_at = 't'"""
     )
     sync_xbrl_facts(conn, fid, "ITC", "consolidated", [replace(REVENUE, value=value)], WRITER)
@@ -323,7 +361,7 @@ def test_a_rebuild_keeps_a_check_only_while_the_value_holds(
 @pytest.mark.parametrize(
     ("tier", "checker"),
     [
-        pytest.param("xbrl-pdf", "pdf:results/ITC-2025-03-31.pdf", id="its document agrees"),
+        pytest.param("xbrl-filed", "nse-pdf:results/ITC-2025-03-31.pdf", id="its document agrees"),
         pytest.param("xbrl", "vedant", id="a person checked it"),
     ],
 )

@@ -2,7 +2,7 @@
 `python -m aigent.facts coverage`: score what it holds against the labelled figures; free.
 `python -m aigent.facts crosscheck [--write]`: check the cross-checked companies' XBRL facts against
 their results documents, rule on the review decisions and write the review queue; `--write` makes
-agreements `xbrl-pdf` and the groups decided `right` `xbrl`."""
+agreements `xbrl-filed` and the groups decided `right` `xbrl`."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from aigent.facts.coverage import (
     write_report,
 )
 from aigent.facts.crosscheck import apply, crosscheck
+from aigent.facts.documents import origin, read_manifest
 from aigent.facts.lookup import Lookup, concept_index
 from aigent.facts.nse import XBRL_DIR, polite_get
 from aigent.facts.reference import load_fundamentals
@@ -101,12 +102,13 @@ def main(argv: list[str] | None = None) -> None:
 
 def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None:
     """Check every cross-checked company's XBRL facts, rule on the decisions, write the report and
-    review queue, and with `write`, make the agreements `xbrl-pdf` and the `right` groups `xbrl`."""
+    review queue, and with `write`, make the agreements `xbrl-filed` and `right` groups `xbrl`."""
     conn = connect(FACTS_DB)
     try:
         checked = crosscheck(conn, VERIFY_TICKERS)
         rulings = rule(review_groups(checked), read_decisions(decisions))
-        moved = apply(conn, checked, now) if write else 0
+        origins = {name: origin(entry) for name, entry in read_manifest().items()}
+        moved = apply(conn, checked, now, origins) if write else 0
         checked_by_person = apply_rulings(conn, rulings, now) if write else 0
     finally:
         conn.close()
@@ -120,7 +122,7 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
             f"{status['proposed']} proposed, {status['refused']} refused"
         ),
         "written": (
-            f"{moved:,} made xbrl-pdf, {checked_by_person:,} made xbrl"
+            f"{moved:,} made xbrl-filed, {checked_by_person:,} made xbrl"
             if write
             else "no (run with --write to record)"
         ),
@@ -133,7 +135,7 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
         checked, sample, header, CROSSCHECK_DIR / f"crosscheck-{now:%Y%m%d-%H%M}.md", rulings
     )
     print(
-        f"{len(checked)} facts, {agreed} agree, {moved} written xbrl-pdf, "
+        f"{len(checked)} facts, {agreed} agree, {moved} written xbrl-filed, "
         f"{checked_by_person} written xbrl; decisions: {header['decisions']}; report: {path}"
     )
 

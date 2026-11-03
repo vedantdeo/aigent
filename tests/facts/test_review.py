@@ -334,7 +334,8 @@ def test_a_companys_decision_naming_no_group_in_the_run_is_refused() -> None:
 def test_apply_rulings_makes_only_confirmed_facts_xbrl(crosscheck_db: sqlite3.Connection) -> None:
     ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
     crosscheck_db.execute(
-        "UPDATE facts SET tier = 'xbrl-pdf', verified_by = 'pdf:d', verified_at = 't' WHERE id = ?",
+        "UPDATE facts SET tier = 'xbrl-filed', verified_by = 'nse-pdf:d', verified_at = 't' "
+        "WHERE id = ?",
         (ids[1],),
     )
     whole = Group(1, "ICICIBANK", "Whole", None, "not printed", tuple(_queued(i) for i in ids[:2]))
@@ -354,7 +355,7 @@ def test_apply_rulings_makes_only_confirmed_facts_xbrl(crosscheck_db: sqlite3.Co
     ).fetchall()
     assert rows == [
         ("xbrl", "vedant", "2026-11-01T09:00:00"),
-        ("xbrl-pdf", "pdf:d", "t"),
+        ("xbrl-filed", "nse-pdf:d", "t"),
         ("xbrl", "vedant", "2026-11-01T09:00:00"),
         ("xbrl-ai", None, None),
         ("xbrl-ai", None, None),

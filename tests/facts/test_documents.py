@@ -1,4 +1,4 @@
-"""`facts.documents`: each filed document's format and text-less pages, read by its format."""
+"""`facts.documents`: each filed document's format, text-less and OCR'd pages, read by format."""
 
 from __future__ import annotations
 
@@ -26,10 +26,11 @@ _HTML = """<html><body>
 </body></html>"""
 
 
-def _pdf(path: Path, pages: list[str]) -> Path:
-    """A PDF with one page per string; an empty string is a page with no text layer."""
+def _pdf(path: Path, pages: list[str], modes: dict[int, list[int]] | None = None) -> Path:
+    """A PDF with one page per string; an empty string is a page with no text layer. `modes` gives
+    a 1-based page one text object per render mode (3 draws it invisible) instead of one visible."""
     writer = PdfWriter()
-    for text in pages:
+    for number, text in enumerate(pages, 1):
         page = writer.add_blank_page(612, 792)
         if not text:
             continue
@@ -44,7 +45,11 @@ def _pdf(path: Path, pages: list[str]) -> Path:
             {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})}
         )
         stream = DecodedStreamObject()
-        stream.set_data(f"BT /F1 6 Tf 20 700 Td ({text}) Tj ET".encode())
+        drawn = [
+            f"BT /F1 6 Tf {mode} Tr 20 {700 - 20 * i} Td ({text}) Tj ET"
+            for i, mode in enumerate((modes or {}).get(number, [0]))
+        ]
+        stream.set_data("\n".join(drawn).encode())
         page[NameObject("/Contents")] = ArrayObject([writer._add_object(stream)])
     with path.open("wb") as out:
         writer.write(out)
@@ -53,14 +58,22 @@ def _pdf(path: Path, pages: list[str]) -> Path:
 
 @pytest.fixture
 def verify_dir(tmp_path: Path) -> Path:
-    """A verify folder: a text PDF, a scanned PDF, a report with one photo page, and HTML."""
+    """A verify folder: a text PDF, a scanned PDF, a report with one photo page, a scan with OCR
+    text behind, and HTML."""
     root = tmp_path / "verify"
     (root / "results").mkdir(parents=True)
     _pdf(root / "results/TEXT-2025-03-31.pdf", [_TEXT, _TEXT])
     _pdf(root / "results/SCAN-2025-03-31.pdf", [_TEXT, "", ""])
     _pdf(root / "results/PHOTO-FY25.pdf", [""] + [_TEXT] * 10)
+    _pdf(root / "results/OCR-2025-03-31.pdf", [_TEXT] * 3, {2: [3], 3: [3]})
     (root / "results/WEB-2023-06-30.htm").write_text(_HTML, encoding="utf-8")
-    names = ("TEXT-2025-03-31.pdf", "SCAN-2025-03-31.pdf", "PHOTO-FY25.pdf", "WEB-2023-06-30.htm")
+    names = (
+        "TEXT-2025-03-31.pdf",
+        "SCAN-2025-03-31.pdf",
+        "PHOTO-FY25.pdf",
+        "OCR-2025-03-31.pdf",
+        "WEB-2023-06-30.htm",
+    )
     manifest = {f"results/{n}": {"url": f"https://x/{n}", "sha256": "0"} for n in names}
     (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return root
@@ -82,43 +95,67 @@ def test_text_less_pages(tmp_path: Path, pages: list[str], expected: list[int]) 
 
 
 @pytest.mark.parametrize(
-    ("pages", "text_less", "scan"),
+    ("pages", "modes", "expected"),
     [
-        pytest.param(10, [], False, id="no text-less page"),
-        pytest.param(10, [1], False, id="exactly the share allowed"),
-        pytest.param(10, [1, 2], True, id="over the share"),
-        pytest.param(585, list(range(16)), False, id="an annual report's photo pages"),
-        pytest.param(13, list(range(2, 14)), True, id="a scanned results filing"),
-        pytest.param(0, [], False, id="html has no pages"),
+        pytest.param([_TEXT, _TEXT], {}, [], id="typed pages"),
+        pytest.param([_TEXT] * 3, {2: [3], 3: [3]}, [2, 3], id="a cover letter then OCR'd scans"),
+        pytest.param([_TEXT], {1: [3, 3, 0]}, [1], id="mostly invisible text"),
+        pytest.param([_TEXT], {1: [0, 0, 3]}, [], id="mostly visible text"),
+        pytest.param([_TEXT], {1: [0, 3]}, [], id="exactly half invisible"),
+        pytest.param(["", _TEXT], {}, [], id="a page with no text at all"),
     ],
 )
-def test_is_scan(pages: int, text_less: list[int], scan: bool) -> None:
-    entry: documents.Entry = {"pages": pages, "text_less_pages": text_less}
+def test_ocr_pages(
+    tmp_path: Path, pages: list[str], modes: dict[int, list[int]], expected: list[int]
+) -> None:
+    found = documents.ocr_pages(_pdf(tmp_path / "a.pdf", pages, modes))
+    assert found == expected, found
+
+
+@pytest.mark.parametrize(
+    ("pages", "text_less", "ocr", "scan"),
+    [
+        pytest.param(10, [], [], False, id="no text-less page"),
+        pytest.param(10, [1], [], False, id="exactly the share allowed"),
+        pytest.param(10, [1, 2], [], True, id="over the share"),
+        pytest.param(585, list(range(16)), [], False, id="an annual report's photo pages"),
+        pytest.param(13, list(range(2, 14)), [], True, id="a scanned results filing"),
+        pytest.param(24, [], list(range(3, 16)), True, id="a scan with OCR text behind"),
+        pytest.param(10, [1], [2], True, id="text-less and OCR'd pages add up"),
+        pytest.param(10, [1], [1], False, id="a page both text-less and OCR'd counts once"),
+        pytest.param(0, [], [], False, id="html has no pages"),
+    ],
+)
+def test_is_scan(pages: int, text_less: list[int], ocr: list[int], scan: bool) -> None:
+    entry: documents.Entry = {"pages": pages, "text_less_pages": text_less, "ocr_pages": ocr}
     assert documents.is_scan(entry) is scan, entry
 
 
 @pytest.mark.parametrize(
-    ("name", "kind", "count", "pages"),
+    ("name", "kind", "count", "pages", "ocr"),
     [
-        pytest.param("results/TEXT-2025-03-31.pdf", "pdf", 2, [], id="a text pdf"),
-        pytest.param("results/SCAN-2025-03-31.pdf", "pdf", 3, [2, 3], id="a scanned pdf"),
-        pytest.param("results/PHOTO-FY25.pdf", "pdf", 11, [1], id="a report with a photo page"),
-        pytest.param("results/WEB-2023-06-30.htm", "html", 0, [], id="an html filing"),
+        pytest.param("results/TEXT-2025-03-31.pdf", "pdf", 2, [], [], id="a text pdf"),
+        pytest.param("results/SCAN-2025-03-31.pdf", "pdf", 3, [2, 3], [], id="a scanned pdf"),
+        pytest.param("results/PHOTO-FY25.pdf", "pdf", 11, [1], [], id="a report with a photo page"),
+        pytest.param("results/OCR-2025-03-31.pdf", "pdf", 3, [], [2, 3], id="a scan with OCR text"),
+        pytest.param("results/WEB-2023-06-30.htm", "html", 0, [], [], id="an html filing"),
     ],
 )
 def test_flag_documents_records_each_entry(
-    verify_dir: Path, name: str, kind: str, count: int, pages: list[int]
+    verify_dir: Path, name: str, kind: str, count: int, pages: list[int], ocr: list[int]
 ) -> None:
     documents.flag_documents(verify_dir)
     entry = documents.read_manifest(verify_dir)[name]
     assert entry["format"] == kind, entry
     assert entry["pages"] == count, entry
     assert entry["text_less_pages"] == pages, entry
+    assert entry["ocr_pages"] == ocr, entry
     assert entry["url"] == f"https://x/{name.removeprefix('results/')}", entry
 
 
 def test_flag_documents_returns_the_scans(verify_dir: Path) -> None:
-    assert documents.flag_documents(verify_dir) == ["results/SCAN-2025-03-31.pdf"]
+    scans = ["results/OCR-2025-03-31.pdf", "results/SCAN-2025-03-31.pdf"]
+    assert documents.flag_documents(verify_dir) == scans
 
 
 def test_flag_documents_refuses_an_unknown_format(verify_dir: Path) -> None:
@@ -176,6 +213,7 @@ def test_load_verify_document_reads_by_format(verify_dir: Path, name: str, doc_i
         pytest.param(True, "results/NOPE.pdf", KeyError, id="a path not in the manifest"),
         pytest.param(False, "results/TEXT-2025-03-31.pdf", ValueError, id="an entry not flagged"),
         pytest.param(True, "results/SCAN-2025-03-31.pdf", ValueError, id="a scanned pdf"),
+        pytest.param(True, "results/OCR-2025-03-31.pdf", ValueError, id="a scan with OCR text"),
     ],
 )
 def test_load_verify_document_refuses(
@@ -189,3 +227,113 @@ def test_load_verify_document_refuses(
 
 def test_every_cross_checked_company_is_one_the_database_holds() -> None:
     assert set(VERIFY_TICKERS) <= set(FACTS_TICKERS), set(VERIFY_TICKERS) - set(FACTS_TICKERS)
+
+
+def test_load_verify_document_refuses_an_entry_flagged_before_ocr_pages(verify_dir: Path) -> None:
+    documents.flag_documents(verify_dir)
+    manifest = documents.read_manifest(verify_dir)
+    del manifest["results/TEXT-2025-03-31.pdf"]["ocr_pages"]
+    documents.write_manifest(manifest, verify_dir)
+    with pytest.raises(ValueError, match="not flagged"):
+        documents.load_verify_document(
+            "results/TEXT-2025-03-31.pdf", verify_dir, _pdf_reader, _html_reader
+        )
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        pytest.param(
+            ("ROA", "0.48", "%"), ("ROA", "0.48%", ""), id="a percent cell after its figure"
+        ),
+        pytest.param(("ROA", "0.48", "", "%"), ("ROA", "0.48%", "", ""), id="empty cells between"),
+        pytest.param(("ROA", "%", "0.48"), ("ROA", "%", "0.48"), id="a percent after a label"),
+        pytest.param(("%", "0.48"), ("%", "0.48"), id="a percent with nothing before it"),
+        pytest.param(("ROA", "0.48%"), ("ROA", "0.48%"), id="a figure with its own percent"),
+        pytest.param(
+            ("ROA", "0.48", "%", "0.47", "%"),
+            ("ROA", "0.48%", "", "0.47%", ""),
+            id="a percent cell after each figure",
+        ),
+    ],
+)
+def test_percent_joined(row: tuple[str, ...], expected: tuple[str, ...]) -> None:
+    assert documents.percent_joined(row) == expected, row
+
+
+_RESULTS = (
+    ("FINANCIAL RESULTS", "", ""),
+    ("Particulars", "March 31, 2024", "March 31, 2023"),
+    ("Interest earned", "42,606.72", "34,438.91"),
+    ("Exceptional items", "..", ".."),
+)
+_SHEET = (
+    ("BALANCE SHEET", "", ""),
+    ("(Rs. in crore)", "", ""),
+    ("Particulars", "March 31, 2024", "March 31, 2023"),
+    ("Deposits", "1,443,579.95", "1,210,832.15"),
+)
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        pytest.param(_RESULTS, [0], id="one statement"),
+        pytest.param(_RESULTS + _SHEET, [0, 4], id="a second statement's title and headers"),
+        pytest.param(_RESULTS + _SHEET[2:], [0, 4], id="a second header row with no title"),
+        pytest.param(
+            _RESULTS + (("Note", "as at March 31, 2024", ""),) + _SHEET[3:],
+            [0],
+            id="one date in a row of text",
+        ),
+        pytest.param(
+            _RESULTS + (("", "", ""),) + _SHEET,
+            [0, 5],
+            id="an empty row is left with the statement before",
+        ),
+        pytest.param(
+            (_SHEET[2],) + _SHEET[2:],
+            [0],
+            id="two header rows before any figure",
+        ),
+    ],
+)
+def test_statement_starts(rows: documents.Rows, expected: list[int]) -> None:
+    assert documents.statement_starts(rows) == expected, rows
+
+
+def test_statements_give_each_its_own_rows_headers_and_sections() -> None:
+    parts = documents.statements(_RESULTS + _SHEET, header=2, sections=(3, 7))
+    assert [p.rows for p in parts] == [_RESULTS, _SHEET]
+    assert [p.header_rows for p in parts] == [2, 0]
+    assert [p.sections for p in parts] == [(3,), (3,)]
+    assert parts[1].text.splitlines()[0] == "BALANCE SHEET"
+
+
+_STATEMENTS_HTML = """<html><body><table>
+<tr><td>STANDALONE FINANCIAL RESULTS</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>Particulars</td><td>March 31, 2024</td><td></td><td>March 31, 2023</td><td></td></tr>
+<tr><td>Return on assets</td><td>0.48</td><td>%</td><td>0.47</td><td>%</td></tr>
+<tr><td>CONSOLIDATED BALANCE SHEET</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>Particulars</td><td>March 31, 2024</td><td></td><td>March 31, 2023</td><td></td></tr>
+<tr><td>Deposits</td><td>1,443,579.95</td><td></td><td>1,210,832.15</td><td></td></tr>
+</table></body></html>"""
+
+
+def test_an_html_table_of_two_statements_reads_as_two(tmp_path: Path) -> None:
+    path = tmp_path / "TWO-2024-03-31.htm"
+    path.write_text(_STATEMENTS_HTML, encoding="utf-8")
+    tables = documents.load_html(path, "TWO-2024-03-31").tables
+    assert [t.rows[0][0] for t in tables] == [
+        "STANDALONE FINANCIAL RESULTS",
+        "CONSOLIDATED BALANCE SHEET",
+    ]
+    assert tables[0].rows[2] == ("Return on assets", "0.48%", "", "0.47%", ""), tables[0].rows
+
+
+@pytest.mark.parametrize(
+    ("source", "kind", "expected"),
+    [("nse", "pdf", "nse-pdf"), ("sec-6k", "html", "sec-6k-html")],
+)
+def test_origin_names_source_and_form(source: str, kind: str, expected: str) -> None:
+    assert documents.origin({"source": source, "format": kind}) == expected

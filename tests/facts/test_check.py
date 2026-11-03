@@ -228,7 +228,7 @@ def test_tolerance_is_half_the_last_filed_digit_per_value(
 @pytest.mark.parametrize(
     ("tier", "checker"),
     [
-        pytest.param("xbrl-pdf", "pdf:results/ITC-2025-03-31.pdf", id="its document agrees"),
+        pytest.param("xbrl-filed", "nse-pdf:results/ITC-2025-03-31.pdf", id="its document agrees"),
         pytest.param("xbrl", "vedant", id="a person checked it"),
     ],
 )

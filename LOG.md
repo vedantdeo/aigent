@@ -2292,3 +2292,25 @@
   all proposed, the `*` decisions reaching three smaller groups of the other bank. The review page
   (claude.ai artifact) now shows one card per concept, segment and issue across both banks. 25 of
   25 new mutants killed in a scratch copy.
+- 11-02: **the first group decided, the results read from SEC copies, tiers renamed, $0.00.**
+  Vedant decided `*|FaceValueOfEquityShareCapital||differs` `right` on the review page (3 spot
+  checks per bank); imported, dry run: 61 facts would become `xbrl`. Asked first whether XBRL is
+  known to disagree with the PDFs: yes, NSE flags mismatches and companies refile (EPS, PAT, a
+  period tagged half-yearly), and XBRL International found wrong scales and filler zeros in Indian
+  filings, so `wrong` verdicts stand, the fact kept as `xbrl-ai`. Then, reviewing ICICI Bank's NPA
+  groups, the evidence was garbled: **every ICICI Bank results PDF and three of HDFC Bank's are scans
+  with the company's OCR text behind them**, which the text-less test missed (render mode 3, found
+  with pdfium). Vedant: swap them for their SEC 6-K copies, after checking they are the same. Online:
+  each 6-K says it is the announcement made to the Indian exchanges; figure by figure, 86% to 99.6%
+  of each PDF's figures are in its copy, and every larger leftover examined was the PDF's OCR
+  misreading what the copy and XBRL agree on (ICICI Bank Mar-2025 investing cash flow "169,581.81)"
+  for (69,581.81)). One copy corrects an earlier read: ICICI Bank's Mar-2025 standalone gross NPA is
+  printed 24,166.18 and filed 24,166.78, a real XBRL difference. Re-run: 4,678 agree, but 28 earlier
+  agreements lost to two HTML layouts, a `%` in its own cell (HDFC Bank) and several statements in
+  one `<table>` (ICICI Bank Mar-2024); both fixed in `facts.documents`, re-run **4,739 of 6,784
+  agree** (ICICI Bank 54% to 68%), one agreement lost (a nil row matched to EPS), all 2,822
+  agreements in the copies found in their raw HTML. Then Vedant: keep sources clear in the database;
+  of two options he chose tiers by trust and source in `verified_by`: schema version 4 renames
+  `xbrl-pdf`, `pdf-cell`, `pdf-read` to `xbrl-filed`, `filed-cell`, `filed-read` and stamps
+  `nse-pdf:` or `sec-6k-html:`; the live database migrated (2,247 and 1,897 rows), a backup kept.
+  2,359 tests; 25 of 25 new mutants killed in a scratch copy. Nothing written by the cross-check yet.

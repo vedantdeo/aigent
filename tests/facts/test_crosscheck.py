@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 
@@ -331,7 +332,7 @@ def test_facts_to_check_are_the_companies_named_with_a_document(
 
 
 def test_facts_to_check_skip_a_fact_not_from_xbrl(crosscheck_db: sqlite3.Connection) -> None:
-    crosscheck_db.execute("UPDATE facts SET tier = 'pdf-cell-ai' WHERE concept = 'OtherIncome'")
+    crosscheck_db.execute("UPDATE facts SET tier = 'filed-cell-ai' WHERE concept = 'OtherIncome'")
     facts = facts_to_check(crosscheck_db, ("ICICIBANK",), MANIFEST)
     assert "OtherIncome" not in {f.concept for f in facts}
 
@@ -355,16 +356,20 @@ def test_crosscheck_reads_each_document_once(
     ]
 
 
-def test_apply_makes_only_agreements_xbrl_pdf(crosscheck_db: sqlite3.Connection) -> None:
+ORIGINS = {"results/ICICIBANK-2024-06-30.pdf": "nse-pdf"}
+
+
+def test_apply_makes_only_agreements_xbrl_filed(crosscheck_db: sqlite3.Connection) -> None:
     ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
-    moved = apply(crosscheck_db, [checked_row(ids[0], "agree"), checked_row(ids[1], "differ")], NOW)
+    checked = [checked_row(ids[0], "agree"), checked_row(ids[1], "differ")]
+    moved = apply(crosscheck_db, checked, NOW, ORIGINS)
     rows = crosscheck_db.execute(
         "SELECT tier, verified_by, verified_at, printed, page FROM facts ORDER BY id"
     ).fetchall()
     assert moved == 1
     assert rows[0] == (
-        "xbrl-pdf",
-        "pdf:results/ICICIBANK-2024-06-30.pdf",
+        "xbrl-filed",
+        "nse-pdf:results/ICICIBANK-2024-06-30.pdf",
         "2026-11-01T09:00:00",
         "38,995.78",
         3,
@@ -381,9 +386,12 @@ def test_apply_leaves_a_persons_check_and_counts_nothing_twice(
         (ids[1],),
     )
     first = apply(
-        crosscheck_db, [checked_row(ids[0], "agree"), checked_row(ids[1], "agree", "xbrl-ai")], NOW
+        crosscheck_db,
+        [checked_row(ids[0], "agree"), checked_row(ids[1], "agree", "xbrl-ai")],
+        NOW,
+        ORIGINS,
     )
-    again = apply(crosscheck_db, [checked_row(ids[0], "agree")], NOW)
+    again = apply(crosscheck_db, [checked_row(ids[0], "agree")], NOW, ORIGINS)
     assert (first, again) == (1, 0)
     assert crosscheck_db.execute(
         "SELECT tier, verified_by FROM facts WHERE id = ?", (ids[1],)
@@ -393,7 +401,41 @@ def test_apply_leaves_a_persons_check_and_counts_nothing_twice(
     )
 
 
-@pytest.mark.parametrize(("write", "tier"), [(False, "xbrl-ai"), (True, "xbrl-pdf")])
+@pytest.mark.parametrize(
+    ("document", "origins", "stamp"),
+    [
+        pytest.param(
+            "results/X.pdf", {"results/X.pdf": "nse-pdf"}, "nse-pdf:results/X.pdf", id="an nse pdf"
+        ),
+        pytest.param(
+            "results/X.htm",
+            {"results/X.htm": "sec-6k-html"},
+            "sec-6k-html:results/X.htm",
+            id="an sec copy",
+        ),
+    ],
+)
+def test_apply_stamps_each_agreement_with_its_documents_origin(
+    crosscheck_db: sqlite3.Connection, document: str, origins: dict[str, str], stamp: str
+) -> None:
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    apply(crosscheck_db, [replace(checked_row(first, "agree"), document=document)], NOW, origins)
+    by = crosscheck_db.execute("SELECT verified_by FROM facts WHERE id = ?", (first,)).fetchone()
+    assert by == (stamp,)
+
+
+def test_apply_writes_nothing_for_a_document_with_no_origin(
+    crosscheck_db: sqlite3.Connection,
+) -> None:
+    ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
+    unknown = replace(checked_row(ids[1], "agree"), document="results/NOPE.htm")
+    with pytest.raises(KeyError, match="NOPE"):
+        apply(crosscheck_db, [checked_row(ids[0], "agree"), unknown], NOW, ORIGINS)
+    tiers = [r[0] for r in crosscheck_db.execute("SELECT tier FROM facts ORDER BY id")]
+    assert set(tiers) == {"xbrl-ai"}, tiers
+
+
+@pytest.mark.parametrize(("write", "tier"), [(False, "xbrl-ai"), (True, "xbrl-filed")])
 def test_the_command_records_agreements_only_when_told(
     crosscheck_db: sqlite3.Connection,
     tmp_path: Path,
@@ -407,9 +449,15 @@ def test_the_command_records_agreements_only_when_told(
     monkeypatch.setattr(cli, "FACTS_DB", db)
     monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
     monkeypatch.setattr(cli, "crosscheck", lambda c, t: [checked_row(first, "agree")])
+    manifest = {"results/ICICIBANK-2024-06-30.pdf": {"source": "nse", "format": "pdf"}}
+    monkeypatch.setattr(cli, "read_manifest", lambda: manifest)
     cli.cross_check(NOW, write=write, decisions=tmp_path / "none.jsonl")
-    after = sqlite3.connect(db).execute("SELECT tier FROM facts WHERE id = ?", (first,)).fetchone()
-    assert after == (tier,)
+    after = (
+        sqlite3.connect(db)
+        .execute("SELECT tier, verified_by FROM facts WHERE id = ?", (first,))
+        .fetchone()
+    )
+    assert after == (tier, "nse-pdf:results/ICICIBANK-2024-06-30.pdf" if write else None), after
     assert list((tmp_path / "reports").glob("crosscheck-*.md"))
 
 

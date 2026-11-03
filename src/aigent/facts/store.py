@@ -14,15 +14,18 @@ from aigent.facts.xbrl import Fact, label_of
 
 FACTS_DB = Path(__file__).resolve().parents[3] / "corpus" / ".cache" / "facts.sqlite"
 
-XBRL_TIERS = ("xbrl-ai", "xbrl-pdf", "xbrl")  # as loaded, its document agreeing, a person's check
-TIERS = (*XBRL_TIERS, "pdf-cell-ai", "pdf-cell", "pdf-read-ai", "pdf-read", "derived-ai", "derived")
-CHECKED_TIERS = ("xbrl-pdf", "xbrl", "pdf-cell", "pdf-read", "derived")  # trusted; name a checker
+XBRL_TIERS = ("xbrl-ai", "xbrl-filed", "xbrl")  # as loaded, its filed document agreeing, a person
+TIERS = (
+    *XBRL_TIERS,
+    *("filed-cell-ai", "filed-cell", "filed-read-ai", "filed-read", "derived-ai", "derived"),
+)
+CHECKED_TIERS = ("xbrl-filed", "xbrl", "filed-cell", "filed-read", "derived")  # name a checker
 
 _TIER_LIST = ", ".join(f"'{t}'" for t in TIERS)
 _CHECKED_LIST = ", ".join(f"'{t}'" for t in CHECKED_TIERS)
 _XBRL_LIST = ", ".join(f"'{t}'" for t in XBRL_TIERS)
 
-SCHEMA_VERSION = 3  # 2: an xbrl row may carry verified_by; 3: xbrl-ai and xbrl-pdf
+SCHEMA_VERSION = 4  # 2: xbrl may carry verified_by; 3: xbrl-ai, xbrl-pdf; 4: filed, not pdf
 _FACTS = f"""
 CREATE TABLE IF NOT EXISTS facts (
     id INTEGER PRIMARY KEY,
@@ -151,19 +154,31 @@ def connect(path: Path = FACTS_DB) -> sqlite3.Connection:
     return conn
 
 
-# An `xbrl` row from before version 3, by its check: none, its document's alone, or a person's.
-_XBRL_TIER_OF = """CASE WHEN tier != 'xbrl' THEN tier
-    WHEN verified_by IS NULL THEN 'xbrl-ai'
-    WHEN verified_by LIKE 'pdf:%' AND instr(verified_by, '+') = 0 THEN 'xbrl-pdf'
-    ELSE 'xbrl' END"""
+# A row's tier from an older version: an `xbrl` row from before 3 by its check (none, its
+# document's alone, or a person's), and a `pdf` tier from before 4 renamed `filed`.
+_TIER_OF = """CASE
+    WHEN tier = 'xbrl' AND verified_by IS NULL THEN 'xbrl-ai'
+    WHEN tier = 'xbrl' AND verified_by LIKE 'pdf:%' AND instr(verified_by, '+') = 0
+        THEN 'xbrl-filed'
+    WHEN tier = 'xbrl-pdf' THEN 'xbrl-filed'
+    WHEN tier LIKE 'pdf-%' THEN 'filed-' || substr(tier, 5)
+    ELSE tier END"""
+
+# A document's stamp from before 4, `pdf:<path>`, with its origin: every PDF came from NSE and
+# every HTML copy from an SEC 6-K.
+_VERIFIED_BY_OF = """CASE
+    WHEN verified_by NOT LIKE 'pdf:%' THEN verified_by
+    WHEN instr(verified_by, '.pdf') > 0 THEN 'nse-pdf:' || substr(verified_by, 5)
+    ELSE 'sec-6k-html:' || substr(verified_by, 5) END"""
+_MIGRATED_AS = {"tier": _TIER_OF, "verified_by": _VERIFIED_BY_OF}
 
 
 def _rebuild_facts(conn: sqlite3.Connection) -> None:
-    """Re-creates `facts` under the current constraints, every row and id kept and an old `xbrl`
-    row given its tier; SQLite cannot alter a CHECK in place. Run with foreign keys off, as
+    """Re-creates `facts` under the current constraints, every row and id kept and an old row given
+    its tier and stamp; SQLite cannot alter a CHECK in place. Run with foreign keys off, as
     SQLite's procedure requires."""
-    columns = [row[1] for row in conn.execute("PRAGMA table_info(facts)")]
-    selected = ", ".join(_XBRL_TIER_OF if c == "tier" else c for c in columns)
+    columns: list[str] = [str(row[1]) for row in conn.execute("PRAGMA table_info(facts)")]
+    selected = ", ".join(_MIGRATED_AS.get(c, c) for c in columns)
     conn.execute("PRAGMA foreign_keys = OFF")
     conn.executescript(
         "BEGIN;"

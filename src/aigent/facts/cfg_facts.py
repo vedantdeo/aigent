@@ -37,7 +37,7 @@ NSE_REQUEST_INTERVAL_S = 1.0  # at most one request a second
 NSE_TIMEOUT_S = 30.0
 
 # Cross-check documents: a page with fewer characters in its text layer is text-less, and a PDF
-# with more than this share of such pages is refused as a scan.
+# with more than this share of its pages text-less or OCR'd is refused as a scan.
 VERIFY_MIN_TEXT_CHARS = 200
 VERIFY_MAX_TEXT_LESS_SHARE = 0.10
 

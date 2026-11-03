@@ -138,7 +138,7 @@ def test_an_unchecked_read_is_found_in_any_run_for_the_tool_to_hold_back(
     conn: sqlite3.Connection, run_id: str
 ) -> None:
     [found] = find(conn, "ITC", 2025, "year", "consolidated", None, ["DividendPerShare"], run_id)
-    assert found.tier == "pdf-read-ai"
+    assert found.tier == "filed-read-ai"
 
 
 @pytest.mark.parametrize(
@@ -151,9 +151,9 @@ def test_an_unchecked_read_is_found_in_any_run_for_the_tool_to_hold_back(
 def test_a_checked_fact_comes_first(conn: sqlite3.Connection, run_id: str, value: float) -> None:
     with conn:
         for tier, by, val, run in (
-            ("pdf-read-ai", None, 1.0, run_id),
-            ("pdf-read", "vedant", 2.0, "old"),
-            ("pdf-read-ai", None, 3.0, "this-run"),
+            ("filed-read-ai", None, 1.0, run_id),
+            ("filed-read", "vedant", 2.0, "old"),
+            ("filed-read-ai", None, 3.0, "this-run"),
         ):
             conn.execute(
                 """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start,
@@ -174,7 +174,7 @@ def test_this_runs_own_unchecked_read_comes_before_another_runs(conn: sqlite3.Co
                 """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start,
                           period_end, value, unit, tier, written_by, written_at, run_id)
                    VALUES ('ITC', 'consolidated', 'Extra', 'Extra', 'duration', '2024-04-01',
-                           '2025-03-31', ?, 'INR', 'pdf-read-ai', 'w', 't', ?)""",
+                           '2025-03-31', ?, 'INR', 'filed-read-ai', 'w', 't', ?)""",
                 (val, run),
             )
     [found] = find(conn, "ITC", 2025, "year", "consolidated", None, ["Extra"], "this-run")

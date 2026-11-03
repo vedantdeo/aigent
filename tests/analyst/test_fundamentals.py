@@ -37,7 +37,7 @@ def test_a_verified_answer_is_shown_and_recorded(checked_facts_lookup: Lookup) -
     said = cast(dict[str, list[dict[str, object]]], json.loads(tool(ASKED)))
 
     assert said["facts"][0]["value"] == 816.0
-    assert said["facts"][0]["tier"] == "xbrl-pdf"
+    assert said["facts"][0]["tier"] == "xbrl-filed"
     assert "note" not in said
     assert tool.looked_up == [str(f["cite_as"]) for f in said["facts"]]
     assert tool.looked_up[0] == "FACT:ITC:2025:consolidated:year:RevenueFromOperations"

@@ -109,12 +109,12 @@ concepts  concept, label, statement, kind ('xbrl' | 'row' | 'read'), xbrl_concep
   | tier | meaning |
   |---|---|
   | `xbrl-ai` | from the NSE XBRL filing, not confirmed: unchecked, or disagreeing with its document |
-  | `xbrl-pdf` | an XBRL fact its filed results document agrees with (`verified_by` `pdf:<document>`) |
-  | `xbrl` | an XBRL fact a person checked (`verified_by` the name, or `pdf:<document>+<name>`) |
-  | `pdf-cell-ai` | a parsed PDF table cell, not yet checked by a person |
-  | `pdf-cell` | a `pdf-cell-ai` fact a person has checked |
-  | `pdf-read-ai` | a figure a model read from a PDF passage in a run, not yet checked |
-  | `pdf-read` | a `pdf-read-ai` fact a person has checked |
+  | `xbrl-filed` | an XBRL fact its filed results document agrees with (`verified_by` `<origin>:<document>`, `nse-pdf:` or `sec-6k-html:`) |
+  | `xbrl` | an XBRL fact a person checked (`verified_by` the name, or `<origin>:<document>+<name>`) |
+  | `filed-cell-ai` | a parsed table cell of a filed document, not yet checked by a person |
+  | `filed-cell` | a `filed-cell-ai` fact a person has checked |
+  | `filed-read-ai` | a figure a model read from a filed document's passage in a run, not yet checked |
+  | `filed-read` | a `filed-read-ai` fact a person has checked |
   | `derived-ai` | computed from other facts by a formula, not yet checked |
   | `derived` | a `derived-ai` fact a person has checked |
 
@@ -165,9 +165,9 @@ concepts  concept, label, statement, kind ('xbrl' | 'row' | 'read'), xbrl_concep
    - the 24 fundamentals, each found and equal.
    The build prints the counts and writes a report of every failure.
 
-A rebuild keeps the write-back facts (`pdf-read-ai`, `pdf-read`), which no source can regenerate,
-and every person's check: a rebuilt cell whose value and place are unchanged keeps its `pdf-cell`
-tier, and one whose value changed drops back to `pdf-cell-ai` and is reported. A derived fact
+A rebuild keeps the write-back facts (`filed-read-ai`, `filed-read`), which no source can regenerate,
+and every person's check: a rebuilt cell whose value and place are unchanged keeps its `filed-cell`
+tier, and one whose value changed drops back to `filed-cell-ai` and is reported. A derived fact
 follows its inputs the same way.
 
 ## Lookup
@@ -199,7 +199,7 @@ year, no quarter alone, in the 2020 taxonomy's filings).
    it as it cites a passage id today, and the critic is shown the fact and its source (the NSE
    filing's URL, the PDF page and row, or a read fact's passage).
 
-**Only trusted tiers are shown** (Vedant, 11-01): `xbrl-pdf`, `xbrl`, `pdf-cell`, `pdf-read` and
+**Only trusted tiers are shown** (Vedant, 11-01): `xbrl-filed`, `xbrl`, `filed-cell`, `filed-read` and
 `derived`. Everything else is unverified and is never quoted. `fundamentals` returns the verified
 facts alone, with a `lookup_id`; the unverified ones it found are held by the harness for that
 lookup, not queried again. With nothing verified, the agent works the figure out from the filings
@@ -210,10 +210,10 @@ it, and only then sees the held entries, each marked as agreeing with its figure
 **Which row answers** (Vedant, 10-22; superseded for display by the rule above), for a fact
 (ticker, basis, concept, segment, period):
 
-1. **`xbrl` or a checked tier** (`pdf-cell`, `pdf-read`, `derived`): the answer; nothing is read.
+1. **`xbrl` or a checked tier** (`filed-cell`, `filed-read`, `derived`): the answer; nothing is read.
 2. **An `-ai` row from this run**: the answer, so a run stays consistent with itself.
 3. **Otherwise the agent reads the PDF**, blind: it is not shown other runs' `-ai` rows (or a
-   `pdf-cell-ai` row) first, since a value shown beforehand gets copied and a match would then be an
+   `filed-cell-ai` row) first, since a value shown beforehand gets copied and a match would then be an
    echo, not agreement. Its read is then compared with them:
    - **a match** adds a row, which the vote counts as agreement;
    - **a mismatch** shows the agent the other value and its passage as a critic, and it reads again
@@ -233,9 +233,9 @@ failures), so a wrong read would become a permanent wrong answer. The guards:
 
 - **Only approved figures**: written after the critic and the human approval gate, from the memo's
   cited figures, never from a model's mid-run reads.
-- **Tier `pdf-read-ai`**, with its passage and run id stored; returned as such, so the critic
+- **Tier `filed-read-ai`**, with its passage and run id stored; returned as such, so the critic
   re-checks it against its passage.
-- **A person promotes it** to `pdf-read`. Later reads of the same fact add rows rather than
+- **A person promotes it** to `filed-read`. Later reads of the same fact add rows rather than
   overwrite; the polling job's vote over them orders the review queue, and automating the check
   from it is for later, a proxy for a person's check (Vedant, 10-22).
 - **Removable by run**: every write carries its `run_id`, so a bad batch goes in one delete.
@@ -320,7 +320,7 @@ on its best-labelled cell there, or is **unmatched**. Strict on purpose: an agre
 quotable, and a miss only costs a person's look. A year's facts against the annual report's
 audited statements, a second source, is for later.
 
-**First run (11-01, written)**: 4,144 of 6,784 facts agree and are `xbrl-pdf`; HDFC Bank 2,201 of 3,178 (69%),
+**First run (11-01, written)**: 4,144 of 6,784 facts agree and are `xbrl-pdf` (now `xbrl-filed`); HDFC Bank 2,201 of 3,178 (69%),
 ICICI Bank 1,943 of 3,606 (54%). 534 differ and 2,106 are unmatched. What stays is mostly the data
 or the format, not the matcher: ratios filed /100 (gross NPA 0.0002 for 2.15%), ratios the results
 do not print (CET1, AT1), face value printed in a row's label, zeros the results never print as a
@@ -331,6 +331,16 @@ unallocated, and ICICI Bank's FY24 Q1 and HDFC Bank's FY24 H1 filings, mostly no
 `evals/reports/crosscheck-<time>.md`; the review queue is every `differ` and `ambiguous`, a random
 sample of `agree`, and the facts most asked for in `lookups`.
 
+**Second run (11-02, on SEC copies)**: every ICICI Bank results PDF and three of HDFC Bank's were
+scans with an OCR text layer behind them, which the text-less test missed; they are now refused as
+scans (`ocr_pages`) and read from their SEC 6-K copies (Vedant). Checked against the PDFs figure by
+figure: 86% to 99.6% of each PDF's figures are in its copy exactly, and every larger leftover looked
+at was the PDF's OCR misreading a figure the copy and XBRL agree on. Two fixes to reading HTML: a
+lone `%` cell joined to its figure (HDFC Bank's ratios), and a table of several statements split at
+each statement's own headers (ICICI Bank's Mar-2024). 4,739 of 6,784 agree (ICICI Bank 68%, from
+54%); of this morning's agreements one is lost, a nil row matched to the EPS row; all 2,822
+agreements in the new copies have their value in the raw HTML.
+
 **What the reading gets wrong** (noted 11-02 from the review page; each costs a person's look, none
 a wrong agreement). To fix in the matcher pass:
 
@@ -338,13 +348,16 @@ a wrong agreement). To fix in the matcher pass:
   759.25". The matcher reads cells only, so XBRL's face value (1) is compared with the paid-up
   capital (759.25 crore) and *differs* (HDFC Bank 36 facts, ICICI Bank 25). Fix: read
   `(face value … N each)` out of the label.
-- **OCR'd text layers** (ICICI Bank's PDFs, the company's own OCR): letters in words ("shore
+- **OCR'd text layers** (ICICI Bank's PDFs, the company's own OCR; gone since those are read from
+  SEC copies, 11-02): letters in words ("shore
   capitol", "Bonkinq"), digits ("1,403.1B", "11.GG5.G9", "₹ 2/-" as "21-"), and full stops for
   thousands commas ("1.404.68"). A garbled label falls under the 60% word match and the fact is
   *not printed* (ICICI Bank's face value, 15 facts); a garbled figure cannot agree.
 - **Rows merged or a row off**: two printed rows parsed as one, so a label carries the next row's
   figures (ICICI Bank Dec-2023 standalone: "Paid-up … share capital" read with 221,129.31, a
   reserves figure), or a nil row ("Exceptional items", all "..") merged into the next row's label.
+- **A nil row matched to a neighbour**: ICICI Bank Jun-2025's "Extraordinary items" (all "..")
+  read against the EPS row below it.
 - **Columns out of line on scanned pages**: a figure attached to the wrong period's header, so it
   differs from a neighbouring column's fact.
 
@@ -453,9 +466,20 @@ and every input is in a trusted tier**, with no per-fact check, and `derived-ai`
 - **XBRL tiers** (Vedant, 11-01): `xbrl-ai` as loaded; `xbrl-pdf` when its document agrees, and it
   stays `xbrl-ai` otherwise, so after a cross-check every `xbrl-ai` fact is a disagreement (or not
   printed) for a person, and a random sample of `xbrl-pdf` is checked too; `xbrl` after a person.
+  Renamed `xbrl-filed` on 11-02.
 - **Review groups** (Vedant, 11-01): the queue grouped and worked largest first; one decision covers a group, a `right` one only after a spot check of a few of its facts; a fact judged wrong stays `xbrl-ai` and leaves the queue. New facts in a `right` group always get a spot check of their own; any verdict may cover every company.
 - **Quoting** (Vedant, 11-01): trusted tiers only; unverified facts held back until the agent has
   its own figure, then shown through `compare_unverified` (value first, so it cannot peek).
+
+## Decided (11-02)
+
+- **OCR'd results** (Vedant): a PDF whose pages are mostly OCR text behind a scan counts as a scan,
+  and the SEC copy replaces it, after a check online and figure by figure that the two are the same.
+- **Tier names** (Vedant, option B of two): a tier says how far a figure is trusted and
+  `verified_by` which document checked it, so `pdf` tiers became `filed` (`xbrl-filed`,
+  `filed-cell`, `filed-read`) and a document stamp names its origin (`nse-pdf:`, `sec-6k-html:`).
+  Source-specific tiers (`xbrl-sec`, `sec-table`) were the other option, dropped since each new
+  source would add a pair. Databases migrate to schema version 4.
 
 ## Open
 
@@ -467,7 +491,7 @@ and every input is in a trusted tier**, with no per-fact check, and `derived-ai`
   may not be the figure asked (a dividend per share, which XBRL does not file, returns "Adjustments
   for dividend income"). The coverage eval measures how often; a relevance floor waits on it.
 - **When the document disagrees**: which value the lookup answers with once a person sides with the
-  printed one (a corrected `pdf-cell` row answering ahead of `xbrl`, or the `xbrl` row withheld).
+  printed one (a corrected `filed-cell` row answering ahead of `xbrl`, or the `xbrl` row withheld).
 - **A fact two documents agree with**: `verified_by` names one document; when the annual report
   agrees too, which one it names, or both.
 - **The vote**: the polling job's rule for preferring a value, decided once there are rows to vote on.
