@@ -2391,4 +2391,25 @@
   `derived-concept` and every input is in a checked tier, naming `<concept>@<person>`; checking a
   concept promotes figures already computed with it. Re-running his check promoted fact 48550
   (0.1577) to `derived`. 2,504 tests; 7 of 7 mutants killed.
+- 11-03, late: **the ten-question test, $1.01, and its fixes, $0.00.** Seven new derived concepts
+  defined, computed and supported (21/21 claims, values exact); #8 cost-to-income stopped at a
+  derived input and proposed a formula; #9 showed nothing though its draft explained; #10 refused
+  an unverified input correctly. Fixed: derived concepts now have a scope (Vedant: `banking`,
+  `ind-as`, the taxonomy a company files under; 68 concepts only banks file, 144 only others);
+  `plan_metric` plans only an exact name or a metric holding every word asked, else lists the
+  closest; a binding may name a derived concept of the same scope, planned and evaluated
+  recursively; the page shows the draft when nothing is cited. Live table migrated, every row
+  `banking`; `EffectiveTaxRate` moved to `ind-as`, `EffectiveTaxRateBank` renamed into `banking`.
+  2,526 tests; 16 of 16 mutants killed.
+- 11-03, later: **scope lists and `*`, and cost-to-income computable, $0.00.** Vedant: a derived
+  concept's scope may be several, joined by commas, or `*`, so formulas common to both families
+  collapse; matched on whole scope names, not substrings (an `nbfc-ind-as` would contain `ind-as`).
+  A multi-scope concept's inputs must be filed or derived in every scope it names; a name is held
+  once in any overlapping scope; the schema's fixed list went (the table rebuilt). Few seeds can
+  collapse: banks file `ProfitLossForThePeriod`, others `ProfitLossForPeriod`; only `Income`,
+  `OtherIncome` and `TaxExpense` among the common ones, so the agent's
+  `OtherIncomeToTotalIncomeRatio` became `*`. Seeded `NetTotalIncome` = total(NetInterestIncome,
+  OtherIncome) and `CostToIncomeRatio` = ratio(OperatingExpenses, NetTotalIncome); seeding now
+  runs in passes so a concept may build on one later in the sorted file. The agent's
+  `CostToIncomeDenominator`, its figure and the `CostToIncomeRatio` proposal deleted. 2,541 tests.
 

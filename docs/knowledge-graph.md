@@ -454,82 +454,82 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
     - L3312 roadmap
 - L3319 3. Edges
   - L3323 Imports (generated)
-  - L3904 Layering rules (checked)
-  - L3965 Reads and writes
-  - L3979 Enforcement and control flow
-  - L4032 Tested-by
-  - L4068 Environment
-- L4096 4. Invariants
-    - L4100 Invariant 1: Every paid call is preceded by a free count and the per-request check
-    - L4106 Invariant 2: Cost is reported, always
-    - L4110 Invariant 3: The assistant turn is echoed back verbatim
-    - L4113 Invariant 4: All tool results for one turn go back in ONE user message
-    - L4118 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
-    - L4122 Invariant 6: Both loops are capped
-    - L4129 Invariant 7: A file tool resolves before it compares
-    - L4135 Invariant 8: One home each for constants, clients, prices and model calls
-    - L4142 Invariant 9: Paid tests carry `@pytest.mark.live`
-    - L4145 Invariant 10: Types are complete
-    - L4148 Invariant 11: An eval survives its own bad rows
-    - L4152 Invariant 12: Every dollar an eval spends lands in one budget
-    - L4159 Invariant 13: A model is asked to read, never to join
-    - L4164 Invariant 14: The harness imports no capability module
-    - L4168 Invariant 15: An eval is a measurement, so nothing about it may wobble
-    - L4174 Invariant 16: A prompt never quotes its own test set
-    - L4181 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
-    - L4186 Invariant 18: Retrieval is graded before generation, and it is free
-    - L4191 Invariant 19: A page never leaves the page sequence
-    - L4196 Invariant 20: A retrieval label must identify one document, not merely appear in one
-    - L4202 Invariant 21: The ranking that is measured is the ranking that is used
-    - L4208 Invariant 22: A ceiling refuses spending before it happens, not only after
-    - L4215 Invariant 23: Every error the package defines lives in `errors`
-    - L4220 Invariant 24: A call is shaped by the client it goes to
-    - L4226 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
-    - L4232 Invariant 26: Tracing observes and never steers
-    - L4238 Invariant 27: A request is sent again only if it cannot have been billed
-    - L4244 Invariant 28: Text someone else wrote reaches the model fenced
-    - L4250 Invariant 29: A write runs only where a caller opted in, and never overwrites
-    - L4256 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
-- L4262 5. Where the next work attaches
-  - L4266 5.1 Open seams
-    - L4268 Seam: Facts database — step 2
-    - L4274 Seam: Week 6 — LangGraph agent
-    - L4278 Seam: Week 5 — async and batch evals
-    - L4285 Seam: Week 4 — compaction, when a task outgrows a turn
-    - L4291 Seam: Week 3 — measure a pattern
-    - L4296 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
-    - L4301 Seam: Week 3 — anything that searches the reports
-    - L4308 Seam: adding a tool
-    - L4312 Seam: adding a grader
-  - L4316 5.2 Consumed and superseded seams
-    - L4318 Seam: Week 1 — Project 1a
-    - L4323 Seam: Week 1 — prompt caching
-    - L4329 Seam: superseded — caching as two variants of one eval
-    - L4334 Seam: Week 1 — measure the un-saturated eval
-    - L4340 Seam: Week 1 — label the backlog
-    - L4345 Seam: Week 1 — break things on purpose
-    - L4351 Seam: Week 2 — retrieval metrics
-    - L4357 Seam: Week 2 — the four modules
-    - L4363 Seam: Week 2 — the corpus
-    - L4369 Seam: Week 2 — the retrieval dataset
-    - L4374 Seam: Week 2 — the measured run
-    - L4380 Seam: superseded — questions labelled with a quote
-    - L4385 Seam: Week 2 — hybrid and rerank
-    - L4391 Seam: Week 2 — answer-level eval
-    - L4399 Seam: Week 2 — RAG milestone `v0.1-rag`
-    - L4405 Seam: Week 3 — every model call through `llm`
-    - L4412 Seam: Week 3 — the five workflow patterns
-    - L4418 Seam: Week 3 — orchestrator-workers as a graph
-    - L4425 Seam: Week 4 — the toy fine-tune
-    - L4431 Seam: Week 3 — answer locally, judge on Anthropic
-    - L4437 Seam: Week 3 — context management
-    - L4442 Seam: Week 3 — server-side web search
-    - L4449 Seam: Week 5 — SDK tool runner
-    - L4455 Seam: Week 5 — tracing
-    - L4462 Seam: Week 5 — explicit retries
-    - L4468 Seam: Week 5 — guardrails
-    - L4475 Seam: Week 6 — MCP client
-- L4483 Maintenance
+  - L3906 Layering rules (checked)
+  - L3967 Reads and writes
+  - L3981 Enforcement and control flow
+  - L4034 Tested-by
+  - L4070 Environment
+- L4098 4. Invariants
+    - L4102 Invariant 1: Every paid call is preceded by a free count and the per-request check
+    - L4108 Invariant 2: Cost is reported, always
+    - L4112 Invariant 3: The assistant turn is echoed back verbatim
+    - L4115 Invariant 4: All tool results for one turn go back in ONE user message
+    - L4120 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
+    - L4124 Invariant 6: Both loops are capped
+    - L4131 Invariant 7: A file tool resolves before it compares
+    - L4137 Invariant 8: One home each for constants, clients, prices and model calls
+    - L4144 Invariant 9: Paid tests carry `@pytest.mark.live`
+    - L4147 Invariant 10: Types are complete
+    - L4150 Invariant 11: An eval survives its own bad rows
+    - L4154 Invariant 12: Every dollar an eval spends lands in one budget
+    - L4161 Invariant 13: A model is asked to read, never to join
+    - L4166 Invariant 14: The harness imports no capability module
+    - L4170 Invariant 15: An eval is a measurement, so nothing about it may wobble
+    - L4176 Invariant 16: A prompt never quotes its own test set
+    - L4183 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
+    - L4188 Invariant 18: Retrieval is graded before generation, and it is free
+    - L4193 Invariant 19: A page never leaves the page sequence
+    - L4198 Invariant 20: A retrieval label must identify one document, not merely appear in one
+    - L4204 Invariant 21: The ranking that is measured is the ranking that is used
+    - L4210 Invariant 22: A ceiling refuses spending before it happens, not only after
+    - L4217 Invariant 23: Every error the package defines lives in `errors`
+    - L4222 Invariant 24: A call is shaped by the client it goes to
+    - L4228 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
+    - L4234 Invariant 26: Tracing observes and never steers
+    - L4240 Invariant 27: A request is sent again only if it cannot have been billed
+    - L4246 Invariant 28: Text someone else wrote reaches the model fenced
+    - L4252 Invariant 29: A write runs only where a caller opted in, and never overwrites
+    - L4258 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
+- L4264 5. Where the next work attaches
+  - L4268 5.1 Open seams
+    - L4270 Seam: Facts database — step 2
+    - L4276 Seam: Week 6 — LangGraph agent
+    - L4280 Seam: Week 5 — async and batch evals
+    - L4287 Seam: Week 4 — compaction, when a task outgrows a turn
+    - L4293 Seam: Week 3 — measure a pattern
+    - L4298 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
+    - L4303 Seam: Week 3 — anything that searches the reports
+    - L4310 Seam: adding a tool
+    - L4314 Seam: adding a grader
+  - L4318 5.2 Consumed and superseded seams
+    - L4320 Seam: Week 1 — Project 1a
+    - L4325 Seam: Week 1 — prompt caching
+    - L4331 Seam: superseded — caching as two variants of one eval
+    - L4336 Seam: Week 1 — measure the un-saturated eval
+    - L4342 Seam: Week 1 — label the backlog
+    - L4347 Seam: Week 1 — break things on purpose
+    - L4353 Seam: Week 2 — retrieval metrics
+    - L4359 Seam: Week 2 — the four modules
+    - L4365 Seam: Week 2 — the corpus
+    - L4371 Seam: Week 2 — the retrieval dataset
+    - L4376 Seam: Week 2 — the measured run
+    - L4382 Seam: superseded — questions labelled with a quote
+    - L4387 Seam: Week 2 — hybrid and rerank
+    - L4393 Seam: Week 2 — answer-level eval
+    - L4401 Seam: Week 2 — RAG milestone `v0.1-rag`
+    - L4407 Seam: Week 3 — every model call through `llm`
+    - L4414 Seam: Week 3 — the five workflow patterns
+    - L4420 Seam: Week 3 — orchestrator-workers as a graph
+    - L4427 Seam: Week 4 — the toy fine-tune
+    - L4433 Seam: Week 3 — answer locally, judge on Anthropic
+    - L4439 Seam: Week 3 — context management
+    - L4444 Seam: Week 3 — server-side web search
+    - L4451 Seam: Week 5 — SDK tool runner
+    - L4457 Seam: Week 5 — tracing
+    - L4464 Seam: Week 5 — explicit retries
+    - L4470 Seam: Week 5 — guardrails
+    - L4477 Seam: Week 6 — MCP client
+- L4485 Maintenance
 <!-- /generated:toc -->
 
 ## 0. Orientation
@@ -899,7 +899,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 #### `analyst.metric_tools`
 - **At:** `src/aigent/analyst/metric_tools.py`
 - **Is:** module. **The agent's metric tools over one question**: `plan_metric`, `compute_metric`, `define_metric`, `propose_formula` (`METRIC_TOOLS`), and the write-back of what a supported claim cites.
-- **Contract:** `MetricTools(conn, evidence, writer, question)`. **`plan`** ranks the held metrics against `what` (`facts.derived_concepts.ranked`), plans the best for the company, year, period and basis, keeps it as `P<n>`, and returns its formula and a fetch list: per variable, the exact `fundamentals` arguments (`what` the concept name) and the cite they give; no metric fitting returns the library. **`compute`** takes a plan id and one cite per variable, each of which must equal the planned cite, have come back from `fundamentals` in this question's evidence and be in a checked tier; it runs the library formula on the facts' stored values (one unit for a `same` formula), keeps the figure as `DERIVED:D<n>` and puts it, with each input's value, into the evidence for the critic. **`define`** checks the name (`name_refusal`) and bindings (`bindings_refusal`, concepts from the `concepts` table) and writes the metric at once as a `derived-concept-ai` row with the question; a name held is refused. **`propose`** writes a `formula-ai` row in `formula_proposals` for a person to turn into library code, nothing computed from it. Every refusal is an error result. `chained(tools, rest)` routes the calls. **`write_back`** writes each computed figure a **supported** claim cites, once, under the metric's name, `derived` naming `<concept>@<person>` when its concept is `derived-concept`, else `derived-ai` (`compute` shows which as `trusted`): the plan's period (as at its end when the period's own inputs are balances), its inputs' ids looked up again in checked tiers (skipped with a reason if one lost its check), and the metric, formula and input cites as its formula column.
+- **Contract:** `MetricTools(conn, evidence, writer, question)`. **`plan`** looks only in the company's scope, plans a metric only when `facts.derived_concepts.matched` finds one (else returns the closest five and the library, no plan), through any derived inputs, for the company, year, period and basis, keeps it as `P<n>`, and returns its formula and a fetch list: per variable, the exact `fundamentals` arguments (`what` the concept name) and the cite they give; no metric fitting returns the library. **`compute`** takes a plan id and one cite per variable, each of which must equal the planned cite, have come back from `fundamentals` in this question's evidence and be in a checked tier; it runs the library formula on the facts' stored values (one unit for a `same` formula), keeps the figure as `DERIVED:D<n>` and puts it, with each input's value, into the evidence for the critic. **`define`** takes a scope and checks the name (`name_refusal`) and bindings (`bindings_refusal` over `available` for that scope, so a concept another taxonomy files is refused) and writes the metric at once as a `derived-concept-ai` row with the question; a name held is refused. **`propose`** writes a `formula-ai` row in `formula_proposals` for a person to turn into library code, nothing computed from it. Every refusal is an error result. `chained(tools, rest)` routes the calls. **`write_back`** writes each computed figure a **supported** claim cites, once, under the metric's name, `derived` naming `<concept>@<person>` when its concept is `derived-concept`, else `derived-ai` (`compute` shows which as `trusted`): the plan's period (as at its end when the period's own inputs are balances), its inputs' ids looked up again in checked tiers (skipped with a reason if one lost its check), and the metric, formula and input cites as its formula column.
 - **Gotchas:** The model never types a figure or a formula: values come from the evidence and formulas from the library by name. Definitions and proposals are written straight away, before the critic, since they are definitions, not figures; both are unchecked tiers.
 - **History:** 2026-11-03: created, replacing `analyst.derive` (Vedant: plan returns what to read, the agent reads it with `fundamentals`, compute calls a library formula by name).
 - **Decided in:** LOG.md 11-03
@@ -968,7 +968,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 #### `facts.store`
 - **At:** `src/aigent/facts/store.py`
 - **Is:** module. **The SQLite schema, the build's writes, and an agent's derived facts and formulas**, `corpus/.cache/facts.sqlite` in WAL mode. Tables `filings`, `facts`, `derived_from`, `concepts`, `concept_labels` (each concept's other labels), `lookups` `formula_proposals` (for the library: name, expression, variables, `FORMULA_PROPOSAL_TIERS`, question, writer, checker; unique by name and expression) and `derived_concepts` as in the design; `TIERS` (nine), `XBRL_TIERS` (`xbrl-ai` as loaded and unconfirmed, `xbrl-filed` its filed document agreeing, `xbrl` a person's check) and `CHECKED_TIERS`, **the trusted tiers, the only ones the agent may quote**: `xbrl-filed`, `xbrl`, `filed-cell`, `filed-read`, `derived`. A tier says how far a figure is trusted; which document checked it is in `verified_by`.
-- **Contract:** `sync_xbrl_facts` makes a filing's XBRL rows equal what was loaded: a new fact is `xbrl-ai`, **an unchanged fact keeps its row id and its tier**, a changed value is updated, re-attributed (`written_by`, `written_at`, `run_id`) **and `xbrl-ai` again** (`verified_by`, `verified_at` cleared), a fact no longer loaded is deleted, and **a derived fact computed from a changed or deleted fact is deleted first** (`Synced.derived_dropped`, in the build's summary), its links by the schema's cascade, its formula kept; `connect` creates the schema and, below `SCHEMA_VERSION` (`PRAGMA user_version`, 4), rebuilds `facts` under the current constraints with every row and id kept, an old `xbrl` row given its tier by its check (none `xbrl-ai`, a document alone `xbrl-filed`, a person `xbrl`), a `pdf-` tier renamed `filed-`, and a `pdf:<document>` stamp given its origin (`nse-pdf:` for a `.pdf`, `sec-6k-html:` otherwise) (`_rebuild_facts`, foreign keys off while it runs); new concepts go into `concepts` with their split element name. `apply_labels(conn, labels)` puts each XBRL concept's standard label onto it and its facts, replaces its `concept_labels`, and returns the concepts no package labels. `write_formula_proposal` writes a formula proposal as `formula-ai` in `formula_proposals` or returns the one held under the same name and expression; `write_derived_concept` writes a derived concept as `derived-concept-ai` (`DERIVED_CONCEPT_TIERS`; the `derived_concepts` table: name, label, library formula, bindings, question, writer, checker; older `metrics` and `formulas` tables are moved to their new names on `connect`, tiers renamed) and holds the first by name; `verify_derived_concept` records a person's check, making it `derived-concept`, and **promotes every `derived-ai` fact computed with it whose inputs are all in checked tiers to `derived`** (`verified_by` from `concept_check`: `<concept>@<person>`), returning whether the check was new and how many it promoted, refusing a name not held or no person; `write_derived(…, checked_by)` writes `derived` naming the check it rests on, else `derived-ai`; `write_derived` writes a `DerivedRow` as `derived-ai` with each input once in `derived_from`, refusing (and writing nothing) with no input, a missing one or one in no checked tier.
+- **Contract:** `sync_xbrl_facts` makes a filing's XBRL rows equal what was loaded: a new fact is `xbrl-ai`, **an unchanged fact keeps its row id and its tier**, a changed value is updated, re-attributed (`written_by`, `written_at`, `run_id`) **and `xbrl-ai` again** (`verified_by`, `verified_at` cleared), a fact no longer loaded is deleted, and **a derived fact computed from a changed or deleted fact is deleted first** (`Synced.derived_dropped`, in the build's summary), its links by the schema's cascade, its formula kept; `connect` creates the schema and, below `SCHEMA_VERSION` (`PRAGMA user_version`, 4), rebuilds `facts` under the current constraints with every row and id kept, an old `xbrl` row given its tier by its check (none `xbrl-ai`, a document alone `xbrl-filed`, a person `xbrl`), a `pdf-` tier renamed `filed-`, and a `pdf:<document>` stamp given its origin (`nse-pdf:` for a `.pdf`, `sec-6k-html:` otherwise) (`_rebuild_facts`, foreign keys off while it runs); new concepts go into `concepts` with their split element name. `apply_labels(conn, labels)` puts each XBRL concept's standard label onto it and its facts, replaces its `concept_labels`, and returns the concepts no package labels. `write_formula_proposal` writes a formula proposal as `formula-ai` in `formula_proposals` or returns the one held under the same name and expression; `write_derived_concept` writes a derived concept as `derived-concept-ai` (its scope normalised; refused when the name is held in an overlapping scope) (`DERIVED_CONCEPT_TIERS`; the `derived_concepts` table: name, label, library formula, bindings, question, writer, checker; older `metrics` and `formulas` tables are moved to their new names on `connect`, tiers renamed) and holds the first by name; `verify_derived_concept` records a person's check, making it `derived-concept`, and **promotes every `derived-ai` fact computed with it whose inputs are all in checked tiers to `derived`** (`verified_by` from `concept_check`: `<concept>@<person>`), returning whether the check was new and how many it promoted, refusing a name not held or no person; `write_derived(…, checked_by)` writes `derived` naming the check it rests on, else `derived-ai`; `write_derived` writes a `DerivedRow` as `derived-ai` with each input once in `derived_from`, refusing (and writing nothing) with no input, a missing one or one in no checked tier.
 - **Invariants:** **The schema refuses** an instant with a start, a duration without one, an unknown tier or basis, a checked tier with no `verified_by`, an `-ai` tier marked checked, and a `verified_by` without a `verified_at` or the reverse. **A tier is checked exactly when it names its checker**: `xbrl-filed` carries `<origin>:<document>` (`nse-pdf:results/…pdf`, `sec-6k-html:results/…htm`), `xbrl` a person's name, or `<origin>:<document>+<name>` for a sampled agreement re-checked; every `-ai` tier carries none; a filing holds an `xbrl` fact once (partial unique index).
 - **History:** `concept_labels` and `apply_labels` (2026-10-23). XBRL rows checkable, the schema versioned and migrated (2026-10-31, Vedant: XBRL rows carry who verified them); `xbrl-ai` and `xbrl-pdf` (2026-11-01, Vedant). Version 4 (2026-11-02, Vedant): `pdf` tiers became `filed`, the document's origin in `verified_by`, once results came from SEC HTML copies too.
 - **Decided in:** LOG.md 10-23, 10-31
@@ -1018,8 +1018,8 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.derived_concepts`
 - **At:** `src/aigent/facts/derived_concepts.py`
-- **Is:** module. **Derived concepts, which the agent calls metrics**: a named figure defined as a library formula over concepts, each input at an `Offset` (`t`, `t-1y`, `t-1q`) from the period asked, with no company or period in the definition; seeded from `SEEDED`, `evals/reference/derived-concepts.jsonl`, sorted by name, into the `derived_concepts` table.
-- **Contract:** `shift` resolves an offset (Q1's quarter before is last year's Q4; a quarter before anything but a quarter is refused); `plan(concept, year, period)` is each variable's `Fetch` in formula order, whose `cite_as` is the one `fundamentals` gives. `ranked(what, held)` keeps those sharing a word with `what` (CamelCase split), an exact name first, then most shared, then by name. `name_refusal`: CamelCase, no year, `FY`, quarter, `H1` or `9M`. `bindings_refusal`: a library formula, exactly its variables, concepts held, known offsets. `seed(conn, writer)` writes each seeded one not yet held as `derived-concept-ai` and returns the refused with their reasons; `load_derived_concepts` reads them by name. `python -m aigent.facts verify-concept --name N --by P` shows a concept's bindings and records P's check.
+- **Is:** module. **Derived concepts, which the agent calls metrics**: a named figure defined as a library formula over concepts, filed or derived, each input at an `Offset` (`t`, `t-1y`, `t-1q`) from the period asked, with no company or period in the definition, **held per scope**: `banking`, `ind-as` (`cfg_facts.SCOPES`, the taxonomy a company files under, `COMPANY_SCOPES`), several joined by commas, or `*` for all (`store.scopes_of`, `scope_refusal`, `normal_scope`, `covers`: whole names, never substrings); seeded from `SEEDED`, `evals/reference/derived-concepts.jsonl`, sorted by name, into the `derived_concepts` table.
+- **Contract:** `shift` resolves an offset (Q1's quarter before is last year's Q4; a quarter before anything but a quarter is refused); `plan(concept, year, period, held)` is a `Step`: each variable a `Fetch` (path such as `denominator.first`, whose `cite_as` is the one `fundamentals` gives) or, when it names a derived concept in `held`, that concept's own `Step` at the shifted period; `Step.fetches()` lists the facts depth first and `evaluate` computes bottom up, one unit for a `same` formula. `matched(what, held)` plans only an exact name or a concept whose name and label hold every word asked but filler; `available(conn, spec)` is what is filed or derived in every scope the spec names. `ranked(what, held)` keeps those sharing a word with `what` (CamelCase split), an exact name first, then most shared, then by name. `name_refusal`: CamelCase, no year, `FY`, quarter, `H1` or `9M`. `bindings_refusal`: a library formula, exactly its variables, concepts available in the scope, known offsets, never itself (definitions only name concepts already held and never change, so none can loop). `seed(conn, writer)` writes each seeded one not yet held as `derived-concept-ai`, in passes until one writes nothing, so a concept may build on one later in the (scope-then-name sorted) file, and returns the refused with their reasons; `load_derived_concepts` reads them by name. `python -m aigent.facts verify-concept --name N --scope S --by P` shows a concept's bindings and records P's check.
 - **History:** 2026-11-03: created as `facts.metrics` (Vedant: growth of a metric is a named metric, both period-agnostic), renamed the same night (Vedant: derived concepts, beside `concepts`; the agent's tools keep "metric"). Nine seeded for banks: growth in advances, deposits, interest earned, operating profit and net profit (year on year, and net profit quarter on quarter), net interest income, net profit margin, credit-deposit ratio.
 - **Decided in:** LOG.md 11-03
 
@@ -3445,11 +3445,11 @@ analyst.memo —imports→ pydantic.{BaseModel, Field}
 analyst.metric_tools —imports→ analyst.graph.Analysed
 analyst.metric_tools —imports→ analyst.specialists.Passage
 analyst.metric_tools —imports→ anthropic.types.ToolParam
-analyst.metric_tools —imports→ facts.cfg_facts.FACTS_TICKERS
-analyst.metric_tools —imports→ facts.derived_concepts.{Binding, DerivedConcept, Fetch, OFFSETS, Offset, bindings_json, bindings_refusal, load_derived_concepts, name_refusal, plan, ranked}
+analyst.metric_tools —imports→ facts.cfg_facts.{COMPANY_SCOPES, FACTS_TICKERS, SCOPES}
+analyst.metric_tools —imports→ facts.derived_concepts.{Binding, DerivedConcept, Fetch, OFFSETS, Offset, Step, available, bindings_json, bindings_refusal, evaluate, load_derived_concepts, matched, name_refusal, plan, ranked}
 analyst.metric_tools —imports→ facts.formulas.FORMULAS
 analyst.metric_tools —imports→ facts.lookup.{BASES, PERIODS, Period, span}
-analyst.metric_tools —imports→ facts.store.{CHECKED_TIERS, DerivedRow, Writer, concept_check, write_derived, write_derived_concept, write_formula_proposal}
+analyst.metric_tools —imports→ facts.store.{CHECKED_TIERS, DerivedRow, Writer, concept_check, normal_scope, scope_refusal, write_derived, write_derived_concept, write_formula_proposal}
 analyst.metric_tools —imports→ llm.core.Dispatch
 analyst.router —imports→ analyst.specialists.{Invalid, Specialist}
 analyst.router —imports→ errors.SpecialistUnreachable
@@ -3627,9 +3627,10 @@ facts.crosscheck —imports→ facts.cfg_facts.{CROSSCHECK_DIFFER_LABEL_MIN, CRO
 facts.crosscheck —imports→ facts.documents.{VERIFY_DIR, load_verify_document, read_manifest}
 facts.crosscheck —imports→ facts.store.XBRL_TIERS
 facts.crosscheck —imports→ retrieval.chunk.Document
+facts.derived_concepts —imports→ facts.cfg_facts.COMPANY_SCOPES
 facts.derived_concepts —imports→ facts.formulas.FORMULAS
 facts.derived_concepts —imports→ facts.lookup.Period
-facts.derived_concepts —imports→ facts.store.{Writer, write_derived_concept}
+facts.derived_concepts —imports→ facts.store.{Writer, XBRL_TIERS, covers, normal_scope, scope_refusal, scopes_of, write_derived_concept}
 facts.documents —imports→ docling.document_converter.DocumentConverter
 facts.documents —imports→ docling_core.types.doc.common.content_layer.ContentLayer
 facts.documents —imports→ docling_core.types.doc.document.DoclingDocument
@@ -3649,6 +3650,7 @@ facts.lookup —imports→ retrieval.rank.{Indexes, Ranker, build_ranker}
 facts.nse —imports→ facts.cfg_facts.{NSE_INTEGRATED_LISTING, NSE_LEGACY_LISTING, NSE_PAGE_SIZE, NSE_REQUEST_INTERVAL_S, NSE_SYMBOLS, NSE_TIMEOUT_S, NSE_USER_AGENT}
 facts.review —imports→ facts.cfg_facts.{CROSSCHECK_GROUP_EXAMPLES, CROSSCHECK_SEED, CROSSCHECK_SPOT_CHECKS}
 facts.review —imports→ facts.crosscheck.{Checked, number}
+facts.store —imports→ facts.cfg_facts.{COMPANY_SCOPES, SCOPES}
 facts.store —imports→ facts.taxonomy.Labels
 facts.store —imports→ facts.xbrl.{Fact, label_of}
 facts.taxonomy —imports→ facts.nse.Get

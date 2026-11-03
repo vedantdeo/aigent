@@ -101,9 +101,9 @@ def _metric(
     conn: sqlite3.Connection, name: str, formula: str, bindings: dict[str, tuple[str, str]]
 ) -> None:
     conn.execute(
-        """INSERT INTO derived_concepts (name, label, formula, bindings, tier, written_by,
+        """INSERT INTO derived_concepts (name, scope, label, formula, bindings, tier, written_by,
                   written_at, run_id)
-           VALUES (?, ?, ?, ?, 'derived-concept-ai', 'seed', 't', 'seed-1')""",
+           VALUES (?, 'banking', ?, ?, ?, 'derived-concept-ai', 'seed', 't', 'seed-1')""",
         (
             name,
             f"{name} in words",

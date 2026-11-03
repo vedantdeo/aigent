@@ -160,7 +160,10 @@ function render(a, seconds) {
       ${a.skipped.map(k => `<div class="call"><span class="err">not written</span> ${esc(k.metric)}: ${esc(k.reason)}</div>`).join("")}</div>`;
     if (a.caveats.length) html += `<div class="card"><h2>Caveats</h2>${a.caveats.map(c => `<p>${esc(c)}</p>`).join("")}</div>`;
   } else if (!a.error) {
-    html += `<div class="card"><h2>No memo</h2><p>${esc(a.stopped || "The agent wrote no cited claims.")}</p></div>`;
+    html += a.draft
+      ? `<div class="card"><h2>Answer, with nothing verified to cite</h2><p class="draft">${esc(a.draft)}</p>
+         <div class="stats"><span><b>${a.held_back}</b> unverified held back</span><span><b>$${spent.toFixed(4)}</b> spent</span><span><b>${seconds.toFixed(0)}s</b></span></div></div>`
+      : `<div class="card"><h2>No answer</h2><p>${esc(a.stopped || "The agent wrote nothing.")}</p></div>`;
   }
   html += `<div class="card"><h2>Tool calls</h2>${calls(a.calls) || '<p class="empty">None.</p>'}
     ${a.draft ? `<details><summary>The agent's own answer, before the memo</summary><p class="draft">${esc(a.draft)}</p></details>` : ""}</div>`;

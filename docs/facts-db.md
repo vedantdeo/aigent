@@ -401,6 +401,12 @@ a wrong agreement). To fix in the matcher pass:
   library formula on their stored values. A figure a supported claim cites is written as
   `derived-ai` under the metric's name, linked to its inputs.
 
+**Scopes, strict plans, metrics on metrics (11-03, after the ten-question test):** a derived
+concept holds within a scope, the taxonomy its companies file under (`banking`, `ind-as`; Vedant,
+over alternatives per variable and a global equivalence table, since whether two concepts stand in
+for each other depends on the metric); a plan is made only for an exact name or a concept holding
+every word asked; and an input may be a derived concept of the same scope.
+
 **The trust rule (11-03):** a figure is `derived` (trusted, quotable) when its derived concept is
 checked by a person and every input is in a checked tier, `xbrl-filed` included (Vedant); checking
 a concept promotes the figures already computed with it. The library's code is checked by review.

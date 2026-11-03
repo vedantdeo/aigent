@@ -66,6 +66,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m aigent.facts")
     parser.add_argument("command", choices=["build", "coverage", "crosscheck", "verify-concept"])
     parser.add_argument("--name", help="verify-concept: the derived concept checked")
+    parser.add_argument("--scope", help="verify-concept: its scope, banking or ind-as")
     parser.add_argument("--by", help="verify-concept: who checked its bindings")
     parser.add_argument("--offline", action="store_true", help="load the cache only; no fetching")
     parser.add_argument(
@@ -80,7 +81,7 @@ def main(argv: list[str] | None = None) -> None:
         cross_check(now, write=args.write)
         return
     if args.command == "verify-concept":
-        verify_concept(str(args.name or ""), str(args.by or ""), now)
+        verify_concept(str(args.name or ""), str(args.scope or ""), str(args.by or ""), now)
         return
     writer = Writer(
         written_by=f"xbrl-loader@{_commit()}",
@@ -105,19 +106,21 @@ def main(argv: list[str] | None = None) -> None:
     print(f"report: {REPORT}")
 
 
-def verify_concept(name: str, by: str, now: datetime) -> None:
+def verify_concept(name: str, scope: str, by: str, now: datetime) -> None:
     """Records a person's check of a derived concept's bindings, after showing them."""
     conn = connect(FACTS_DB)
     try:
         row = conn.execute(
-            "SELECT label, formula, bindings, tier FROM derived_concepts WHERE name = ?", (name,)
+            "SELECT label, formula, bindings, tier FROM derived_concepts "
+            "WHERE name = ? AND scope = ?",
+            (name, scope),
         ).fetchone()
         if row is None:
-            raise SystemExit(f"no derived concept {name!r}")
-        print(f"{name}: {row[0]}\n  {row[1]} {row[2]}\n  was {row[3]}")
+            raise SystemExit(f"no derived concept {name!r} in scope {scope!r}")
+        print(f"{name} [{scope}]: {row[0]}\n  {row[1]} {row[2]}\n  was {row[3]}")
         try:
             changed, promoted = verify_derived_concept(
-                conn, name, by, now.isoformat(timespec="seconds")
+                conn, name, scope, by, now.isoformat(timespec="seconds")
             )
         except ValueError as bad:
             raise SystemExit(str(bad)) from None

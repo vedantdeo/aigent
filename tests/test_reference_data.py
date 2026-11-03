@@ -68,6 +68,16 @@ def jsonl_ids(field: str) -> Callable[[Path], list[str]]:
     return read
 
 
+def jsonl_keys(*fields: str) -> Callable[[Path], list[str]]:
+    """Read several fields from every row of a JSONL file, joined by `/`, in file order."""
+
+    def read(path: Path) -> list[str]:
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+        return ["/".join(str(row[f]) for f in fields) for row in rows]
+
+    return read
+
+
 def class_names(path: Path) -> list[str]:
     """Every top-level class a module defines, in file order."""
     return re.findall(r"^class (\w+)", path.read_text(encoding="utf-8"), flags=re.M)
@@ -90,7 +100,7 @@ ORDERED_FILES = [
     Ordered(FUNDAMENTALS, key="ticker", load=json_keys("fundamentals")),
     Ordered(TABLE_FIGURES, key="id", load=json_keys("figures")),
     Ordered(DECISIONS, key="id", load=jsonl_ids("id")),
-    Ordered(SEEDED, key="name", load=jsonl_ids("name")),
+    Ordered(SEEDED, key="scope/name", load=jsonl_keys("scope", "name")),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(TRAINING_MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(DATASET, key="id", load=jsonl_ids("id")),

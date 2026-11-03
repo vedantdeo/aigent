@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from aigent.facts.cfg_facts import COMPANY_SCOPES, SCOPES
 from aigent.facts.taxonomy import Labels
 from aigent.facts.xbrl import Fact, label_of
 
@@ -62,6 +63,54 @@ CREATE TABLE IF NOT EXISTS facts (
     CHECK ((period_kind = 'instant') = (period_start IS NULL)),
     CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
     CHECK ((tier IN ({_CHECKED_LIST})) = (verified_by IS NOT NULL))
+);
+"""
+
+ANY_SCOPE = "*"
+
+
+def scopes_of(spec: str) -> tuple[str, ...]:
+    """The scopes a derived concept's scope names: `*` for all, else a comma-separated list."""
+    if spec.strip() == ANY_SCOPE:
+        return SCOPES
+    return tuple(sorted({part.strip() for part in spec.split(",") if part.strip()}))
+
+
+def scope_refusal(spec: str) -> str | None:
+    """Why `spec` cannot be a scope, or None: `*`, or known scopes separated by commas."""
+    named = scopes_of(spec)
+    unknown = [x for x in named if x not in SCOPES]
+    if not named or unknown or (ANY_SCOPE in spec and spec.strip() != ANY_SCOPE):
+        return f"scope is {ANY_SCOPE} or a comma-separated list of {', '.join(SCOPES)}"
+    return None
+
+
+def normal_scope(spec: str) -> str:
+    """`*` when a spec names every scope, else its scopes sorted and joined by commas."""
+    named = scopes_of(spec)
+    return ANY_SCOPE if set(named) == set(SCOPES) else ",".join(named)
+
+
+def covers(spec: str, scope: str) -> bool:
+    return scope in scopes_of(spec)
+
+
+_DERIVED_CONCEPTS = """CREATE TABLE IF NOT EXISTS derived_concepts (
+    name TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    label TEXT NOT NULL,
+    formula TEXT NOT NULL,
+    bindings TEXT NOT NULL,
+    tier TEXT NOT NULL CHECK (tier IN ('derived-concept-ai', 'derived-concept')),
+    question TEXT,
+    written_by TEXT NOT NULL,
+    written_at TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    verified_by TEXT,
+    verified_at TEXT,
+    PRIMARY KEY (name, scope),
+    CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
+    CHECK ((tier = 'derived-concept') = (verified_by IS NOT NULL))
 );
 """
 
@@ -129,22 +178,7 @@ CREATE TABLE IF NOT EXISTS formula_proposals (
     CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
     CHECK ((tier = 'formula') = (verified_by IS NOT NULL))
 );
-CREATE TABLE IF NOT EXISTS derived_concepts (
-    name TEXT PRIMARY KEY,
-    label TEXT NOT NULL,
-    formula TEXT NOT NULL,
-    bindings TEXT NOT NULL,
-    tier TEXT NOT NULL CHECK (tier IN ('derived-concept-ai', 'derived-concept')),
-    question TEXT,
-    written_by TEXT NOT NULL,
-    written_at TEXT NOT NULL,
-    run_id TEXT NOT NULL,
-    verified_by TEXT,
-    verified_at TEXT,
-    CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
-    CHECK ((tier = 'derived-concept') = (verified_by IS NOT NULL))
-);
-"""
+{_DERIVED_CONCEPTS}"""
 
 
 @dataclass(frozen=True)
@@ -196,30 +230,57 @@ class Synced:
 
 
 # Tables renamed since: old name, new name, and each old tier's new name.
-_RENAMED: tuple[tuple[str, str, dict[str, str]], ...] = (
+_BEFORE_SCOPES = "banking"  # every derived concept written before scopes came from a bank question
+_RENAMED: tuple[tuple[str, str, dict[str, str], dict[str, str]], ...] = (
     (
         "metrics",
         "derived_concepts",
         {"metric": "derived-concept", "metric-ai": "derived-concept-ai"},
+        {"scope": f"'{_BEFORE_SCOPES}'"},
     ),
-    ("formulas", "formula_proposals", {}),
+    ("formulas", "formula_proposals", {}, {}),
 )
 
 
 def _move_renamed_tables(conn: sqlite3.Connection) -> None:
-    """Moves each older table's rows into its new name, tiers renamed, and drops it."""
-    for old, new, tiers in _RENAMED:
+    """Moves each older table's rows into its new name, tiers renamed and missing columns added,
+    and drops it; first gives a derived concepts table from before scopes its scope."""
+    _add_scope(conn)
+    for old, new, tiers, added in _RENAMED:
         held = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (old,))
         if held.fetchone() is None:
             continue
-        columns = ", ".join(r[1] for r in conn.execute(f"PRAGMA table_info({old})"))
+        columns = [str(r[1]) for r in conn.execute(f"PRAGMA table_info({old})")]
         tiered = " ".join(f"WHEN '{a}' THEN '{b}'" for a, b in tiers.items())
-        selected = (
-            columns.replace("tier", f"CASE tier {tiered} ELSE tier END") if tiers else columns
-        )
+        selected = [
+            f"CASE tier {tiered} ELSE tier END" if c == "tier" and tiers else c for c in columns
+        ]
+        names = ", ".join([*columns, *added])
+        values = ", ".join([*selected, *added.values()])
         with conn:
-            conn.execute(f"INSERT OR IGNORE INTO {new} ({columns}) SELECT {selected} FROM {old}")
+            conn.execute(f"INSERT OR IGNORE INTO {new} ({names}) SELECT {values} FROM {old}")
             conn.execute(f"DROP TABLE {old}")
+
+
+def _add_scope(conn: sqlite3.Connection) -> None:
+    """Rebuilds a derived concepts table from before scopes (every row in `_BEFORE_SCOPES`) or
+    from when the schema checked a scope against a fixed list."""
+    columns = [str(r[1]) for r in conn.execute("PRAGMA table_info(derived_concepts)")]
+    made = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'derived_concepts'"
+    ).fetchone()
+    if not columns or ("scope" in columns and "scope IN" not in str(made[0])):
+        return
+    listed = ", ".join(c for c in columns if c != "scope")
+    scope = "scope" if "scope" in columns else f"'{_BEFORE_SCOPES}'"
+    with conn:
+        conn.execute("ALTER TABLE derived_concepts RENAME TO derived_concepts_before")
+        conn.execute(_DERIVED_CONCEPTS)
+        conn.execute(
+            f"""INSERT INTO derived_concepts ({listed}, scope)
+                SELECT {listed}, {scope} FROM derived_concepts_before"""
+        )
+        conn.execute("DROP TABLE derived_concepts_before")
 
 
 def connect(path: Path = FACTS_DB) -> sqlite3.Connection:
@@ -505,20 +566,28 @@ def write_derived(
 def write_derived_concept(
     conn: sqlite3.Connection,
     name: str,
+    scope: str,
     label: str,
     formula: str,
     bindings: str,
     question: str | None,
     writer: Writer,
 ) -> bool:
-    """Writes a derived concept as `derived-concept-ai`; False, writing nothing, when one is
-    already held by that name, whatever it says."""
+    """Writes a derived concept as `derived-concept-ai` in `scope` (normalised); False, writing
+    nothing, when one is already held by that name in any scope it names, whatever it says."""
+    scope = normal_scope(scope)
+    held = [
+        r[0] for r in conn.execute("SELECT scope FROM derived_concepts WHERE name = ?", (name,))
+    ]
+    if any(set(scopes_of(h)) & set(scopes_of(scope)) for h in held):
+        return False
     cursor = conn.execute(
-        """INSERT OR IGNORE INTO derived_concepts (name, label, formula, bindings, tier, question,
-                  written_by, written_at, run_id)
-           VALUES (?, ?, ?, ?, 'derived-concept-ai', ?, ?, ?, ?)""",
+        """INSERT OR IGNORE INTO derived_concepts (name, scope, label, formula, bindings, tier,
+                  question, written_by, written_at, run_id)
+           VALUES (?, ?, ?, ?, ?, 'derived-concept-ai', ?, ?, ?, ?)""",
         (
             name,
+            scope,
             label,
             formula,
             bindings,
@@ -531,39 +600,45 @@ def write_derived_concept(
     return cursor.rowcount == 1
 
 
-def concept_check(name: str, person: str) -> str:
-    """What a trusted derived fact names as its check: its concept, and who checked that."""
-    return f"{name}@{person}"
+def concept_check(name: str, scope: str, person: str) -> str:
+    """What a trusted derived fact names as its check: its concept and scope, and who checked."""
+    return f"{name}[{scope}]@{person}"
 
 
 def verify_derived_concept(
-    conn: sqlite3.Connection, name: str, person: str, at: str
+    conn: sqlite3.Connection, name: str, scope: str, person: str, at: str
 ) -> tuple[bool, int]:
     """Records `person`'s check of a derived concept's bindings, making it `derived-concept`, and
     makes `derived` every `derived-ai` fact computed with it whose inputs are all in checked
-    tiers. Returns whether the check was new and how many facts it promoted. ValueError if no
-    derived concept has that name or no person is named."""
-    held = conn.execute("SELECT tier FROM derived_concepts WHERE name = ?", (name,)).fetchone()
+    tiers, for the companies of `scope`. Returns whether the check was new and how many facts it
+    promoted. ValueError if no derived concept has that name in that scope or no person is named."""
+    scope = normal_scope(scope)
+    held = conn.execute(
+        "SELECT tier FROM derived_concepts WHERE name = ? AND scope = ?", (name, scope)
+    ).fetchone()
     if held is None:
-        raise ValueError(f"no derived concept {name!r}")
+        raise ValueError(f"no derived concept {name!r} in scope {scope!r}")
     if not person.strip():
         raise ValueError("say who checked it")
     with conn:
         cursor = conn.execute(
             """UPDATE derived_concepts SET tier = 'derived-concept', verified_by = ?,
                       verified_at = ?
-               WHERE name = ? AND tier = 'derived-concept-ai'""",
-            (person.strip(), at, name),
+               WHERE name = ? AND scope = ? AND tier = 'derived-concept-ai'""",
+            (person.strip(), at, name, scope),
         )
         checked = conn.execute(
-            "SELECT verified_by FROM derived_concepts WHERE name = ?", (name,)
+            "SELECT verified_by FROM derived_concepts WHERE name = ? AND scope = ?", (name, scope)
         ).fetchone()[0]
         marks = ", ".join("?" for _ in CHECKED_TIERS)
+        tickers = [t for t, s in COMPANY_SCOPES.items() if covers(scope, s)]
+        companies = ", ".join("?" for _ in tickers)
         promoted = conn.execute(
             f"""UPDATE facts SET tier = 'derived', verified_by = ?, verified_at = ?
-                WHERE tier = 'derived-ai' AND concept = ? AND NOT EXISTS (
+                WHERE tier = 'derived-ai' AND concept = ? AND ticker IN ({companies})
+                  AND NOT EXISTS (
                     SELECT 1 FROM derived_from d JOIN facts i ON i.id = d.input_fact_id
                     WHERE d.fact_id = facts.id AND i.tier NOT IN ({marks}))""",
-            (concept_check(name, checked), at, name, *CHECKED_TIERS),
+            (concept_check(name, scope, checked), at, name, *tickers, *CHECKED_TIERS),
         )
     return cursor.rowcount == 1, promoted.rowcount

@@ -1,6 +1,7 @@
-"""The agent's metric tools, over one question: `plan_metric` names the facts a metric needs,
-`fundamentals` fetches them, and `compute_metric` checks each against the plan and runs the
-metric's library formula on their stored values, so the model never types a figure or a formula.
+"""The agent's metric tools, over one question: `plan_metric` names the facts a metric needs (in
+the company's scope, through any derived concepts it builds on), `fundamentals` fetches them, and
+`compute_metric` checks each against the plan and runs the library formulas on their stored
+values, so the model never types a figure or a formula.
 `define_metric` adds a metric built on a library formula, `propose_formula` asks a person for a new
 formula; both are written at once as `-ai`. Once the critic supports a claim citing a computed
 figure, `write_back` stores it under the metric's name: `derived` when its derived concept is
@@ -18,16 +19,20 @@ from anthropic.types import ToolParam
 
 from aigent.analyst.graph import Analysed
 from aigent.analyst.specialists import Passage
-from aigent.facts.cfg_facts import FACTS_TICKERS
+from aigent.facts.cfg_facts import COMPANY_SCOPES, FACTS_TICKERS, SCOPES
 from aigent.facts.derived_concepts import (
     OFFSETS,
     Binding,
     DerivedConcept,
     Fetch,
     Offset,
+    Step,
+    available,
     bindings_json,
     bindings_refusal,
+    evaluate,
     load_derived_concepts,
+    matched,
     name_refusal,
     plan,
     ranked,
@@ -39,6 +44,8 @@ from aigent.facts.store import (
     DerivedRow,
     Writer,
     concept_check,
+    normal_scope,
+    scope_refusal,
     write_derived,
     write_derived_concept,
     write_formula_proposal,
@@ -49,6 +56,10 @@ PLAN, COMPUTE, DEFINE, PROPOSE = "plan_metric", "compute_metric", "define_metric
 _LIBRARY = "; ".join(
     f"{f.name}({', '.join(f.variables)}) = {f.description}" for f in FORMULAS.values()
 )
+_SCOPES = "; ".join(
+    f"{scope} for {', '.join(t for t, s in COMPANY_SCOPES.items() if s == scope)}"
+    for scope in SCOPES
+)
 
 PLAN_TOOL: ToolParam = {
     "name": PLAN,
@@ -57,9 +68,11 @@ PLAN_TOOL: ToolParam = {
         "find the metric for it and the exact facts it needs for one company, year, period and "
         "basis. Returns a plan_id, the metric's library formula, and a fetch list: call "
         "fundamentals once per entry with exactly the arguments given, then compute_metric with "
-        "the plan_id and each fact's cite_as. If no metric fits, the answer lists the formula "
-        "library; define one with define_metric. Example: plan_metric(what='operating profit "
-        "growth', company='ICICIBANK', year='2025', period='year', basis='standalone')."
+        "the plan_id and each fact's cite_as. A metric is found only by its exact name or when "
+        "its name and label hold every word asked; otherwise the answer lists the closest of the "
+        "company's scope and the formula library, and you plan one by name or define it with "
+        "define_metric. Example: plan_metric(what='operating profit growth', company='ICICIBANK', "
+        "year='2025', period='year', basis='standalone')."
     ),
     "input_schema": {
         "type": "object",
@@ -80,7 +93,8 @@ COMPUTE_TOOL: ToolParam = {
     "name": COMPUTE,
     "description": (
         "Step 3: compute a planned metric from the facts fundamentals returned for its fetch "
-        "list. Pass the plan_id and, per variable, the cite_as of the fact you fetched for it. "
+        "list. Pass the plan_id and, per fetch entry, its variable as listed (a path such as "
+        "'denominator.first' when a metric builds on another) and the cite_as you fetched. "
         "Each cite must be the planned fact, verified; the values are taken from the facts. "
         "Returns the figure with a cite_as of its own (DERIVED:D1, …): cite that for it. A "
         "growth rate or ratio is a plain number, 0.1577 for 15.77%."
@@ -109,17 +123,23 @@ DEFINE_TOOL: ToolParam = {
     "name": DEFINE,
     "description": (
         "Define a metric plan_metric did not find, built on a library formula: "
-        f"{_LIBRARY}. Name it in CamelCase with no company or period (CostToIncomeRatio), and "
-        "bind each formula variable to a concept name (the ones fundamentals returns, such as "
-        "InterestEarned) at an offset: 't' the period asked, 't-1y' a year before, 't-1q' the "
-        "quarter before. It is saved, as a derived concept, unchecked for a person to review; "
-        "then plan it. If no "
-        "library formula fits, call propose_formula instead."
+        f"{_LIBRARY}. Name it in CamelCase with no company or period (CostToIncomeRatio). Give "
+        "its scope, the XBRL taxonomies it holds for: "
+        f"{_SCOPES}; several joined by commas, or * for all, when every scope named files the "
+        "concepts it uses. Bind each formula variable to a concept those scopes file (the names "
+        "fundamentals returns, such as InterestEarned) or to a metric already defined in it, at "
+        "an offset: 't' the period asked, 't-1y' a year before, 't-1q' the quarter before. It is "
+        "saved, as a derived concept, unchecked for a person to review; then plan it. If no "
+        "library formula fits even through other metrics, call propose_formula instead."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "name": {"type": "string"},
+            "scope": {
+                "type": "string",
+                "description": "One scope, several joined by commas, or * for every scope.",
+            },
             "label": {"type": "string", "description": "What it is, in words."},
             "formula": {"type": "string", "enum": list(FORMULAS)},
             "bindings": {
@@ -136,7 +156,7 @@ DEFINE_TOOL: ToolParam = {
                 },
             },
         },
-        "required": ["name", "label", "formula", "bindings"],
+        "required": ["name", "scope", "label", "formula", "bindings"],
         "additionalProperties": False,
     },
     "strict": True,
@@ -172,7 +192,11 @@ class Plan:
     year: int
     period: Period
     basis: str
-    fetches: tuple[Fetch, ...]
+    step: Step
+
+    @property
+    def fetches(self) -> list[Fetch]:
+        return self.step.fetches()
 
 
 @dataclass(frozen=True)
@@ -211,20 +235,27 @@ class MetricTools:
             raise ValueError("give what, a company of the database and the year as digits")
         if period not in PERIODS or basis not in BASES:
             raise ValueError(f"period is one of {', '.join(PERIODS)}; basis one of {BASES}")
-        found = ranked(what, load_derived_concepts(self.conn))
-        if not found:
+        scope = COMPANY_SCOPES[company]
+        held = load_derived_concepts(self.conn, scope)
+        metric = matched(what, held)
+        if metric is None:
             return {
                 "metric": None,
-                "note": "No metric matches. Define one with define_metric on a library formula.",
+                "scope": scope,
+                "note": (
+                    "No metric in this scope matches every word. If one of the closest is meant, "
+                    "plan it by its exact name; else define one with define_metric."
+                ),
+                "closest": [{"name": m.name, "label": m.label} for m in ranked(what, held)[:5]],
                 "library": _LIBRARY,
             }
-        metric = found[0]
-        fetches = tuple(plan(metric, int(year), cast(Period, period)))
+        step = plan(metric, int(year), cast(Period, period), {m.name: m for m in held})
         plan_id = f"P{len(self.plans) + 1}"
-        self.plans[plan_id] = Plan(metric, company, int(year), cast(Period, period), basis, fetches)
+        self.plans[plan_id] = Plan(metric, company, int(year), cast(Period, period), basis, step)
         return {
             "plan_id": plan_id,
             "metric": metric.name,
+            "scope": scope,
             "label": metric.label,
             "tier": metric.tier,
             "formula": f"{metric.formula}: {FORMULAS[metric.formula].description}",
@@ -241,9 +272,8 @@ class MetricTools:
                     },
                     "cite_as": f.cite_as(company, basis),
                 }
-                for f in fetches
+                for f in step.fetches()
             ],
-            "other_metrics": [m.name for m in found[1:4]],
         }
 
     def compute(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -263,11 +293,10 @@ class MetricTools:
                 raise ValueError(f"{variable} is {wanted[variable]}, not {cite}")
             facts[variable] = self._fact(cite)
         formula = FORMULAS[planned.metric.formula]
-        units = {str(f["unit"]) for f in facts.values()}
-        if formula.unit == "same" and len(units) > 1:
-            raise ValueError(f"{formula.name} needs one unit, not {', '.join(sorted(units))}")
-        value = formula.compute(**{v: float(cast(float, f["value"])) for v, f in facts.items()})
-        unit = "pure" if formula.unit == "pure" else units.pop()
+        value, unit = evaluate(
+            planned.step,
+            {v: (float(cast(float, f["value"])), str(f["unit"])) for v, f in facts.items()},
+        )
         cite_as = f"DERIVED:D{len(self.made) + 1}"
         inputs = tuple((f.variable, wanted[f.variable]) for f in planned.fetches)
         self.made[cite_as] = Computed(cite_as, planned, value, unit, inputs)
@@ -278,6 +307,7 @@ class MetricTools:
             "value": value,
             "unit": unit,
             "trusted": planned.metric.tier == "derived-concept",
+            "scope": planned.metric.scope,
             "formula": f"{formula.name}: {formula.description}",
             "company": planned.company,
             "year": planned.year,
@@ -292,7 +322,10 @@ class MetricTools:
 
     def define(self, arguments: dict[str, object]) -> dict[str, object]:
         name, label = str(arguments.get("name", "")), str(arguments.get("label", "")).strip()
-        formula = str(arguments.get("formula", ""))
+        formula, scope = str(arguments.get("formula", "")), str(arguments.get("scope", ""))
+        if why := scope_refusal(scope):
+            raise ValueError(why)
+        scope = normal_scope(scope)
         if why := name_refusal(name):
             raise ValueError(why)
         if not label:
@@ -306,17 +339,26 @@ class MetricTools:
             bindings[variable] = Binding(
                 str(row.get("concept", "")), cast(Offset, row.get("offset"))
             )
-        concepts = {r[0] for r in self.conn.execute("SELECT concept FROM concepts")}
-        if why := bindings_refusal(formula, bindings, concepts):
+        if why := bindings_refusal(formula, bindings, available(self.conn, scope), name):
             raise ValueError(why)
         with self.conn:
             written = write_derived_concept(
-                self.conn, name, label, formula, bindings_json(bindings), self.question, self.writer
+                self.conn,
+                name,
+                scope,
+                label,
+                formula,
+                bindings_json(bindings),
+                self.question,
+                self.writer,
             )
         if not written:
-            raise ValueError(f"{name} is already defined; plan it with plan_metric")
+            raise ValueError(
+                f"{name} is already defined in a scope overlapping {scope}; plan it by name"
+            )
         return {
             "defined": name,
+            "scope": scope,
             "tier": "derived-concept-ai",
             "note": "Saved unchecked; now plan it.",
         }
@@ -397,12 +439,12 @@ def write_back(
             )
             continue
         start, end = span(planned.year, planned.period)
-        now = [
+        own = [
             json.loads(tools.evidence[c].text)
-            for v, c in computed.inputs
-            if _offset(planned, v) == "t"
+            for f, (_, c) in zip(planned.fetches, computed.inputs, strict=True)
+            if (f.year, f.period) == (planned.year, planned.period)
         ]
-        instant = all("as_at" in cast(dict[str, object], f["period"]) for f in now)
+        instant = bool(own) and all("as_at" in cast(dict[str, object], f["period"]) for f in own)
         row = DerivedRow(
             ticker=planned.company,
             basis=planned.basis,
@@ -416,6 +458,7 @@ def write_back(
             formula=json.dumps(
                 {
                     "metric": planned.metric.name,
+                    "scope": planned.metric.scope,
                     "formula": planned.metric.formula,
                     "inputs": dict(computed.inputs),
                 },
@@ -430,7 +473,9 @@ def write_back(
                 row,
                 [i for i in ids if i is not None],
                 writer,
-                concept_check(planned.metric.name, checked) if trusted and checked else None,
+                concept_check(planned.metric.name, planned.metric.scope, checked)
+                if trusted and checked
+                else None,
             )
         written.append(
             {
@@ -447,10 +492,6 @@ def write_back(
             }
         )
     return written, skipped
-
-
-def _offset(planned: Plan, variable: str) -> str:
-    return planned.metric.bindings[variable].offset
 
 
 def _fact_id(conn: sqlite3.Connection, planned: Plan, fetch: Fetch) -> int | None:

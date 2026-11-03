@@ -225,6 +225,7 @@ def test_compute_turns_a_zero_base_into_an_error(concepts_db: sqlite3.Connection
 
 DEFINE_ARGS: dict[str, object] = {
     "name": "AdvancesToOperatingProfit",
+    "scope": "banking",
     "label": "Advances over operating profit",
     "formula": "ratio",
     "bindings": [
@@ -347,6 +348,7 @@ def test_a_supported_figure_is_written_under_its_metric_s_name(
                     "formula": "growth",
                     "inputs": {"current": OP25["cite_as"], "previous": OP24["cite_as"]},
                     "metric": "OperatingProfitGrowth",
+                    "scope": "banking",
                 },
                 sort_keys=True,
             ),
@@ -444,8 +446,121 @@ def test_a_checked_concept_s_figure_is_trusted_and_written_derived(
     assert written[0]["tier"] == "derived"
     assert concepts_db.execute(
         "SELECT tier, verified_by, verified_at FROM facts WHERE id = ?", (written[0]["fact_id"],)
-    ).fetchone() == ("derived", "OperatingProfitGrowth@vedant", WRITER.written_at)
+    ).fetchone() == ("derived", "OperatingProfitGrowth[banking]@vedant", WRITER.written_at)
 
 
 def test_an_unchecked_concept_s_figure_is_not_trusted(concepts_db: sqlite3.Connection) -> None:
     assert _computed(_tools(concepts_db, OP25, OP24))["trusted"] is False
+
+
+@pytest.mark.parametrize(
+    ("changed", "first"),
+    [
+        pytest.param(
+            {"what": "basic earnings per share growth"}, "OperatingProfitGrowth", id="near"
+        ),
+        pytest.param({"what": "OperatingProfitGrowth", "company": "ITC"}, None, id="other scope"),
+    ],
+)
+def test_a_plan_is_refused_for_a_near_miss_or_another_scope(
+    concepts_db: sqlite3.Connection, changed: dict[str, object], first: str | None
+) -> None:
+    planned = _call(_tools(concepts_db), PLAN, {**ASK, **changed})
+    assert planned["metric"] is None and "plan_id" not in planned
+    closest = [c["name"] for c in cast(list[dict[str, str]], planned["closest"])]
+    assert (closest[0] if closest else None) == first, closest
+
+
+@pytest.mark.parametrize(
+    ("changed", "said"),
+    [
+        pytest.param({"scope": "insurance"}, "scope is", id="an unknown scope"),
+        pytest.param({"scope": "*"}, "no concept", id="every scope, one not filing them"),
+        pytest.param({"scope": "ind-as"}, "no concept", id="concepts another scope files"),
+    ],
+)
+def test_define_refuses_a_scope_that_does_not_fit(
+    concepts_db: sqlite3.Connection, changed: dict[str, object], said: str
+) -> None:
+    content, is_error = _tools(concepts_db)(DEFINE, {**DEFINE_ARGS, **changed})
+    assert is_error and said in content, content
+
+
+def test_a_metric_built_on_a_metric_is_planned_computed_and_written(
+    concepts_db: sqlite3.Connection,
+) -> None:
+    tools = _tools(concepts_db, OP25, ADV25, DEP25)
+    _call(
+        tools,
+        DEFINE,
+        {
+            "name": "OperatingProfitLessAdvances",
+            "scope": "banking",
+            "label": "operating profit less advances",
+            "formula": "difference",
+            "bindings": [
+                {"variable": "minuend", "concept": "OperatingProfit", "offset": "t"},
+                {"variable": "subtrahend", "concept": "Advances", "offset": "t"},
+            ],
+        },
+    )
+    _call(
+        tools,
+        DEFINE,
+        {
+            "name": "ThatOverDeposits",
+            "scope": "banking",
+            "label": "operating profit less advances over deposits",
+            "formula": "ratio",
+            "bindings": [
+                {"variable": "numerator", "concept": "OperatingProfitLessAdvances", "offset": "t"},
+                {"variable": "denominator", "concept": "Deposits", "offset": "t"},
+            ],
+        },
+    )
+    planned = _call(tools, PLAN, {**ASK, "what": "ThatOverDeposits"})
+    fetch = cast(list[dict[str, object]], planned["fetch"])
+    assert [(f["variable"], f["cite_as"]) for f in fetch] == [
+        ("numerator.minuend", OP25["cite_as"]),
+        ("numerator.subtrahend", ADV25["cite_as"]),
+        ("denominator", DEP25["cite_as"]),
+    ]
+    shown = _call(
+        tools,
+        COMPUTE,
+        {
+            "plan_id": planned["plan_id"],
+            "inputs": [{"variable": f["variable"], "cite_as": f["cite_as"]} for f in fetch],
+        },
+    )
+    assert shown["value"] == pytest.approx((672988200000.0 - 800.0) / 1000.0)
+    written, _ = write_back(concepts_db, _done("supported", "DERIVED:D1"), tools, WRITER)
+    links = concepts_db.execute(
+        "SELECT count(*) FROM derived_from WHERE fact_id = ?", (written[0]["fact_id"],)
+    ).fetchone()
+    assert written[0]["metric"] == "ThatOverDeposits" and links == (3,), "linked to every leaf"
+
+
+def test_an_every_scope_metric_is_defined_and_planned_for_any_company(
+    concepts_db: sqlite3.Connection,
+) -> None:
+    with concepts_db:
+        concepts_db.execute(
+            """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start,
+                      period_end, value, unit, tier, written_by, written_at, run_id)
+               VALUES ('ITC', 'standalone', 'OperatingProfit', 'OP', 'duration', '2024-04-01',
+                       '2025-03-31', 5, 'INR', 'xbrl-ai', 'w', 't', 'r')"""
+        )
+    tools = _tools(concepts_db)
+    args = {
+        **DEFINE_ARGS,
+        "name": "OperatingProfitOverItself",
+        "scope": "ind-as,banking",
+        "bindings": [
+            {"variable": "numerator", "concept": "OperatingProfit", "offset": "t"},
+            {"variable": "denominator", "concept": "OperatingProfit", "offset": "t-1y"},
+        ],
+    }
+    assert _call(tools, DEFINE, args)["scope"] == "*"
+    planned = _call(tools, PLAN, {**ASK, "what": "OperatingProfitOverItself", "company": "ITC"})
+    assert planned["metric"] == "OperatingProfitOverItself" and planned["scope"] == "ind-as"

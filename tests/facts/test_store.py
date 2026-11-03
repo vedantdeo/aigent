@@ -17,6 +17,10 @@ from aigent.facts.store import (
     Writer,
     apply_labels,
     connect,
+    covers,
+    normal_scope,
+    scope_refusal,
+    scopes_of,
     sync_xbrl_facts,
     upsert_filing,
     verify_derived_concept,
@@ -543,25 +547,40 @@ def test_a_rebuild_drops_derived_facts_whose_input_changed(
     assert conn.execute("SELECT id FROM formula_proposals").fetchall() == [(formula_id,)], "kept"
 
 
-def test_write_metric_writes_a_new_metric_and_holds_the_first_by_name(
+def test_write_derived_concept_holds_the_first_by_name_and_scope(
     conn: sqlite3.Connection,
 ) -> None:
     assert write_derived_concept(
-        conn, "NetMargin", "net over income", "ratio", "{}", "Why?", WRITER
+        conn, "NetMargin", "banking", "net over income", "ratio", "{}", "Why?", WRITER
     )
-    assert not write_derived_concept(conn, "NetMargin", "another", "growth", "{}", None, WRITER)
+    assert not write_derived_concept(
+        conn, "NetMargin", "banking", "another", "growth", "{}", None, WRITER
+    )
+    assert write_derived_concept(conn, "NetMargin", "ind-as", "other", "ratio", "{}", None, WRITER)
     assert conn.execute(
-        "SELECT name, label, formula, tier, question, written_by, run_id FROM derived_concepts"
+        """SELECT name, scope, label, formula, tier, question, written_by, run_id
+           FROM derived_concepts ORDER BY scope"""
     ).fetchall() == [
         (
             "NetMargin",
+            "banking",
             "net over income",
             "ratio",
             "derived-concept-ai",
             "Why?",
             WRITER.written_by,
             "build-1",
-        )
+        ),
+        (
+            "NetMargin",
+            "ind-as",
+            "other",
+            "ratio",
+            "derived-concept-ai",
+            None,
+            WRITER.written_by,
+            "build-1",
+        ),
     ]
 
 
@@ -608,11 +627,11 @@ def test_an_older_metrics_table_becomes_derived_concepts(tmp_path: Path) -> None
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert "metrics" not in tables and "derived_concepts" in tables
     assert conn.execute(
-        "SELECT name, tier, verified_by FROM derived_concepts ORDER BY name"
+        "SELECT name, scope, tier, verified_by FROM derived_concepts ORDER BY name"
     ).fetchall() == [
-        ("Checked", "derived-concept", "vedant"),
-        ("Unchecked", "derived-concept-ai", None),
-    ]
+        ("Checked", "banking", "derived-concept", "vedant"),
+        ("Unchecked", "banking", "derived-concept-ai", None),
+    ], "every concept from before scopes came from a bank question"
     conn.close()
     assert connect(path).execute("SELECT count(*) FROM derived_concepts").fetchone() == (2,)
 
@@ -642,12 +661,16 @@ def test_an_older_formulas_table_becomes_formula_proposals(tmp_path: Path) -> No
 
 
 def test_verify_derived_concept_records_a_person_s_check_once(conn: sqlite3.Connection) -> None:
-    write_derived_concept(conn, "NetMargin", "net over income", "ratio", "{}", None, WRITER)
-    assert verify_derived_concept(conn, "NetMargin", " vedant ", "2026-11-03T23:00:00+05:30") == (
+    write_derived_concept(
+        conn, "NetMargin", "banking", "net over income", "ratio", "{}", None, WRITER
+    )
+    assert verify_derived_concept(
+        conn, "NetMargin", "banking", " vedant ", "2026-11-03T23:00:00+05:30"
+    ) == (
         True,
         0,
     )
-    assert verify_derived_concept(conn, "NetMargin", "someone", "later") == (False, 0)
+    assert verify_derived_concept(conn, "NetMargin", "banking", "someone", "later") == (False, 0)
     assert conn.execute(
         "SELECT tier, verified_by, verified_at FROM derived_concepts"
     ).fetchone() == ("derived-concept", "vedant", "2026-11-03T23:00:00+05:30")
@@ -663,9 +686,11 @@ def test_verify_derived_concept_records_a_person_s_check_once(conn: sqlite3.Conn
 def test_verify_derived_concept_refuses(
     conn: sqlite3.Connection, name: str, person: str, said: str
 ) -> None:
-    write_derived_concept(conn, "NetMargin", "net over income", "ratio", "{}", None, WRITER)
+    write_derived_concept(
+        conn, "NetMargin", "banking", "net over income", "ratio", "{}", None, WRITER
+    )
     with pytest.raises(ValueError, match=said):
-        verify_derived_concept(conn, name, person, "t")
+        verify_derived_concept(conn, name, "banking", person, "t")
     assert conn.execute("SELECT tier FROM derived_concepts").fetchone() == ("derived-concept-ai",)
 
 
@@ -689,7 +714,7 @@ def test_checking_a_concept_promotes_the_figures_computed_with_it(
     conn: sqlite3.Connection, input_tier: str, promoted: int, tier: str
 ) -> None:
     ids = _checked(conn, "xbrl-filed")
-    write_derived_concept(conn, "DerivedGrowth", "growth", "growth", "{}", None, WRITER)
+    write_derived_concept(conn, "DerivedGrowth", "ind-as", "growth", "growth", "{}", None, WRITER)
     fact_id = write_derived(conn, GROWTH, ids, WRITER)
     other = write_derived(conn, replace(GROWTH, concept="OtherGrowth"), ids, WRITER)
     by = None if input_tier.endswith("-ai") else "x"
@@ -697,8 +722,117 @@ def test_checking_a_concept_promotes_the_figures_computed_with_it(
         "UPDATE facts SET tier = ?, verified_by = ?, verified_at = ? WHERE id = ?",
         (input_tier, by, by, ids[1]),
     )
-    assert verify_derived_concept(conn, "DerivedGrowth", "vedant", "t2") == (True, promoted)
+    assert verify_derived_concept(conn, "DerivedGrowth", "ind-as", "vedant", "t2") == (
+        True,
+        promoted,
+    )
     row = conn.execute("SELECT tier, verified_by FROM facts WHERE id = ?", (fact_id,)).fetchone()
-    assert row == (tier, "DerivedGrowth@vedant" if promoted else None)
+    assert row == (tier, "DerivedGrowth[ind-as]@vedant" if promoted else None)
     untouched = conn.execute("SELECT tier FROM facts WHERE id = ?", (other,)).fetchone()
     assert untouched == ("derived-ai",), "another concept's figure"
+
+
+def test_a_derived_concepts_table_from_before_scopes_gets_its_scope(tmp_path: Path) -> None:
+    path = tmp_path / "old.sqlite"
+    old = connect(path)
+    with old:
+        old.execute("DROP TABLE derived_concepts")
+        old.execute(
+            """CREATE TABLE derived_concepts (name TEXT PRIMARY KEY, label TEXT NOT NULL,
+                  formula TEXT NOT NULL, bindings TEXT NOT NULL, tier TEXT NOT NULL,
+                  question TEXT, written_by TEXT NOT NULL, written_at TEXT NOT NULL,
+                  run_id TEXT NOT NULL, verified_by TEXT, verified_at TEXT)"""
+        )
+        old.execute(
+            "INSERT INTO derived_concepts VALUES ('NetMargin', 'l', 'ratio', '{}', "
+            "'derived-concept', NULL, 'w', 't', 'r', 'vedant', 't')"
+        )
+    old.close()
+    conn = connect(path)
+    assert conn.execute(
+        "SELECT name, scope, tier, verified_by FROM derived_concepts"
+    ).fetchall() == [("NetMargin", "banking", "derived-concept", "vedant")]
+    with conn:
+        assert write_derived_concept(conn, "NetMargin", "ind-as", "l", "ratio", "{}", None, WRITER)
+    conn.close()
+    assert connect(path).execute("SELECT count(*) FROM derived_concepts").fetchone() == (2,)
+
+
+def test_a_check_promotes_only_figures_of_its_own_scope(conn: sqlite3.Connection) -> None:
+    ids = _checked(conn, "xbrl-filed")
+    write_derived_concept(conn, "DerivedGrowth", "banking", "g", "growth", "{}", None, WRITER)
+    itc = write_derived(conn, GROWTH, ids, WRITER)
+    assert verify_derived_concept(conn, "DerivedGrowth", "banking", "vedant", "t2") == (True, 0)
+    tier = conn.execute("SELECT tier FROM facts WHERE id = ?", (itc,)).fetchone()
+    assert tier == ("derived-ai",), "ITC files under ind-as; a banking check says nothing of it"
+
+
+@pytest.mark.parametrize(
+    ("spec", "named", "normal", "refused"),
+    [
+        pytest.param("banking", ("banking",), "banking", False, id="one scope"),
+        pytest.param("ind-as, banking", ("banking", "ind-as"), "*", False, id="both, as all"),
+        pytest.param("*", ("banking", "ind-as"), "*", False, id="every scope"),
+        pytest.param("bank", ("bank",), "bank", True, id="a part of a name is no scope"),
+        pytest.param("banking,*", ("*", "banking"), "*,banking", True, id="star in a list"),
+        pytest.param(" , ", (), "", True, id="nothing named"),
+    ],
+)
+def test_a_scope_spec(spec: str, named: tuple[str, ...], normal: str, refused: bool) -> None:
+    assert scopes_of(spec) == named
+    assert (scope_refusal(spec) is not None) is refused, scope_refusal(spec)
+    if not refused:
+        assert normal_scope(spec) == normal
+        assert all(covers(spec, s) for s in named) and not covers(spec, "insurance")
+
+
+@pytest.mark.parametrize(
+    ("held", "asked", "written"),
+    [
+        pytest.param("banking", "ind-as", True, id="another scope"),
+        pytest.param("banking", "*", False, id="every scope overlaps one held"),
+        pytest.param("*", "banking", False, id="one scope inside every scope held"),
+        pytest.param("banking", "banking,ind-as", False, id="a list overlapping"),
+    ],
+)
+def test_a_name_is_held_once_in_any_scope(
+    conn: sqlite3.Connection, held: str, asked: str, written: bool
+) -> None:
+    assert write_derived_concept(conn, "M", held, "m", "ratio", "{}", None, WRITER)
+    assert write_derived_concept(conn, "M", asked, "m", "ratio", "{}", None, WRITER) is written
+
+
+def test_a_table_checking_scope_against_a_fixed_list_is_rebuilt(tmp_path: Path) -> None:
+    path = tmp_path / "old.sqlite"
+    old = connect(path)
+    with old:
+        old.execute("DROP TABLE derived_concepts")
+        old.execute(
+            """CREATE TABLE derived_concepts (name TEXT NOT NULL,
+                  scope TEXT NOT NULL CHECK (scope IN ('banking', 'ind-as')),
+                  label TEXT NOT NULL, formula TEXT NOT NULL, bindings TEXT NOT NULL,
+                  tier TEXT NOT NULL, question TEXT, written_by TEXT NOT NULL,
+                  written_at TEXT NOT NULL, run_id TEXT NOT NULL, verified_by TEXT,
+                  verified_at TEXT, PRIMARY KEY (name, scope))"""
+        )
+        old.execute(
+            "INSERT INTO derived_concepts VALUES ('M', 'ind-as', 'l', 'ratio', '{}', "
+            "'derived-concept-ai', NULL, 'w', 't', 'r', NULL, NULL)"
+        )
+    old.close()
+    conn = connect(path)
+    assert conn.execute("SELECT name, scope FROM derived_concepts").fetchall() == [("M", "ind-as")]
+    with conn:
+        assert write_derived_concept(conn, "N", "*", "n", "ratio", "{}", None, WRITER)
+
+
+def test_a_check_on_an_every_scope_concept_promotes_in_both(conn: sqlite3.Connection) -> None:
+    ids = _checked(conn, "xbrl-filed")
+    write_derived_concept(conn, "DerivedGrowth", "*", "g", "growth", "{}", None, WRITER)
+    itc = write_derived(conn, GROWTH, ids, WRITER)
+    assert verify_derived_concept(conn, "DerivedGrowth", "banking,ind-as", "vedant", "t") == (
+        True,
+        1,
+    )
+    row = conn.execute("SELECT tier, verified_by FROM facts WHERE id = ?", (itc,)).fetchone()
+    assert row == ("derived", "DerivedGrowth[*]@vedant")
