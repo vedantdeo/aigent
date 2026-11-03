@@ -227,3 +227,24 @@ def test_an_exact_name_comes_first_where_shared_words_tie() -> None:
         "CreditRatio", "credit over deposits", "ratio", MARGIN.bindings, "derived-concept-ai"
     )
     assert [m.name for m in ranked("Ratio", [credit, ratio])] == ["Ratio", "CreditRatio"]
+
+
+def test_the_command_shows_a_concept_and_records_the_check(
+    conn: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from aigent.facts import __main__ as cli
+
+    seed(conn, WRITER, _seeds(tmp_path, MARGIN_ROW))
+    db = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    conn.close()
+    monkeypatch.setattr(cli, "FACTS_DB", db)
+    cli.main(["verify-concept", "--name", "NetProfitMargin", "--by", "vedant"])
+    out = capsys.readouterr().out
+    assert "ratio" in out and "was derived-concept-ai" in out and "checked by vedant" in out, out
+    with pytest.raises(SystemExit, match="no derived concept"):
+        cli.main(["verify-concept", "--name", "Nope", "--by", "vedant"])
+    with pytest.raises(SystemExit, match="who checked"):
+        cli.main(["verify-concept", "--name", "NetProfitMargin", "--by", ""])

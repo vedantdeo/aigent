@@ -42,6 +42,7 @@ class DerivedConcept:
     formula: str
     bindings: Mapping[str, Binding]
     tier: str
+    verified_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -137,11 +138,14 @@ def bindings_json(bindings: Mapping[str, Binding]) -> str:
 
 
 def load_derived_concepts(conn: sqlite3.Connection) -> list[DerivedConcept]:
-    """Every metric held, by name."""
+    """Every derived concept held, by name."""
     rows = conn.execute(
-        "SELECT name, label, formula, bindings, tier FROM derived_concepts ORDER BY name"
+        """SELECT name, label, formula, bindings, tier, verified_by FROM derived_concepts
+           ORDER BY name"""
     )
-    return [DerivedConcept(n, label, f, as_bindings(b), tier) for n, label, f, b, tier in rows]
+    return [
+        DerivedConcept(n, label, f, as_bindings(b), tier, by) for n, label, f, b, tier, by in rows
+    ]
 
 
 def seed(conn: sqlite3.Connection, writer: Writer, path: Path = SEEDED) -> list[str]:

@@ -401,8 +401,11 @@ a wrong agreement). To fix in the matcher pass:
   library formula on their stored values. A figure a supported claim cites is written as
   `derived-ai` under the metric's name, linked to its inputs.
 
-Not yet: a person's check on a metric making its figures `derived`, metrics of metrics, and
-quarter rules beyond the quarter and the year before.
+**The trust rule (11-03):** a figure is `derived` (trusted, quotable) when its derived concept is
+checked by a person and every input is in a checked tier, `xbrl-filed` included (Vedant); checking
+a concept promotes the figures already computed with it. The library's code is checked by review.
+Not yet: derived concepts of derived concepts, and quarter rules beyond the quarter and the year
+before.
 A rebuild deletes a derived fact whose input was revised or removed (the formula stays), so a
 figure never outlives what it was computed from. Identical derived rows from repeated questions are
 kept (Vedant, 11-03: few questions repeat beyond smoke tests, and those are checked by hand).

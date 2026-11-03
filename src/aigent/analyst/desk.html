@@ -105,9 +105,9 @@ function period(p) {
   return p.as_at ? "at " + p.as_at : p.from + " to " + p.to;
 }
 function tier(t) {
-  const cls = t === "xbrl" || t === "xbrl-filed" ? t : "other";
+  const cls = t === "xbrl" || t === "xbrl-filed" ? t : t === "derived" ? "xbrl-filed" : "other";
   const label = t === "xbrl" ? "checked by a person" : t === "xbrl-filed" ? "filing agrees"
-    : t === "derived" ? "derived here" : t === "derived-ai" ? "derived, unverified" : t;
+    : t === "derived" ? "derived, concept checked" : t === "derived-ai" ? "derived, unverified" : t;
   return `<span class="pill ${cls}" title="${esc(t)}">${esc(label)}</span>`;
 }
 function verdict(v) {
@@ -116,7 +116,7 @@ function verdict(v) {
 function facts(list) {
   if (!list.length) return "";
   const rows = list.map(f => f.metric
-    ? `<tr><td>${esc(f.metric)}</td><td class="num">${money(f.value, f.unit)}</td><td>${esc(f.period)} ${esc(f.year)}</td><td>${esc(f.basis)}</td><td>${tier("derived")}</td><td class="src">${esc(f.cite_as)} · ${esc(f.formula)}</td></tr>`
+    ? `<tr><td>${esc(f.metric)}</td><td class="num">${money(f.value, f.unit)}</td><td>${esc(f.period)} ${esc(f.year)}</td><td>${esc(f.basis)}</td><td>${tier(f.trusted ? "derived" : "derived-ai")}</td><td class="src">${esc(f.cite_as)} · ${esc(f.formula)}</td></tr>`
     : f.label
     ? `<tr><td>${esc(f.label)}</td><td class="num">${money(f.value, f.unit)}</td><td>${esc(period(f.period))}</td><td>${esc(f.basis)}${f.segment ? " · " + esc(f.segment) : ""}</td><td>${tier(f.tier)}</td><td class="src">${esc(f.cite_as)}</td></tr>`
     : `<tr><td colspan="6" class="src">${esc(f.cite_as)}: not a fact this run looked up</td></tr>`).join("");
@@ -155,7 +155,7 @@ function render(a, seconds) {
       <div class="claim"><div class="claim-head"><span>${esc(c.text)}</span>${verdict(c.verdict)}</div>
       ${c.reason ? `<div class="reason">${esc(c.reason)}</div>` : ""}${facts(c.facts)}</div>`).join("") + `</div>`;
     if (a.written.length || a.skipped.length) html += `<div class="card"><h2>Written back to the database</h2>
-      <p class="reason">Each computed figure a supported claim cites, as an unverified fact under its metric's name, linked to the facts it was computed from. It is not quoted as verified until a person checks the metric.</p>
+      <p class="reason">Each computed figure a supported claim cites, as a fact under its metric's name, linked to the facts it was computed from: trusted when a person has checked the metric's definition, else unverified.</p>
       ${a.written.map(w => `<div class="call"><span class="tool">fact ${w.fact_id}</span> ${esc(w.metric)}, ${esc(w.period)} = ${money(w.value, w.unit)} ${tier(w.tier)}<br>${esc(w.formula)} of ${w.inputs.map(esc).join(", ")}</div>`).join("")}
       ${a.skipped.map(k => `<div class="call"><span class="err">not written</span> ${esc(k.metric)}: ${esc(k.reason)}</div>`).join("")}</div>`;
     if (a.caveats.length) html += `<div class="card"><h2>Caveats</h2>${a.caveats.map(c => `<p>${esc(c)}</p>`).join("")}</div>`;

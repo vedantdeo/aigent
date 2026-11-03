@@ -3,7 +3,8 @@
 metric's library formula on their stored values, so the model never types a figure or a formula.
 `define_metric` adds a metric built on a library formula, `propose_formula` asks a person for a new
 formula; both are written at once as `-ai`. Once the critic supports a claim citing a computed
-figure, `write_back` stores it as `derived-ai` under the metric's name."""
+figure, `write_back` stores it under the metric's name: `derived` when its derived concept is
+checked by a person, else `derived-ai`."""
 
 from __future__ import annotations
 
@@ -37,9 +38,10 @@ from aigent.facts.store import (
     CHECKED_TIERS,
     DerivedRow,
     Writer,
+    concept_check,
     write_derived,
     write_derived_concept,
-    write_formula,
+    write_formula_proposal,
 )
 from aigent.llm.core import Dispatch
 
@@ -275,6 +277,7 @@ class MetricTools:
             "label": planned.metric.label,
             "value": value,
             "unit": unit,
+            "trusted": planned.metric.tier == "derived-concept",
             "formula": f"{formula.name}: {formula.description}",
             "company": planned.company,
             "year": planned.year,
@@ -325,7 +328,7 @@ class MetricTools:
         if not name or not expression or not variables:
             raise ValueError("give the formula's name, its expression and its variables")
         with self.conn:
-            formula_id, new = write_formula(
+            formula_id, new = write_formula_proposal(
                 self.conn, name, expression, variables, self.question, self.writer
             )
         return {
@@ -420,7 +423,15 @@ def write_back(
             ),
         )
         with conn:
-            fact_id = write_derived(conn, row, [i for i in ids if i is not None], writer)
+            checked = planned.metric.verified_by
+            trusted = planned.metric.tier == "derived-concept" and checked is not None
+            fact_id = write_derived(
+                conn,
+                row,
+                [i for i in ids if i is not None],
+                writer,
+                concept_check(planned.metric.name, checked) if trusted and checked else None,
+            )
         written.append(
             {
                 "fact_id": fact_id,
@@ -429,7 +440,7 @@ def write_back(
                 "label": planned.metric.label,
                 "value": computed.value,
                 "unit": computed.unit,
-                "tier": "derived-ai",
+                "tier": "derived" if trusted else "derived-ai",
                 "formula": planned.metric.formula,
                 "period": f"{planned.period} {planned.year}",
                 "inputs": [c for _, c in computed.inputs],

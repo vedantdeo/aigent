@@ -1,6 +1,6 @@
-"""The facts database in SQLite: its schema, the build's writes, and an agent's derived facts and
-formulas. A rebuild keeps each XBRL fact's row while its value holds, so what points at a fact
-survives it."""
+"""The facts database in SQLite: its schema, the build's writes, and an agent's derived facts,
+derived concepts and formula proposals. A rebuild keeps each XBRL fact's row while its value
+holds, so what points at a fact survives it."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ TIERS = (
     *("filed-cell-ai", "filed-cell", "filed-read-ai", "filed-read", "derived-ai", "derived"),
 )
 CHECKED_TIERS = ("xbrl-filed", "xbrl", "filed-cell", "filed-read", "derived")  # name a checker
-FORMULA_TIERS = ("formula-ai", "formula")  # an agent's, a person's check
+FORMULA_PROPOSAL_TIERS = ("formula-ai", "formula")  # an agent's, accepted into the library
 DERIVED_CONCEPT_TIERS = (
     "derived-concept-ai",
     "derived-concept",
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS lookups (
     concept TEXT,
     found INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS formulas (
+CREATE TABLE IF NOT EXISTS formula_proposals (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     expression TEXT NOT NULL,
@@ -195,20 +195,31 @@ class Synced:
     derived_dropped: int = 0  # derived facts computed from a changed or removed fact
 
 
-def _rename_metrics(conn: sqlite3.Connection) -> None:
-    """Moves an older `metrics` table's rows into `derived_concepts`, tiers renamed; drops it."""
-    held = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'metrics'")
-    if held.fetchone() is None:
-        return
-    columns = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(metrics)"))
-    tiered = columns.replace(
-        "tier", "CASE tier WHEN 'metric' THEN 'derived-concept' ELSE 'derived-concept-ai' END"
-    )
-    with conn:
-        conn.execute(
-            f"INSERT OR IGNORE INTO derived_concepts ({columns}) SELECT {tiered} FROM metrics"
+# Tables renamed since: old name, new name, and each old tier's new name.
+_RENAMED: tuple[tuple[str, str, dict[str, str]], ...] = (
+    (
+        "metrics",
+        "derived_concepts",
+        {"metric": "derived-concept", "metric-ai": "derived-concept-ai"},
+    ),
+    ("formulas", "formula_proposals", {}),
+)
+
+
+def _move_renamed_tables(conn: sqlite3.Connection) -> None:
+    """Moves each older table's rows into its new name, tiers renamed, and drops it."""
+    for old, new, tiers in _RENAMED:
+        held = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (old,))
+        if held.fetchone() is None:
+            continue
+        columns = ", ".join(r[1] for r in conn.execute(f"PRAGMA table_info({old})"))
+        tiered = " ".join(f"WHEN '{a}' THEN '{b}'" for a, b in tiers.items())
+        selected = (
+            columns.replace("tier", f"CASE tier {tiered} ELSE tier END") if tiers else columns
         )
-        conn.execute("DROP TABLE metrics")
+        with conn:
+            conn.execute(f"INSERT OR IGNORE INTO {new} ({columns}) SELECT {selected} FROM {old}")
+            conn.execute(f"DROP TABLE {old}")
 
 
 def connect(path: Path = FACTS_DB) -> sqlite3.Connection:
@@ -220,7 +231,7 @@ def connect(path: Path = FACTS_DB) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     if conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
         _rebuild_facts(conn)
-    _rename_metrics(conn)
+    _move_renamed_tables(conn)
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
@@ -410,7 +421,7 @@ def apply_labels(conn: sqlite3.Connection, labels: Mapping[str, Labels]) -> list
     return unlabelled
 
 
-def write_formula(
+def write_formula_proposal(
     conn: sqlite3.Connection,
     name: str,
     expression: str,
@@ -421,12 +432,12 @@ def write_formula(
     """The formula's id, and whether this call wrote it: a new one goes in as `formula-ai`, and
     one already held under the same name and expression is reused as it stands."""
     held = conn.execute(
-        "SELECT id FROM formulas WHERE name = ? AND expression = ?", (name, expression)
+        "SELECT id FROM formula_proposals WHERE name = ? AND expression = ?", (name, expression)
     ).fetchone()
     if held is not None:
         return int(held[0]), False
     cursor = conn.execute(
-        """INSERT INTO formulas (name, expression, variables, tier, question, written_by,
+        """INSERT INTO formula_proposals (name, expression, variables, tier, question, written_by,
                   written_at, run_id)
            VALUES (?, ?, ?, 'formula-ai', ?, ?, ?, ?)""",
         (
@@ -443,10 +454,15 @@ def write_formula(
 
 
 def write_derived(
-    conn: sqlite3.Connection, row: DerivedRow, inputs: Sequence[int], writer: Writer
+    conn: sqlite3.Connection,
+    row: DerivedRow,
+    inputs: Sequence[int],
+    writer: Writer,
+    checked_by: str | None = None,
 ) -> int:
-    """Writes `row` as a `derived-ai` fact linked to the facts it was computed from, and returns
-    its id. ValueError, writing nothing, if an input is missing or in no checked tier."""
+    """Writes `row` as a fact linked to the facts it was computed from, and returns its id:
+    `derived` naming `checked_by` (the concept check it rests on) when given, else `derived-ai`.
+    ValueError, writing nothing, if an input is missing or in no checked tier."""
     marks = ", ".join("?" for _ in inputs)
     tiers = dict(conn.execute(f"SELECT id, tier FROM facts WHERE id IN ({marks})", tuple(inputs)))
     missing = [i for i in inputs if i not in tiers]
@@ -455,8 +471,9 @@ def write_derived(
         raise ValueError(f"derived from no input, missing {missing} or unchecked {unchecked}")
     cursor = conn.execute(
         """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start, period_end,
-                  segment, value, unit, tier, formula, written_by, written_at, run_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'derived-ai', ?, ?, ?, ?)""",
+                  segment, value, unit, tier, formula, written_by, written_at, run_id,
+                  verified_by, verified_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             row.ticker,
             row.basis,
@@ -468,10 +485,13 @@ def write_derived(
             row.segment,
             row.value,
             row.unit,
+            "derived" if checked_by else "derived-ai",
             row.formula,
             writer.written_by,
             writer.written_at,
             writer.run_id,
+            checked_by,
+            writer.written_at if checked_by else None,
         ),
     )
     fact_id = int(cursor.lastrowid or 0)
@@ -509,3 +529,41 @@ def write_derived_concept(
         ),
     )
     return cursor.rowcount == 1
+
+
+def concept_check(name: str, person: str) -> str:
+    """What a trusted derived fact names as its check: its concept, and who checked that."""
+    return f"{name}@{person}"
+
+
+def verify_derived_concept(
+    conn: sqlite3.Connection, name: str, person: str, at: str
+) -> tuple[bool, int]:
+    """Records `person`'s check of a derived concept's bindings, making it `derived-concept`, and
+    makes `derived` every `derived-ai` fact computed with it whose inputs are all in checked
+    tiers. Returns whether the check was new and how many facts it promoted. ValueError if no
+    derived concept has that name or no person is named."""
+    held = conn.execute("SELECT tier FROM derived_concepts WHERE name = ?", (name,)).fetchone()
+    if held is None:
+        raise ValueError(f"no derived concept {name!r}")
+    if not person.strip():
+        raise ValueError("say who checked it")
+    with conn:
+        cursor = conn.execute(
+            """UPDATE derived_concepts SET tier = 'derived-concept', verified_by = ?,
+                      verified_at = ?
+               WHERE name = ? AND tier = 'derived-concept-ai'""",
+            (person.strip(), at, name),
+        )
+        checked = conn.execute(
+            "SELECT verified_by FROM derived_concepts WHERE name = ?", (name,)
+        ).fetchone()[0]
+        marks = ", ".join("?" for _ in CHECKED_TIERS)
+        promoted = conn.execute(
+            f"""UPDATE facts SET tier = 'derived', verified_by = ?, verified_at = ?
+                WHERE tier = 'derived-ai' AND concept = ? AND NOT EXISTS (
+                    SELECT 1 FROM derived_from d JOIN facts i ON i.id = d.input_fact_id
+                    WHERE d.fact_id = facts.id AND i.tier NOT IN ({marks}))""",
+            (concept_check(name, checked), at, name, *CHECKED_TIERS),
+        )
+    return cursor.rowcount == 1, promoted.rowcount

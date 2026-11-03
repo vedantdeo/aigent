@@ -296,7 +296,7 @@ def test_a_proposed_formula_is_written_for_a_person(concepts_db: sqlite3.Connect
     }
     first, again = _call(tools, PROPOSE, args), _call(tools, PROPOSE, args)
     assert (first["tier"], first["new"], again["new"]) == ("formula-ai", True, False)
-    assert concepts_db.execute("SELECT name, tier, question FROM formulas").fetchall() == [
+    assert concepts_db.execute("SELECT name, tier, question FROM formula_proposals").fetchall() == [
         ("cagr", "formula-ai", QUESTION)
     ]
     content, is_error = tools(PROPOSE, {**args, "expression": ""})
@@ -428,3 +428,24 @@ def test_a_memo_never_written_writes_nothing(concepts_db: sqlite3.Connection) ->
     _computed(tools)
     none = Analysed(None, {}, None, 0, [], "stopped", None)
     assert write_back(concepts_db, none, tools, WRITER) == ([], [])
+
+
+def test_a_checked_concept_s_figure_is_trusted_and_written_derived(
+    concepts_db: sqlite3.Connection,
+) -> None:
+    with concepts_db:
+        concepts_db.execute(
+            "UPDATE derived_concepts SET tier = 'derived-concept', verified_by = 'vedant', "
+            "verified_at = 't' WHERE name = 'OperatingProfitGrowth'"
+        )
+    tools = _tools(concepts_db, OP25, OP24)
+    assert _computed(tools)["trusted"] is True
+    written, _ = write_back(concepts_db, _done("supported", "DERIVED:D1"), tools, WRITER)
+    assert written[0]["tier"] == "derived"
+    assert concepts_db.execute(
+        "SELECT tier, verified_by, verified_at FROM facts WHERE id = ?", (written[0]["fact_id"],)
+    ).fetchone() == ("derived", "OperatingProfitGrowth@vedant", WRITER.written_at)
+
+
+def test_an_unchecked_concept_s_figure_is_not_trusted(concepts_db: sqlite3.Connection) -> None:
+    assert _computed(_tools(concepts_db, OP25, OP24))["trusted"] is False

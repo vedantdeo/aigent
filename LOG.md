@@ -2377,4 +2377,18 @@
   the seed file `derived-concepts.jsonl`), the agent's tools kept as `plan_metric`,
   `compute_metric` and `define_metric`, since "metric" is how an analyst asks. `connect` moves an
   older `metrics` table across, tiers renamed; 4 of 4 mutants killed.
+- 11-03, night, after the commit (`86ffc38`): **`formulas` renamed `formula_proposals`, and the
+  first derived concept checked, $0.00.** The table held only the agent's proposals for the
+  library (formulas themselves are code), so the name misled; the migration generalised to move
+  both renamed tables. `python -m aigent.facts verify-concept` shows a concept's bindings and
+  records a person's check: Vedant checked `OperatingProfitBeforeProvisionAndContingenciesGrowth`
+  (`derived-concept`). The figure it produced is still `derived-ai`: the rule making a computed
+  figure trusted, once its concept is checked and its inputs are, is not built yet. 2,498 tests.
+- 11-03, night, last of all: **the trust rule, $0.00.** Asked whether the smoke query now runs
+  entirely on checked logic: not yet. The inputs are `xbrl-filed` (machine-checked; Vedant: that
+  tier counts as checked), the library and planner are code awaiting his PR review, the concept is
+  his check, and the figure was still `derived-ai`. Now a figure is `derived` when its concept is
+  `derived-concept` and every input is in a checked tier, naming `<concept>@<person>`; checking a
+  concept promotes figures already computed with it. Re-running his check promoted fact 48550
+  (0.1577) to `derived`. 2,504 tests; 7 of 7 mutants killed.
 
