@@ -2462,3 +2462,17 @@
   quarter its span ends. Both served over MCP to the desk and the capstone analyst. The word lookup
   stays for the coverage eval. 27/27 guards mutation-checked (one redundant guard dropped). 2,602
   tests.
+- 11-04, smoke on `46ad7e8`: **"What was ICICI Bank's net interest income in FY2026?", $0.0736
+  (Sonnet $0.0445, Opus $0.0291).** The intended path exactly: `get_metric` → derived
+  `NetInterestIncome` → `plan_metric(name, 2026 Q4 12M)` → `fundamentals` for `InterestEarned` and
+  `InterestExpended` by concept → `compute_metric`. Rs 88,075.23 crore standalone (Rs 1,69,946.09
+  crore less Rs 81,870.86 crore), three claims supported, written back for FY2026; its caveat says
+  the figure is derived, not a filed line.
+- 11-04, later: **a derived figure already held is not written again, $0.00.** Write-back wrote
+  every supported computed figure, so yesterday's two runs of the ten questions left 7 identical
+  pairs. `store.derived_held` finds a derived fact with the same company, basis, concept, period,
+  segment and formula column (inputs and periods); write-back skips it as `already held`, naming
+  the fact. Promotion needs nothing new: checking a concept already promotes its `derived-ai`
+  facts. 9/9 guards mutation-checked; 2,613 tests. Vedant approved deleting the later of each pair
+  (48559-48565, with their 14 links). Rows written before today's `periods` field will not match
+  a new write of the same question.

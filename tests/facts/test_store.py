@@ -18,6 +18,7 @@ from aigent.facts.store import (
     apply_labels,
     connect,
     covers,
+    derived_held,
     normal_scope,
     scope_refusal,
     scopes_of,
@@ -489,6 +490,39 @@ def test_write_derived_writes_a_derived_ai_fact_linked_to_its_inputs(
         (fact_id,),
     ).fetchall()
     assert linked == [(ids[0],), (ids[1],)], "each input once"
+
+
+@pytest.mark.parametrize(
+    ("change", "held"),
+    [
+        pytest.param({}, True, id="the same figure"),
+        pytest.param({"value": 0.2, "label": "other"}, True, id="a value or label is not the key"),
+        pytest.param({"ticker": "WIPRO"}, False, id="another company"),
+        pytest.param({"basis": "standalone"}, False, id="another basis"),
+        pytest.param({"concept": "OtherGrowth"}, False, id="another concept"),
+        pytest.param({"period_start": None}, False, id="an instant, not the span"),
+        pytest.param({"period_end": "2024-03-31"}, False, id="another period"),
+        pytest.param({"segment": "Agri"}, False, id="a segment"),
+        pytest.param({"formula": '{"formula_id": 2}'}, False, id="other inputs or periods"),
+    ],
+)
+def test_a_derived_figure_is_held_by_its_key_and_formula(
+    conn: sqlite3.Connection, change: dict[str, object], held: bool
+) -> None:
+    ids = _checked(conn, "xbrl-filed")
+    fact_id = write_derived(conn, GROWTH, ids[:1], WRITER)
+    found = derived_held(conn, replace(GROWTH, **change))
+    assert found == (fact_id if held else None), change
+
+
+def test_a_filed_fact_is_never_taken_for_a_derived_one(conn: sqlite3.Connection) -> None:
+    _checked(conn, "xbrl-filed")
+    row = conn.execute(
+        """SELECT ticker, basis, concept, label, period_start, period_end, segment, value, unit,
+                  COALESCE(formula, '') FROM facts WHERE period_start IS NOT NULL LIMIT 1"""
+    ).fetchone()
+    conn.execute("UPDATE facts SET formula = ''")
+    assert derived_held(conn, DerivedRow(*row)) is None
 
 
 def test_write_derived_writes_an_instant_without_a_start(conn: sqlite3.Connection) -> None:

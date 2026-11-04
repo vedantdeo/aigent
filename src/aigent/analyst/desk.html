@@ -157,7 +157,7 @@ function render(a, seconds) {
     if (a.written.length || a.skipped.length) html += `<div class="card"><h2>Written back to the database</h2>
       <p class="reason">Each computed figure a supported claim cites, as a fact under its metric's name, linked to the facts it was computed from: trusted when a person has checked the metric's definition, else unverified.</p>
       ${a.written.map(w => `<div class="call"><span class="tool">fact ${w.fact_id}</span> ${esc(w.metric)}, ${esc(w.periods)} = ${money(w.value, w.unit)} ${tier(w.tier)}<br>${esc(w.formula)} of ${w.inputs.map(esc).join(", ")}</div>`).join("")}
-      ${a.skipped.map(k => `<div class="call"><span class="err">not written</span> ${esc(k.metric)}: ${esc(k.reason)}</div>`).join("")}</div>`;
+      ${a.skipped.map(k => `<div class="call"><span class="err">not written</span> ${esc(k.metric)}: ${esc(k.reason)}${k.fact_id ? ", fact " + esc(k.fact_id) : ""}</div>`).join("")}</div>`;
     if (a.caveats.length) html += `<div class="card"><h2>Caveats</h2>${a.caveats.map(c => `<p>${esc(c)}</p>`).join("")}</div>`;
   } else if (!a.error) {
     html += a.draft

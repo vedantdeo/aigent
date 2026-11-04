@@ -46,6 +46,7 @@ from aigent.facts.store import (
     DerivedRow,
     Writer,
     concept_check,
+    derived_held,
     normal_scope,
     scope_refusal,
     write_derived,
@@ -491,8 +492,8 @@ def chained(tools: MetricTools, rest: Dispatch) -> Dispatch:
 def write_back(
     conn: sqlite3.Connection, done: Analysed, tools: MetricTools, writer: Writer
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Writes each computed figure a supported claim cites, once, and returns what was written and
-    what was skipped with its reason."""
+    """Writes each computed figure a supported claim cites, once, unless the same figure is already
+    held, and returns what was written and what was skipped with its reason."""
     if done.memo is None:
         return [], []
     supported = [
@@ -544,6 +545,12 @@ def write_back(
                 sort_keys=True,
             ),
         )
+        held = derived_held(conn, row)
+        if held is not None:
+            skipped.append(
+                {"metric": planned.metric.name, "reason": "already held", "fact_id": held}
+            )
+            continue
         with conn:
             checked = planned.metric.verified_by
             trusted = planned.metric.tier == "derived-concept" and checked is not None

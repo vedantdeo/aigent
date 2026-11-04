@@ -543,6 +543,19 @@ def test_a_figure_two_claims_cite_is_written_once(concepts_db: sqlite3.Connectio
     assert len(_derived(concepts_db)) == 1
 
 
+def test_a_figure_already_held_is_not_written_again(concepts_db: sqlite3.Connection) -> None:
+    first = _tools(concepts_db, OP25, OP24)
+    _computed(first)
+    [written], _ = write_back(concepts_db, _done("supported", "DERIVED:D1"), first, WRITER)
+    again = _tools(concepts_db, OP25, OP24)
+    _computed(again)
+    none, skipped = write_back(concepts_db, _done("supported", "DERIVED:D1"), again, WRITER)
+    assert none == [] and skipped == [
+        {"metric": "OperatingProfitGrowth", "reason": "already held", "fact_id": written["fact_id"]}
+    ]
+    assert len(_derived(concepts_db)) == 1
+
+
 def test_a_figure_whose_input_lost_its_check_is_skipped(concepts_db: sqlite3.Connection) -> None:
     tools = _tools(concepts_db, OP25, OP24)
     _computed(tools)

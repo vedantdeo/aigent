@@ -560,6 +560,27 @@ def write_formula_proposal(
     return int(cursor.lastrowid or 0), True
 
 
+def derived_held(conn: sqlite3.Connection, row: DerivedRow) -> int | None:
+    """The id of a derived fact already holding `row`: the same company, basis, concept, period,
+    segment and formula (its inputs and periods); None when there is none."""
+    found = conn.execute(
+        """SELECT id FROM facts WHERE tier IN ('derived', 'derived-ai') AND ticker = ?
+             AND basis = ? AND concept = ? AND period_start IS ? AND period_end = ?
+             AND segment IS ? AND formula = ?
+           ORDER BY id LIMIT 1""",
+        (
+            row.ticker,
+            row.basis,
+            row.concept,
+            row.period_start,
+            row.period_end,
+            row.segment,
+            row.formula,
+        ),
+    ).fetchone()
+    return None if found is None else int(found[0])
+
+
 def write_derived(
     conn: sqlite3.Connection,
     row: DerivedRow,
