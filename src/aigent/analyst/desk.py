@@ -38,7 +38,7 @@ from aigent.analyst.metric_tools import METRIC_TOOLS, MetricTools, chained, writ
 from aigent.analyst.router import Router
 from aigent.analyst.run import Generalist, generalist_of
 from aigent.analyst.specialists import Passage
-from aigent.analyst.toolbox import LOOKUP, Toolbox
+from aigent.analyst.toolbox import FIND, LOOKUP, Toolbox
 from aigent.errors import BudgetExceeded, GuardrailTripped
 from aigent.facts.derived_concepts import seed
 from aigent.facts.store import FACTS_DB, Writer, connect
@@ -59,21 +59,22 @@ RUPEES = (
 
 DESK_PROMPT = (
     "You are a financial analyst answering a question about Indian listed companies from a "
-    "database of the figures in their results filings. Look each figure up with fundamentals, "
-    "naming the company, the financial year (2025 is FY 2024-25), the period and the basis; it "
-    "returns only verified figures, each with a cite_as, and says how many unverified entries it "
-    "held back. A figure that needs arithmetic, such as a growth rate, a ratio or a margin, is "
-    "a metric: plan it with plan_metric, fetch each fact its plan lists with fundamentals, "
-    "exactly as listed, then compute it with compute_metric, which returns it with a cite_as of "
-    "its own. plan_metric takes a time, a financial year and quarter meaning that quarter's "
-    "end, and a period, the span ending then, or none for a snapshot such as a balance-sheet "
+    "database of the figures in their results filings. For every figure, first call "
+    "get_metric with the company and the figure in words: it returns the derived metrics and "
+    "the filed concepts closest to them, each with its label and kind. Pick the one that is the "
+    "figure asked. A filed concept is fetched with fundamentals by its exact concept name; it "
+    "returns only a verified figure, with a cite_as, and says how many unverified entries it "
+    "held back. A derived metric, such as a growth rate, a ratio or a margin, is planned with "
+    "plan_metric by its exact name; fetch each fact its plan lists with fundamentals, exactly "
+    "as listed, then compute it with compute_metric, which returns it with a cite_as of its "
+    "own. Both take a time, a financial year and quarter meaning that quarter's end, and a "
+    "period, the span ending then, or none for a snapshot such as a balance-sheet item or "
     "ratio; a metric comparing two times, such as a growth rate, takes the previous time and "
     "period too. Name them every time, as nothing is assumed, and state them in the answer. "
-    "plan_metric plans only a metric that names every word you ask, or its exact "
-    "name; otherwise it lists the closest in the company's scope: plan one by its exact name if "
-    "it is the figure you need, else define one with define_metric in that scope, on a library "
-    "formula over concepts or over metrics already defined. If no formula fits even so, propose "
-    "one with propose_formula and say the figure could not be computed. "
+    "If get_metric offers nothing that is the figure, define a metric with define_metric in the "
+    "company's scope, on a library formula over concepts or over metrics already defined. If no "
+    "formula fits even so, propose one with propose_formula and say the figure could not be "
+    "computed. "
     "Never do arithmetic yourself, never state a figure no tool returned, and never estimate "
     "one. When you have enough, answer in prose: state each fact with its figure, unit and "
     "period, and after it the cite_as of every fact or computed figure it rests on in square "
@@ -83,15 +84,8 @@ DESK_PROMPT = (
 )
 
 Call = dict[str, object]
-# A free local lookup at start, so the first question does not wait for the embedder to load.
-WARM_UP: dict[str, object] = {
-    "company": "ICICIBANK",
-    "year": "2025",
-    "what": "net profit",
-    "period": "year",
-    "basis": "standalone",
-    "segment": None,
-}
+# A free local search at start, so the first question does not wait for the embedder to load.
+WARM_UP: dict[str, object] = {"company": "ICICIBANK", "what": "net profit"}
 
 
 def recorded(dispatch: Dispatch, calls: list[Call]) -> Dispatch:
@@ -324,7 +318,7 @@ def main(argv: list[str] | None = None) -> None:
 
     with mcp_connect(OWN_SERVER, only=DESK_SERVED_TOOLS, fenced=False) as served:
         began = time.monotonic()
-        served.dispatch(LOOKUP, WARM_UP)
+        served.dispatch(FIND, WARM_UP)
         print(f"lookup warm after {time.monotonic() - began:.0f} s", flush=True)
         started = datetime.now().astimezone()
         held = connect(FACTS_DB)

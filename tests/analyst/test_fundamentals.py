@@ -1,5 +1,6 @@
-"""`fundamentals` and `compare_unverified` over the facts database: verified answers, held-back
-unverified ones, the comparison, the refusals and the schemas."""
+"""`get_metric`, `fundamentals` and `compare_unverified` over the facts database: candidate names,
+verified answers by exact concept and time, held-back unverified ones, the comparison, the refusals
+and the schemas."""
 
 from __future__ import annotations
 
@@ -8,24 +9,26 @@ from typing import cast, get_args
 
 import pytest
 
-from aigent.analyst.cfg_analyst import ANALYST_SERVED_TOOLS
+from aigent.analyst.cfg_analyst import ANALYST_SERVED_TOOLS, DESK_SERVED_TOOLS
 from aigent.analyst.fundamentals import (
     COMPARE_TOOL,
     FUNDAMENTALS_TOOL,
+    GET_METRIC_TOOL,
     Company,
     FinancialYear,
     FundamentalsTool,
     agrees,
 )
 from aigent.facts.cfg_facts import FACTS_TICKERS, FACTS_YEARS
-from aigent.facts.lookup import BASES, PERIODS, Lookup
-from aigent.facts.store import CHECKED_TIERS
+from aigent.facts.lookup import BASES, LENGTHS, QUARTERS, Lookup
+from aigent.facts.store import CHECKED_TIERS, Writer, connect, write_derived_concept
 
 ASKED: dict[str, object] = {
     "company": "ITC",
+    "concept": "RevenueFromOperations",
     "year": "2025",
-    "what": "revenue from operations",
-    "period": "year",
+    "quarter": "Q4",
+    "period": "12M",
     "basis": "consolidated",
     "segment": None,
 }
@@ -133,11 +136,45 @@ def test_agrees(mine: float, held: float, agreed: bool) -> None:
 def test_a_segment_and_a_basis_reach_the_lookup(checked_facts_lookup: Lookup) -> None:
     tool = FundamentalsTool(checked_facts_lookup)
 
-    segment = json.loads(tool(ASKED | {"what": "segment revenue", "segment": "agri"}))
+    segment = json.loads(tool(ASKED | {"concept": "SegmentRevenue", "segment": "agri"}))
     standalone = json.loads(tool(ASKED | {"basis": "standalone"}))
 
     assert segment["facts"][0]["segment"] == "Agri Business"
     assert standalone["facts"][0]["value"] == 700.0
+
+
+@pytest.mark.parametrize(
+    ("change", "value", "cite"),
+    [
+        pytest.param({}, 816.0, "2025:consolidated:year:RevenueFromOperations", id="a year"),
+        pytest.param(
+            {"period": "3M"}, 204.0, "2025:consolidated:Q4:RevenueFromOperations", id="Q4"
+        ),
+        pytest.param(
+            {"quarter": "Q3", "period": "9M"},
+            612.0,
+            "2025:consolidated:9M:RevenueFromOperations",
+            id="nine months ending Q3",
+        ),
+        pytest.param(
+            {"concept": "Assets", "period": None},
+            900.0,
+            "2025:consolidated:Q4:Assets",
+            id="a snapshot as at Q4's end",
+        ),
+        pytest.param(
+            {"concept": "Assets", "quarter": "Q3", "period": None},
+            880.0,
+            "2025:consolidated:Q3:Assets",
+            id="a snapshot as at Q3's end",
+        ),
+    ],
+)
+def test_a_concept_is_fetched_at_the_time_and_period_named(
+    checked_facts_lookup: Lookup, change: dict[str, object], value: float, cite: str
+) -> None:
+    said = json.loads(FundamentalsTool(checked_facts_lookup)(ASKED | change))
+    assert [(f["value"], f["cite_as"]) for f in said["facts"]] == [(value, f"FACT:ITC:{cite}")]
 
 
 @pytest.mark.parametrize(
@@ -146,11 +183,19 @@ def test_a_segment_and_a_basis_reach_the_lookup(checked_facts_lookup: Lookup) ->
         pytest.param({"company": "INFY"}, "no company 'INFY'", id="a company not held"),
         pytest.param({"year": "2019"}, "no year '2019'", id="a year not held"),
         pytest.param({"year": "FY25"}, "no year 'FY25'", id="a year not a number"),
-        pytest.param({"what": "  "}, "say which figure", id="no figure named"),
-        pytest.param({"period": "Q5"}, "no period 'Q5'", id="a period that is not one"),
+        pytest.param({"concept": "  "}, "name the concept", id="no concept named"),
+        pytest.param({"quarter": "Q5"}, "no quarter 'Q5'", id="a quarter that is not one"),
+        pytest.param({"period": "4M"}, "no period '4M'", id="a period that is not one"),
         pytest.param({"basis": "group"}, "no basis 'group'", id="a basis that is not one"),
         pytest.param({"segment": 3}, "a name or null", id="a segment that is not a name"),
-        pytest.param({"company": "WIPRO"}, "Closest labels filed", id="nothing held for it"),
+        pytest.param(
+            {"concept": "revenue from operations"}, "find its name with get_metric", id="words"
+        ),
+        pytest.param({"company": "WIPRO"}, "WIPRO files no concept", id="a concept not filed"),
+        pytest.param({"concept": "Assets"}, "a snapshot", id="a snapshot given a period"),
+        pytest.param({"period": None}, "reads a span", id="a flow given no period"),
+        pytest.param({"quarter": "Q3", "period": "6M"}, "ends at Q2 only", id="6M ending Q3"),
+        pytest.param({"year": "2024"}, "files no RevenueFromOperations", id="nothing then"),
     ],
 )
 def test_a_bad_call_is_an_error_message_and_records_nothing(
@@ -170,10 +215,81 @@ def test_the_schema_offers_exactly_what_the_database_holds() -> None:
     assert properties["company"]["enum"] == list(FACTS_TICKERS) == list(get_args(Company))
     assert properties["year"]["enum"] == [str(y) for y in FACTS_YEARS]
     assert get_args(FinancialYear) == tuple(str(y) for y in FACTS_YEARS)
-    assert properties["period"]["enum"] == list(PERIODS)
+    assert properties["quarter"]["enum"] == list(QUARTERS)
+    assert properties["period"]["anyOf"] == [
+        {"type": "string", "enum": list(LENGTHS)},
+        {"type": "null"},
+    ]
     assert properties["basis"]["enum"] == list(BASES)
-
     assert set(schema["required"]) == set(properties)
+    found = cast(dict[str, dict[str, object]], GET_METRIC_TOOL["input_schema"])
+    assert found["required"] == ["company", "what"] and set(found["properties"]) == {
+        "company",
+        "what",
+    }
+
+
+def test_get_metric_offers_filed_concepts_with_their_kind(facts_lookup: Lookup) -> None:
+    tool = FundamentalsTool(facts_lookup)
+
+    revenue = json.loads(tool.candidates({"company": "ITC", "what": "revenue from operations"}))
+    assets = json.loads(tool.candidates({"company": "ITC", "what": "total assets"}))
+
+    assert revenue["filed"][0] == {
+        "concept": "RevenueFromOperations",
+        "label": "Revenue from operations",
+        "kind": "flow",
+    }
+    assert assets["filed"][0]["concept"] == "Assets" and assets["filed"][0]["kind"] == "snapshot"
+    assert revenue["scope"] == "ind-as" and revenue["derived"] == []
+    none = json.loads(tool.candidates({"company": "WIPRO", "what": "revenue from operations"}))
+    assert none["filed"] == [], "only what the company itself files"
+    assert tool.looked_up == [], "finding a name fetches nothing"
+
+
+def test_get_metric_offers_a_derived_metric_of_the_company_s_scope(
+    facts_db: object, facts_lookup: Lookup
+) -> None:
+    conn = connect(facts_lookup.db)
+    bindings = (
+        '{"current": {"at": "current", "concept": "RevenueFromOperations"}, '
+        '"previous": {"at": "previous", "concept": "RevenueFromOperations"}}'
+    )
+    with conn:
+        for scope in ("ind-as", "banking"):
+            write_derived_concept(
+                conn,
+                "RevenueGrowth",
+                scope,
+                "Growth in revenue",
+                "growth",
+                bindings,
+                None,
+                Writer("w", "t", "r"),
+            )
+    conn.close()
+
+    said = json.loads(
+        FundamentalsTool(facts_lookup).candidates({"company": "ITC", "what": "revenue growth"})
+    )
+
+    assert said["derived"] == [
+        {"name": "RevenueGrowth", "label": "Growth in revenue", "kind": "flow"}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("arguments", "says"),
+    [
+        pytest.param({"company": "INFY", "what": "revenue"}, "no company", id="a company not held"),
+        pytest.param({"company": "ITC", "what": " "}, "say which figure", id="no words"),
+    ],
+)
+def test_get_metric_refuses_a_bad_call(
+    facts_lookup: Lookup, arguments: dict[str, object], says: str
+) -> None:
+    said = FundamentalsTool(facts_lookup).candidates(arguments)
+    assert said.startswith("Error:") and says in said, said
 
 
 def test_compare_asks_for_the_agents_own_figure_and_its_source() -> None:
@@ -184,3 +300,8 @@ def test_compare_asks_for_the_agents_own_figure_and_its_source() -> None:
 
 def test_the_analyst_can_compare_whenever_it_can_look_up() -> None:
     assert {"fundamentals", "compare_unverified"} <= set(ANALYST_SERVED_TOOLS)
+
+
+def test_whoever_can_fetch_a_concept_can_find_its_name() -> None:
+    assert {"fundamentals", "get_metric"} <= set(ANALYST_SERVED_TOOLS)
+    assert {"fundamentals", "get_metric"} <= set(DESK_SERVED_TOOLS)

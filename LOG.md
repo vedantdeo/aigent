@@ -2442,3 +2442,23 @@
   back to the latest Q2 or Q4 for companies filing balance sheets half-yearly. Checked on a copy:
   HDFC Bank credit-deposit 98.4% as at Q4 FY2026; a scratch `DebtToAssetsRatio` for Reliance 17.2%,
   nothing at Q3. 27/27 new guards mutation-checked today. 2,577 tests.
+- 11-04, smoke: **"What is ICICI Bank's credit-deposit ratio now?", $0.0715 (Sonnet $0.0398, Opus
+  $0.0317).** The first try failed free at token counting: the API refuses an `enum` under
+  `"type": ["string", "null"]`, which the fakes never check; nullable enums are now `anyOf`, a test
+  holds it, and a free count accepted the tools. Then the agent planned `quarter='Q4'`,
+  `period=null` for FY2026 unprompted, fetched advances and deposits as at 31 March 2026, and
+  answered 86.6% standalone (Rs 15,53,892.95 crore over Rs 17,94,624.98 crore), naming the date and
+  that later results are not held; three claims, all supported; written back as at Q4 FY2026.
+- 11-04, afternoon: **`get_metric` first, `fundamentals` by exact concept, $0.00.** Vedant: words
+  become concept names in one place, always first; then a filed concept is fetched with
+  `fundamentals` by name, a derived one planned with `plan_metric` by name. Asked why ICICI Bank's
+  "net interest income" lookup showed "3 verified": no bank files that line, so the five nearest
+  concepts came back (interest earned, income, segment assets verified; two cash-flow interest
+  lines held back), none of them the figure. `get_metric(company, what)` returns up to five derived
+  metrics of the company's scope and five concepts it files, each `flow` or `snapshot`;
+  `fundamentals(company, concept, year, quarter, period, basis, segment)` takes the time the same
+  way as `plan_metric` (his pick), a snapshot concept with no period; `plan_metric` takes an exact
+  `name` only (his pick), and its fetch list is in `fundamentals`' arguments, a balance as at the
+  quarter its span ends. Both served over MCP to the desk and the capstone analyst. The word lookup
+  stays for the coverage eval. 27/27 guards mutation-checked (one redundant guard dropped). 2,602
+  tests.

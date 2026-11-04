@@ -17,7 +17,7 @@ from aigent.analyst.router import Router
 from aigent.analyst.specialists import Invalid, Passage, passages_in
 from aigent.llm.core import Dispatch
 
-SEARCH, LOOKUP = "search_filings", "fundamentals"
+SEARCH, LOOKUP, FIND = "search_filings", "fundamentals", "get_metric"
 
 
 @dataclass(frozen=True)

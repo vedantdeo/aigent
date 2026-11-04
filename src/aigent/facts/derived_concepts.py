@@ -10,14 +10,14 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast, get_args
 
 from aigent.facts.cfg_facts import COMPANY_SCOPES
 from aigent.facts.formulas import FORMULAS
-from aigent.facts.lookup import Period, span
+from aigent.facts.lookup import Period, as_time, instants, span
 from aigent.facts.store import (
     XBRL_TIERS,
     Writer,
@@ -115,12 +115,7 @@ def kind(
     """`snapshot` when every concept it reads is a balance as at a date, `flow` when none is,
     else `mixed`; a concept is what most of its facts are."""
     read = sorted(leaves(concept, held))
-    rows = conn.execute(
-        f"""SELECT concept, SUM(period_kind = 'instant') > SUM(period_kind = 'duration')
-            FROM facts WHERE concept IN ({", ".join("?" for _ in read)}) GROUP BY concept""",
-        read,
-    ).fetchall()
-    instant = {str(c) for c, at in rows if at}
+    instant = instants(conn, read)
     if instant == set(read):
         return "snapshot"
     return "mixed" if instant else "flow"
@@ -145,9 +140,11 @@ def plan(
     held: Mapping[str, DerivedConcept] | None = None,
     previous: When | None = None,
     path: str = "",
+    balances: Set[str] = frozenset(),
 ) -> Step:
     """`concept` at `year` and `period`, each input a fact to fetch or, when it names a derived
-    concept in `held`, that concept's own plan at the input's period. ValueError when `previous`
+    concept in `held`, that concept's own plan at the input's period; one of `balances` is fetched
+    as at the quarter its period ends. ValueError when `previous`
     is missing for a concept that compares two periods, given for one that does not, or no
     earlier period like the current one."""
     if not path:
@@ -166,9 +163,14 @@ def plan(
         if inner is not None and compares(inner):
             raise ValueError(f"{inner.name} compares two periods; it cannot be an input")
         inputs[variable] = (
-            plan(inner, at_year, at_period, held, None, f"{where}.")
+            plan(inner, at_year, at_period, held, None, f"{where}.", balances)
             if inner is not None
-            else Fetch(where, bound.concept, at_year, at_period)
+            else Fetch(
+                where,
+                bound.concept,
+                at_year,
+                as_time(at_period)[0] if bound.concept in balances else at_period,
+            )
         )
     return Step(concept, year, period, inputs, previous if path == "" else None)
 

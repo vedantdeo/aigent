@@ -47,7 +47,13 @@ FACT = {
     "tier": "xbrl-filed",
     "source": "ICICIBANK 2025-03-31 standalone",
 }
-LOOKUP = {"company": "ICICIBANK", "year": 2025, "what": "operating profit", "period": "year"}
+LOOKUP: dict[str, object] = {
+    "company": "ICICIBANK",
+    "concept": "OperatingProfit",
+    "year": "2025",
+    "quarter": "Q4",
+    "period": "12M",
+}
 DRAFT = "ICICI Bank's standalone operating profit for FY25 was Rs 67,298.82 crore [F1]."
 CLAIM = Claim(id="c1", text="Operating profit was Rs 67,298.82 crore in FY25.", citations=["F1"])
 SUPPORTED = Judged(verdict="supported", reason="the fact says 672988200000 INR")
@@ -117,12 +123,15 @@ def test_an_answer_carries_the_memo_verdicts_cited_facts_calls_and_spend(
 
 
 def _years(name: str, arguments: dict[str, object]) -> tuple[str, bool]:
+    if name == "get_metric":
+        found = {"derived": [{"name": "OperatingProfitGrowth", "kind": "flow"}], "filed": []}
+        return json.dumps(found), False
     fact = OP25 if arguments.get("year") == "2025" else OP24
     return json.dumps({"facts": [fact], "lookup_id": "L1", "unverified_held": 0}), False
 
 
 PLAN_ASK: dict[str, object] = {
-    "what": "operating profit growth",
+    "name": "OperatingProfitGrowth",
     "company": "ICICIBANK",
     "year": "2025",
     "quarter": "Q4",
@@ -134,9 +143,11 @@ PLAN_ASK: dict[str, object] = {
 }
 FETCH: dict[str, object] = {
     "company": "ICICIBANK",
-    "what": "OperatingProfit",
-    "period": "year",
+    "concept": "OperatingProfit",
+    "quarter": "Q4",
+    "period": "12M",
     "basis": "standalone",
+    "segment": None,
 }
 COMPUTE_ARGS: dict[str, object] = {
     "plan_id": "P1",
@@ -151,18 +162,21 @@ GROWTH_CLAIM = Claim(
 
 
 def planning(sent: Sent) -> Message | str | BaseModel | None:
-    """Plans the metric, fetches both years, computes it, drafts, then a memo citing it."""
+    """Finds the metric's name, plans it, fetches both years, computes it, drafts, then a memo
+    citing it."""
     if sent.schema is Memo:
         return Memo(summary="Up 15.77%.", claims=[GROWTH_CLAIM], caveats=[])
     turn = (len(sent.messages) - 1) // 2
     if turn == 0:
-        return tool_turn(("t1", "plan_metric", PLAN_ASK))
+        return tool_turn(("t0", "get_metric", {"company": "ICICIBANK", "what": "op growth"}))
     if turn == 1:
+        return tool_turn(("t1", "plan_metric", PLAN_ASK))
+    if turn == 2:
         return tool_turn(
             ("t2", "fundamentals", {**FETCH, "year": "2025"}),
             ("t3", "fundamentals", {**FETCH, "year": "2024"}),
         )
-    return tool_turn(("t4", "compute_metric", COMPUTE_ARGS)) if turn == 2 else "Up [DERIVED:D1]."
+    return tool_turn(("t4", "compute_metric", COMPUTE_ARGS)) if turn == 3 else "Up [DERIVED:D1]."
 
 
 def test_a_metric_is_planned_fetched_computed_and_written_back(
@@ -171,10 +185,12 @@ def test_a_metric_is_planned_fetched_computed_and_written_back(
     writer, _ = make_llm(planning)
     critic, judged = make_llm(judging)
 
-    answer = desk.answer(QUESTION, TOOLS, _years, CHOSEN, writer, critic, concepts_db, STAMP)
+    finding: list[ToolParam] = [*TOOLS, {"name": "get_metric", "input_schema": {"type": "object"}}]
+    answer = desk.answer(QUESTION, finding, _years, CHOSEN, writer, critic, concepts_db, STAMP)
 
     calls = cast(list[dict[str, object]], answer["calls"])
     assert [c["tool"] for c in calls] == [
+        "get_metric",
         "plan_metric",
         "fundamentals",
         "fundamentals",
@@ -381,7 +397,7 @@ def test_yes_warms_the_lookup_and_serves_over_only_the_desk_s_tools(
     )
     assert connected == {"only": DESK_SERVED_TOOLS, "fenced": False}
     assert served_on == {"host": "127.0.0.1", "port": 9999, "log_level": "warning"}
-    assert warmed == [("fundamentals", desk.WARM_UP)], "one free lookup before serving"
+    assert warmed == [("get_metric", desk.WARM_UP)], "one free search before serving"
 
 
 @pytest.mark.parametrize(("unit", "size"), INDIAN_RUPEE_UNITS)

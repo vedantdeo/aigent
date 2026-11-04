@@ -24,11 +24,17 @@ SPECIALIST_TOOL_TURNS = 6  # two searches, two calculate turns, the answer, one 
 MAX_USD_ANALYST_GENERALIST = 0.40
 MAX_USD_ANALYST_CRITIC = 0.30
 MAX_USD_ANALYST_SPECIALIST = 0.30
-ANALYST_SERVED_TOOLS = ("calculate", "compare_unverified", "fundamentals", "search_filings")
+ANALYST_SERVED_TOOLS = (
+    "calculate",
+    "compare_unverified",
+    "fundamentals",
+    "get_metric",
+    "search_filings",
+)
 ANALYST_WORKERS = 4  # questions in flight at once, so the specialists' GPU is shared, not idle
 
 # `python -m aigent.analyst.desk`: the graph trimmed to the facts database, on a local page.
-DESK_SERVED_TOOLS = ("fundamentals",)  # `derive` is the desk's own
+DESK_SERVED_TOOLS = ("fundamentals", "get_metric")  # the metric tools are the desk's own
 DESK_HOST = "127.0.0.1"  # this machine only
 DESK_PORT = 8765
 # Rupee amounts are stated in the largest of these that fits, else in plain rupees; never millions.

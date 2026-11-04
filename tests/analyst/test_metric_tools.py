@@ -9,14 +9,21 @@ import sqlite3
 from typing import Literal, cast
 
 import pytest
+from anthropic.types import ToolParam
 
 pytest.importorskip("langgraph")
 
+from aigent.analyst.fundamentals import (  # noqa: E402
+    COMPARE_TOOL,
+    FUNDAMENTALS_TOOL,
+    GET_METRIC_TOOL,
+)
 from aigent.analyst.graph import Analysed  # noqa: E402
 from aigent.analyst.memo import Claim, Judged, Memo  # noqa: E402
 from aigent.analyst.metric_tools import (  # noqa: E402
     COMPUTE,
     DEFINE,
+    METRIC_TOOLS,
     PLAN,
     PROPOSE,
     MetricTools,
@@ -34,7 +41,7 @@ DEP25_Q4 = {**DEP25, "cite_as": str(DEP25["cite_as"]).replace(":year:", ":Q4:")}
 WRITER = Writer("analyst-desk|m", "2026-11-03T22:00:00+05:30", "desk-1")
 QUESTION = "How much did ICICI Bank's operating profit grow in FY25?"
 ASK: dict[str, object] = {
-    "what": "operating profit growth",
+    "name": "OperatingProfitGrowth",
     "company": "ICICIBANK",
     "year": "2025",
     "quarter": "Q4",
@@ -78,9 +85,10 @@ def test_a_plan_names_the_metric_its_formula_and_each_fact_to_fetch(
             "variable": "current",
             "fundamentals": {
                 "company": "ICICIBANK",
+                "concept": "OperatingProfit",
                 "year": "2025",
-                "what": "OperatingProfit",
-                "period": "year",
+                "quarter": "Q4",
+                "period": "12M",
                 "basis": "standalone",
                 "segment": None,
             },
@@ -90,9 +98,10 @@ def test_a_plan_names_the_metric_its_formula_and_each_fact_to_fetch(
             "variable": "previous",
             "fundamentals": {
                 "company": "ICICIBANK",
+                "concept": "OperatingProfit",
                 "year": "2024",
-                "what": "OperatingProfit",
-                "period": "year",
+                "quarter": "Q4",
+                "period": "12M",
                 "basis": "standalone",
                 "segment": None,
             },
@@ -101,17 +110,28 @@ def test_a_plan_names_the_metric_its_formula_and_each_fact_to_fetch(
     ]
 
 
-def test_no_metric_fitting_points_to_the_library(concepts_db: sqlite3.Connection) -> None:
-    planned = _call(_tools(concepts_db), PLAN, {**ASK, "what": "dividend payout"})
-    assert planned["metric"] is None and "growth(current, previous)" in str(planned["library"])
+@pytest.mark.parametrize(
+    "changed",
+    [
+        pytest.param({"name": "DividendPayout"}, id="a name not held"),
+        pytest.param({"name": "operating profit growth"}, id="words, not a name"),
+        pytest.param({"company": "ITC"}, id="a name held in another scope"),
+    ],
+)
+def test_a_name_not_held_points_to_get_metric_and_the_library(
+    concepts_db: sqlite3.Connection, changed: dict[str, object]
+) -> None:
+    content, is_error = _tools(concepts_db)(PLAN, {**ASK, **changed})
+    assert is_error and "get_metric" in content, content
+    assert "growth(current, previous)" in content, content
 
 
 @pytest.mark.parametrize(
     ("changed", "said"),
     [
-        pytest.param({"what": " "}, "give what", id="no words"),
-        pytest.param({"company": "ACME"}, "give what", id="a company not held"),
-        pytest.param({"year": "FY25"}, "give what", id="a year not in digits"),
+        pytest.param({"name": " "}, "give the name", id="no name"),
+        pytest.param({"company": "ACME"}, "give the name", id="a company not held"),
+        pytest.param({"year": "FY25"}, "give the name", id="a year not in digits"),
         pytest.param({"quarter": "Q5"}, "quarter is one of", id="an unknown quarter"),
         pytest.param({"basis": "group"}, "quarter is one of", id="an unknown basis"),
         pytest.param({"period": "4M"}, "period is one of", id="an unknown period"),
@@ -157,12 +177,12 @@ def test_no_metric_fitting_points_to_the_library(concepts_db: sqlite3.Connection
         ),
         pytest.param({"previous_year": "2025"}, "does not end", id="the same year"),
         pytest.param(
-            {"what": "CreditDepositRatio", **ONE}, "a snapshot", id="a snapshot given a period"
+            {"name": "CreditDepositRatio", **ONE}, "a snapshot", id="a snapshot given a period"
         ),
         pytest.param(
-            {"what": "CreditDepositRatio"}, "a snapshot", id="a snapshot given previous periods"
+            {"name": "CreditDepositRatio"}, "a snapshot", id="a snapshot given previous periods"
         ),
-        pytest.param({"what": "CreditDepositRatio", **SNAP}, None, id="a snapshot at a time"),
+        pytest.param({"name": "CreditDepositRatio", **SNAP}, None, id="a snapshot at a time"),
     ],
 )
 def test_plan_refuses_a_bad_ask(
@@ -177,13 +197,13 @@ def test_plan_refuses_a_bad_ask(
     [
         pytest.param(ASK, "flow", "FY2025 over FY2024", id="growth of a flow"),
         pytest.param(
-            {**ASK, **SNAP, "what": "CreditDepositRatio"},
+            {**ASK, **SNAP, "name": "CreditDepositRatio"},
             "snapshot",
             "as at the end of Q4 FY2025",
             id="a ratio of balances",
         ),
         pytest.param(
-            {**ASK, **ONE, "what": "OperatingProfitLessEps", "quarter": "Q1", "period": "3M"},
+            {**ASK, **ONE, "name": "OperatingProfitLessEps", "quarter": "Q1", "period": "3M"},
             "flow",
             "Q1 FY2025",
             id="a flow over one quarter",
@@ -195,6 +215,18 @@ def test_a_plan_says_its_kind_and_its_time(
 ) -> None:
     planned = _call(_tools(concepts_db), PLAN, asked)
     assert (planned["kind"], planned["periods"]) == (shape, periods), planned
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [*METRIC_TOOLS, FUNDAMENTALS_TOOL, GET_METRIC_TOOL, COMPARE_TOOL],
+    ids=lambda t: str(t["name"]),
+)
+def test_no_property_pairs_an_enum_with_a_list_of_types(tool: ToolParam) -> None:
+    schema = cast(dict[str, object], tool["input_schema"])
+    properties = cast(dict[str, dict[str, object]], schema["properties"])
+    paired = [n for n, p in properties.items() if "enum" in p and isinstance(p.get("type"), list)]
+    assert paired == [], "the API refuses an enum under a list of types; use anyOf"
 
 
 def test_a_computation_takes_the_values_from_the_planned_facts(
@@ -213,7 +245,7 @@ def test_a_ratio_of_balances_and_a_difference_keep_their_units(
     concepts_db: sqlite3.Connection,
 ) -> None:
     tools = _tools(concepts_db, ADV25_Q4, DEP25_Q4)
-    planned = _call(tools, PLAN, {**ASK, **SNAP, "what": "CreditDepositRatio"})
+    planned = _call(tools, PLAN, {**ASK, **SNAP, "name": "CreditDepositRatio"})
     shown = _call(
         tools,
         COMPUTE,
@@ -284,7 +316,7 @@ def test_compute_refuses_an_unknown_plan_and_mixed_units(concepts_db: sqlite3.Co
     tools = _tools(concepts_db, OP25, EPS25)
     content, is_error = tools(COMPUTE, {"plan_id": "P9", "inputs": GOOD})
     assert is_error and "no plan 'P9'" in content, content
-    planned = _call(tools, PLAN, {**ASK, **ONE, "what": "OperatingProfitLessEps"})
+    planned = _call(tools, PLAN, {**ASK, **ONE, "name": "OperatingProfitLessEps"})
     content, is_error = tools(
         COMPUTE,
         {
@@ -325,12 +357,17 @@ def test_a_defined_metric_is_written_unchecked_and_can_be_planned(
         ("AdvancesToOperatingProfit",),
     ).fetchone()
     assert row == ("ratio", "derived-concept-ai", QUESTION, WRITER.written_by)
-    planned = _call(tools, PLAN, {**ASK, **ONE, "what": "AdvancesToOperatingProfit"})
+    planned = _call(tools, PLAN, {**ASK, **ONE, "name": "AdvancesToOperatingProfit"})
     assert planned["metric"] == "AdvancesToOperatingProfit" and planned["kind"] == "mixed"
     assert [f["cite_as"] for f in cast(list[dict[str, object]], planned["fetch"])] == [
-        ADV25["cite_as"],
+        ADV25_Q4["cite_as"],
         OP25["cite_as"],
     ], "a balance in a mixed metric is read at the end of the flow's span"
+    asked = [f["fundamentals"] for f in cast(list[dict[str, dict[str, object]]], planned["fetch"])]
+    assert [(f["concept"], f["quarter"], f["period"]) for f in asked] == [
+        ("Advances", "Q4", None),
+        ("OperatingProfit", "Q4", "12M"),
+    ], "fetched as fundamentals takes them: a balance with no period"
 
 
 @pytest.mark.parametrize(
@@ -462,7 +499,7 @@ def test_a_ratio_of_balances_is_written_as_at_the_period_s_end(
     concepts_db: sqlite3.Connection,
 ) -> None:
     tools = _tools(concepts_db, ADV25_Q4, DEP25_Q4)
-    planned = _call(tools, PLAN, {**ASK, **SNAP, "what": "CreditDepositRatio"})
+    planned = _call(tools, PLAN, {**ASK, **SNAP, "name": "CreditDepositRatio"})
     _call(
         tools,
         COMPUTE,
@@ -550,24 +587,6 @@ def test_an_unchecked_concept_s_figure_is_not_trusted(concepts_db: sqlite3.Conne
 
 
 @pytest.mark.parametrize(
-    ("changed", "first"),
-    [
-        pytest.param(
-            {"what": "basic earnings per share growth"}, "OperatingProfitGrowth", id="near"
-        ),
-        pytest.param({"what": "OperatingProfitGrowth", "company": "ITC"}, None, id="other scope"),
-    ],
-)
-def test_a_plan_is_refused_for_a_near_miss_or_another_scope(
-    concepts_db: sqlite3.Connection, changed: dict[str, object], first: str | None
-) -> None:
-    planned = _call(_tools(concepts_db), PLAN, {**ASK, **changed})
-    assert planned["metric"] is None and "plan_id" not in planned
-    closest = [c["name"] for c in cast(list[dict[str, str]], planned["closest"])]
-    assert (closest[0] if closest else None) == first, closest
-
-
-@pytest.mark.parametrize(
     ("changed", "said"),
     [
         pytest.param({"scope": "insurance"}, "scope is", id="an unknown scope"),
@@ -585,7 +604,7 @@ def test_define_refuses_a_scope_that_does_not_fit(
 def test_a_metric_built_on_a_metric_is_planned_computed_and_written(
     concepts_db: sqlite3.Connection,
 ) -> None:
-    tools = _tools(concepts_db, OP25, ADV25, DEP25)
+    tools = _tools(concepts_db, OP25, ADV25_Q4, DEP25_Q4)
     _call(
         tools,
         DEFINE,
@@ -618,12 +637,12 @@ def test_a_metric_built_on_a_metric_is_planned_computed_and_written(
             ],
         },
     )
-    planned = _call(tools, PLAN, {**ASK, **ONE, "what": "ThatOverDeposits"})
+    planned = _call(tools, PLAN, {**ASK, **ONE, "name": "ThatOverDeposits"})
     fetch = cast(list[dict[str, object]], planned["fetch"])
     assert [(f["variable"], f["cite_as"]) for f in fetch] == [
         ("numerator.minuend", OP25["cite_as"]),
-        ("numerator.subtrahend", ADV25["cite_as"]),
-        ("denominator", DEP25["cite_as"]),
+        ("numerator.subtrahend", ADV25_Q4["cite_as"]),
+        ("denominator", DEP25_Q4["cite_as"]),
     ]
     shown = _call(
         tools,
@@ -662,5 +681,5 @@ def test_an_every_scope_metric_is_defined_and_planned_for_any_company(
         ],
     }
     assert _call(tools, DEFINE, args)["scope"] == "*"
-    planned = _call(tools, PLAN, {**ASK, "what": "OperatingProfitOverItself", "company": "ITC"})
+    planned = _call(tools, PLAN, {**ASK, "name": "OperatingProfitOverItself", "company": "ITC"})
     assert planned["metric"] == "OperatingProfitOverItself" and planned["scope"] == "ind-as"

@@ -129,7 +129,7 @@ function calls(list) {
     if (!c.error && r && typeof r === "object" && Array.isArray(r.facts))
       said = `${r.facts.length} verified · ${r.unverified_held} unverified held back`;
     else if (!c.error && r && typeof r === "object" && r.plan_id)
-      said = `plan ${esc(r.plan_id)}: ${esc(r.metric)}, ${esc(r.periods)} = ${esc(r.formula)}; fetch ${r.fetch.map(f => esc(f.variable) + " = " + esc(f.fundamentals.what) + " " + esc(f.fundamentals.period) + " " + esc(f.fundamentals.year)).join(", ")}`;
+      said = `plan ${esc(r.plan_id)}: ${esc(r.metric)}, ${esc(r.periods)} = ${esc(r.formula)}; fetch ${r.fetch.map(f => esc(f.variable) + " = " + esc(f.fundamentals.concept) + " " + esc(f.fundamentals.quarter) + " FY" + esc(f.fundamentals.year) + (f.fundamentals.period ? " " + esc(f.fundamentals.period) : "")).join(", ")}`;
     else if (!c.error && r && typeof r === "object" && r.metric === null)
       said = `no metric fits`;
     else if (!c.error && r && typeof r === "object" && r.cite_as && r.metric)
