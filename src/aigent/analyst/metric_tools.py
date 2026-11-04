@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -49,6 +49,7 @@ from aigent.facts.store import (
     derived_held,
     normal_scope,
     scope_refusal,
+    verified_derived,
     write_derived,
     write_derived_concept,
     write_formula_proposal,
@@ -80,7 +81,10 @@ PLAN_TOOL: ToolParam = {
         "is refused, saying which. Returns a plan_id, the metric's kind (flow, snapshot or "
         "mixed) and library formula, and a fetch list: call fundamentals once per entry with "
         "exactly the arguments given, then compute_metric with the plan_id and each fact's "
-        "cite_as. A name not held in the company's scope is refused: find one with get_metric or "
+        "cite_as. When the same figure is already computed from these inputs and verified, the "
+        "answer has `held` and a fetch list of one entry, the figure itself: fetch it with "
+        "fundamentals, cite it, and do not compute it. A name not held in the company's scope is "
+        "refused: find one with get_metric or "
         "define one with define_metric. Examples: net profit growth over the quarter before, "
         "plan_metric(name='ProfitLossForThePeriodGrowth', company='ICICIBANK', year='2026', "
         "quarter='Q1', period='3M', "
@@ -312,8 +316,41 @@ class MetricTools:
             raise ValueError("previous_period is as long as period; compare like with like")
         balances = instants(self.conn, sorted(leaves(metric, by_name)))
         step = plan(metric, *at, by_name, previous, balances=balances)
+        planned = Plan(metric, company, *at, basis, step, previous, snapshot)
+        cites = {f.variable: f.cite_as(company, basis) for f in step.fetches()}
+        held = verified_derived(self.conn, _derived_row(planned, 0.0, "", cites))
+        if held is not None:
+            quarter, span_of = as_time(planned.period)
+            return {
+                "plan_id": None,
+                "metric": metric.name,
+                "label": metric.label,
+                "kind": shape,
+                "periods": _periods(*at, previous, snapshot),
+                "held": {"fact_id": held, "tier": "derived"},
+                "note": (
+                    "Already computed from these same verified inputs and verified: fetch it with "
+                    "fundamentals as given and cite it; do not compute it again."
+                ),
+                "fetch": [
+                    {
+                        "variable": "held",
+                        "fundamentals": {
+                            "company": company,
+                            "concept": metric.name,
+                            "year": str(planned.year),
+                            "quarter": quarter,
+                            "period": None if snapshot else span_of,
+                            "basis": basis,
+                            "segment": None,
+                        },
+                        "cite_as": f"FACT:{company}:{planned.year}:{basis}:"
+                        f"{planned.period}:{metric.name}",
+                    }
+                ],
+            }
         plan_id = f"P{len(self.plans) + 1}"
-        self.plans[plan_id] = Plan(metric, company, *at, basis, step, previous, snapshot)
+        self.plans[plan_id] = planned
         return {
             "plan_id": plan_id,
             "metric": metric.name,
@@ -514,37 +551,7 @@ def write_back(
                 {"metric": planned.metric.name, "reason": "an input is no longer verified"}
             )
             continue
-        start, end = span(planned.year, planned.period)
-        own = [
-            json.loads(tools.evidence[c].text)
-            for f, (_, c) in zip(planned.fetches, computed.inputs, strict=True)
-            if (f.year, f.period) == (planned.year, planned.period)
-        ]
-        instant = bool(own) and all("as_at" in cast(dict[str, object], f["period"]) for f in own)
-        periods = _periods(planned.year, planned.period, planned.previous, planned.snapshot)
-        row = DerivedRow(
-            ticker=planned.company,
-            basis=planned.basis,
-            concept=planned.metric.name,
-            label=planned.metric.label
-            if planned.previous is None
-            else f"{planned.metric.label}, {periods}",
-            period_start=None if instant else start.isoformat(),
-            period_end=end.isoformat(),
-            segment=None,
-            value=computed.value,
-            unit=computed.unit,
-            formula=json.dumps(
-                {
-                    "metric": planned.metric.name,
-                    "scope": planned.metric.scope,
-                    "formula": planned.metric.formula,
-                    "inputs": dict(computed.inputs),
-                    "periods": periods,
-                },
-                sort_keys=True,
-            ),
-        )
+        row = _derived_row(planned, computed.value, computed.unit, dict(computed.inputs))
         held = derived_held(conn, row)
         if held is not None:
             skipped.append(
@@ -573,11 +580,43 @@ def write_back(
                 "unit": computed.unit,
                 "tier": "derived" if trusted else "derived-ai",
                 "formula": planned.metric.formula,
-                "periods": periods,
+                "periods": _periods(
+                    planned.year, planned.period, planned.previous, planned.snapshot
+                ),
                 "inputs": [c for _, c in computed.inputs],
             }
         )
     return written, skipped
+
+
+def _derived_row(planned: Plan, value: float, unit: str, inputs: Mapping[str, str]) -> DerivedRow:
+    """The `facts` row a planned figure is written as, its inputs' cites by variable: as at the
+    period's end for a snapshot, its formula column naming the metric, inputs and periods."""
+    start, end = span(planned.year, planned.period)
+    periods = _periods(planned.year, planned.period, planned.previous, planned.snapshot)
+    return DerivedRow(
+        ticker=planned.company,
+        basis=planned.basis,
+        concept=planned.metric.name,
+        label=planned.metric.label
+        if planned.previous is None
+        else f"{planned.metric.label}, {periods}",
+        period_start=None if planned.snapshot else start.isoformat(),
+        period_end=end.isoformat(),
+        segment=None,
+        value=value,
+        unit=unit,
+        formula=json.dumps(
+            {
+                "metric": planned.metric.name,
+                "scope": planned.metric.scope,
+                "formula": planned.metric.formula,
+                "inputs": dict(inputs),
+                "periods": periods,
+            },
+            sort_keys=True,
+        ),
+    )
 
 
 def _fact_id(conn: sqlite3.Connection, planned: Plan, fetch: Fetch) -> int | None:

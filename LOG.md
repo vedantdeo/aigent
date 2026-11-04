@@ -2476,3 +2476,16 @@
   facts. 9/9 guards mutation-checked; 2,613 tests. Vedant approved deleting the later of each pair
   (48559-48565, with their 14 links). Rows written before today's `periods` field will not match
   a new write of the same question.
+- 11-04, smoke on `4d648a2`: **the same net interest income question again, $0.0727 (Sonnet
+  $0.0430, Opus $0.0297).** Same path and answer, Rs 88,075.23 crore; nothing written, skipped as
+  `already held`, fact 48568; one row for it in the database.
+- 11-04, later still: **NetInterestIncome checked by Vedant, and a verified figure reused, $0.00.**
+  `verify-concept --name NetInterestIncome --scope banking --by Vedant` made it `derived-concept`
+  and promoted ICICI Bank's FY25 and FY26 figures (48558, 48568) to `derived`. Then Vedant: the
+  agent should take a held figure instead of computing it again. `plan_metric` now asks
+  `store.verified_derived` for the plan's own figure (built by the same `_derived_row` write-back
+  uses) and, when it is the only verified one for that company, basis, concept and period with the
+  plan's inputs and periods, answers `held` with one `fundamentals` fetch of it; two verified
+  intervals for one period are planned as ever, since a lookup by concept could return either.
+  Read-only on the live database: ICICI Bank NII FY2026 plans as held, fact 48568; HDFC Bank as a
+  plan. 6/6 guards mutation-checked; 2,623 tests.

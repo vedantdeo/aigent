@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 from typing import Literal, cast
 
 import pytest
@@ -17,6 +18,7 @@ from aigent.analyst.fundamentals import (  # noqa: E402
     COMPARE_TOOL,
     FUNDAMENTALS_TOOL,
     GET_METRIC_TOOL,
+    FundamentalsTool,  # noqa: E402
 )
 from aigent.analyst.graph import Analysed  # noqa: E402
 from aigent.analyst.memo import Claim, Judged, Memo  # noqa: E402
@@ -30,8 +32,10 @@ from aigent.analyst.metric_tools import (  # noqa: E402
     chained,
     write_back,
 )
-from aigent.facts.store import Writer  # noqa: E402
+from aigent.facts.lookup import Lookup, concept_index  # noqa: E402
+from aigent.facts.store import Writer, verify_derived_concept  # noqa: E402
 
+from ..conftest import BagOfWordsEmbedder  # noqa: E402
 from .conftest import ADV25, DEP25, EPS25, OP24, OP25, UNVERIFIED, evidence_of  # noqa: E402
 
 # A snapshot planned as at Q4's end is fetched as at Q4, not over the year.
@@ -593,6 +597,90 @@ def test_a_checked_concept_s_figure_is_trusted_and_written_derived(
     assert concepts_db.execute(
         "SELECT tier, verified_by, verified_at FROM facts WHERE id = ?", (written[0]["fact_id"],)
     ).fetchone() == ("derived", "OperatingProfitGrowth[banking]@vedant", WRITER.written_at)
+
+
+def _verified_growth(conn: sqlite3.Connection) -> int:
+    """OperatingProfitGrowth FY2025 over FY2024, computed, written and its concept checked."""
+    tools = _tools(conn, OP25, OP24)
+    _computed(tools)
+    [written], _ = write_back(conn, _done("supported", "DERIVED:D1"), tools, WRITER)
+    verify_derived_concept(conn, "OperatingProfitGrowth", "banking", "Vedant", "t")
+    return int(cast(int, written["fact_id"]))
+
+
+def test_a_verified_figure_already_held_is_fetched_not_planned_again(
+    concepts_db: sqlite3.Connection,
+) -> None:
+    fact_id = _verified_growth(concepts_db)
+    tools = _tools(concepts_db)
+
+    planned = _call(tools, PLAN, ASK)
+
+    assert planned["plan_id"] is None and tools.plans == {}, "nothing to compute"
+    assert planned["held"] == {"fact_id": fact_id, "tier": "derived"}
+    [fetch] = cast(list[dict[str, object]], planned["fetch"])
+    assert fetch["fundamentals"] == {
+        "company": "ICICIBANK",
+        "concept": "OperatingProfitGrowth",
+        "year": "2025",
+        "quarter": "Q4",
+        "period": "12M",
+        "basis": "standalone",
+        "segment": None,
+    }
+    db = Path(concepts_db.execute("PRAGMA database_list").fetchone()[2])
+    lookup = Lookup(db, concept_index(BagOfWordsEmbedder()), run_id="r", asked_by="test")
+    said = json.loads(FundamentalsTool(lookup)(cast(dict[str, object], fetch["fundamentals"])))
+    [fact] = said["facts"]
+    assert fact["cite_as"] == fetch["cite_as"] and fact["tier"] == "derived", fact
+    assert fact["value"] == pytest.approx((672988200000 - 581307600000) / 581307600000)
+
+
+@pytest.mark.parametrize(
+    ("change", "why"),
+    [
+        pytest.param({"previous_year": "2023"}, "another interval", id="over another period"),
+        pytest.param({"basis": "consolidated"}, "another basis", id="on another basis"),
+    ],
+)
+def test_a_plan_unlike_the_held_figure_is_planned_as_ever(
+    concepts_db: sqlite3.Connection, change: dict[str, object], why: str
+) -> None:
+    _verified_growth(concepts_db)
+    content, is_error = _tools(concepts_db)(PLAN, {**ASK, **change})
+    planned = json.loads(content) if not is_error else {}
+    assert not is_error and planned["plan_id"] == "P1" and "held" not in planned, why
+
+
+def test_a_held_snapshot_is_fetched_as_at_the_quarter_s_end(
+    concepts_db: sqlite3.Connection,
+) -> None:
+    asked = {**ASK, **SNAP, "name": "CreditDepositRatio"}
+    tools = _tools(concepts_db, ADV25_Q4, DEP25_Q4)
+    planned = _call(tools, PLAN, asked)
+    inputs = [
+        {"variable": f["variable"], "cite_as": f["cite_as"]}
+        for f in cast(list[dict[str, object]], planned["fetch"])
+    ]
+    _call(tools, COMPUTE, {"plan_id": planned["plan_id"], "inputs": inputs})
+    write_back(concepts_db, _done("supported", "DERIVED:D1"), tools, WRITER)
+    verify_derived_concept(concepts_db, "CreditDepositRatio", "banking", "Vedant", "t")
+
+    held = _call(_tools(concepts_db), PLAN, asked)
+
+    [fetch] = cast(list[dict[str, dict[str, object]]], held["fetch"])
+    assert held["plan_id"] is None and (
+        fetch["fundamentals"]["quarter"],
+        fetch["fundamentals"]["period"],
+    ) == ("Q4", None)
+
+
+def test_an_unverified_figure_is_computed_again(concepts_db: sqlite3.Connection) -> None:
+    tools = _tools(concepts_db, OP25, OP24)
+    _computed(tools)
+    write_back(concepts_db, _done("supported", "DERIVED:D1"), tools, WRITER)
+    planned = _call(_tools(concepts_db), PLAN, ASK)
+    assert planned["plan_id"] == "P1" and "held" not in planned
 
 
 def test_an_unchecked_concept_s_figure_is_not_trusted(concepts_db: sqlite3.Connection) -> None:

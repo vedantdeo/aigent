@@ -581,6 +581,18 @@ def derived_held(conn: sqlite3.Connection, row: DerivedRow) -> int | None:
     return None if found is None else int(found[0])
 
 
+def verified_derived(conn: sqlite3.Connection, row: DerivedRow) -> int | None:
+    """The id of the verified derived fact holding `row`, when it is the only verified one of
+    that company, basis, concept, period and segment, so a lookup by concept returns it; else
+    None."""
+    held = conn.execute(
+        """SELECT id, formula FROM facts WHERE tier = 'derived' AND ticker = ? AND basis = ?
+             AND concept = ? AND period_start IS ? AND period_end = ? AND segment IS ?""",
+        (row.ticker, row.basis, row.concept, row.period_start, row.period_end, row.segment),
+    ).fetchall()
+    return int(held[0][0]) if len(held) == 1 and held[0][1] == row.formula else None
+
+
 def write_derived(
     conn: sqlite3.Connection,
     row: DerivedRow,

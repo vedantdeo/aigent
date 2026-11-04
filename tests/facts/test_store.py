@@ -24,6 +24,7 @@ from aigent.facts.store import (
     scopes_of,
     sync_xbrl_facts,
     upsert_filing,
+    verified_derived,
     verify_derived_concept,
     write_derived,
     write_derived_concept,
@@ -513,6 +514,35 @@ def test_a_derived_figure_is_held_by_its_key_and_formula(
     fact_id = write_derived(conn, GROWTH, ids[:1], WRITER)
     found = derived_held(conn, replace(GROWTH, **change))
     assert found == (fact_id if held else None), change
+
+
+@pytest.mark.parametrize(
+    ("verified", "also", "asked", "found"),
+    [
+        pytest.param(True, None, GROWTH, True, id="the one verified figure"),
+        pytest.param(False, None, GROWTH, False, id="an unverified figure"),
+        pytest.param(
+            True, None, replace(GROWTH, formula='{"formula_id": 2}'), False, id="other inputs"
+        ),
+        pytest.param(True, '{"formula_id": 2}', GROWTH, False, id="two verified for the period"),
+        pytest.param(
+            True, None, replace(GROWTH, period_end="2024-03-31"), False, id="another period"
+        ),
+    ],
+)
+def test_a_verified_figure_is_reused_only_when_it_alone_holds_the_period(
+    conn: sqlite3.Connection,
+    verified: bool,
+    also: str | None,
+    asked: DerivedRow,
+    found: bool,
+) -> None:
+    ids = _checked(conn, "xbrl-filed")
+    check = "DerivedGrowth[banking]@vedant" if verified else None
+    fact_id = write_derived(conn, GROWTH, ids[:1], WRITER, check)
+    if also is not None:
+        write_derived(conn, replace(GROWTH, formula=also), ids[:1], WRITER, check)
+    assert verified_derived(conn, asked) == (fact_id if found else None)
 
 
 def test_a_filed_fact_is_never_taken_for_a_derived_one(conn: sqlite3.Connection) -> None:
