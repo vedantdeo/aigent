@@ -1,22 +1,23 @@
 """Derived concepts, which the agent calls metrics: a named figure defined as a library formula
-over concepts, each input at a period relative to the one asked for, with no company and no period
-in the definition. Each holds within a scope, the XBRL taxonomy its companies file under, since
-banks name their figures differently. An input may itself be a derived concept of the same scope;
-a plan turns one into the exact facts to fetch for a company, year, period and basis."""
+over concepts, each input at the current period or the previous one, both named when it is
+planned, with no company and no period in the definition. Each holds within a scope, the XBRL
+taxonomy its companies file under, since banks name their figures differently. An input may itself
+be a derived concept of the same scope; a plan turns one into the exact facts to fetch for a
+company, periods and basis."""
 
 from __future__ import annotations
 
 import json
 import re
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast, get_args
 
 from aigent.facts.cfg_facts import COMPANY_SCOPES
 from aigent.facts.formulas import FORMULAS
-from aigent.facts.lookup import Period
+from aigent.facts.lookup import Period, as_time, instants, span
 from aigent.facts.store import (
     XBRL_TIERS,
     Writer,
@@ -29,8 +30,9 @@ from aigent.facts.store import (
 
 SEEDED = Path(__file__).resolve().parents[3] / "evals" / "reference" / "derived-concepts.jsonl"
 
-Offset = Literal["t", "t-1y", "t-1q"]  # the period asked; a year before; the quarter before
-OFFSETS: tuple[Offset, ...] = get_args(Offset)
+At = Literal["current", "previous"]
+ATS: tuple[At, ...] = get_args(At)
+When = tuple[int, Period]  # a financial year and a period of it
 _QUARTERS: tuple[Period, ...] = ("Q1", "Q2", "Q3", "Q4")
 _CAMEL = re.compile(r"[A-Z][A-Z0-9]*(?![a-z])|[A-Z]?[a-z0-9]+")
 _NAME = re.compile(r"[A-Z][A-Za-z0-9]*")
@@ -40,11 +42,11 @@ _FILLER = {"a", "an", "and", "as", "for", "in", "of", "over", "per", "the", "to"
 
 @dataclass(frozen=True)
 class Binding:
-    """One input of a formula: a concept, filed or derived, at a period relative to the one asked
-    for."""
+    """One input of a formula: a concept, filed or derived, at the current or the previous
+    period."""
 
     concept: str
-    offset: Offset
+    at: At
 
 
 @dataclass(frozen=True)
@@ -80,6 +82,7 @@ class Step:
     year: int
     period: Period
     inputs: Mapping[str, Fetch | Step] = field(default_factory=dict[str, "Fetch | Step"])
+    previous: When | None = None
 
     def fetches(self) -> list[Fetch]:
         """Every fact the plan reads, in formula order, depth first."""
@@ -89,17 +92,45 @@ class Step:
         return out
 
 
-def shift(year: int, period: Period, offset: Offset) -> tuple[int, Period]:
-    """The financial year and period `offset` names, from the one asked. ValueError for a quarter
-    before a period that is not a quarter."""
-    if offset == "t":
-        return year, period
-    if offset == "t-1y":
-        return year - 1, period
-    if period not in _QUARTERS:
-        raise ValueError(f"a quarter before {period} is not a quarter; ask for Q1 to Q4")
-    at = _QUARTERS.index(period)
-    return (year - 1, "Q4") if at == 0 else (year, _QUARTERS[at - 1])
+def compares(concept: DerivedConcept) -> bool:
+    """Whether `concept` reads the previous period as well as the current one."""
+    return any(b.at == "previous" for b in concept.bindings.values())
+
+
+Kind = Literal["flow", "snapshot", "mixed"]
+
+
+def leaves(concept: DerivedConcept, held: Mapping[str, DerivedConcept]) -> set[str]:
+    """The filed concepts `concept` reads, through any derived ones."""
+    found: set[str] = set()
+    for bound in concept.bindings.values():
+        inner = held.get(bound.concept)
+        found |= leaves(inner, held) if inner is not None else {bound.concept}
+    return found
+
+
+def kind(
+    conn: sqlite3.Connection, concept: DerivedConcept, held: Mapping[str, DerivedConcept]
+) -> Kind:
+    """`snapshot` when every concept it reads is a balance as at a date, `flow` when none is,
+    else `mixed`; a concept is what most of its facts are."""
+    read = sorted(leaves(concept, held))
+    instant = instants(conn, read)
+    if instant == set(read):
+        return "snapshot"
+    return "mixed" if instant else "flow"
+
+
+def interval_refusal(current: When, previous: When) -> str | None:
+    """Why `previous` cannot be compared with `current`, or None: it ends before `current` begins
+    and is as long, a quarter against any quarter."""
+    (year, period), (was_year, was_period) = current, previous
+    alike = period == was_period or (period in _QUARTERS and was_period in _QUARTERS)
+    if not alike:
+        return f"{was_period} {was_year} is not as long as {period} {year}; compare like with like"
+    if span(was_year, was_period)[1] >= span(year, period)[0]:
+        return f"{was_period} {was_year} does not end before {period} {year} begins"
+    return None
 
 
 def plan(
@@ -107,22 +138,41 @@ def plan(
     year: int,
     period: Period,
     held: Mapping[str, DerivedConcept] | None = None,
+    previous: When | None = None,
     path: str = "",
+    balances: Set[str] = frozenset(),
 ) -> Step:
     """`concept` at `year` and `period`, each input a fact to fetch or, when it names a derived
-    concept in `held`, that concept's own plan at the input's period."""
+    concept in `held`, that concept's own plan at the input's period; one of `balances` is fetched
+    as at the quarter its period ends. ValueError when `previous`
+    is missing for a concept that compares two periods, given for one that does not, or no
+    earlier period like the current one."""
+    if not path:
+        if compares(concept) and previous is None:
+            raise ValueError(f"{concept.name} compares two periods; give the previous period too")
+        if not compares(concept) and previous is not None:
+            raise ValueError(f"{concept.name} is at one period; give no previous period")
+        if previous is not None and (why := interval_refusal((year, period), previous)):
+            raise ValueError(why)
     inputs: dict[str, Fetch | Step] = {}
     for variable in FORMULAS[concept.formula].variables:
         bound = concept.bindings[variable]
-        at_year, at_period = shift(year, period, bound.offset)
+        at_year, at_period = (year, period) if bound.at == "current" else cast(When, previous)
         where = f"{path}{variable}"
         inner = (held or {}).get(bound.concept)
+        if inner is not None and compares(inner):
+            raise ValueError(f"{inner.name} compares two periods; it cannot be an input")
         inputs[variable] = (
-            plan(inner, at_year, at_period, held, f"{where}.")
+            plan(inner, at_year, at_period, held, None, f"{where}.", balances)
             if inner is not None
-            else Fetch(where, bound.concept, at_year, at_period)
+            else Fetch(
+                where,
+                bound.concept,
+                at_year,
+                as_time(at_period)[0] if bound.concept in balances else at_period,
+            )
         )
-    return Step(concept, year, period, inputs)
+    return Step(concept, year, period, inputs, previous if path == "" else None)
 
 
 def evaluate(step: Step, facts: Mapping[str, tuple[float, str]]) -> tuple[float, str]:
@@ -178,10 +228,15 @@ def name_refusal(name: str) -> str | None:
 
 
 def bindings_refusal(
-    formula: str, bindings: Mapping[str, Binding], concepts: set[str], name: str = ""
+    formula: str,
+    bindings: Mapping[str, Binding],
+    concepts: set[str],
+    name: str = "",
+    comparing: set[str] | None = None,
 ) -> str | None:
     """Why `bindings` cannot fill `formula` with the scope's `concepts`, or None. A concept naming
-    the one being defined is refused, so no definition can loop."""
+    the one being defined is refused, so no definition can loop, and so is one of `comparing`,
+    which compares two periods itself."""
     if formula not in FORMULAS:
         return f"no formula {formula!r}; one of {', '.join(FORMULAS)}"
     wanted = set(FORMULAS[formula].variables)
@@ -192,9 +247,12 @@ def bindings_refusal(
     unknown = sorted(b.concept for b in bindings.values() if b.concept not in concepts)
     if unknown:
         return f"no concept {', '.join(unknown)} filed or derived in this scope"
-    odd = sorted(b.offset for b in bindings.values() if b.offset not in OFFSETS)
+    odd = sorted(b.at for b in bindings.values() if b.at not in ATS)
     if odd:
-        return f"offset {', '.join(odd)} is not one of {', '.join(OFFSETS)}"
+        return f"at {', '.join(odd)} is not one of {', '.join(ATS)}"
+    twice = sorted(b.concept for b in bindings.values() if b.concept in (comparing or set()))
+    if twice:
+        return f"{', '.join(twice)} compares two periods itself; it cannot be an input"
     return None
 
 
@@ -216,17 +274,22 @@ def available(conn: sqlite3.Connection, scope: str) -> set[str]:
     return found or set()
 
 
+def comparing(conn: sqlite3.Connection, scope: str) -> set[str]:
+    """The derived concepts held in any scope `scope` names that compare two periods."""
+    return {
+        m.name for one in scopes_of(scope) for m in load_derived_concepts(conn, one) if compares(m)
+    }
+
+
 def as_bindings(text: str) -> dict[str, Binding]:
-    """A metric's stored bindings, `{variable: {concept, offset}}`, as Bindings."""
+    """A metric's stored bindings, `{variable: {concept, at}}`, as Bindings."""
     raw = cast(dict[str, dict[str, str]], json.loads(text))
-    return {v: Binding(b["concept"], cast(Offset, b["offset"])) for v, b in raw.items()}
+    return {v: Binding(b["concept"], cast(At, b["at"])) for v, b in raw.items()}
 
 
 def bindings_json(bindings: Mapping[str, Binding]) -> str:
-    """Bindings as stored: variables sorted, each `{concept, offset}`."""
-    return json.dumps(
-        {v: {"concept": b.concept, "offset": b.offset} for v, b in sorted(bindings.items())}
-    )
+    """Bindings as stored: variables sorted, each `{concept, at}`."""
+    return json.dumps({v: {"at": b.at, "concept": b.concept} for v, b in sorted(bindings.items())})
 
 
 def load_derived_concepts(
@@ -259,7 +322,9 @@ def seed(conn: sqlite3.Connection, writer: Writer, path: Path = SEEDED) -> list[
                 why = (
                     scope_refusal(scope)
                     or name_refusal(name)
-                    or bindings_refusal(formula, bindings, available(conn, scope), name)
+                    or bindings_refusal(
+                        formula, bindings, available(conn, scope), name, comparing(conn, scope)
+                    )
                 )
                 if why:
                     refused.append(f"{name} [{scope}]: {why}")

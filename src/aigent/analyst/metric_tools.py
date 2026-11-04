@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -21,31 +21,35 @@ from aigent.analyst.graph import Analysed
 from aigent.analyst.specialists import Passage
 from aigent.facts.cfg_facts import COMPANY_SCOPES, FACTS_TICKERS, SCOPES
 from aigent.facts.derived_concepts import (
-    OFFSETS,
+    ATS,
+    At,
     Binding,
     DerivedConcept,
     Fetch,
-    Offset,
     Step,
+    When,
     available,
     bindings_json,
     bindings_refusal,
+    comparing,
     evaluate,
+    kind,
+    leaves,
     load_derived_concepts,
-    matched,
     name_refusal,
     plan,
-    ranked,
 )
 from aigent.facts.formulas import FORMULAS
-from aigent.facts.lookup import BASES, PERIODS, Period, span
+from aigent.facts.lookup import BASES, LENGTHS, QUARTERS, Period, as_period, as_time, instants, span
 from aigent.facts.store import (
     CHECKED_TIERS,
     DerivedRow,
     Writer,
     concept_check,
+    derived_held,
     normal_scope,
     scope_refusal,
+    verified_derived,
     write_derived,
     write_derived_concept,
     write_formula_proposal,
@@ -64,26 +68,68 @@ _SCOPES = "; ".join(
 PLAN_TOOL: ToolParam = {
     "name": PLAN,
     "description": (
-        "Step 1 of computing a figure that needs arithmetic (a growth rate, a ratio, a margin): "
-        "find the metric for it and the exact facts it needs for one company, year, period and "
-        "basis. Returns a plan_id, the metric's library formula, and a fetch list: call "
-        "fundamentals once per entry with exactly the arguments given, then compute_metric with "
-        "the plan_id and each fact's cite_as. A metric is found only by its exact name or when "
-        "its name and label hold every word asked; otherwise the answer lists the closest of the "
-        "company's scope and the formula library, and you plan one by name or define it with "
-        "define_metric. Example: plan_metric(what='operating profit growth', company='ICICIBANK', "
-        "year='2025', period='year', basis='standalone')."
+        "Plan a derived metric get_metric found (a growth rate, a ratio, a margin) by its exact "
+        "name: the exact facts it needs for one company and basis. Name "
+        "the time as a financial year and a quarter, meaning that quarter's end (year='2026', "
+        "quarter='Q1' is 30 June 2025), and the period as the length of the span ending then: "
+        "'3M' at any quarter, '6M' at Q2, '9M' at Q3, '12M' at Q4. A snapshot metric, every "
+        "input a balance as at a date (a credit-deposit ratio), has no period: pass null. A "
+        "metric that compares two times, such as a growth rate, also needs previous_year, "
+        "previous_quarter and previous_period, the time and period it is compared with: always "
+        "pass them, as nothing is assumed; the previous period is as long and ends before the "
+        "current one begins. A metric at one time takes null for all three. A wrong combination "
+        "is refused, saying which. Returns a plan_id, the metric's kind (flow, snapshot or "
+        "mixed) and library formula, and a fetch list: call fundamentals once per entry with "
+        "exactly the arguments given, then compute_metric with the plan_id and each fact's "
+        "cite_as. When the same figure is already computed from these inputs and verified, the "
+        "answer has `held` and a fetch list of one entry, the figure itself: fetch it with "
+        "fundamentals, cite it, and do not compute it. A name not held in the company's scope is "
+        "refused: find one with get_metric or "
+        "define one with define_metric. Examples: net profit growth over the quarter before, "
+        "plan_metric(name='ProfitLossForThePeriodGrowth', company='ICICIBANK', year='2026', "
+        "quarter='Q1', period='3M', "
+        "previous_year='2025', previous_quarter='Q4', previous_period='3M', basis='standalone'); "
+        "a balance-sheet ratio at the year's end, plan_metric(name='CreditDepositRatio', "
+        "company='HDFCBANK', year='2025', quarter='Q4', period=null, previous_year=null, "
+        "previous_quarter=null, previous_period=null, basis='consolidated')."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "what": {"type": "string", "description": "The figure, in words or a metric name."},
+            "name": {"type": "string", "description": "The metric's exact name, from get_metric."},
             "company": {"type": "string", "enum": list(FACTS_TICKERS)},
-            "year": {"type": "string", "description": "The financial year it ends in: 2025."},
-            "period": {"type": "string", "enum": list(PERIODS)},
+            "year": {
+                "type": "string",
+                "description": "The financial year of the time: 2025 is FY 2024-25.",
+            },
+            "quarter": {"type": "string", "enum": list(QUARTERS)},
+            "period": {
+                "anyOf": [{"type": "string", "enum": list(LENGTHS)}, {"type": "null"}],
+                "description": "The span ending at the time, or null for a snapshot metric.",
+            },
+            "previous_year": {
+                "type": ["string", "null"],
+                "description": "The compared time's financial year, or null at one time.",
+            },
+            "previous_quarter": {
+                "anyOf": [{"type": "string", "enum": list(QUARTERS)}, {"type": "null"}]
+            },
+            "previous_period": {
+                "anyOf": [{"type": "string", "enum": list(LENGTHS)}, {"type": "null"}]
+            },
             "basis": {"type": "string", "enum": list(BASES)},
         },
-        "required": ["what", "company", "year", "period", "basis"],
+        "required": [
+            "name",
+            "company",
+            "year",
+            "quarter",
+            "period",
+            "previous_year",
+            "previous_quarter",
+            "previous_period",
+            "basis",
+        ],
         "additionalProperties": False,
     },
     "strict": True,
@@ -128,7 +174,9 @@ DEFINE_TOOL: ToolParam = {
         f"{_SCOPES}; several joined by commas, or * for all, when every scope named files the "
         "concepts it uses. Bind each formula variable to a concept those scopes file (the names "
         "fundamentals returns, such as InterestEarned) or to a metric already defined in it, at "
-        "an offset: 't' the period asked, 't-1y' a year before, 't-1q' the quarter before. It is "
+        "'current' or 'previous': a metric reading 'previous' compares two periods, both named "
+        "when it is planned (growth: current at 'current', previous at 'previous'), and cannot be "
+        "an input itself. Name no period in it. It is "
         "saved, as a derived concept, unchecked for a person to review; then plan it. If no "
         "library formula fits even through other metrics, call propose_formula instead."
     ),
@@ -149,9 +197,9 @@ DEFINE_TOOL: ToolParam = {
                     "properties": {
                         "variable": {"type": "string"},
                         "concept": {"type": "string"},
-                        "offset": {"type": "string", "enum": list(OFFSETS)},
+                        "at": {"type": "string", "enum": list(ATS)},
                     },
-                    "required": ["variable", "concept", "offset"],
+                    "required": ["variable", "concept", "at"],
                     "additionalProperties": False,
                 },
             },
@@ -193,6 +241,8 @@ class Plan:
     period: Period
     basis: str
     step: Step
+    previous: When | None = None
+    snapshot: bool = False
 
     @property
     def fetches(self) -> list[Fetch]:
@@ -228,35 +278,86 @@ class MetricTools:
             return f"Error: {bad}", True
 
     def plan(self, arguments: dict[str, object]) -> dict[str, object]:
-        what, company = str(arguments.get("what", "")).strip(), str(arguments.get("company", ""))
-        year, period = str(arguments.get("year", "")), str(arguments.get("period", ""))
+        name, company = str(arguments.get("name", "")).strip(), str(arguments.get("company", ""))
+        year, quarter = str(arguments.get("year", "")), str(arguments.get("quarter", ""))
+        length = arguments.get("period")
         basis = str(arguments.get("basis", ""))
-        if not what or company not in FACTS_TICKERS or not year.isdigit():
-            raise ValueError("give what, a company of the database and the year as digits")
-        if period not in PERIODS or basis not in BASES:
-            raise ValueError(f"period is one of {', '.join(PERIODS)}; basis one of {BASES}")
+        was = [arguments.get(f"previous_{k}") for k in ("year", "quarter", "period")]
+        if not name or company not in FACTS_TICKERS or not year.isdigit():
+            raise ValueError("give the name, a company of the database and the year as digits")
+        if quarter not in QUARTERS or basis not in BASES:
+            raise ValueError(f"quarter is one of {', '.join(QUARTERS)}; basis one of {BASES}")
+        if length is not None and length not in LENGTHS:
+            raise ValueError(f"period is one of {', '.join(LENGTHS)}, or null for a snapshot")
+        compared = was[0] is not None or was[1] is not None
+        if compared and (not str(was[0]).isdigit() or was[1] not in QUARTERS):
+            raise ValueError("give previous_year as digits and previous_quarter, or null for both")
+        if was[2] is not None and (not compared or was[2] not in LENGTHS):
+            raise ValueError("previous_period is one of 3M, 6M, 9M, 12M, with a previous time")
         scope = COMPANY_SCOPES[company]
-        held = load_derived_concepts(self.conn, scope)
-        metric = matched(what, held)
+        by_name = {m.name: m for m in load_derived_concepts(self.conn, scope)}
+        metric = by_name.get(name)
         if metric is None:
+            raise ValueError(
+                f"no metric {name!r} in the {scope} scope; find one with get_metric or define "
+                f"one with define_metric on the library: {_LIBRARY}"
+            )
+        shape = kind(self.conn, metric, by_name)
+        snapshot = shape == "snapshot"
+        at = as_period(int(year), quarter, cast(str | None, length), snapshot, metric.name)
+        previous = (
+            as_period(
+                int(str(was[0])), str(was[1]), cast(str | None, was[2]), snapshot, metric.name
+            )
+            if compared
+            else None
+        )
+        if previous is not None and was[2] != length:
+            raise ValueError("previous_period is as long as period; compare like with like")
+        balances = instants(self.conn, sorted(leaves(metric, by_name)))
+        step = plan(metric, *at, by_name, previous, balances=balances)
+        planned = Plan(metric, company, *at, basis, step, previous, snapshot)
+        cites = {f.variable: f.cite_as(company, basis) for f in step.fetches()}
+        held = verified_derived(self.conn, _derived_row(planned, 0.0, "", cites))
+        if held is not None:
+            quarter, span_of = as_time(planned.period)
             return {
-                "metric": None,
-                "scope": scope,
+                "plan_id": None,
+                "metric": metric.name,
+                "label": metric.label,
+                "kind": shape,
+                "periods": _periods(*at, previous, snapshot),
+                "held": {"fact_id": held, "tier": "derived"},
                 "note": (
-                    "No metric in this scope matches every word. If one of the closest is meant, "
-                    "plan it by its exact name; else define one with define_metric."
+                    "Already computed from these same verified inputs and verified: fetch it with "
+                    "fundamentals as given and cite it; do not compute it again."
                 ),
-                "closest": [{"name": m.name, "label": m.label} for m in ranked(what, held)[:5]],
-                "library": _LIBRARY,
+                "fetch": [
+                    {
+                        "variable": "held",
+                        "fundamentals": {
+                            "company": company,
+                            "concept": metric.name,
+                            "year": str(planned.year),
+                            "quarter": quarter,
+                            "period": None if snapshot else span_of,
+                            "basis": basis,
+                            "segment": None,
+                        },
+                        "cite_as": f"FACT:{company}:{planned.year}:{basis}:"
+                        f"{planned.period}:{metric.name}",
+                    }
+                ],
             }
-        step = plan(metric, int(year), cast(Period, period), {m.name: m for m in held})
         plan_id = f"P{len(self.plans) + 1}"
-        self.plans[plan_id] = Plan(metric, company, int(year), cast(Period, period), basis, step)
+        self.plans[plan_id] = planned
         return {
             "plan_id": plan_id,
             "metric": metric.name,
             "scope": scope,
             "label": metric.label,
+            "kind": shape,
+            "periods": _periods(*at, previous, snapshot),
             "tier": metric.tier,
             "formula": f"{metric.formula}: {FORMULAS[metric.formula].description}",
             "fetch": [
@@ -264,9 +365,10 @@ class MetricTools:
                     "variable": f.variable,
                     "fundamentals": {
                         "company": company,
+                        "concept": f.concept,
                         "year": str(f.year),
-                        "what": f.concept,
-                        "period": f.period,
+                        "quarter": as_time(f.period)[0],
+                        "period": None if f.concept in balances else as_time(f.period)[1],
                         "basis": basis,
                         "segment": None,
                     },
@@ -310,8 +412,7 @@ class MetricTools:
             "scope": planned.metric.scope,
             "formula": f"{formula.name}: {formula.description}",
             "company": planned.company,
-            "year": planned.year,
-            "period": planned.period,
+            "periods": _periods(planned.year, planned.period, planned.previous, planned.snapshot),
             "basis": planned.basis,
             "inputs": [{"variable": v, **facts[v]} for v, _ in inputs],
         }
@@ -336,10 +437,10 @@ class MetricTools:
             variable = str(row.get("variable", ""))
             if variable in bindings:
                 raise ValueError(f"{variable} is bound twice")
-            bindings[variable] = Binding(
-                str(row.get("concept", "")), cast(Offset, row.get("offset"))
-            )
-        if why := bindings_refusal(formula, bindings, available(self.conn, scope), name):
+            bindings[variable] = Binding(str(row.get("concept", "")), cast(At, row.get("at")))
+        if why := bindings_refusal(
+            formula, bindings, available(self.conn, scope), name, comparing(self.conn, scope)
+        ):
             raise ValueError(why)
         with self.conn:
             written = write_derived_concept(
@@ -390,6 +491,18 @@ class MetricTools:
         return fact
 
 
+def _periods(year: int, period: Period, previous: When | None, snapshot: bool = False) -> str:
+    """The time a figure is at, or the two it compares: "Q1 FY2026 over Q4 FY2025"; a snapshot
+    is "as at the end of Q4 FY2025"."""
+    at = _named(year, period)
+    told = at if previous is None else f"{at} over {_named(*previous)}"
+    return f"as at the end of {told}" if snapshot else told
+
+
+def _named(year: int, period: Period) -> str:
+    return f"FY{year}" if period == "year" else f"{period} FY{year}"
+
+
 def _pairs(given: object, key: str, value: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for entry in cast(list[object], given) if isinstance(given, list) else []:
@@ -416,8 +529,8 @@ def chained(tools: MetricTools, rest: Dispatch) -> Dispatch:
 def write_back(
     conn: sqlite3.Connection, done: Analysed, tools: MetricTools, writer: Writer
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Writes each computed figure a supported claim cites, once, and returns what was written and
-    what was skipped with its reason."""
+    """Writes each computed figure a supported claim cites, once, unless the same figure is already
+    held, and returns what was written and what was skipped with its reason."""
     if done.memo is None:
         return [], []
     supported = [
@@ -438,33 +551,13 @@ def write_back(
                 {"metric": planned.metric.name, "reason": "an input is no longer verified"}
             )
             continue
-        start, end = span(planned.year, planned.period)
-        own = [
-            json.loads(tools.evidence[c].text)
-            for f, (_, c) in zip(planned.fetches, computed.inputs, strict=True)
-            if (f.year, f.period) == (planned.year, planned.period)
-        ]
-        instant = bool(own) and all("as_at" in cast(dict[str, object], f["period"]) for f in own)
-        row = DerivedRow(
-            ticker=planned.company,
-            basis=planned.basis,
-            concept=planned.metric.name,
-            label=planned.metric.label,
-            period_start=None if instant else start.isoformat(),
-            period_end=end.isoformat(),
-            segment=None,
-            value=computed.value,
-            unit=computed.unit,
-            formula=json.dumps(
-                {
-                    "metric": planned.metric.name,
-                    "scope": planned.metric.scope,
-                    "formula": planned.metric.formula,
-                    "inputs": dict(computed.inputs),
-                },
-                sort_keys=True,
-            ),
-        )
+        row = _derived_row(planned, computed.value, computed.unit, dict(computed.inputs))
+        held = derived_held(conn, row)
+        if held is not None:
+            skipped.append(
+                {"metric": planned.metric.name, "reason": "already held", "fact_id": held}
+            )
+            continue
         with conn:
             checked = planned.metric.verified_by
             trusted = planned.metric.tier == "derived-concept" and checked is not None
@@ -487,11 +580,43 @@ def write_back(
                 "unit": computed.unit,
                 "tier": "derived" if trusted else "derived-ai",
                 "formula": planned.metric.formula,
-                "period": f"{planned.period} {planned.year}",
+                "periods": _periods(
+                    planned.year, planned.period, planned.previous, planned.snapshot
+                ),
                 "inputs": [c for _, c in computed.inputs],
             }
         )
     return written, skipped
+
+
+def _derived_row(planned: Plan, value: float, unit: str, inputs: Mapping[str, str]) -> DerivedRow:
+    """The `facts` row a planned figure is written as, its inputs' cites by variable: as at the
+    period's end for a snapshot, its formula column naming the metric, inputs and periods."""
+    start, end = span(planned.year, planned.period)
+    periods = _periods(planned.year, planned.period, planned.previous, planned.snapshot)
+    return DerivedRow(
+        ticker=planned.company,
+        basis=planned.basis,
+        concept=planned.metric.name,
+        label=planned.metric.label
+        if planned.previous is None
+        else f"{planned.metric.label}, {periods}",
+        period_start=None if planned.snapshot else start.isoformat(),
+        period_end=end.isoformat(),
+        segment=None,
+        value=value,
+        unit=unit,
+        formula=json.dumps(
+            {
+                "metric": planned.metric.name,
+                "scope": planned.metric.scope,
+                "formula": planned.metric.formula,
+                "inputs": dict(inputs),
+                "periods": periods,
+            },
+            sort_keys=True,
+        ),
+    )
 
 
 def _fact_id(conn: sqlite3.Connection, planned: Plan, fetch: Fetch) -> int | None:

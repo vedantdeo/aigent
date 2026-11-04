@@ -27,13 +27,14 @@ from aigent.analyst.filings import SEARCH_FILINGS_TOOL, FilingSearch, build_fili
 from aigent.analyst.fundamentals import (
     COMPARE_TOOL,
     FUNDAMENTALS_TOOL,
+    GET_METRIC_TOOL,
     Company,
     FinancialYear,
     FundamentalsTool,
 )
 from aigent.config import MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME
 from aigent.errors import GuardrailTripped
-from aigent.facts.lookup import Basis, Lookup, Period, concept_index
+from aigent.facts.lookup import Basis, Length, Lookup, Quarter, concept_index
 from aigent.facts.store import FACTS_DB
 from aigent.report_tools import SEARCH_TOOL, ReportSearch
 from aigent.retrieval.chunk import Chunk
@@ -97,21 +98,31 @@ def build_server(
     )
     def fundamentals(
         company: Company,
+        concept: str,
         year: FinancialYear,
-        what: str,
-        period: Period = "year",
+        quarter: Quarter,
+        period: Length | None,
         basis: Basis = "consolidated",
         segment: str | None = None,
     ) -> str:
         arguments: dict[str, object] = {
             "company": company,
+            "concept": _guarded(concept),
             "year": year,
-            "what": _guarded(what),
+            "quarter": quarter,
             "period": period,
             "basis": basis,
             "segment": segment,
         }
         return _answered(run_fundamentals(arguments))
+
+    @server.tool(
+        name="get_metric",
+        description=GET_METRIC_TOOL.get("description", ""),
+        annotations=ToolAnnotations(read_only_hint=True),
+    )
+    def get_metric(company: Company, what: str) -> str:
+        return _answered(run_fundamentals.candidates({"company": company, "what": _guarded(what)}))
 
     @server.tool(
         name="compare_unverified",

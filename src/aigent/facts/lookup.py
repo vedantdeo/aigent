@@ -1,5 +1,6 @@
-"""Looking facts up: `what` matched to concepts by their labels, then fetched exactly by company,
-financial year, period, basis and segment; every lookup logged in `lookups`."""
+"""Looking facts up: `what` matched to concepts by their labels, or a concept named exactly, fetched
+by company, financial year, period, basis and segment; every lookup logged in `lookups`. Also the
+time an agent names: a quarter's end and the length of the span ending there."""
 
 from __future__ import annotations
 
@@ -21,6 +22,20 @@ Period = Literal["year", "Q1", "Q2", "Q3", "Q4", "H1", "9M"]
 Basis = Literal["consolidated", "standalone"]
 PERIODS: tuple[Period, ...] = get_args(Period)
 BASES: tuple[Basis, ...] = get_args(Basis)
+Quarter = Literal["Q1", "Q2", "Q3", "Q4"]
+QUARTERS: tuple[Quarter, ...] = get_args(Quarter)
+Length = Literal["3M", "6M", "9M", "12M"]
+LENGTHS: tuple[Length, ...] = get_args(Length)
+# Each period as the quarter it ends at and its length; a filing holds no other span.
+_TIME_OF: dict[Period, tuple[Quarter, Length]] = {
+    "Q1": ("Q1", "3M"),
+    "Q2": ("Q2", "3M"),
+    "Q3": ("Q3", "3M"),
+    "Q4": ("Q4", "3M"),
+    "H1": ("Q2", "6M"),
+    "9M": ("Q3", "9M"),
+    "year": ("Q4", "12M"),
+}
 
 # Each period of financial year Y as (first month, last month), months counted from April of Y-1.
 _SPANS: dict[Period, tuple[int, int]] = {
@@ -33,6 +48,39 @@ _SPANS: dict[Period, tuple[int, int]] = {
     "9M": (1, 9),
 }
 _LAST_DAY = {6: 30, 9: 30, 12: 31, 3: 31}
+
+
+def as_period(
+    year: int, quarter: str, length: str | None, snapshot: bool, name: str
+) -> tuple[int, Period]:
+    """A named time as a year and period: a snapshot as at `quarter`'s end, a flow the span of
+    `length` ending then. ValueError for a span no filing holds, a snapshot given a length or a
+    flow given none."""
+    if snapshot and length is not None:
+        raise ValueError(f"{name} is a snapshot, as at a quarter's end; give no period")
+    if not snapshot and length is None:
+        raise ValueError(f"{name} reads a span; give its period, 3M, 6M, 9M or 12M")
+    wanted = (quarter, "3M" if length is None else length)
+    for period, time in _TIME_OF.items():
+        if time == wanted:
+            return year, period
+    ends = {t[1]: t[0] for t in _TIME_OF.values() if t[1] != "3M"}.get(str(length), "any quarter")
+    raise ValueError(f"a {length} period ends at {ends} only; 3M ends at any quarter")
+
+
+def as_time(period: Period) -> tuple[Quarter, Length]:
+    """The quarter `period` ends at and its length."""
+    return _TIME_OF[period]
+
+
+def instants(conn: sqlite3.Connection, concepts: Sequence[str]) -> set[str]:
+    """Those of `concepts` filed mostly as balances as at a date."""
+    rows = conn.execute(
+        f"""SELECT concept FROM facts WHERE concept IN ({", ".join("?" for _ in concepts)})
+            GROUP BY concept HAVING SUM(period_kind = 'instant') > SUM(period_kind = 'duration')""",
+        tuple(concepts),
+    )
+    return {str(r[0]) for r in rows}
 
 
 class NotFound(ValueError):
@@ -267,6 +315,65 @@ class Lookup:
             )
         return found
 
+    def candidates(self, ticker: str, what: str, k: int = FACTS_LOOKUP_K) -> list[Candidate]:
+        """The concepts `ticker` files closest to `what`, an exact name first, at most `k`."""
+        conn = connect(self.db)
+        try:
+            with self._building:
+                if self._index is None:
+                    self._index = self.index(conn)
+            matched = self._index.match(what)
+            filed = _filed(conn, ticker, matched)
+            kept = [c for c in matched if c in filed][:k]
+            balances = instants(conn, kept) if kept else set()
+            labels = dict(
+                conn.execute(
+                    f"SELECT concept, label FROM concepts WHERE concept IN "
+                    f"({', '.join('?' for _ in kept)})",
+                    tuple(kept),
+                ).fetchall()
+            )
+        finally:
+            conn.close()
+        return [Candidate(c, str(labels.get(c, c)), c in balances) for c in kept]
+
+    def fact(
+        self,
+        ticker: str,
+        concept: str,
+        year: int,
+        period: Period,
+        basis: Basis = "consolidated",
+        segment: str | None = None,
+    ) -> list[Found]:
+        """The fact of exactly `concept`, logged; NotFound when there is none for that period."""
+        conn = connect(self.db)
+        try:
+            found: list[Found] = []
+            try:
+                named = segment_of(conn, ticker, basis, span(year, period)[1], segment)
+                found = find(conn, ticker, year, period, basis, named, [concept], self.run_id)
+            finally:
+                self._log(conn, ticker, year, concept, basis, period, found, [concept])
+        finally:
+            conn.close()
+        if not found:
+            raise NotFound(
+                f"{ticker} files no {concept} for FY{year} {period} ({basis}"
+                f"{'' if segment is None else ', segment ' + segment}); try another time"
+            )
+        return found
+
+    def snapshot(self, ticker: str, concept: str) -> bool | None:
+        """Whether `concept` is a balance as at a date; None when `ticker` files no such concept."""
+        conn = connect(self.db)
+        try:
+            if not _filed(conn, ticker, [concept]):
+                return None
+            return concept in instants(conn, [concept])
+        finally:
+            conn.close()
+
     def _log(
         self,
         conn: sqlite3.Connection,
@@ -296,6 +403,24 @@ class Lookup:
                     int(bool(found)),
                 ),
             )
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """A concept a company files, its label, and whether it is a balance as at a date."""
+
+    concept: str
+    label: str
+    snapshot: bool
+
+
+def _filed(conn: sqlite3.Connection, ticker: str, concepts: Sequence[str]) -> set[str]:
+    rows = conn.execute(
+        f"""SELECT DISTINCT concept FROM facts WHERE ticker = ?
+            AND concept IN ({", ".join("?" for _ in concepts)})""",
+        (ticker, *concepts),
+    )
+    return {str(r[0]) for r in rows}
 
 
 def _labels(db: Path, concepts: Sequence[str]) -> list[str]:

@@ -22,6 +22,7 @@ OURS = [
     "search_reports",
     "search_filings",
     "fundamentals",
+    "get_metric",
     "compare_unverified",
     "calculate",
     "read_file",
@@ -59,7 +60,8 @@ def test_a_server_s_tools_are_listed_as_a_model_is_shown_them(search: FakeSearch
     assert list(shown) == OURS
     assert all(tool.get("description") for tool in shown.values()), shown
     schema = dict(shown["fundamentals"]["input_schema"])
-    assert schema["required"] == ["company", "year", "what"] and "properties" in schema
+    assert schema["required"] == ["company", "concept", "year", "quarter", "period"]
+    assert "properties" in schema
 
 
 def test_only_the_tools_named_are_offered_and_callable() -> None:

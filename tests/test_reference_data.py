@@ -33,6 +33,7 @@ INJECTIONS = DATASET.parent / "injections.jsonl"
 FIGURES = DATASET.parent / "figures.jsonl"
 ADJUDICATIONS = DATASET.parent / "figure-adjudications.jsonl"
 ERRORS = Path(errors.__file__)
+IND_AS_FILED = Path(__file__).parent / "facts" / "fixtures" / "ind-as-filed-concepts.txt"
 
 Pairs = list[tuple[str, object]]
 
@@ -101,6 +102,7 @@ ORDERED_FILES = [
     Ordered(TABLE_FIGURES, key="id", load=json_keys("figures")),
     Ordered(DECISIONS, key="id", load=jsonl_ids("id")),
     Ordered(SEEDED, key="scope/name", load=jsonl_keys("scope", "name")),
+    Ordered(IND_AS_FILED, key="concept", load=lambda p: p.read_text(encoding="utf-8").split()),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(TRAINING_MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(DATASET, key="id", load=jsonl_ids("id")),

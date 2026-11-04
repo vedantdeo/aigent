@@ -16,7 +16,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 from aigent import mcp_server
 from aigent.analyst import filings
 from aigent.analyst.filings import SEARCH_FILINGS_TOOL
-from aigent.analyst.fundamentals import COMPARE_TOOL, FUNDAMENTALS_TOOL
+from aigent.analyst.fundamentals import COMPARE_TOOL, FUNDAMENTALS_TOOL, GET_METRIC_TOOL
 from aigent.config import MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME
 from aigent.facts.lookup import Lookup
 from aigent.mcp_server import LazyFilings, LazySearch, build_server
@@ -58,11 +58,20 @@ def _call(
     )
 
 
+FETCH: dict[str, object] = {
+    "company": "ITC",
+    "concept": "RevenueFromOperations",
+    "year": "2025",
+    "quarter": "Q4",
+    "period": "3M",
+}
+
+
 def _text(result: CallToolResult) -> str:
     return "".join(cast(TextContent, block).text for block in result.content)
 
 
-def test_the_server_offers_seven_tools_described_as_the_agent_sees_them(
+def test_the_server_offers_eight_tools_described_as_the_agent_sees_them(
     search: FakeSearch,
 ) -> None:
     async def listed(client: Client) -> tuple[list[Tool], str | None, str]:
@@ -80,6 +89,7 @@ def test_the_server_offers_seven_tools_described_as_the_agent_sees_them(
         "search_reports": SEARCH_TOOL.get("description"),
         "search_filings": SEARCH_FILINGS_TOOL.get("description"),
         "fundamentals": FUNDAMENTALS_TOOL.get("description"),
+        "get_metric": GET_METRIC_TOOL.get("description"),
         "compare_unverified": COMPARE_TOOL.get("description"),
         "calculate": CALCULATOR_TOOL.get("description"),
         "read_file": READ_FILE_TOOL.get("description"),
@@ -89,7 +99,15 @@ def test_the_server_offers_seven_tools_described_as_the_agent_sees_them(
     assert tools["write_file"].annotations and not tools["write_file"].annotations.read_only_hint
     assert tools["write_file"].input_schema["required"] == ["file_path", "content"]
     assert tools["search_filings"].input_schema["required"] == ["query"], "scope defaults to all"
-    assert tools["fundamentals"].input_schema["required"] == ["company", "year", "what"]
+    assert tools["fundamentals"].input_schema["required"] == [
+        "company",
+        "concept",
+        "year",
+        "quarter",
+        "period",
+    ], "a snapshot's period is null, never left out"
+    assert tools["get_metric"].input_schema["required"] == ["company", "what"]
+    assert tools["get_metric"].annotations and tools["get_metric"].annotations.read_only_hint
     assert tools["compare_unverified"].input_schema["required"] == ["lookup_id", "my_value", "how"]
     assert tools["compare_unverified"].annotations
     assert tools["compare_unverified"].annotations.read_only_hint
@@ -237,9 +255,10 @@ def test_a_fundamentals_lookup_returns_the_facts_and_what_to_cite(
 ) -> None:
     arguments: dict[str, object] = {
         "company": "ITC",
+        "concept": "RevenueFromOperations",
         "year": "2025",
-        "what": "  revenue from operations  ",
-        "period": "Q4",
+        "quarter": "Q4",
+        "period": "3M",
     }
 
     result = _call(search, arguments, "fundamentals", lookup=checked_facts_lookup)
@@ -250,38 +269,43 @@ def test_a_fundamentals_lookup_returns_the_facts_and_what_to_cite(
     assert found["value"] == 204.0, found
 
 
+def test_get_metric_names_the_concept_to_fetch(search: FakeSearch, facts_lookup: Lookup) -> None:
+    result = _call(
+        search, {"company": "ITC", "what": "total assets"}, "get_metric", lookup=facts_lookup
+    )
+
+    said = json.loads(_text(result))
+    assert not result.is_error and said["filed"][0]["concept"] == "Assets", said
+
+
 @pytest.mark.parametrize(
     ("tool", "arguments", "says"),
     [
         pytest.param(
             "fundamentals",
-            {"company": "INFY", "year": "2025", "what": "revenue"},
+            {**FETCH, "company": "INFY"},
             "INFY",
             id="a company the database lacks",
         ),
+        pytest.param("fundamentals", {**FETCH, "year": "2019"}, "2019", id="a year it lacks"),
+        pytest.param("fundamentals", {**FETCH, "quarter": "Q5"}, "Q5", id="not a quarter"),
         pytest.param(
             "fundamentals",
-            {"company": "ITC", "year": "2019", "what": "revenue"},
-            "2019",
-            id="a year the database lacks",
-        ),
-        pytest.param(
-            "fundamentals",
-            {"company": "ITC", "year": "2025", "what": "revenue", "period": "Q5"},
-            "Q5",
-            id="a period that is not one",
-        ),
-        pytest.param(
-            "fundamentals",
-            {"company": "ITC", "year": "2025", "what": ""},
+            {**FETCH, "concept": ""},
             "empty",
-            id="no figure named, refused by the input guard",
+            id="no concept named, refused by the input guard",
         ),
         pytest.param(
             "fundamentals",
-            {"company": "WIPRO", "year": "2025", "what": "revenue from operations"},
-            "Closest labels filed",
-            id="a figure the database does not hold",
+            {**FETCH, "company": "WIPRO"},
+            "find its name with get_metric",
+            id="a concept the company does not file",
+        ),
+        pytest.param(
+            "get_metric",
+            {"company": "ITC", "what": ""},
+            "empty",
+            id="no words, refused by the guard",
         ),
         pytest.param("calculate", {"expression": "__import__('os')"}, "", id="code, not sums"),
     ],
@@ -396,7 +420,7 @@ def test_a_bad_file_call_is_refused_with_its_reason_and_changes_nothing(
 def test_an_unverified_figure_is_compared_only_after_the_agents_own(
     search: FakeSearch, facts_lookup: Lookup
 ) -> None:
-    asked: dict[str, object] = {"company": "ITC", "year": "2025", "what": "revenue from operations"}
+    asked: dict[str, object] = {**FETCH, "period": "12M"}
 
     async def session(client: Client) -> tuple[str, str]:
         looked = _text(await client.call_tool("fundamentals", asked))

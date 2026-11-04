@@ -116,7 +116,7 @@ function verdict(v) {
 function facts(list) {
   if (!list.length) return "";
   const rows = list.map(f => f.metric
-    ? `<tr><td>${esc(f.metric)}</td><td class="num">${money(f.value, f.unit)}</td><td>${esc(f.period)} ${esc(f.year)}</td><td>${esc(f.basis)}</td><td>${tier(f.trusted ? "derived" : "derived-ai")}</td><td class="src">${esc(f.cite_as)} · ${esc(f.formula)}</td></tr>`
+    ? `<tr><td>${esc(f.metric)}</td><td class="num">${money(f.value, f.unit)}</td><td>${esc(f.periods)}</td><td>${esc(f.basis)}</td><td>${tier(f.trusted ? "derived" : "derived-ai")}</td><td class="src">${esc(f.cite_as)} · ${esc(f.formula)}</td></tr>`
     : f.label
     ? `<tr><td>${esc(f.label)}</td><td class="num">${money(f.value, f.unit)}</td><td>${esc(period(f.period))}</td><td>${esc(f.basis)}${f.segment ? " · " + esc(f.segment) : ""}</td><td>${tier(f.tier)}</td><td class="src">${esc(f.cite_as)}</td></tr>`
     : `<tr><td colspan="6" class="src">${esc(f.cite_as)}: not a fact this run looked up</td></tr>`).join("");
@@ -129,7 +129,7 @@ function calls(list) {
     if (!c.error && r && typeof r === "object" && Array.isArray(r.facts))
       said = `${r.facts.length} verified · ${r.unverified_held} unverified held back`;
     else if (!c.error && r && typeof r === "object" && r.plan_id)
-      said = `plan ${esc(r.plan_id)}: ${esc(r.metric)} = ${esc(r.formula)}; fetch ${r.fetch.map(f => esc(f.variable) + " = " + esc(f.fundamentals.what) + " " + esc(f.fundamentals.period) + " " + esc(f.fundamentals.year)).join(", ")}`;
+      said = `plan ${esc(r.plan_id)}: ${esc(r.metric)}, ${esc(r.periods)} = ${esc(r.formula)}; fetch ${r.fetch.map(f => esc(f.variable) + " = " + esc(f.fundamentals.concept) + " " + esc(f.fundamentals.quarter) + " FY" + esc(f.fundamentals.year) + (f.fundamentals.period ? " " + esc(f.fundamentals.period) : "")).join(", ")}`;
     else if (!c.error && r && typeof r === "object" && r.metric === null)
       said = `no metric fits`;
     else if (!c.error && r && typeof r === "object" && r.cite_as && r.metric)
@@ -156,8 +156,8 @@ function render(a, seconds) {
       ${c.reason ? `<div class="reason">${esc(c.reason)}</div>` : ""}${facts(c.facts)}</div>`).join("") + `</div>`;
     if (a.written.length || a.skipped.length) html += `<div class="card"><h2>Written back to the database</h2>
       <p class="reason">Each computed figure a supported claim cites, as a fact under its metric's name, linked to the facts it was computed from: trusted when a person has checked the metric's definition, else unverified.</p>
-      ${a.written.map(w => `<div class="call"><span class="tool">fact ${w.fact_id}</span> ${esc(w.metric)}, ${esc(w.period)} = ${money(w.value, w.unit)} ${tier(w.tier)}<br>${esc(w.formula)} of ${w.inputs.map(esc).join(", ")}</div>`).join("")}
-      ${a.skipped.map(k => `<div class="call"><span class="err">not written</span> ${esc(k.metric)}: ${esc(k.reason)}</div>`).join("")}</div>`;
+      ${a.written.map(w => `<div class="call"><span class="tool">fact ${w.fact_id}</span> ${esc(w.metric)}, ${esc(w.periods)} = ${money(w.value, w.unit)} ${tier(w.tier)}<br>${esc(w.formula)} of ${w.inputs.map(esc).join(", ")}</div>`).join("")}
+      ${a.skipped.map(k => `<div class="call"><span class="err">not written</span> ${esc(k.metric)}: ${esc(k.reason)}${k.fact_id ? ", fact " + esc(k.fact_id) : ""}</div>`).join("")}</div>`;
     if (a.caveats.length) html += `<div class="card"><h2>Caveats</h2>${a.caveats.map(c => `<p>${esc(c)}</p>`).join("")}</div>`;
   } else if (!a.error) {
     html += a.draft

@@ -2413,3 +2413,83 @@
   runs in passes so a concept may build on one later in the sorted file. The agent's
   `CostToIncomeDenominator`, its figure and the `CostToIncomeRatio` proposal deleted. 2,541 tests.
 
+- 11-04: **ind-as seeds, and the comparison named at plan time, $0.00.** Nine seeds for the seven
+  ind-as companies: net profit margin over revenue from operations, revenue and net profit growth,
+  effective tax rate, and EBITDA (revenue less expenses net of finance costs and depreciation, other
+  income out) with its margin, built through two derived steps. Checked free on a copy of the live
+  database for all seven: Reliance FY25 net margin 8.30%, EBITDA Rs 1,65,444 crore (reported
+  1,83,422 with other income). EPS growth left out: the database holds each period's EPS from its
+  own filing only, never the bonus-adjusted comparative, so Reliance FY25 gives -50% and Wipro -40%
+  across their 1:1 bonuses; the banking `BasicEPSGrowth` has the same flaw for HDFC Bank after its
+  Aug 2025 bonus. Then Vedant: growth names its interval at plan time, every time, with no default.
+  Offsets `t`, `t-1y`, `t-1q` became `current` and `previous`; `plan_metric` takes
+  `previous_year` and `previous_period`, required for a comparing metric and refused for a
+  one-period one; the previous period must end before the current begins and be as long (a quarter
+  against any quarter); a comparing concept cannot be an input. Stored rows rewritten on connect,
+  period words dropped from labels, `ProfitLossForThePeriodQuarterOnQuarterGrowth` dropped as the
+  twin of `ProfitLossForThePeriodGrowth`. A written-back growth figure's label and formula carry
+  its periods. ICICI Bank net profit growth: FY25 over FY24 15.50%, Q1 FY26 over Q1 FY25 15.45%,
+  over Q4 FY25 1.10%. 14/14 new guards mutation-checked. 2,566 tests.
+- 11-04, later: **times and periods named apart, $0.00.** Vedant: a snapshot metric (debt to
+  assets) has no period, only a time, and the plan names no dates, since only quarter ends are ever
+  asked. `plan_metric` now takes a time (`year`, `quarter`: that quarter's end), a period (`3M`,
+  `6M`, `9M`, `12M`, his pick of lengths over names; null for a snapshot) and the previous three.
+  A metric's kind comes from its leaf concepts' facts: `snapshot` refuses a period, `flow` needs
+  one, `mixed` reads its balances at the span's end; a length a filing does not hold (6M ending Q3)
+  is refused. Then Vedant: asked about now, the agent must take the latest quarter; the desk prompt
+  gains today's date and each company's latest held quarter end (all Q4 FY2026, 31 March 2026, while
+  today is 4 November 2026), a flow defaulting to that quarter's 3M (my call), a snapshot falling
+  back to the latest Q2 or Q4 for companies filing balance sheets half-yearly. Checked on a copy:
+  HDFC Bank credit-deposit 98.4% as at Q4 FY2026; a scratch `DebtToAssetsRatio` for Reliance 17.2%,
+  nothing at Q3. 27/27 new guards mutation-checked today. 2,577 tests.
+- 11-04, smoke: **"What is ICICI Bank's credit-deposit ratio now?", $0.0715 (Sonnet $0.0398, Opus
+  $0.0317).** The first try failed free at token counting: the API refuses an `enum` under
+  `"type": ["string", "null"]`, which the fakes never check; nullable enums are now `anyOf`, a test
+  holds it, and a free count accepted the tools. Then the agent planned `quarter='Q4'`,
+  `period=null` for FY2026 unprompted, fetched advances and deposits as at 31 March 2026, and
+  answered 86.6% standalone (Rs 15,53,892.95 crore over Rs 17,94,624.98 crore), naming the date and
+  that later results are not held; three claims, all supported; written back as at Q4 FY2026.
+- 11-04, afternoon: **`get_metric` first, `fundamentals` by exact concept, $0.00.** Vedant: words
+  become concept names in one place, always first; then a filed concept is fetched with
+  `fundamentals` by name, a derived one planned with `plan_metric` by name. Asked why ICICI Bank's
+  "net interest income" lookup showed "3 verified": no bank files that line, so the five nearest
+  concepts came back (interest earned, income, segment assets verified; two cash-flow interest
+  lines held back), none of them the figure. `get_metric(company, what)` returns up to five derived
+  metrics of the company's scope and five concepts it files, each `flow` or `snapshot`;
+  `fundamentals(company, concept, year, quarter, period, basis, segment)` takes the time the same
+  way as `plan_metric` (his pick), a snapshot concept with no period; `plan_metric` takes an exact
+  `name` only (his pick), and its fetch list is in `fundamentals`' arguments, a balance as at the
+  quarter its span ends. Both served over MCP to the desk and the capstone analyst. The word lookup
+  stays for the coverage eval. 27/27 guards mutation-checked (one redundant guard dropped). 2,602
+  tests.
+- 11-04, smoke on `46ad7e8`: **"What was ICICI Bank's net interest income in FY2026?", $0.0736
+  (Sonnet $0.0445, Opus $0.0291).** The intended path exactly: `get_metric` → derived
+  `NetInterestIncome` → `plan_metric(name, 2026 Q4 12M)` → `fundamentals` for `InterestEarned` and
+  `InterestExpended` by concept → `compute_metric`. Rs 88,075.23 crore standalone (Rs 1,69,946.09
+  crore less Rs 81,870.86 crore), three claims supported, written back for FY2026; its caveat says
+  the figure is derived, not a filed line.
+- 11-04, later: **a derived figure already held is not written again, $0.00.** Write-back wrote
+  every supported computed figure, so yesterday's two runs of the ten questions left 7 identical
+  pairs. `store.derived_held` finds a derived fact with the same company, basis, concept, period,
+  segment and formula column (inputs and periods); write-back skips it as `already held`, naming
+  the fact. Promotion needs nothing new: checking a concept already promotes its `derived-ai`
+  facts. 9/9 guards mutation-checked; 2,613 tests. Vedant approved deleting the later of each pair
+  (48559-48565, with their 14 links). Rows written before today's `periods` field will not match
+  a new write of the same question.
+- 11-04, smoke on `4d648a2`: **the same net interest income question again, $0.0727 (Sonnet
+  $0.0430, Opus $0.0297).** Same path and answer, Rs 88,075.23 crore; nothing written, skipped as
+  `already held`, fact 48568; one row for it in the database.
+- 11-04, later still: **NetInterestIncome checked by Vedant, and a verified figure reused, $0.00.**
+  `verify-concept --name NetInterestIncome --scope banking --by Vedant` made it `derived-concept`
+  and promoted ICICI Bank's FY25 and FY26 figures (48558, 48568) to `derived`. Then Vedant: the
+  agent should take a held figure instead of computing it again. `plan_metric` now asks
+  `store.verified_derived` for the plan's own figure (built by the same `_derived_row` write-back
+  uses) and, when it is the only verified one for that company, basis, concept and period with the
+  plan's inputs and periods, answers `held` with one `fundamentals` fetch of it; two verified
+  intervals for one period are planned as ever, since a lookup by concept could return either.
+  Read-only on the live database: ICICI Bank NII FY2026 plans as held, fact 48568; HDFC Bank as a
+  plan. 6/6 guards mutation-checked; 2,623 tests.
+- 11-04, smoke on `410088e`: **ICICI Bank's net interest income in FY2026, held, $0.0401 (Sonnet
+  $0.0318, Opus $0.0083), against $0.0736 and $0.0727 computed.** `get_metric` → `plan_metric`
+  answered held (fact 48568) → one `fundamentals` call for `NetInterestIncome`; no input fetches,
+  no `compute_metric`, nothing written. Rs 88,075.23 crore, one claim citing the fact, supported.

@@ -18,11 +18,13 @@ from aigent.facts.store import (
     apply_labels,
     connect,
     covers,
+    derived_held,
     normal_scope,
     scope_refusal,
     scopes_of,
     sync_xbrl_facts,
     upsert_filing,
+    verified_derived,
     verify_derived_concept,
     write_derived,
     write_derived_concept,
@@ -491,6 +493,68 @@ def test_write_derived_writes_a_derived_ai_fact_linked_to_its_inputs(
     assert linked == [(ids[0],), (ids[1],)], "each input once"
 
 
+@pytest.mark.parametrize(
+    ("change", "held"),
+    [
+        pytest.param({}, True, id="the same figure"),
+        pytest.param({"value": 0.2, "label": "other"}, True, id="a value or label is not the key"),
+        pytest.param({"ticker": "WIPRO"}, False, id="another company"),
+        pytest.param({"basis": "standalone"}, False, id="another basis"),
+        pytest.param({"concept": "OtherGrowth"}, False, id="another concept"),
+        pytest.param({"period_start": None}, False, id="an instant, not the span"),
+        pytest.param({"period_end": "2024-03-31"}, False, id="another period"),
+        pytest.param({"segment": "Agri"}, False, id="a segment"),
+        pytest.param({"formula": '{"formula_id": 2}'}, False, id="other inputs or periods"),
+    ],
+)
+def test_a_derived_figure_is_held_by_its_key_and_formula(
+    conn: sqlite3.Connection, change: dict[str, object], held: bool
+) -> None:
+    ids = _checked(conn, "xbrl-filed")
+    fact_id = write_derived(conn, GROWTH, ids[:1], WRITER)
+    found = derived_held(conn, replace(GROWTH, **change))
+    assert found == (fact_id if held else None), change
+
+
+@pytest.mark.parametrize(
+    ("verified", "also", "asked", "found"),
+    [
+        pytest.param(True, None, GROWTH, True, id="the one verified figure"),
+        pytest.param(False, None, GROWTH, False, id="an unverified figure"),
+        pytest.param(
+            True, None, replace(GROWTH, formula='{"formula_id": 2}'), False, id="other inputs"
+        ),
+        pytest.param(True, '{"formula_id": 2}', GROWTH, False, id="two verified for the period"),
+        pytest.param(
+            True, None, replace(GROWTH, period_end="2024-03-31"), False, id="another period"
+        ),
+    ],
+)
+def test_a_verified_figure_is_reused_only_when_it_alone_holds_the_period(
+    conn: sqlite3.Connection,
+    verified: bool,
+    also: str | None,
+    asked: DerivedRow,
+    found: bool,
+) -> None:
+    ids = _checked(conn, "xbrl-filed")
+    check = "DerivedGrowth[banking]@vedant" if verified else None
+    fact_id = write_derived(conn, GROWTH, ids[:1], WRITER, check)
+    if also is not None:
+        write_derived(conn, replace(GROWTH, formula=also), ids[:1], WRITER, check)
+    assert verified_derived(conn, asked) == (fact_id if found else None)
+
+
+def test_a_filed_fact_is_never_taken_for_a_derived_one(conn: sqlite3.Connection) -> None:
+    _checked(conn, "xbrl-filed")
+    row = conn.execute(
+        """SELECT ticker, basis, concept, label, period_start, period_end, segment, value, unit,
+                  COALESCE(formula, '') FROM facts WHERE period_start IS NOT NULL LIMIT 1"""
+    ).fetchone()
+    conn.execute("UPDATE facts SET formula = ''")
+    assert derived_held(conn, DerivedRow(*row)) is None
+
+
 def test_write_derived_writes_an_instant_without_a_start(conn: sqlite3.Connection) -> None:
     ids = _checked(conn, "xbrl")
     at = replace(GROWTH, period_start=None)
@@ -836,3 +900,68 @@ def test_a_check_on_an_every_scope_concept_promotes_in_both(conn: sqlite3.Connec
     )
     row = conn.execute("SELECT tier, verified_by FROM facts WHERE id = ?", (itc,)).fetchone()
     assert row == ("derived", "DerivedGrowth[*]@vedant")
+
+
+def _offset_rows(path: Path, *rows: tuple[str, str, str, str]) -> None:
+    """A database whose derived concepts are bound by offset: (name, label, bindings, tier)."""
+    old = connect(path)
+    with old:
+        old.executemany(
+            """INSERT INTO derived_concepts (name, scope, label, formula, bindings, tier,
+                      written_by, written_at, run_id, verified_by, verified_at)
+               VALUES (?, 'banking', ?, 'growth', ?, ?, 'w', 't', 'r',
+                       CASE ?4 WHEN 'derived-concept' THEN 'vedant' END,
+                       CASE ?4 WHEN 'derived-concept' THEN 't' END)""",
+            rows,
+        )
+    old.close()
+
+
+def _growth(offset: str) -> str:
+    return (
+        '{"current": {"concept": "Profit", "offset": "t"}, '
+        f'"previous": {{"concept": "Profit", "offset": "{offset}"}}}}'
+    )
+
+
+def test_bindings_by_offset_name_the_period_and_a_twin_left_the_same_goes(tmp_path: Path) -> None:
+    path = tmp_path / "old.sqlite"
+    _offset_rows(
+        path,
+        ("ProfitGrowth", "Growth in profit, year on year", _growth("t-1y"), "derived-concept-ai"),
+        (
+            "ProfitQuarterOnQuarterGrowth",
+            "Growth in profit over the quarter before",
+            _growth("t-1q"),
+            "derived-concept",
+        ),
+    )
+    conn = connect(path)
+    assert conn.execute("SELECT name, label, bindings FROM derived_concepts").fetchall() == [
+        (
+            "ProfitQuarterOnQuarterGrowth",
+            "Growth in profit",
+            '{"current": {"at": "current", "concept": "Profit"}, '
+            '"previous": {"at": "previous", "concept": "Profit"}}',
+        )
+    ], "the checked twin is kept, though its name is longer"
+    conn.close()
+    assert connect(path).execute("SELECT count(*) FROM derived_concepts").fetchone() == (1,)
+
+
+@pytest.mark.parametrize(
+    ("label", "kept"),
+    [
+        ("Growth in advances, year on year", "Growth in advances"),
+        ("Year-on-year growth in operating expenses", "Growth in operating expenses"),
+        ("Growth in net profit over the quarter before", "Growth in net profit"),
+        ("Quarter-on-quarter growth in deposits", "Growth in deposits"),
+        ("Share of other income in total income", "Share of other income in total income"),
+    ],
+)
+def test_a_label_bound_by_offset_loses_its_period_words(
+    tmp_path: Path, label: str, kept: str
+) -> None:
+    _offset_rows(tmp_path / "old.sqlite", ("M", label, _growth("t-1y"), "derived-concept-ai"))
+    found = connect(tmp_path / "old.sqlite").execute("SELECT label FROM derived_concepts")
+    assert found.fetchone() == (kept,)
