@@ -2489,3 +2489,7 @@
   intervals for one period are planned as ever, since a lookup by concept could return either.
   Read-only on the live database: ICICI Bank NII FY2026 plans as held, fact 48568; HDFC Bank as a
   plan. 6/6 guards mutation-checked; 2,623 tests.
+- 11-04, smoke on `410088e`: **ICICI Bank's net interest income in FY2026, held, $0.0401 (Sonnet
+  $0.0318, Opus $0.0083), against $0.0736 and $0.0727 computed.** `get_metric` → `plan_metric`
+  answered held (fact 48568) → one `fundamentals` call for `NetInterestIncome`; no input fetches,
+  no `compute_metric`, nothing written. Rs 88,075.23 crore, one claim citing the fact, supported.
