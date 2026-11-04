@@ -2413,3 +2413,32 @@
   runs in passes so a concept may build on one later in the sorted file. The agent's
   `CostToIncomeDenominator`, its figure and the `CostToIncomeRatio` proposal deleted. 2,541 tests.
 
+- 11-04: **ind-as seeds, and the comparison named at plan time, $0.00.** Nine seeds for the seven
+  ind-as companies: net profit margin over revenue from operations, revenue and net profit growth,
+  effective tax rate, and EBITDA (revenue less expenses net of finance costs and depreciation, other
+  income out) with its margin, built through two derived steps. Checked free on a copy of the live
+  database for all seven: Reliance FY25 net margin 8.30%, EBITDA Rs 1,65,444 crore (reported
+  1,83,422 with other income). EPS growth left out: the database holds each period's EPS from its
+  own filing only, never the bonus-adjusted comparative, so Reliance FY25 gives -50% and Wipro -40%
+  across their 1:1 bonuses; the banking `BasicEPSGrowth` has the same flaw for HDFC Bank after its
+  Aug 2025 bonus. Then Vedant: growth names its interval at plan time, every time, with no default.
+  Offsets `t`, `t-1y`, `t-1q` became `current` and `previous`; `plan_metric` takes
+  `previous_year` and `previous_period`, required for a comparing metric and refused for a
+  one-period one; the previous period must end before the current begins and be as long (a quarter
+  against any quarter); a comparing concept cannot be an input. Stored rows rewritten on connect,
+  period words dropped from labels, `ProfitLossForThePeriodQuarterOnQuarterGrowth` dropped as the
+  twin of `ProfitLossForThePeriodGrowth`. A written-back growth figure's label and formula carry
+  its periods. ICICI Bank net profit growth: FY25 over FY24 15.50%, Q1 FY26 over Q1 FY25 15.45%,
+  over Q4 FY25 1.10%. 14/14 new guards mutation-checked. 2,566 tests.
+- 11-04, later: **times and periods named apart, $0.00.** Vedant: a snapshot metric (debt to
+  assets) has no period, only a time, and the plan names no dates, since only quarter ends are ever
+  asked. `plan_metric` now takes a time (`year`, `quarter`: that quarter's end), a period (`3M`,
+  `6M`, `9M`, `12M`, his pick of lengths over names; null for a snapshot) and the previous three.
+  A metric's kind comes from its leaf concepts' facts: `snapshot` refuses a period, `flow` needs
+  one, `mixed` reads its balances at the span's end; a length a filing does not hold (6M ending Q3)
+  is refused. Then Vedant: asked about now, the agent must take the latest quarter; the desk prompt
+  gains today's date and each company's latest held quarter end (all Q4 FY2026, 31 March 2026, while
+  today is 4 November 2026), a flow defaulting to that quarter's 3M (my call), a snapshot falling
+  back to the latest Q2 or Q4 for companies filing balance sheets half-yearly. Checked on a copy:
+  HDFC Bank credit-deposit 98.4% as at Q4 FY2026; a scratch `DebtToAssetsRatio` for Reliance 17.2%,
+  nothing at Q3. 27/27 new guards mutation-checked today. 2,577 tests.

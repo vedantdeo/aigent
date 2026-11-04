@@ -4,6 +4,8 @@ holds, so what points at a fact survives it."""
 
 from __future__ import annotations
 
+import json
+import re
 import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -244,7 +246,8 @@ _RENAMED: tuple[tuple[str, str, dict[str, str], dict[str, str]], ...] = (
 
 def _move_renamed_tables(conn: sqlite3.Connection) -> None:
     """Moves each older table's rows into its new name, tiers renamed and missing columns added,
-    and drops it; first gives a derived concepts table from before scopes its scope."""
+    and drops it; first gives a derived concepts table from before scopes its scope, and after,
+    names each binding's period as planned."""
     _add_scope(conn)
     for old, new, tiers, added in _RENAMED:
         held = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (old,))
@@ -260,6 +263,49 @@ def _move_renamed_tables(conn: sqlite3.Connection) -> None:
         with conn:
             conn.execute(f"INSERT OR IGNORE INTO {new} ({names}) SELECT {values} FROM {old}")
             conn.execute(f"DROP TABLE {old}")
+    _bindings_at_periods(conn)
+
+
+# Bindings from before both periods were named when planned: an offset from the period asked.
+_AT_OF_OFFSET = {"t": "current", "t-1y": "previous", "t-1q": "previous"}
+_PERIOD_WORDS = re.compile(
+    r",? (?:year on year|quarter on quarter|over the quarter before)|^(?:year|quarter)-on-\w+ ",
+    re.IGNORECASE,
+)
+
+
+def _bindings_at_periods(conn: sqlite3.Connection) -> None:
+    """Rewrites bindings stored as offsets to `current` or `previous`, drops the period words from
+    their labels, and drops a concept left the same as another of its scope, keeping a checked one,
+    else the shorter name."""
+    rows = conn.execute(
+        """SELECT name, scope, label, bindings FROM derived_concepts
+           WHERE bindings LIKE '%"offset"%'"""
+    ).fetchall()
+    if not rows:
+        return
+    with conn:
+        for name, scope, label, bindings in rows:
+            raw = json.loads(bindings)
+            at = {
+                v: {"at": _AT_OF_OFFSET[b["offset"]], "concept": b["concept"]}
+                for v, b in sorted(raw.items())
+            }
+            words = _PERIOD_WORDS.sub("", label).strip()
+            conn.execute(
+                "UPDATE derived_concepts SET bindings = ?, label = ? WHERE name = ? AND scope = ?",
+                (json.dumps(at), words[:1].upper() + words[1:], name, scope),
+            )
+        kept: set[tuple[str, str, str]] = set()
+        for name, scope, formula, bindings in conn.execute(
+            """SELECT name, scope, formula, bindings FROM derived_concepts
+               ORDER BY tier = 'derived-concept' DESC, length(name), name"""
+        ).fetchall():
+            if (scope, formula, bindings) in kept:
+                conn.execute(
+                    "DELETE FROM derived_concepts WHERE name = ? AND scope = ?", (name, scope)
+                )
+            kept.add((scope, formula, bindings))
 
 
 def _add_scope(conn: sqlite3.Connection) -> None:

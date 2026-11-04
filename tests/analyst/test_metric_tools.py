@@ -27,15 +27,25 @@ from aigent.facts.store import Writer  # noqa: E402
 
 from .conftest import ADV25, DEP25, EPS25, OP24, OP25, UNVERIFIED, evidence_of  # noqa: E402
 
+# A snapshot planned as at Q4's end is fetched as at Q4, not over the year.
+ADV25_Q4 = {**ADV25, "cite_as": str(ADV25["cite_as"]).replace(":year:", ":Q4:")}
+DEP25_Q4 = {**DEP25, "cite_as": str(DEP25["cite_as"]).replace(":year:", ":Q4:")}
+
 WRITER = Writer("analyst-desk|m", "2026-11-03T22:00:00+05:30", "desk-1")
 QUESTION = "How much did ICICI Bank's operating profit grow in FY25?"
 ASK: dict[str, object] = {
     "what": "operating profit growth",
     "company": "ICICIBANK",
     "year": "2025",
-    "period": "year",
+    "quarter": "Q4",
+    "period": "12M",
+    "previous_year": "2024",
+    "previous_quarter": "Q4",
+    "previous_period": "12M",
     "basis": "standalone",
 }
+ONE: dict[str, object] = {"previous_year": None, "previous_quarter": None, "previous_period": None}
+SNAP: dict[str, object] = {**ONE, "period": None}
 Verdict = Literal["supported", "unsupported", "wrong"]
 
 
@@ -62,6 +72,7 @@ def test_a_plan_names_the_metric_its_formula_and_each_fact_to_fetch(
     planned = _call(_tools(concepts_db), PLAN, ASK)
     assert planned["plan_id"] == "P1" and planned["metric"] == "OperatingProfitGrowth"
     assert planned["tier"] == "derived-concept-ai" and str(planned["formula"]).startswith("growth:")
+    assert planned["periods"] == "FY2025 over FY2024" and planned["kind"] == "flow"
     assert planned["fetch"] == [
         {
             "variable": "current",
@@ -101,13 +112,57 @@ def test_no_metric_fitting_points_to_the_library(concepts_db: sqlite3.Connection
         pytest.param({"what": " "}, "give what", id="no words"),
         pytest.param({"company": "ACME"}, "give what", id="a company not held"),
         pytest.param({"year": "FY25"}, "give what", id="a year not in digits"),
-        pytest.param({"period": "Q5"}, "period is one of", id="an unknown period"),
-        pytest.param({"basis": "group"}, "period is one of", id="an unknown basis"),
+        pytest.param({"quarter": "Q5"}, "quarter is one of", id="an unknown quarter"),
+        pytest.param({"basis": "group"}, "quarter is one of", id="an unknown basis"),
+        pytest.param({"period": "4M"}, "period is one of", id="an unknown period"),
         pytest.param(
-            {"what": "OperatingProfitGrowth", "period": "H1"},
+            {
+                "year": "2026",
+                "quarter": "Q2",
+                "period": "6M",
+                "previous_year": "2025",
+                "previous_quarter": "Q2",
+                "previous_period": "6M",
+            },
             None,
-            id="a year-on-year metric plans for a half too",
+            id="six months over the six months a year before",
         ),
+        pytest.param(
+            {
+                "year": "2026",
+                "quarter": "Q1",
+                "period": "3M",
+                "previous_year": "2025",
+                "previous_quarter": "Q4",
+                "previous_period": "3M",
+            },
+            None,
+            id="a quarter over the one before",
+        ),
+        pytest.param(ONE, "give the previous period", id="growth with no previous time"),
+        pytest.param({"previous_year": None}, "null for both", id="a previous quarter, no year"),
+        pytest.param({"previous_quarter": "Q5"}, "null for both", id="an unknown previous quarter"),
+        pytest.param({"previous_year": "FY24"}, "null for both", id="a previous year not digits"),
+        pytest.param(
+            {"previous_year": None, "previous_quarter": None},
+            "with a previous time",
+            id="a previous period with no previous time",
+        ),
+        pytest.param({"period": None}, "reads a span", id="a flow with no period"),
+        pytest.param({"quarter": "Q3"}, "ends at Q4 only", id="twelve months ending Q3"),
+        pytest.param(
+            {"previous_period": "3M", "previous_quarter": "Q3"},
+            "as long as period",
+            id="twelve months over three",
+        ),
+        pytest.param({"previous_year": "2025"}, "does not end", id="the same year"),
+        pytest.param(
+            {"what": "CreditDepositRatio", **ONE}, "a snapshot", id="a snapshot given a period"
+        ),
+        pytest.param(
+            {"what": "CreditDepositRatio"}, "a snapshot", id="a snapshot given previous periods"
+        ),
+        pytest.param({"what": "CreditDepositRatio", **SNAP}, None, id="a snapshot at a time"),
     ],
 )
 def test_plan_refuses_a_bad_ask(
@@ -115,6 +170,31 @@ def test_plan_refuses_a_bad_ask(
 ) -> None:
     content, is_error = _tools(concepts_db)(PLAN, {**ASK, **changed})
     assert is_error is (said is not None) and (said is None or said in content), content
+
+
+@pytest.mark.parametrize(
+    ("asked", "shape", "periods"),
+    [
+        pytest.param(ASK, "flow", "FY2025 over FY2024", id="growth of a flow"),
+        pytest.param(
+            {**ASK, **SNAP, "what": "CreditDepositRatio"},
+            "snapshot",
+            "as at the end of Q4 FY2025",
+            id="a ratio of balances",
+        ),
+        pytest.param(
+            {**ASK, **ONE, "what": "OperatingProfitLessEps", "quarter": "Q1", "period": "3M"},
+            "flow",
+            "Q1 FY2025",
+            id="a flow over one quarter",
+        ),
+    ],
+)
+def test_a_plan_says_its_kind_and_its_time(
+    concepts_db: sqlite3.Connection, asked: dict[str, object], shape: str, periods: str
+) -> None:
+    planned = _call(_tools(concepts_db), PLAN, asked)
+    assert (planned["kind"], planned["periods"]) == (shape, periods), planned
 
 
 def test_a_computation_takes_the_values_from_the_planned_facts(
@@ -132,16 +212,16 @@ def test_a_computation_takes_the_values_from_the_planned_facts(
 def test_a_ratio_of_balances_and_a_difference_keep_their_units(
     concepts_db: sqlite3.Connection,
 ) -> None:
-    tools = _tools(concepts_db, ADV25, DEP25)
-    planned = _call(tools, PLAN, {**ASK, "what": "CreditDepositRatio"})
+    tools = _tools(concepts_db, ADV25_Q4, DEP25_Q4)
+    planned = _call(tools, PLAN, {**ASK, **SNAP, "what": "CreditDepositRatio"})
     shown = _call(
         tools,
         COMPUTE,
         {
             "plan_id": planned["plan_id"],
             "inputs": [
-                {"variable": "numerator", "cite_as": ADV25["cite_as"]},
-                {"variable": "denominator", "cite_as": DEP25["cite_as"]},
+                {"variable": "numerator", "cite_as": ADV25_Q4["cite_as"]},
+                {"variable": "denominator", "cite_as": DEP25_Q4["cite_as"]},
             ],
         },
     )
@@ -204,7 +284,7 @@ def test_compute_refuses_an_unknown_plan_and_mixed_units(concepts_db: sqlite3.Co
     tools = _tools(concepts_db, OP25, EPS25)
     content, is_error = tools(COMPUTE, {"plan_id": "P9", "inputs": GOOD})
     assert is_error and "no plan 'P9'" in content, content
-    planned = _call(tools, PLAN, {**ASK, "what": "OperatingProfitLessEps"})
+    planned = _call(tools, PLAN, {**ASK, **ONE, "what": "OperatingProfitLessEps"})
     content, is_error = tools(
         COMPUTE,
         {
@@ -229,8 +309,8 @@ DEFINE_ARGS: dict[str, object] = {
     "label": "Advances over operating profit",
     "formula": "ratio",
     "bindings": [
-        {"variable": "numerator", "concept": "Advances", "offset": "t"},
-        {"variable": "denominator", "concept": "OperatingProfit", "offset": "t"},
+        {"variable": "numerator", "concept": "Advances", "at": "current"},
+        {"variable": "denominator", "concept": "OperatingProfit", "at": "current"},
     ],
 }
 
@@ -245,8 +325,12 @@ def test_a_defined_metric_is_written_unchecked_and_can_be_planned(
         ("AdvancesToOperatingProfit",),
     ).fetchone()
     assert row == ("ratio", "derived-concept-ai", QUESTION, WRITER.written_by)
-    planned = _call(tools, PLAN, {**ASK, "what": "AdvancesToOperatingProfit"})
-    assert planned["metric"] == "AdvancesToOperatingProfit"
+    planned = _call(tools, PLAN, {**ASK, **ONE, "what": "AdvancesToOperatingProfit"})
+    assert planned["metric"] == "AdvancesToOperatingProfit" and planned["kind"] == "mixed"
+    assert [f["cite_as"] for f in cast(list[dict[str, object]], planned["fetch"])] == [
+        ADV25["cite_as"],
+        OP25["cite_as"],
+    ], "a balance in a mixed metric is read at the end of the flow's span"
 
 
 @pytest.mark.parametrize(
@@ -258,24 +342,34 @@ def test_a_defined_metric_is_written_unchecked_and_can_be_planned(
         pytest.param({"label": " "}, "label", id="no label"),
         pytest.param({"formula": "mean"}, "no formula", id="a formula not in the library"),
         pytest.param(
-            {"bindings": [{"variable": "numerator", "concept": "Advances", "offset": "t"}]},
+            {"bindings": [{"variable": "numerator", "concept": "Advances", "at": "current"}]},
             "takes",
             id="a variable unbound",
         ),
         pytest.param(
-            {"bindings": [{"variable": "numerator", "concept": "Advances", "offset": "t"}] * 2},
+            {"bindings": [{"variable": "numerator", "concept": "Advances", "at": "current"}] * 2},
             "bound twice",
             id="a variable bound twice",
         ),
         pytest.param(
             {
                 "bindings": [
-                    {"variable": "numerator", "concept": "Dividend", "offset": "t"},
-                    {"variable": "denominator", "concept": "OperatingProfit", "offset": "t"},
+                    {"variable": "numerator", "concept": "Dividend", "at": "current"},
+                    {"variable": "denominator", "concept": "OperatingProfit", "at": "current"},
                 ]
             },
             "no concept Dividend",
             id="a concept not held",
+        ),
+        pytest.param(
+            {
+                "bindings": [
+                    {"variable": "numerator", "concept": "OperatingProfitGrowth", "at": "current"},
+                    {"variable": "denominator", "concept": "OperatingProfit", "at": "current"},
+                ]
+            },
+            "compares two periods itself",
+            id="an input comparing two periods",
         ),
     ],
 )
@@ -332,12 +426,13 @@ def test_a_supported_figure_is_written_under_its_metric_s_name(
     _computed(tools)
     written, skipped = write_back(concepts_db, _done("supported", "DERIVED:D1"), tools, WRITER)
     assert skipped == [] and [w["metric"] for w in written] == ["OperatingProfitGrowth"]
+    assert written[0]["periods"] == "FY2025 over FY2024"
     assert _derived(concepts_db) == [
         (
             "ICICIBANK",
             "standalone",
             "OperatingProfitGrowth",
-            "OperatingProfitGrowth in words",
+            "OperatingProfitGrowth in words, FY2025 over FY2024",
             "duration",
             "2024-04-01",
             "2025-03-31",
@@ -348,6 +443,7 @@ def test_a_supported_figure_is_written_under_its_metric_s_name(
                     "formula": "growth",
                     "inputs": {"current": OP25["cite_as"], "previous": OP24["cite_as"]},
                     "metric": "OperatingProfitGrowth",
+                    "periods": "FY2025 over FY2024",
                     "scope": "banking",
                 },
                 sort_keys=True,
@@ -365,16 +461,16 @@ def test_a_supported_figure_is_written_under_its_metric_s_name(
 def test_a_ratio_of_balances_is_written_as_at_the_period_s_end(
     concepts_db: sqlite3.Connection,
 ) -> None:
-    tools = _tools(concepts_db, ADV25, DEP25)
-    planned = _call(tools, PLAN, {**ASK, "what": "CreditDepositRatio"})
+    tools = _tools(concepts_db, ADV25_Q4, DEP25_Q4)
+    planned = _call(tools, PLAN, {**ASK, **SNAP, "what": "CreditDepositRatio"})
     _call(
         tools,
         COMPUTE,
         {
             "plan_id": planned["plan_id"],
             "inputs": [
-                {"variable": "numerator", "cite_as": ADV25["cite_as"]},
-                {"variable": "denominator", "cite_as": DEP25["cite_as"]},
+                {"variable": "numerator", "cite_as": ADV25_Q4["cite_as"]},
+                {"variable": "denominator", "cite_as": DEP25_Q4["cite_as"]},
             ],
         },
     )
@@ -499,8 +595,8 @@ def test_a_metric_built_on_a_metric_is_planned_computed_and_written(
             "label": "operating profit less advances",
             "formula": "difference",
             "bindings": [
-                {"variable": "minuend", "concept": "OperatingProfit", "offset": "t"},
-                {"variable": "subtrahend", "concept": "Advances", "offset": "t"},
+                {"variable": "minuend", "concept": "OperatingProfit", "at": "current"},
+                {"variable": "subtrahend", "concept": "Advances", "at": "current"},
             ],
         },
     )
@@ -513,12 +609,16 @@ def test_a_metric_built_on_a_metric_is_planned_computed_and_written(
             "label": "operating profit less advances over deposits",
             "formula": "ratio",
             "bindings": [
-                {"variable": "numerator", "concept": "OperatingProfitLessAdvances", "offset": "t"},
-                {"variable": "denominator", "concept": "Deposits", "offset": "t"},
+                {
+                    "variable": "numerator",
+                    "concept": "OperatingProfitLessAdvances",
+                    "at": "current",
+                },
+                {"variable": "denominator", "concept": "Deposits", "at": "current"},
             ],
         },
     )
-    planned = _call(tools, PLAN, {**ASK, "what": "ThatOverDeposits"})
+    planned = _call(tools, PLAN, {**ASK, **ONE, "what": "ThatOverDeposits"})
     fetch = cast(list[dict[str, object]], planned["fetch"])
     assert [(f["variable"], f["cite_as"]) for f in fetch] == [
         ("numerator.minuend", OP25["cite_as"]),
@@ -557,8 +657,8 @@ def test_an_every_scope_metric_is_defined_and_planned_for_any_company(
         "name": "OperatingProfitOverItself",
         "scope": "ind-as,banking",
         "bindings": [
-            {"variable": "numerator", "concept": "OperatingProfit", "offset": "t"},
-            {"variable": "denominator", "concept": "OperatingProfit", "offset": "t-1y"},
+            {"variable": "numerator", "concept": "OperatingProfit", "at": "current"},
+            {"variable": "denominator", "concept": "OperatingProfit", "at": "previous"},
         ],
     }
     assert _call(tools, DEFINE, args)["scope"] == "*"

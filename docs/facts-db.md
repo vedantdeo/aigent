@@ -392,8 +392,9 @@ a wrong agreement). To fix in the matcher pass:
   review. An agent cannot add one; it can only propose one (`formula-ai` in `formulas`) for a
   person to write.
 - **Metrics are data**: a named, period-agnostic figure (`OperatingProfitBeforeProvisionAnd
-  ContingenciesGrowth`) defined as a library formula over concepts, each input at an offset from
-  the period asked (`t`, `t-1y`, `t-1q`), in `derived_concepts` as `derived-concept-ai` until a
+  ContingenciesGrowth`) defined as a library formula over concepts, each input at the `current`
+  or the `previous` period, both named by the agent at plan time and never defaulted (2026-11-04,
+  replacing offsets `t`, `t-1y`, `t-1q`), in `derived_concepts` as `derived-concept-ai` until a
   person checks the bindings. Nine are seeded from `evals/reference/derived-concepts.jsonl`; an
   agent may define more. The agent's tools still say metric.
 - **Figures are computed in three steps**: `plan_metric` names the facts to read, the agent reads

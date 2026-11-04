@@ -836,3 +836,68 @@ def test_a_check_on_an_every_scope_concept_promotes_in_both(conn: sqlite3.Connec
     )
     row = conn.execute("SELECT tier, verified_by FROM facts WHERE id = ?", (itc,)).fetchone()
     assert row == ("derived", "DerivedGrowth[*]@vedant")
+
+
+def _offset_rows(path: Path, *rows: tuple[str, str, str, str]) -> None:
+    """A database whose derived concepts are bound by offset: (name, label, bindings, tier)."""
+    old = connect(path)
+    with old:
+        old.executemany(
+            """INSERT INTO derived_concepts (name, scope, label, formula, bindings, tier,
+                      written_by, written_at, run_id, verified_by, verified_at)
+               VALUES (?, 'banking', ?, 'growth', ?, ?, 'w', 't', 'r',
+                       CASE ?4 WHEN 'derived-concept' THEN 'vedant' END,
+                       CASE ?4 WHEN 'derived-concept' THEN 't' END)""",
+            rows,
+        )
+    old.close()
+
+
+def _growth(offset: str) -> str:
+    return (
+        '{"current": {"concept": "Profit", "offset": "t"}, '
+        f'"previous": {{"concept": "Profit", "offset": "{offset}"}}}}'
+    )
+
+
+def test_bindings_by_offset_name_the_period_and_a_twin_left_the_same_goes(tmp_path: Path) -> None:
+    path = tmp_path / "old.sqlite"
+    _offset_rows(
+        path,
+        ("ProfitGrowth", "Growth in profit, year on year", _growth("t-1y"), "derived-concept-ai"),
+        (
+            "ProfitQuarterOnQuarterGrowth",
+            "Growth in profit over the quarter before",
+            _growth("t-1q"),
+            "derived-concept",
+        ),
+    )
+    conn = connect(path)
+    assert conn.execute("SELECT name, label, bindings FROM derived_concepts").fetchall() == [
+        (
+            "ProfitQuarterOnQuarterGrowth",
+            "Growth in profit",
+            '{"current": {"at": "current", "concept": "Profit"}, '
+            '"previous": {"at": "previous", "concept": "Profit"}}',
+        )
+    ], "the checked twin is kept, though its name is longer"
+    conn.close()
+    assert connect(path).execute("SELECT count(*) FROM derived_concepts").fetchone() == (1,)
+
+
+@pytest.mark.parametrize(
+    ("label", "kept"),
+    [
+        ("Growth in advances, year on year", "Growth in advances"),
+        ("Year-on-year growth in operating expenses", "Growth in operating expenses"),
+        ("Growth in net profit over the quarter before", "Growth in net profit"),
+        ("Quarter-on-quarter growth in deposits", "Growth in deposits"),
+        ("Share of other income in total income", "Share of other income in total income"),
+    ],
+)
+def test_a_label_bound_by_offset_loses_its_period_words(
+    tmp_path: Path, label: str, kept: str
+) -> None:
+    _offset_rows(tmp_path / "old.sqlite", ("M", label, _growth("t-1y"), "derived-concept-ai"))
+    found = connect(tmp_path / "old.sqlite").execute("SELECT label FROM derived_concepts")
+    assert found.fetchone() == (kept,)

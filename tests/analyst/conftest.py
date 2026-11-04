@@ -108,7 +108,7 @@ def _metric(
             name,
             f"{name} in words",
             formula,
-            json.dumps({v: {"concept": c, "offset": o} for v, (c, o) in sorted(bindings.items())}),
+            json.dumps({v: {"at": a, "concept": c} for v, (c, a) in sorted(bindings.items())}),
         ),
     )
 
@@ -147,18 +147,21 @@ def concepts_db(tmp_path: Path) -> sqlite3.Connection:
             conn,
             "OperatingProfitGrowth",
             "growth",
-            {"current": ("OperatingProfit", "t"), "previous": ("OperatingProfit", "t-1y")},
+            {
+                "current": ("OperatingProfit", "current"),
+                "previous": ("OperatingProfit", "previous"),
+            },
         )
         _metric(
             conn,
             "CreditDepositRatio",
             "ratio",
-            {"numerator": ("Advances", "t"), "denominator": ("Deposits", "t")},
+            {"numerator": ("Advances", "current"), "denominator": ("Deposits", "current")},
         )
         _metric(
             conn,
             "OperatingProfitLessEps",
             "difference",
-            {"minuend": ("OperatingProfit", "t"), "subtrahend": ("Eps", "t")},
+            {"minuend": ("OperatingProfit", "current"), "subtrahend": ("Eps", "current")},
         )
     return conn

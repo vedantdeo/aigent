@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -65,7 +65,11 @@ DESK_PROMPT = (
     "held back. A figure that needs arithmetic, such as a growth rate, a ratio or a margin, is "
     "a metric: plan it with plan_metric, fetch each fact its plan lists with fundamentals, "
     "exactly as listed, then compute it with compute_metric, which returns it with a cite_as of "
-    "its own. plan_metric plans only a metric that names every word you ask, or its exact "
+    "its own. plan_metric takes a time, a financial year and quarter meaning that quarter's "
+    "end, and a period, the span ending then, or none for a snapshot such as a balance-sheet "
+    "ratio; a metric comparing two times, such as a growth rate, takes the previous time and "
+    "period too. Name them every time, as nothing is assumed, and state them in the answer. "
+    "plan_metric plans only a metric that names every word you ask, or its exact "
     "name; otherwise it lists the closest in the company's scope: plan one by its exact name if "
     "it is the figure you need, else define one with define_metric in that scope, on a library "
     "formula over concepts or over metrics already defined. If no formula fits even so, propose "
@@ -183,6 +187,35 @@ def payload(
     return answer
 
 
+def held_to(conn: sqlite3.Connection, today: date) -> str:
+    """Today's date and the quarter end each company's latest results are held to, and how a
+    question naming no time is read."""
+    ends: dict[str, list[str]] = {}
+    for ticker, end in conn.execute(
+        "SELECT ticker, max(period_end) FROM filings GROUP BY ticker ORDER BY ticker"
+    ):
+        ends.setdefault(str(end), []).append(str(ticker))
+    held = "; ".join(
+        f"{_quarter_end(date.fromisoformat(end))} for {', '.join(tickers)}"
+        for end, tickers in sorted(ends.items(), reverse=True)
+    )
+    return (
+        f"Today is {today.day} {today:%B %Y}. The latest results the database holds end {held}. "
+        "A question naming no time, such as one about now, asks about the latest time held: for "
+        "a snapshot metric, as at that quarter's end (most companies other than banks file a "
+        "balance sheet only at Q2 and Q4, so take the latest of those that holds it); for a flow, "
+        "the latest quarter, 3M, unless the question means a year. Say in the answer which time "
+        "you used and that later results are not held."
+    )
+
+
+def _quarter_end(end: date) -> str:
+    """A quarter's last day as the financial quarter it closes: "Q4 FY2026 (31 March 2026)"."""
+    quarter = {6: "Q1", 9: "Q2", 12: "Q3", 3: "Q4"}[end.month]
+    year = end.year if end.month <= 3 else end.year + 1
+    return f"{quarter} FY{year} ({end.day} {end:%B %Y})"
+
+
 def answer(
     question: str,
     served_tools: Sequence[ToolParam],
@@ -217,7 +250,7 @@ def answer(
             chosen.model,
             chosen.thinking,
             chosen.calm,
-            research_prompt=DESK_PROMPT,
+            research_prompt=f"{DESK_PROMPT} {held_to(facts, date.today())}",
         )
     except (BudgetExceeded, GuardrailTripped) as stopped:
         error = f"{type(stopped).__name__}: {stopped}"
