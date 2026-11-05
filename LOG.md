@@ -2493,3 +2493,11 @@
   $0.0318, Opus $0.0083), against $0.0736 and $0.0727 computed.** `get_metric` → `plan_metric`
   answered held (fact 48568) → one `fundamentals` call for `NetInterestIncome`; no input fetches,
   no `compute_metric`, nothing written. Rs 88,075.23 crore, one claim citing the fact, supported.
+- 11-05: **debt to assets seeded for ind-as companies, $0.00.** Vedant's pick of the three open
+  questions. `TotalBorrowings` = total(BorrowingsCurrent, BorrowingsNoncurrent), not `Borrowings`,
+  which banks file; `DebtToAssetsRatio` = ratio(TotalBorrowings, Assets), a snapshot. The three
+  inputs added to `ind-as-filed-concepts.txt` (all seven file them, 84 facts each, at Q2 and Q4).
+  The EBITDA margin test became a table of shipped ind-as seeds. Checked free on a copy of the live
+  database at 31 Mar 2026, consolidated / standalone: Bajaj Auto 28.46% / 0.00%, ITC 2.33% / 2.28%,
+  Power Grid 50.22% / 52.97%, Reliance 17.19% / 19.85%, Sun Pharma 3.75% / 31.17%, Tata Motors
+  18.32% / 5.19%, Wipro 11.87% / 6.32%. 5/5 mutants killed; 2,624 tests.

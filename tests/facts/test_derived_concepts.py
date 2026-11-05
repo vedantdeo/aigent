@@ -507,21 +507,38 @@ def test_the_shipped_ind_as_seeds_rest_on_what_every_ind_as_company_files(
     assert "EBITDAMargin" in {m.name for m in load_derived_concepts(conn, "ind-as")}
 
 
-def test_the_shipped_ebitda_margin_excludes_finance_costs_and_depreciation(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("name", "given", "value"),
+    [
+        pytest.param(
+            "EBITDAMargin",
+            {
+                "RevenueFromOperations": 200.0,
+                "Expenses": 180.0,
+                "FinanceCosts": 10.0,
+                "DepreciationDepletionAndAmortisationExpense": 20.0,
+            },
+            0.25,
+            id="EBITDA margin excludes finance costs and depreciation",
+        ),
+        pytest.param(
+            "DebtToAssetsRatio",
+            {"BorrowingsCurrent": 30.0, "BorrowingsNoncurrent": 50.0, "Assets": 400.0},
+            0.2,
+            id="debt to assets sums current and non-current borrowings over assets",
+        ),
+    ],
+)
+def test_a_shipped_ind_as_seed_computes_from_its_filed_inputs(
+    tmp_path: Path, name: str, given: dict[str, float], value: float
 ) -> None:
     conn = connect(tmp_path / "facts.sqlite")
     _shipped_ind_as(conn, tmp_path)
     held = {m.name: m for m in load_derived_concepts(conn, "ind-as")}
-    step = plan(held["EBITDAMargin"], 2025, "year", held)
-    given = {
-        "RevenueFromOperations": 200.0,
-        "Expenses": 180.0,
-        "FinanceCosts": 10.0,
-        "DepreciationDepletionAndAmortisationExpense": 20.0,
-    }
+    step = plan(held[name], 2025, "year", held)
     facts = {f.variable: (given[f.concept], "INR") for f in step.fetches()}
-    assert evaluate(step, facts) == (pytest.approx(0.25), "pure"), facts
+    assert {f.concept for f in step.fetches()} == set(given), facts
+    assert evaluate(step, facts) == (pytest.approx(value), "pure"), facts
 
 
 def test_an_exact_name_comes_first_where_shared_words_tie() -> None:
