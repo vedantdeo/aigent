@@ -2514,3 +2514,15 @@
   filings dated, 4 events seeded, 0 unknown; HDFC Bank Q2 FY26 basic EPS growth refused while the
   bonus is unchecked, then +9.96% (12.14 over 22.08 restated to 11.04), where it read -45.0%.
   32/32 guards mutation-checked (six after their tests were fixed); 2,702 tests.
+- 11-06, on `22a9794`: **the live database rebuilt offline and the four bonuses checked, $0.00.**
+  `build --offline`: 216 filings, 0 facts changed, every filing dated, 4 events seeded, 0 unknown.
+  Vedant checked all four (`verify-share-event --by Vedant`, ids 1-4, as seeded). HDFC Bank Q2
+  FY26 basic EPS growth now plans and computes on the live database: +9.96%, Q2 FY25's 22.08
+  restated to 11.04.
+- 11-06: **restatement checked against the companies' own restated EPS, $0.00.** Read-only on the
+  live database, through `share_events.restatement` (ind-as EPS facts are unchecked, so not through
+  `plan_metric`). Against printed restated figures, 11/11 to the paisa: HDFC Bank's seven pre-bonus
+  periods in its three post-bonus 6-Ks (Q1 FY26 23.71 to 11.86, Q2/Q3/Q4 FY25, H1, 9M and FY25
+  88.29 to 44.15), and Reliance's and Wipro's FY24 consolidated and standalone in their FY25 annual
+  reports (Reliance 102.90 to 51.45). Against the first post-bonus filing's year to date less its
+  quarter, 8/8 within 0.1%, Power Grid's 1:3 included (Q1 FY24 5.16 x 0.75 = 3.87, theirs 3.87).
