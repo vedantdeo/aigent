@@ -2,7 +2,11 @@
 `python -m aigent.facts coverage`: score what it holds against the labelled figures; free.
 `python -m aigent.facts crosscheck [--write]`: check the cross-checked companies' XBRL facts against
 their results documents, rule on the review decisions and write the review queue; `--write` makes
-agreements `xbrl-filed` and the groups decided `right` `xbrl`."""
+agreements `xbrl-filed` and the groups decided `right` `xbrl`.
+`python -m aigent.facts verify-concept --name N --scope S --by P`: a person's check of a derived
+concept. `python -m aigent.facts share-events` lists the share events held, and
+`verify-share-event --id N --by P [--kind K --effective D --ratio A:B]` records a person's check
+of one, naming an unknown one's kind, date and ratio."""
 
 from __future__ import annotations
 
@@ -44,6 +48,7 @@ from aigent.facts.review import (
     rule,
 )
 from aigent.facts.review import write_report as write_crosscheck_report
+from aigent.facts.share_events import load_share_events, verify_share_event
 from aigent.facts.store import FACTS_DB, Writer, connect, verify_derived_concept
 from aigent.facts.taxonomy import TAXONOMY_DIR
 
@@ -64,10 +69,26 @@ def _commit() -> str:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m aigent.facts")
-    parser.add_argument("command", choices=["build", "coverage", "crosscheck", "verify-concept"])
+    parser.add_argument(
+        "command",
+        choices=[
+            "build",
+            "coverage",
+            "crosscheck",
+            "verify-concept",
+            "share-events",
+            "verify-share-event",
+        ],
+    )
     parser.add_argument("--name", help="verify-concept: the derived concept checked")
     parser.add_argument("--scope", help="verify-concept: its scope, banking or ind-as")
-    parser.add_argument("--by", help="verify-concept: who checked its bindings")
+    parser.add_argument("--by", help="verify-concept, verify-share-event: who checked it")
+    parser.add_argument("--id", type=int, help="verify-share-event: the event, from share-events")
+    parser.add_argument("--kind", help="verify-share-event: bonus, split or issue (for value)")
+    parser.add_argument("--effective", help="verify-share-event: when the shares changed, ISO")
+    parser.add_argument(
+        "--ratio", help="verify-share-event: shares after:before, 2:1 for a 1:1 bonus"
+    )
     parser.add_argument("--offline", action="store_true", help="load the cache only; no fetching")
     parser.add_argument(
         "--write", action="store_true", help="crosscheck: record agreements and decisions"
@@ -82,6 +103,14 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "verify-concept":
         verify_concept(str(args.name or ""), str(args.scope or ""), str(args.by or ""), now)
+        return
+    if args.command == "share-events":
+        list_share_events()
+        return
+    if args.command == "verify-share-event":
+        if args.id is None:
+            raise SystemExit("give the event's --id, from share-events")
+        verify_event(int(args.id), str(args.by or ""), now, args.kind, args.effective, args.ratio)
         return
     writer = Writer(
         written_by=f"xbrl-loader@{_commit()}",
@@ -128,6 +157,43 @@ def verify_concept(name: str, scope: str, by: str, now: datetime) -> None:
         conn.close()
     print(f"now derived-concept, checked by {by}" if changed else "already checked; unchanged")
     print(f"{promoted} computed figures made derived")
+
+
+def list_share_events() -> None:
+    """Prints every share event held, unchecked ones marked, with where each came from."""
+    conn = connect(FACTS_DB)
+    try:
+        events = load_share_events(conn)
+    finally:
+        conn.close()
+    for event in events:
+        print(event.described() + (f"\n  {event.note}" if event.note else ""))
+    print(f"{len(events)} events, {sum(not e.checked for e in events)} not checked")
+
+
+def verify_event(
+    event_id: int,
+    by: str,
+    now: datetime,
+    kind: str | None = None,
+    effective: str | None = None,
+    ratio: str | None = None,
+) -> None:
+    """Records a person's check of a share event, after showing what it held."""
+    conn = connect(FACTS_DB)
+    try:
+        held = [e for e in load_share_events(conn) if e.id == event_id]
+        if held:
+            print(f"was {held[0].described()}")
+        try:
+            changed, event = verify_share_event(
+                conn, event_id, by, now.isoformat(timespec="seconds"), kind, effective, ratio
+            )
+        except ValueError as bad:
+            raise SystemExit(str(bad)) from None
+    finally:
+        conn.close()
+    print(f"now {event.described()}" if changed else "already checked as given; unchanged")
 
 
 def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None:

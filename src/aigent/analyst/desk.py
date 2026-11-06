@@ -41,6 +41,7 @@ from aigent.analyst.specialists import Passage
 from aigent.analyst.toolbox import FIND, LOOKUP, Toolbox
 from aigent.errors import BudgetExceeded, GuardrailTripped
 from aigent.facts.derived_concepts import seed
+from aigent.facts.share_events import sync_share_events
 from aigent.facts.store import FACTS_DB, Writer, connect
 from aigent.llm.core import Dispatch, Llm
 from aigent.llm.pricing import PRICES, Budget, cost_usd
@@ -333,9 +334,18 @@ def main(argv: list[str] | None = None) -> None:
                     f"seed-{started:%Y%m%d-%H%M%S}",
                 ),
             )
+            events, unknown = sync_share_events(
+                held,
+                Writer(
+                    "share-events|desk",
+                    started.isoformat(timespec="seconds"),
+                    f"seed-{started:%Y%m%d-%H%M%S}",
+                ),
+            )
         finally:
             held.close()
         print(f"derived concepts seeded; refused: {refused or 'none'}", flush=True)
+        print(f"share events: {events} seeded, {len(unknown)} unknown detected", flush=True)
 
         def ask(question: str) -> dict[str, object]:
             generalist = Llm(chosen.client, budget=Budget(limit_usd=MAX_USD_ANALYST_GENERALIST))

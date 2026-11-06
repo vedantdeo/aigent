@@ -2493,3 +2493,48 @@
   $0.0318, Opus $0.0083), against $0.0736 and $0.0727 computed.** `get_metric` → `plan_metric`
   answered held (fact 48568) → one `fundamentals` call for `NetInterestIncome`; no input fetches,
   no `compute_metric`, nothing written. Rs 88,075.23 crore, one claim citing the fact, supported.
+- 11-05: **debt to assets seeded for ind-as companies, $0.00.** Vedant's pick of the three open
+  questions. `TotalBorrowings` = total(BorrowingsCurrent, BorrowingsNoncurrent), not `Borrowings`,
+  which banks file; `DebtToAssetsRatio` = ratio(TotalBorrowings, Assets), a snapshot. The three
+  inputs added to `ind-as-filed-concepts.txt` (all seven file them, 84 facts each, at Q2 and Q4).
+  The EBITDA margin test became a table of shipped ind-as seeds. Checked free on a copy of the live
+  database at 31 Mar 2026, consolidated / standalone: Bajaj Auto 28.46% / 0.00%, ITC 2.33% / 2.28%,
+  Power Grid 50.22% / 52.97%, Reliance 17.19% / 19.85%, Sun Pharma 3.75% / 31.17%, Tata Motors
+  18.32% / 5.19%, Wipro 11.87% / 6.32%. 5/5 mutants killed; 2,624 tests.
+- 11-06: **per-share figures restated across bonuses and splits, $0.00.** Vedant's pick of the
+  two options for EPS growth across a bonus: restate from XBRL ourselves rather than read the
+  printed comparatives, since NSE's XBRL tags only each filing's quarter and year to date (checked
+  for every HDFC Bank filing after its bonus). New `facts.share_events` and a `share_events` table:
+  four bonuses seeded unchecked (HDFC Bank 2:1 on 28 Aug 2025, Power Grid 4:3 on 12 Sep 2023,
+  Reliance 2:1 on 29 Oct 2024, Wipro 2:1 on 4 Dec 2024, dated from their filings); a move of more
+  than 5% in the filed share count with no event held becomes an `unknown` event (Vedant), named
+  by a person with `verify-share-event`. Only checked events restate, and a plan across an
+  unchecked or unknown one is refused (Vedant); which side a figure is on comes from its filing's
+  new `broadcast` date. Checked free on a copy of the live database after an offline build: 216
+  filings dated, 4 events seeded, 0 unknown; HDFC Bank Q2 FY26 basic EPS growth refused while the
+  bonus is unchecked, then +9.96% (12.14 over 22.08 restated to 11.04), where it read -45.0%.
+  32/32 guards mutation-checked (six after their tests were fixed); 2,702 tests.
+- 11-06, on `22a9794`: **the live database rebuilt offline and the four bonuses checked, $0.00.**
+  `build --offline`: 216 filings, 0 facts changed, every filing dated, 4 events seeded, 0 unknown.
+  Vedant checked all four (`verify-share-event --by Vedant`, ids 1-4, as seeded). HDFC Bank Q2
+  FY26 basic EPS growth now plans and computes on the live database: +9.96%, Q2 FY25's 22.08
+  restated to 11.04.
+- 11-06: **restatement checked against the companies' own restated EPS, $0.00.** Read-only on the
+  live database, through `share_events.restatement` (ind-as EPS facts are unchecked, so not through
+  `plan_metric`). Against printed restated figures, 11/11 to the paisa: HDFC Bank's seven pre-bonus
+  periods in its three post-bonus 6-Ks (Q1 FY26 23.71 to 11.86, Q2/Q3/Q4 FY25, H1, 9M and FY25
+  88.29 to 44.15), and Reliance's and Wipro's FY24 consolidated and standalone in their FY25 annual
+  reports (Reliance 102.90 to 51.45). Against the first post-bonus filing's year to date less its
+  quarter, 8/8 within 0.1%, Power Grid's 1:3 included (Q1 FY24 5.16 x 0.75 = 3.87, theirs 3.87).
+- 11-06: **ROE and ROA over average balances, through `opening`, $0.00.** Vedant: a return's own
+  time and period give its opening balance, so a binding gains `opening` (a balance as at the
+  quarter end before the period begins) rather than a previous time; `compares` keeps its meaning,
+  and the library gains `average`. Only a balance, filed or derived over balances at one time,
+  may be read at `opening`; an average of balances plans as `mixed`. Seeded for both scopes:
+  `AverageAssets`, `AverageEquity`, `ReturnOnAssets`, `ReturnOnEquity`, and banks'
+  `ShareholdersEquity` (capital plus reserves and surplus); total profit over total equity, not
+  annualised. Free on a copy of the live database, nine companies, both bases, FY26 and H1 FY26:
+  every figure computes (standalone ROE: HDFC Bank 14.14%, ICICI Bank 15.93%, ITC 29.44%,
+  Reliance 7.91%; Reliance consolidated H1 5.13%), Tata Motors' 68% consolidated and 300%
+  standalone from its demerger gain (FY26 profit Rs 87,569 cr standalone on equity of Rs 25-33k
+  cr). 14/14 guards mutation-checked (two after their tests were added); 2,731 tests.

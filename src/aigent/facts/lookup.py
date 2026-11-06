@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Literal, get_args
+from typing import Literal, cast, get_args
 
 from aigent.facts.cfg_facts import FACTS_LOOKUP_K, FACTS_MATCH_DEPTH, FACTS_MATCH_METHOD
 from aigent.facts.store import CHECKED_TIERS, connect
@@ -71,6 +71,14 @@ def as_period(
 def as_time(period: Period) -> tuple[Quarter, Length]:
     """The quarter `period` ends at and its length."""
     return _TIME_OF[period]
+
+
+def opening_of(year: int, period: Period) -> tuple[int, Period]:
+    """The quarter whose end is the day before `period` of `year` begins: its opening balances."""
+    first = _SPANS[period][0]
+    if first == 1:
+        return year - 1, "Q4"
+    return year, cast(Period, f"Q{(first - 1) // 3}")
 
 
 def instants(conn: sqlite3.Connection, concepts: Sequence[str]) -> set[str]:

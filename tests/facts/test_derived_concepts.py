@@ -24,11 +24,14 @@ from aigent.facts.derived_concepts import (
     comparing,
     evaluate,
     kind,
+    leaves,
     load_derived_concepts,
     matched,
     name_refusal,
+    opening_balances,
     plan,
     ranked,
+    reads_opening,
     seed,
 )
 from aigent.facts.lookup import Period
@@ -276,6 +279,18 @@ CONCEPTS = {"Profit", "Income"}
             "input to itself",
             id="itself as an input",
         ),
+        pytest.param(
+            "average",
+            {"first": Binding("Income", "current"), "second": Binding("Income", "opening")},
+            None,
+            id="a balance at its opening",
+        ),
+        pytest.param(
+            "average",
+            {"first": Binding("Profit", "current"), "second": Binding("Profit", "opening")},
+            "only a balance has an opening",
+            id="a flow at its opening",
+        ),
     ],
 )
 def test_bindings_refusal(formula: str, bindings: dict[str, Binding], said: str | None) -> None:
@@ -285,6 +300,7 @@ def test_bindings_refusal(formula: str, bindings: dict[str, Binding], said: str 
         CONCEPTS | {"NetProfitMargin", "ProfitGrowth"},
         "NetProfitMargin",
         {"ProfitGrowth"},
+        {"Income"},
     )
     assert (why is None) if said is None else (why is not None and said in why), why
 
@@ -484,7 +500,10 @@ def test_the_seeded_metrics_are_all_well_formed() -> None:
         assert name_refusal(row["name"]) is None, row["name"]
         bindings = as_bindings(json.dumps(row["bindings"]))
         concepts = {b.concept for b in bindings.values()}
-        assert bindings_refusal(row["formula"], bindings, concepts, row["name"]) is None
+        assert (
+            bindings_refusal(row["formula"], bindings, concepts, row["name"], None, concepts)
+            is None
+        )
         assert set(bindings) == set(FORMULAS[row["formula"]].variables)
 
 
@@ -507,21 +526,38 @@ def test_the_shipped_ind_as_seeds_rest_on_what_every_ind_as_company_files(
     assert "EBITDAMargin" in {m.name for m in load_derived_concepts(conn, "ind-as")}
 
 
-def test_the_shipped_ebitda_margin_excludes_finance_costs_and_depreciation(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("name", "given", "value"),
+    [
+        pytest.param(
+            "EBITDAMargin",
+            {
+                "RevenueFromOperations": 200.0,
+                "Expenses": 180.0,
+                "FinanceCosts": 10.0,
+                "DepreciationDepletionAndAmortisationExpense": 20.0,
+            },
+            0.25,
+            id="EBITDA margin excludes finance costs and depreciation",
+        ),
+        pytest.param(
+            "DebtToAssetsRatio",
+            {"BorrowingsCurrent": 30.0, "BorrowingsNoncurrent": 50.0, "Assets": 400.0},
+            0.2,
+            id="debt to assets sums current and non-current borrowings over assets",
+        ),
+    ],
+)
+def test_a_shipped_ind_as_seed_computes_from_its_filed_inputs(
+    tmp_path: Path, name: str, given: dict[str, float], value: float
 ) -> None:
     conn = connect(tmp_path / "facts.sqlite")
     _shipped_ind_as(conn, tmp_path)
     held = {m.name: m for m in load_derived_concepts(conn, "ind-as")}
-    step = plan(held["EBITDAMargin"], 2025, "year", held)
-    given = {
-        "RevenueFromOperations": 200.0,
-        "Expenses": 180.0,
-        "FinanceCosts": 10.0,
-        "DepreciationDepletionAndAmortisationExpense": 20.0,
-    }
+    step = plan(held[name], 2025, "year", held)
     facts = {f.variable: (given[f.concept], "INR") for f in step.fetches()}
-    assert evaluate(step, facts) == (pytest.approx(0.25), "pure"), facts
+    assert {f.concept for f in step.fetches()} == set(given), facts
+    assert evaluate(step, facts) == (pytest.approx(value), "pure"), facts
 
 
 def test_an_exact_name_comes_first_where_shared_words_tie() -> None:
@@ -550,3 +586,204 @@ def test_the_command_shows_a_concept_and_records_the_check(
         cli.main(["verify-concept", "--name", "NetProfitMargin", "--scope", "ind-as", "--by", "v"])
     with pytest.raises(SystemExit, match="who checked"):
         cli.main([*ask, "--by", ""])
+
+
+AVERAGE_EQUITY = DerivedConcept(
+    "AverageEquity",
+    "banking",
+    "Average equity",
+    "average",
+    {"first": Binding("Equity", "current"), "second": Binding("Equity", "opening")},
+    AI,
+)
+ROE = DerivedConcept(
+    "ReturnOnEquity",
+    "banking",
+    "Return on equity",
+    "ratio",
+    {
+        "numerator": Binding("Profit", "current"),
+        "denominator": Binding("AverageEquity", "current"),
+    },
+    AI,
+)
+ROE_HELD = {AVERAGE_EQUITY.name: AVERAGE_EQUITY, ROE.name: ROE}
+
+
+@pytest.mark.parametrize(
+    ("year", "period", "closing", "opening"),
+    [
+        pytest.param(2026, "year", (2026, "Q4"), (2025, "Q4"), id="a year opens at Q4 before"),
+        pytest.param(2026, "H1", (2026, "Q2"), (2025, "Q4"), id="H1 opens at Q4 before"),
+        pytest.param(2026, "9M", (2026, "Q3"), (2025, "Q4"), id="9M opens at Q4 before"),
+        pytest.param(2026, "Q1", (2026, "Q1"), (2025, "Q4"), id="Q1 opens at Q4 before"),
+        pytest.param(2026, "Q3", (2026, "Q3"), (2026, "Q2"), id="Q3 opens at Q2"),
+    ],
+)
+def test_an_opening_balance_is_read_as_at_the_quarter_before_the_period_begins(
+    year: int, period: Period, closing: tuple[int, Period], opening: tuple[int, Period]
+) -> None:
+    fetches = plan(ROE, year, period, ROE_HELD, balances={"Equity"}).fetches()
+    assert [(f.variable, f.concept, f.year, f.period) for f in fetches] == [
+        ("numerator", "Profit", year, period),
+        ("denominator.first", "Equity", *closing),
+        ("denominator.second", "Equity", *opening),
+    ]
+
+
+def test_a_plan_refuses_a_flow_read_at_its_opening() -> None:
+    on_profit = DerivedConcept(
+        "AverageProfit",
+        "banking",
+        "p",
+        "average",
+        {"first": Binding("Profit", "current"), "second": Binding("Profit", "opening")},
+        AI,
+    )
+    with pytest.raises(ValueError, match="only a balance has an opening"):
+        plan(on_profit, 2026, "year", balances={"Equity"})
+
+
+def test_growth_of_a_return_reads_each_year_s_own_opening() -> None:
+    growth = DerivedConcept(
+        "ReturnOnEquityGrowth",
+        "banking",
+        "g",
+        "growth",
+        {"current": Binding(ROE.name, "current"), "previous": Binding(ROE.name, "previous")},
+        AI,
+    )
+    fetches = plan(growth, 2026, "year", ROE_HELD, (2025, "year"), balances={"Equity"}).fetches()
+    assert [(f.variable, f.year, f.period) for f in fetches if f.concept == "Equity"] == [
+        ("current.denominator.first", 2026, "Q4"),
+        ("current.denominator.second", 2025, "Q4"),
+        ("previous.denominator.first", 2025, "Q4"),
+        ("previous.denominator.second", 2024, "Q4"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("concept", "reads"),
+    [
+        pytest.param(AVERAGE_EQUITY, True, id="itself"),
+        pytest.param(ROE, True, id="through an input"),
+        pytest.param(GROWTH, False, id="a growth reads no opening"),
+        pytest.param(MARGIN, False, id="a ratio at one time"),
+    ],
+)
+def test_reads_opening(concept: DerivedConcept, reads: bool) -> None:
+    assert reads_opening(concept, ROE_HELD) is reads
+
+
+def _durations(conn: sqlite3.Connection, ticker: str, *concepts: str) -> None:
+    for concept in concepts:
+        conn.execute(
+            """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start,
+                      period_end, value, unit, tier, written_by, written_at, run_id)
+               VALUES (?, 'standalone', ?, ?, 'duration', '2024-04-01', '2025-03-31', 1, 'INR',
+                       'xbrl-ai', 'w', 't', 'r')""",
+            (ticker, concept, concept),
+        )
+
+
+def test_an_average_of_balances_needs_a_period_so_is_mixed(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "facts.sqlite")
+    with conn:
+        _filed(conn, "ICICIBANK", "Equity")
+        _durations(conn, "ICICIBANK", "Profit")
+    assert kind(conn, AVERAGE_EQUITY, ROE_HELD) == "mixed", "it has no opening without a period"
+    assert kind(conn, ROE, ROE_HELD) == "mixed"
+
+
+def test_only_a_balance_read_at_one_time_may_be_read_at_its_opening(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "facts.sqlite")
+    with conn:
+        _filed(conn, "ICICIBANK", "Capital", "Reserves")
+        _durations(conn, "ICICIBANK", "Profit")
+    rows = [
+        ("Equity", "total", {"first": ("Capital", "current"), "second": ("Reserves", "current")}),
+        (
+            "EquityGrowth",
+            "growth",
+            {"current": ("Capital", "current"), "previous": ("Capital", "previous")},
+        ),
+        (
+            "AverageCapital",
+            "average",
+            {"first": ("Capital", "current"), "second": ("Capital", "opening")},
+        ),
+        (
+            "ProfitAndCapital",
+            "total",
+            {"first": ("Profit", "current"), "second": ("Capital", "current")},
+        ),
+        (
+            "CapitalAndItsAverage",
+            "total",
+            {"first": ("AverageCapital", "current"), "second": ("Capital", "current")},
+        ),
+    ]
+    with conn:
+        for name, formula, bound in rows:
+            conn.execute(
+                """INSERT INTO derived_concepts (name, scope, label, formula, bindings, tier,
+                          written_by, written_at, run_id)
+                   VALUES (?, 'banking', ?, ?, ?, 'derived-concept-ai', 'w', 't', 'r')""",
+                (
+                    name,
+                    name,
+                    formula,
+                    json.dumps({v: {"at": a, "concept": c} for v, (c, a) in sorted(bound.items())}),
+                ),
+            )
+    assert opening_balances(conn, "banking") == {"Capital", "Reserves", "Equity"}
+
+
+@pytest.mark.parametrize(
+    ("year", "period", "opening"),
+    [
+        pytest.param(2026, "year", (2025, "Q4"), id="FY26 opens at 31 March 2025"),
+        pytest.param(2026, "H1", (2025, "Q4"), id="H1 FY26 opens at 31 March 2025"),
+    ],
+)
+def test_the_shipped_return_on_equity_averages_equity_at_the_period_s_end_and_opening(
+    tmp_path: Path, year: int, period: Period, opening: tuple[int, Period]
+) -> None:
+    conn = connect(tmp_path / "facts.sqlite")
+    assert _shipped_ind_as(conn, tmp_path) == []
+    held = {m.name: m for m in load_derived_concepts(conn, "ind-as")}
+    assert leaves(held["ReturnOnEquity"], held) == {"ProfitLossForPeriod", "Equity"}
+    step = plan(held["ReturnOnEquity"], year, period, held, balances={"Equity"})
+    fetched = [(f.concept, f.year, f.period) for f in step.fetches()]
+    assert fetched == [
+        ("ProfitLossForPeriod", year, period),
+        ("Equity", year, "Q2" if period == "H1" else "Q4"),
+        ("Equity", *opening),
+    ], fetched
+    values = {"numerator": 30.0, "denominator.first": 220.0, "denominator.second": 180.0}
+    facts = {f.variable: (values[f.variable], "INR") for f in step.fetches()}
+    assert evaluate(step, facts) == (pytest.approx(0.15), "pure"), "30 over (220 + 180) / 2"
+
+
+def test_a_seed_reading_a_flow_at_its_opening_is_refused(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "facts.sqlite")
+    with conn:
+        _filed(conn, "ICICIBANK", "Capital")
+        _durations(conn, "ICICIBANK", "Profit")
+    rows = [
+        {
+            "name": f"Average{c}",
+            "scope": "banking",
+            "label": f"average {c}",
+            "formula": "average",
+            "bindings": {
+                "first": {"concept": c, "at": "current"},
+                "second": {"concept": c, "at": "opening"},
+            },
+        }
+        for c in ("Capital", "Profit")
+    ]
+    refused = seed(conn, WRITER, _seeds(tmp_path, *rows))
+    assert len(refused) == 1 and "AverageProfit [banking]" in refused[0], refused
+    assert "only a balance has an opening" in refused[0]
+    assert [m.name for m in load_derived_concepts(conn)] == ["AverageCapital"]

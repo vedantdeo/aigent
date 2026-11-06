@@ -391,10 +391,17 @@ def test_yes_warms_the_lookup_and_serves_over_only_the_desk_s_tools(
     monkeypatch.setattr(uvicorn, "run", lambda app, **options: served_on.update(options))
     monkeypatch.setattr(desk, "FACTS_DB", tmp_path / "facts.sqlite")
     monkeypatch.setattr(desk, "seed", lambda conn, writer: seeded.append(writer.written_by) or [])
+    synced: list[str] = []
+    monkeypatch.setattr(
+        desk,
+        "sync_share_events",
+        lambda conn, writer: (synced.append(writer.written_by), (0, []))[1],
+    )
     desk.main(["--yes", "--port", "9999"])
     assert seeded == ["seed|evals/reference/derived-concepts.jsonl"], (
         "the seed metrics, before serving"
     )
+    assert synced == ["share-events|desk"], "share events seeded and detected, before serving"
     assert connected == {"only": DESK_SERVED_TOOLS, "fenced": False}
     assert served_on == {"host": "127.0.0.1", "port": 9999, "log_level": "warning"}
     assert warmed == [("get_metric", desk.WARM_UP)], "one free search before serving"

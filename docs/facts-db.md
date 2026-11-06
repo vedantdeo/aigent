@@ -503,6 +503,45 @@ and every input is in a trusted tier**, with no per-fact check, and `derived-ai`
 - **Quoting** (Vedant, 11-01): trusted tiers only; unverified facts held back until the agent has
   its own figure, then shown through `compare_unverified` (value first, so it cannot peek).
 
+### Returns on average balances: `opening` (11-06)
+
+ROE and ROA divide a period's profit by the average of a balance at the period's end and at its
+start. **Vedant: the current time and period already give that start**, so a binding gains a third
+position beside `current` and `previous`: `opening`, a balance as at the quarter end before the
+period begins (FY26 and H1 FY26 open at 31 March 2025). The agent names one time and period, no
+previous; `compares` keeps its meaning, two periods compared; and formulas stay arithmetic, with
+`average(first, second)` added. Only a balance has an opening: a filed instant, or a derived
+concept over balances all read at one time (banks' `ShareholdersEquity`, capital plus reserves and
+surplus). An average of balances needs a period, so it plans as `mixed`. ROE and ROA are total
+profit over total equity or assets, since standalone filings carry no owners' share, and not
+annualised. Balance sheets are filed at Q2 and Q4 only, so FY and H1 compute and Q1 and Q3 fail at
+the fetch.
+
+### Share events: per-share figures across a bonus (11-06)
+
+XBRL files tag only each filing's own quarter and year to date, so a per-share figure from before a
+bonus or split stays on the old share count: HDFC Bank's Q2 FY26 basic EPS of Rs 12.14 against
+Q2 FY25's filed Rs 22.08 reads -45.0%, where the restated comparative printed in the results is
+Rs 11.04 (+10.0%). **Vedant chose to restate from XBRL ourselves** (option 2) over reading the
+printed comparatives (option 1: every company's results PDFs read, and two values held per period).
+
+- **Events** (`share_events`): a bonus, split, issue for value or unknown change, with its date and
+  ratio as shares after and before. Four are seeded from `evals/reference/share-events.jsonl`
+  (HDFC Bank, Power Grid, Reliance, Wipro), dated from the companies' own filings.
+- **Detection**: a move of more than 5% in the filed share count (paid-up capital over face value,
+  standalone) between two filings with no event held for it is held as an `unknown` event, its
+  window and observed ratio kept (Vedant: unknown events, checked like any `-ai` label).
+- **Checked like any `-ai` row**: `share-event-ai` until a person runs `verify-share-event`, naming
+  an unknown one a bonus, split or issue with its date and ratio. **Only a checked event restates,
+  and a comparison across an unchecked or unknown one is refused** (Vedant: block until checked).
+- **Which side of an event a figure is on** is decided by when its filing was published
+  (`filings.broadcast`), not its period end, since Ind AS 33 restates a filing published after a
+  bonus even for a period that ended before it.
+- **An issue for value restates nothing**: the new shares brought money in, so the fall in each
+  share's slice is real (Ind AS 33 weights them from issue). A rights issue's bonus element needs
+  market prices; one shows up as unknown and stays refused.
+- The filed figure is always shown as filed, beside its restated value and the events behind it.
+
 ## Decided (11-02)
 
 - **OCR'd results** (Vedant): a PDF whose pages are mostly OCR text behind a scan counts as a scan,

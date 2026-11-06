@@ -23,6 +23,7 @@ from aigent.facts.coverage import TABLE_FIGURES
 from aigent.facts.derived_concepts import SEEDED
 from aigent.facts.reference import FUNDAMENTALS
 from aigent.facts.review import DECISIONS
+from aigent.facts.share_events import SHARE_EVENTS
 from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 
@@ -102,6 +103,7 @@ ORDERED_FILES = [
     Ordered(TABLE_FIGURES, key="id", load=json_keys("figures")),
     Ordered(DECISIONS, key="id", load=jsonl_ids("id")),
     Ordered(SEEDED, key="scope/name", load=jsonl_keys("scope", "name")),
+    Ordered(SHARE_EVENTS, key="ticker/effective", load=jsonl_keys("ticker", "effective")),
     Ordered(IND_AS_FILED, key="concept", load=lambda p: p.read_text(encoding="utf-8").split()),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(TRAINING_MANIFEST, key="doc_id", load=json_keys("documents")),
