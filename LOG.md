@@ -2501,3 +2501,16 @@
   database at 31 Mar 2026, consolidated / standalone: Bajaj Auto 28.46% / 0.00%, ITC 2.33% / 2.28%,
   Power Grid 50.22% / 52.97%, Reliance 17.19% / 19.85%, Sun Pharma 3.75% / 31.17%, Tata Motors
   18.32% / 5.19%, Wipro 11.87% / 6.32%. 5/5 mutants killed; 2,624 tests.
+- 11-06: **per-share figures restated across bonuses and splits, $0.00.** Vedant's pick of the
+  two options for EPS growth across a bonus: restate from XBRL ourselves rather than read the
+  printed comparatives, since NSE's XBRL tags only each filing's quarter and year to date (checked
+  for every HDFC Bank filing after its bonus). New `facts.share_events` and a `share_events` table:
+  four bonuses seeded unchecked (HDFC Bank 2:1 on 28 Aug 2025, Power Grid 4:3 on 12 Sep 2023,
+  Reliance 2:1 on 29 Oct 2024, Wipro 2:1 on 4 Dec 2024, dated from their filings); a move of more
+  than 5% in the filed share count with no event held becomes an `unknown` event (Vedant), named
+  by a person with `verify-share-event`. Only checked events restate, and a plan across an
+  unchecked or unknown one is refused (Vedant); which side a figure is on comes from its filing's
+  new `broadcast` date. Checked free on a copy of the live database after an offline build: 216
+  filings dated, 4 events seeded, 0 unknown; HDFC Bank Q2 FY26 basic EPS growth refused while the
+  bonus is unchecked, then +9.96% (12.14 over 22.08 restated to 11.04), where it read -45.0%.
+  32/32 guards mutation-checked (six after their tests were fixed); 2,702 tests.

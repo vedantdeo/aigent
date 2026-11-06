@@ -33,9 +33,9 @@ from aigent.analyst.metric_tools import (  # noqa: E402
     write_back,
 )
 from aigent.facts.lookup import Lookup, concept_index  # noqa: E402
-from aigent.facts.store import Writer, verify_derived_concept  # noqa: E402
+from aigent.facts.store import Writer, connect, verify_derived_concept  # noqa: E402
 
-from ..conftest import BagOfWordsEmbedder  # noqa: E402
+from ..conftest import BagOfWordsEmbedder, share_event, share_filing  # noqa: E402
 from .conftest import ADV25, DEP25, EPS25, OP24, OP25, UNVERIFIED, evidence_of  # noqa: E402
 
 # A snapshot planned as at Q4's end is fetched as at Q4, not over the year.
@@ -784,3 +784,158 @@ def test_an_every_scope_metric_is_defined_and_planned_for_any_company(
     assert _call(tools, DEFINE, args)["scope"] == "*"
     planned = _call(tools, PLAN, {**ASK, "name": "OperatingProfitOverItself", "company": "ITC"})
     assert planned["metric"] == "OperatingProfitOverItself" and planned["scope"] == "ind-as"
+
+
+# HDFC Bank's standalone basic EPS for Q2 FY25, filed before its 1:1 bonus of 28 Aug 2025, and for
+# Q2 FY26, filed after it.
+EPS_Q2_FY25 = {
+    "cite_as": "FACT:HDFCBANK:2025:standalone:Q2:Eps",
+    "label": "Eps",
+    "value": 22.08,
+    "unit": "INRPerShare",
+    "period": {"from": "2024-07-01", "to": "2024-09-30"},
+    "basis": "standalone",
+    "segment": None,
+    "tier": "xbrl-filed",
+    "source": "NSE XBRL results filing",
+}
+EPS_Q2_FY26 = {
+    **EPS_Q2_FY25,
+    "cite_as": "FACT:HDFCBANK:2026:standalone:Q2:Eps",
+    "value": 12.14,
+    "period": {"from": "2025-07-01", "to": "2025-09-30"},
+}
+EPS_ASK: dict[str, object] = {
+    **ASK,
+    "name": "EpsGrowth",
+    "company": "HDFCBANK",
+    "year": "2026",
+    "quarter": "Q2",
+    "period": "3M",
+    "previous_year": "2025",
+    "previous_quarter": "Q2",
+    "previous_period": "3M",
+}
+
+
+@pytest.fixture
+def eps_db(tmp_path: Path) -> sqlite3.Connection:
+    """HDFC Bank's two Q2 EPS facts, each in its own published filing, and EpsGrowth."""
+    conn = connect(tmp_path / "facts.sqlite")
+    with conn:
+        for fact, end, broadcast in (
+            (EPS_Q2_FY25, "2024-09-30", "2024-10-19T12:01:00"),
+            (EPS_Q2_FY26, "2025-09-30", "2025-10-18T08:22:38"),
+        ):
+            fid = share_filing(conn, "HDFCBANK", end, 100.0, broadcast)
+            period = cast(dict[str, str], fact["period"])
+            conn.execute(
+                """INSERT INTO facts (filing_id, ticker, basis, concept, label, period_kind,
+                          period_start, period_end, value, unit, tier, written_by, written_at,
+                          run_id, verified_by, verified_at)
+                   VALUES (?, 'HDFCBANK', 'standalone', 'Eps', 'Eps', 'duration', ?, ?, ?,
+                           'INRPerShare', 'xbrl-filed', 'w', 't', 'r', 'sec-6k-html:x', 't')""",
+                (fid, period["from"], period["to"], fact["value"]),
+            )
+        conn.execute("INSERT INTO concepts (concept, label, kind) VALUES ('Eps', 'Eps', 'xbrl')")
+        conn.execute(
+            """INSERT INTO derived_concepts (name, scope, label, formula, bindings, tier,
+                      written_by, written_at, run_id)
+               VALUES ('EpsGrowth', 'banking', 'Growth in EPS', 'growth', ?, 'derived-concept-ai',
+                       'seed', 't', 'seed-1')""",
+            (
+                json.dumps(
+                    {
+                        "current": {"at": "current", "concept": "Eps"},
+                        "previous": {"at": "previous", "concept": "Eps"},
+                    }
+                ),
+            ),
+        )
+    return conn
+
+
+def _eps_computed(tools: MetricTools) -> tuple[dict[str, object], dict[str, object]]:
+    planned = _call(tools, PLAN, EPS_ASK)
+    fetch = cast(list[dict[str, object]], planned["fetch"])
+    inputs = [{"variable": f["variable"], "cite_as": f["cite_as"]} for f in fetch]
+    return planned, _call(tools, COMPUTE, {"plan_id": planned["plan_id"], "inputs": inputs})
+
+
+@pytest.mark.parametrize(
+    ("event", "growth", "previous"),
+    [
+        pytest.param(None, 12.14 / 22.08 - 1, None, id="no event held: EPS as filed"),
+        pytest.param(
+            ("bonus", (2, 1)), 12.14 / 11.04 - 1, 11.04, id="a checked bonus halves the earlier"
+        ),
+        pytest.param(("issue", None), 12.14 / 22.08 - 1, None, id="a checked issue: as filed"),
+    ],
+)
+def test_eps_growth_restates_the_earlier_eps_across_a_checked_event(
+    eps_db: sqlite3.Connection,
+    event: tuple[str, tuple[int, int] | None] | None,
+    growth: float,
+    previous: float | None,
+) -> None:
+    if event is not None:
+        with eps_db:
+            share_event(eps_db, "HDFCBANK", event[0], "2025-08-28", event[1], checked=True)
+    planned, computed = _eps_computed(_tools(eps_db, EPS_Q2_FY25, EPS_Q2_FY26))
+    assert computed["value"] == pytest.approx(growth), computed
+    inputs = {str(i["variable"]): i for i in cast(list[dict[str, object]], computed["inputs"])}
+    assert inputs["previous"]["value"] == 22.08, "the filed figure is shown as filed"
+    if previous is None:
+        assert "restated" not in planned and "restated" not in inputs["previous"], planned
+    else:
+        restated = cast(dict[str, object], inputs["previous"]["restated"])
+        assert restated["value"] == pytest.approx(previous) and restated["multiplier"] == 0.5
+        assert "restated" not in inputs["current"]
+        assert set(cast(dict[str, object], planned["restated"])) == {"previous"}, planned
+
+
+@pytest.mark.parametrize(
+    ("event", "said"),
+    [
+        pytest.param(("bonus", "2025-08-28", (2, 1), None), "not yet checked", id="unchecked"),
+        pytest.param(
+            ("unknown", None, None, ("2025-06-30", "2025-09-30")),
+            "unknown share-count change",
+            id="an unknown change",
+        ),
+    ],
+)
+def test_eps_growth_across_an_unchecked_event_is_not_planned(
+    eps_db: sqlite3.Connection,
+    event: tuple[str, str | None, tuple[int, int] | None, tuple[str, str] | None],
+    said: str,
+) -> None:
+    kind, effective, ratio, seen = event
+    with eps_db:
+        share_event(eps_db, "HDFCBANK", kind, effective, ratio, seen=seen)
+    tools = _tools(eps_db, EPS_Q2_FY25, EPS_Q2_FY26)
+    content, is_error = tools(PLAN, EPS_ASK)
+    assert is_error and said in content and "verify-share-event" in content, content
+    assert tools.plans == {}
+
+
+def test_a_restated_figure_is_written_back_with_its_restatement(
+    eps_db: sqlite3.Connection,
+) -> None:
+    with eps_db:
+        share_event(eps_db, "HDFCBANK", "bonus", "2025-08-28", (2, 1), checked=True)
+    tools = _tools(eps_db, EPS_Q2_FY25, EPS_Q2_FY26)
+    _eps_computed(tools)
+    [written], _ = write_back(eps_db, _done("supported", "DERIVED:D1"), tools, WRITER)
+    formula = json.loads(str(_derived(eps_db)[0][9]))
+    assert formula["restated"]["previous"]["multiplier"] == 0.5, formula
+    assert written["value"] == pytest.approx(12.14 / 11.04 - 1)
+
+
+def test_a_figure_not_per_share_is_never_restated(eps_db: sqlite3.Connection) -> None:
+    with eps_db:
+        eps_db.execute("UPDATE facts SET unit = 'INR' WHERE concept = 'Eps'")
+        share_event(eps_db, "HDFCBANK", "bonus", "2025-08-28", (2, 1), checked=True)
+    filed = [{**f, "unit": "INR"} for f in (EPS_Q2_FY25, EPS_Q2_FY26)]
+    planned, computed = _eps_computed(_tools(eps_db, *filed))
+    assert "restated" not in planned and computed["value"] == pytest.approx(12.14 / 22.08 - 1)

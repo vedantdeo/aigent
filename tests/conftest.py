@@ -899,3 +899,72 @@ def checked_facts_lookup(facts_db: Path) -> Lookup:
         asked_by="test",
         clock=lambda: FACTS_NOW,
     )
+
+
+def share_filing(
+    conn: sqlite3.Connection,
+    ticker: str,
+    end: str,
+    shares: float,
+    broadcast: str | None = None,
+    basis: str = "standalone",
+) -> int:
+    """A results filing for `end` holding its share count as paid-up capital and a face value of
+    2, published at `broadcast`; its id."""
+    period_end = date.fromisoformat(end)
+    fid = upsert_filing(
+        conn,
+        FilingRow(
+            ticker,
+            period_end.year,
+            period_end,
+            basis,
+            "xbrl",
+            f"{ticker}{end}{basis}",
+            "s",
+            "t",
+            broadcast,
+        ),
+    )
+    for concept, value in (
+        ("PaidUpValueOfEquityShareCapital", shares * 2),
+        ("FaceValueOfEquityShareCapital", 2.0),
+    ):
+        conn.execute(
+            """INSERT INTO facts (filing_id, ticker, basis, concept, label, period_kind,
+                      period_start, period_end, value, unit, tier, written_by, written_at, run_id)
+               VALUES (?, ?, ?, ?, ?, 'duration', ?, ?, ?, 'INR', 'xbrl-ai', 'w', 't', 'r')""",
+            (fid, ticker, basis, concept, concept, f"{period_end.year}-01-01", end, value),
+        )
+    return fid
+
+
+def share_event(
+    conn: sqlite3.Connection,
+    ticker: str,
+    kind: str,
+    effective: str | None,
+    ratio: tuple[int, int] | None = None,
+    checked: bool = False,
+    seen: tuple[str, str] | None = None,
+) -> int:
+    """A held share event: `ratio` is shares after and before, `seen` an unknown one's window;
+    checked by "vedant" when `checked`. Its id."""
+    cursor = conn.execute(
+        """INSERT INTO share_events (ticker, kind, effective, shares_after, shares_before,
+                  seen_from, seen_to, seen_ratio, tier, written_by, written_at, run_id,
+                  verified_by, verified_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'w', 't', 'r', ?, ?)""",
+        (
+            ticker,
+            kind,
+            effective,
+            *(ratio or (None, None)),
+            *(seen or (None, None)),
+            2.0 if seen else None,
+            "share-event" if checked else "share-event-ai",
+            "vedant" if checked else None,
+            "t" if checked else None,
+        ),
+    )
+    return cast(int, cursor.lastrowid)

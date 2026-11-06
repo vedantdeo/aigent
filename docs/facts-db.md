@@ -503,6 +503,31 @@ and every input is in a trusted tier**, with no per-fact check, and `derived-ai`
 - **Quoting** (Vedant, 11-01): trusted tiers only; unverified facts held back until the agent has
   its own figure, then shown through `compare_unverified` (value first, so it cannot peek).
 
+### Share events: per-share figures across a bonus (11-06)
+
+XBRL files tag only each filing's own quarter and year to date, so a per-share figure from before a
+bonus or split stays on the old share count: HDFC Bank's Q2 FY26 basic EPS of Rs 12.14 against
+Q2 FY25's filed Rs 22.08 reads -45.0%, where the restated comparative printed in the results is
+Rs 11.04 (+10.0%). **Vedant chose to restate from XBRL ourselves** (option 2) over reading the
+printed comparatives (option 1: every company's results PDFs read, and two values held per period).
+
+- **Events** (`share_events`): a bonus, split, issue for value or unknown change, with its date and
+  ratio as shares after and before. Four are seeded from `evals/reference/share-events.jsonl`
+  (HDFC Bank, Power Grid, Reliance, Wipro), dated from the companies' own filings.
+- **Detection**: a move of more than 5% in the filed share count (paid-up capital over face value,
+  standalone) between two filings with no event held for it is held as an `unknown` event, its
+  window and observed ratio kept (Vedant: unknown events, checked like any `-ai` label).
+- **Checked like any `-ai` row**: `share-event-ai` until a person runs `verify-share-event`, naming
+  an unknown one a bonus, split or issue with its date and ratio. **Only a checked event restates,
+  and a comparison across an unchecked or unknown one is refused** (Vedant: block until checked).
+- **Which side of an event a figure is on** is decided by when its filing was published
+  (`filings.broadcast`), not its period end, since Ind AS 33 restates a filing published after a
+  bonus even for a period that ended before it.
+- **An issue for value restates nothing**: the new shares brought money in, so the fall in each
+  share's slice is real (Ind AS 33 weights them from issue). A rights issue's bonus element needs
+  market prices; one shows up as unknown and stays refused.
+- The filed figure is always shown as filed, beside its restated value and the events behind it.
+
 ## Decided (11-02)
 
 - **OCR'd results** (Vedant): a PDF whose pages are mostly OCR text behind a scan counts as a scan,

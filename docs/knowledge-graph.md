@@ -24,512 +24,514 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
 ## Contents
 
 <!-- generated:toc (uv run python scripts/graph_doc.py --write) -->
-- L535 0. Orientation
-- L621 1. Shape of the system
-- L691 2. Nodes
-  - L695 2.1 Modules
-    - L697 `config`
-    - L702 `llm.pricing`
-    - L709 `llm`
-    - L716 `llm.messages`
-    - L723 `llm.adapters`
-    - L732 `llm.adapters.openai.function_tool`
-    - L739 `llm.adapters.cfg_hostllm`
-    - L746 `llm.adapters.retry`
-    - L755 `llm.core`
-    - L764 `guardrails`
-    - L772 `errors`
-    - L780 `tracing`
-    - L787 `transcript`
-    - L794 `tools`
-    - L802 `report_tools`
-    - L809 `mcp_server`
-    - L817 `mcp_client`
-    - L825 `analyst.specialists`
-    - L832 `analyst.cfg_analyst`
-    - L839 `analyst.router`
-    - L847 `analyst.served`
-    - L855 `analyst.toolbox`
-    - L862 `analyst.experts`
-    - L869 `analyst.memo`
-    - L876 `analyst.graph`
-    - L884 `analyst.run`
-    - L891 `analyst.desk`
-    - L899 `analyst.metric_tools`
-    - L907 `analyst.teach`
-    - L914 `tools_config`
-    - L921 `analyst`
-    - L927 `analyst.filings`
-    - L934 `analyst.fundamentals`
-    - L942 `facts`
-    - L949 `facts.cfg_facts`
-    - L955 `facts.xbrl`
-    - L963 `facts.nse`
-    - L968 `facts.store`
-    - L976 `facts.check`
-    - L981 `facts.build`
-    - L988 `facts.taxonomy`
-    - L996 `facts.lookup`
-    - L1004 `facts.reference`
-    - L1012 `facts.formulas`
-    - L1019 `facts.derived_concepts`
-    - L1026 `facts.coverage`
-    - L1034 `facts.documents`
-    - L1042 `facts.crosscheck`
-    - L1050 `facts.review`
-    - L1058 `extraction.figures`
-    - L1067 `extraction.research`
-    - L1074 `extraction.figure_training`
-    - L1082 `extraction.figure_eval`
-    - L1089 `extraction.headline_eval`
-    - L1096 `extraction.synthetic`
-    - L1103 `extraction.baseline`
-    - L1111 `extraction.headlines`
-    - L1116 `evals.dataset`
-    - L1120 `evals.grade`
-    - L1127 `evals.judge`
-    - L1131 `evals.runner`
-    - L1135 `evals.report`
-    - L1139 `retrieval.chunk`
-    - L1147 `retrieval.embed`
-    - L1154 `retrieval.dense`
-    - L1161 `retrieval.corpus`
-    - L1169 `retrieval.questions`
-    - L1173 `retrieval.evaluate`
-    - L1180 `retrieval.langchain_rag`
-    - L1185 `retrieval.sparse`
-    - L1189 `retrieval.fuse`
-    - L1193 `retrieval.rerank`
-    - L1198 `retrieval.hits`
-    - L1203 `retrieval.rank`
-    - L1209 `retrieval.keys`
-    - L1216 `workflows.reports`
-    - L1220 `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}`
-    - L1223 `workflows.orchestrator_workers_graph`
-    - L1230 `agent`
-    - L1237 `agent_graph`
-    - L1244 `agent_adk`
-    - L1252 `agent_tasks`
-    - L1261 `retrieval.answer`
-  - L1266 2.2 Settings (`config`)
-    - L1270 `config.MODEL`
-    - L1275 `config.JUDGE_MODEL`
-    - L1281 `config.SMALL_MODEL`
-    - L1288 `config.MAX_USD_PER_REQUEST`
-    - L1293 `config.MAX_USD_PER_TURN`
-    - L1300 `config.MAX_USD_PER_RUN`
-    - L1304 `config.WEB_SEARCH_RESULT_TOKENS`
-    - L1311 `config.MAX_USD_PER_EVAL`
-    - L1315 `config.MAX_USD_PER_TASK`
-    - L1322 `config.DEFAULT_MAX_TOKENS`
-    - L1330 `config.MAX_AGENT_TURNS`
-    - L1337 `config.MIN_TOKENS_FINAL_ANSWER`
-    - L1341 `config.MAX_PARALLEL_CALLS`
-    - L1346 `config.EVAL_WORKERS`
-    - L1353 `config.BATCH_POLL_SECONDS`
-    - L1359 `config.THINKING_WORKFLOW_PARAM`
-    - L1365 `config.MAX_PLAN_TASKS`
-    - L1370 `config.MAX_GRAPH_STEPS`
-    - L1374 `config.MAX_FAILURES_SHOWN`
-    - L1378 `config.TRACING`
-    - L1383 `config.MAX_TASK_CHARS`
-    - L1387 `config.MCP_SERVER_NAME`
-    - L1393 `config.MCP_CALL_TIMEOUT_SECONDS`
-    - L1399 `analyst.cfg_analyst.SPECIALIST_TRIES`
-    - L1405 config.GENERALIST_MODEL and the analyst's other settings (moved)
-    - L1410 `config.EMBED_MODEL`
-    - L1416 `config.EMBED_LOG_EVERY`
-    - L1420 `config.EMBED_SAVE_EVERY`
-    - L1426 `config.EMBED_QUERY_PREFIXES`
-    - L1433 `config.LOCAL_MODEL_DTYPE`
-    - L1440 `config.CHUNK_*`
-    - L1445 `config.ELEMENT_*`
-    - L1451 `config.HEADING_*`
-    - L1454 `config.PASSAGE_MIN_CHARS`
-    - L1460 `config.TOP_K`
-    - L1464 `config.BM25_K1`
-    - L1469 `config.FUSE_DEPTH`
-    - L1474 `config.RRF_K`
-    - L1480 `config.RERANK_*`
-    - L1485 `config.KEY_DEPTH`
-    - L1489 `config.SEARCH_METHOD`
-    - L1497 `config.FURNITURE_*`
-    - L1502 `config.THINKING_EVAL_PARAM`
-    - L1510 `config.CACHE_TTL`
-    - L1517 `config.FIGURE_LABEL_*`
-    - L1523 `config.RESEARCH_*`
-    - L1528 `config.SYNTHETIC_*`
-    - L1533 `config.BASELINE_*`
-    - L1539 `config.PAGE_SEPARATOR`
-    - L1543 `config.DOCLING_OCR`
-    - L1551 `llm.adapters.anthropic.has_credentials`
-    - L1558 `llm.adapters.anthropic.get_client`
-    - L1565 `llm.adapters.anthropic.batch_params`
-  - L1570 2.3 Cost and budget (`pricing`)
-    - L1579 `llm.pricing.Price`
-    - L1586 `llm.pricing.PRICES`
-    - L1593 `llm.pricing.PRICE_PER_WEB_SEARCH`
-    - L1598 `llm.pricing.BATCH_DISCOUNT`
-    - L1606 `llm.pricing.cost_usd`
-    - L1612 `llm.messages.Usage`
-    - L1619 `llm.messages.Failed`
-    - L1624 `llm.pricing.usage_cost`
-    - L1628 `llm.pricing.describe_usage`
-    - L1632 `errors.BudgetExceeded`
-    - L1637 `errors.BatchUnfinished`
-    - L1645 `llm.pricing.worst_case_usd`
-    - L1653 `llm.pricing.affordable_output_tokens`
-    - L1658 `llm.pricing.estimate_eval_usd`
-    - L1664 `llm.pricing.assert_request_within_budget`
-    - L1672 `llm.pricing.Budget`
-    - L1680 `llm.pricing.Budget.admit`
-    - L1688 `llm.pricing.Budget.held_usd`
-    - L1695 `llm.pricing.Budget.tripped`
-  - L1700 2.4 The model door (`llm`)
-    - L1709 `llm.core.Request`
-    - L1716 `llm.core.Llm`
-    - L1721 `llm.core.Llm.for_eval`
-    - L1727 `llm.core.Llm._traced`
-    - L1734 `llm.core.Llm.count`
-    - L1739 `llm.core.Llm.create`
-    - L1744 `llm.core.Llm.parse`
-    - L1751 `llm.core.Llm.stream`
-    - L1755 `llm.core.Llm.gather_text`
-    - L1760 `llm.core.Llm.batch_records`
-    - L1768 `llm.core.Llm._admit`
-    - L1775 `llm.core.Rehearsed`
-    - L1780 `errors.SpecialistUnreachable`
-    - L1787 `errors.StepFailed`
-    - L1792 `llm.core.describe`
-    - L1797 `llm.messages.is_client_tool`
-    - L1802 `llm.core._writes_cache`
-    - L1807 `llm.core.Llm.run_tools`
-    - L1814 `llm.core.Llm.price`
-    - L1821 `llm.core.Llm.turn`
-    - L1828 `llm.core.ToolRun`
-    - L1833 `llm.core.Llm._last_answer`
-    - L1839 `llm.core.Llm._admit_turn`
-    - L1843 `llm.core.Llm._held`
-    - L1848 `errors.TurnsExhausted`
-    - L1853 `llm.core.Dispatch`
-    - L1858 `llm.adapters.anthropic._runnable`
-  - L1863 2.5 Tools (`tools`, `report_tools`)
-    - L1870 `tools.calculate`
-    - L1874 `tools.current_time`
-    - L1878 `tools.read_file`
-    - L1883 `tools.write_file`
-    - L1891 `tools_config.SANDBOX`
-    - L1896 `tools_config.MAX_WEB_SEARCHES`
-    - L1902 `tools.CALCULATOR_TOOL`
-    - L1907 `tools.ALL_TOOLS`
-    - L1914 `tools.WEB_SEARCH_TOOL`
-    - L1921 `tools.execute_tool`
-    - L1928 `tools.WRITE_TOOLS`
-    - L1934 `report_tools.SEARCH_TOOL`
-    - L1939 `report_tools.ReportSearch`
-    - L1944 `report_tools.Searched`
-  - L1948 2.7 Project 1a (`extraction`)
-    - L1950 `extraction.headlines.Extraction`
-    - L1956 `extraction.headlines.METRICS`
-    - L1963 `extraction.headlines.QUARTERS`
-    - L1969 `extraction.headlines.Resolver`
-    - L1976 `extraction.headlines.report_unresolved`
-    - L1981 `extraction.headlines.load_directory`
-    - L1985 `extraction.headlines.Variant`
-    - L1990 `extraction.headlines.CACHE_VARIANTS`
-    - L1998 `extraction.headlines.THINKING`
-    - L2005 `extraction.headlines.measure`
-    - L2012 `extraction.headlines.VARIANTS`
-    - L2018 `extraction.headlines.extraction_task`
-    - L2025 `extraction.headlines.main`
-  - L2033 2.8 Retrieval (`retrieval`)
-    - L2039 `retrieval.chunk.Document`
-    - L2044 `retrieval.chunk.Chunk`
-    - L2049 `retrieval.chunk.Inventory`
-    - L2055 `retrieval.chunk.squeeze`
-    - L2062 `retrieval.chunk.Inventory.containing`
-    - L2068 `retrieval.chunk.fixed`
-    - L2074 `retrieval.chunk.sentences`
-    - L2081 `retrieval.chunk.by_sentence`
-    - L2089 `retrieval.chunk.headings`
-    - L2094 `retrieval.chunk.by_heading`
-    - L2101 `retrieval.chunk.by_element`
-    - L2109 `retrieval.embed.Embedder`
-    - L2114 `retrieval.embed.query_prefix_of`
-    - L2120 `retrieval.embed.LocalEmbedder`
-    - L2127 `retrieval.embed.LocalEmbedder.embed_query`
-    - L2132 `retrieval.embed.LocalEmbedder.count_truncated`
-    - L2137 `retrieval.hits.Hit`
-    - L2142 `retrieval.dense.DenseIndex`
-    - L2147 `retrieval.dense.DenseIndex.build`
-    - L2155 `retrieval.dense.DenseIndex.search`
-    - L2160 `retrieval.dense.DenseIndex.build_cached`
-    - L2167 `retrieval.dense.store_file`
-    - L2174 `retrieval.hits.rank_ids`
-    - L2178 `retrieval.corpus.read_pages`
-    - L2187 `retrieval.corpus.normalise`
-    - L2192 `retrieval.corpus._skeleton`
-    - L2197 `retrieval.corpus.strip_furniture`
-    - L2205 `retrieval.corpus.to_document`
-    - L2211 `retrieval.corpus.load_pdf`
-    - L2216 `retrieval.questions.Question`
-    - L2221 `retrieval.questions.eligible`
-    - L2226 `retrieval.questions.sample_passages`
-    - L2231 `retrieval.questions.verify`
-    - L2239 `retrieval.questions.generate`
-    - L2244 `retrieval.corpus.cache_file`
-    - L2250 `retrieval.corpus.load_pdf_cached`
-    - L2258 `retrieval.corpus.load_corpus`
-    - L2265 `retrieval.evaluate.STRATEGIES`
-    - L2272 `retrieval.evaluate.graders`
-    - L2277 `retrieval.evaluate.load_cases`
-    - L2284 `retrieval.evaluate.label_of`
-    - L2291 `retrieval.evaluate.report_of`
-    - L2298 `retrieval.evaluate.resolve`
-    - L2304 `retrieval.evaluate.retrieval_task`
-    - L2311 `retrieval.evaluate.main`
-    - L2318 `retrieval.langchain_rag.prepare`
-    - L2324 `retrieval.langchain_rag.langchain_task`
-    - L2329 `retrieval.sparse.tokenise`
-    - L2334 `retrieval.sparse.SparseIndex`
-    - L2339 `retrieval.fuse.reciprocal_rank_fusion`
-    - L2345 `retrieval.rerank.Reranker`
-    - L2350 `retrieval.rerank.LocalReranker`
-    - L2357 `retrieval.keys.build_keys`
-    - L2362 `retrieval.keys.table_context`
-    - L2366 `retrieval.keys.ParentRanker`
-    - L2371 `retrieval.keys.keyed_search`
-    - L2376 `retrieval.rerank.rerank`
-    - L2382 `retrieval.rank.METHODS`
-    - L2389 `retrieval.rank.Ranker`
-    - L2394 `retrieval.rank.Indexes`
-    - L2402 `retrieval.rank.DenseRanker`
-    - L2407 `retrieval.rank.HybridRanker`
-    - L2411 `retrieval.rank.Reranked`
-    - L2416 `retrieval.rank.scoped`
-    - L2423 `retrieval.rank.build_ranker`
-    - L2428 `retrieval.chunk.context_block`
-    - L2435 `retrieval.evaluate.ranker_task`
-    - L2442 `retrieval.evaluate.compare_retrieval`
-    - L2449 `retrieval.answer.ARMS`
-    - L2454 `retrieval.answer.Answer`
-    - L2459 `retrieval.answer.answer_task`
-    - L2466 `retrieval.answer.graders`
-    - L2472 `retrieval.answer.main`
-  - L2479 2.9 The workflow patterns (`workflows`)
-    - L2487 `workflows.reports.DocId`
-    - L2492 `workflows.reports.Search`
-    - L2497 `workflows.reports.build_search`
-    - L2504 `workflows.chaining`
-    - L2510 `workflows.routing`
-    - L2515 `workflows.parallelization`
-    - L2520 `workflows.orchestrator_workers`
-    - L2525 `workflows.evaluator_optimizer`
-    - L2530 `workflows.orchestrator_workers_graph.build`
-  - L2536 2.10 The first agent (`agent`)
-    - L2553 `agent.TOOLS`
-    - L2558 `agent.cited`
-    - L2563 `agent.WebSources`
-    - L2570 `agent.run`
-    - L2575 `agent.FINISH`
-  - L2579 2.11 The eval harness (`evals`)
-    - L2584 `evals.dataset.Case`
-    - L2589 `evals.dataset.load_jsonl`
-    - L2594 `evals.dataset.digest`
-    - L2599 `evals.grade.Outcome`
-    - L2604 `evals.grade.Score`
-    - L2609 `evals.grade.Grader`
-    - L2614 `evals.grade.BatchGrader`
-    - L2619 `evals.grade.exact_match`
-    - L2624 `evals.grade.regex`
-    - L2630 `evals.grade.pydantic_valid`
-    - L2634 `evals.grade.field_match`
-    - L2639 `evals.grade.flag`
-    - L2646 `evals.grade.right_tools`
-    - L2653 `evals.grade.resolvable`
-    - L2659 `evals.grade.recall_at_k`
-    - L2665 `evals.grade.hit_at_k`
-    - L2672 `evals.grade.reciprocal_rank`
-    - L2677 `evals.judge.LlmJudge`
-    - L2684 `evals.judge.Verdict`
-    - L2689 `evals.runner.Task`
-    - L2694 `evals.runner.RowResult`
-    - L2699 `evals.runner.EvalRun`
-    - L2704 `evals.runner.run_eval`
-    - L2712 `evals.runner.combine`
-    - L2718 `evals.report.to_markdown`
-    - L2723 `evals.report._metrics_table`
-    - L2728 `evals.report._grading_models`
-    - L2732 `evals.report.write_report`
-  - L2739 2.12 Tests
-    - L2741 `tests.llm.test_pricing`
-    - L2748 `tests.test_tools`
-    - L2755 `tests.llm.test_core`
-    - L2762 `tests.conftest.FakeAnthropic`
-    - L2768 `tests.workflows.test_<pattern>`
-    - L2774 `tests.test_agent`
-    - L2779 `tests.test_agent_graph`
-    - L2786 `tests.test_agent_adk`
-    - L2793 `tests.test_agent_tasks`
-    - L2800 `tests.llm.test_batch`
-    - L2807 `tests.test_report_tools`
-    - L2812 `tests.workflows.test_patterns`
-    - L2817 `tests.workflows.test_reports`
-    - L2824 `tests.conftest.make_judge`
-    - L2829 `tests.conftest.CAPPED`
-    - L2836 `tests.test_api_smoke`
-    - L2840 `tests.evals.test_dataset`
-    - L2845 `tests.evals.test_graders`
-    - L2852 `tests.conftest.KeywordReranker`
-    - L2857 `tests.conftest.BagOfWordsEmbedder`
-    - L2862 `tests.retrieval.test_chunk`
-    - L2867 `tests.retrieval.test_corpus`
-    - L2874 `tests.retrieval.test_questions`
-    - L2880 `tests.retrieval.test_answer`
-    - L2885 `tests.retrieval.test_langchain_rag`
-    - L2891 `tests.retrieval.test_sparse`
-    - L2896 `tests.retrieval.test_fuse`
-    - L2902 `tests.retrieval.test_rerank`
-    - L2907 `tests.retrieval.test_evaluate`
-    - L2914 `tests.retrieval.test_keys`
-    - L2921 `tests.retrieval.test_embed`
-    - L2928 `tests.retrieval.test_rank`
-    - L2933 `tests.retrieval.test_dense`
-    - L2941 `tests.evals.test_runner`
-    - L2948 `tests.extraction.test_synthetic`
-    - L2955 `tests.extraction.test_baseline`
-    - L2962 `tests.extraction.test_headlines`
-    - L2969 `tests.test_underhood`
-    - L2976 `tests.test_mcp_server`
-    - L2984 `tests.test_mcp_client`
-    - L2992 `tests.analyst.test_specialists`
-    - L2999 `tests.analyst.test_router`
-    - L3006 `tests.analyst.test_served`
-    - L3013 `tests.analyst.test_toolbox`
-    - L3020 `tests.analyst.test_fundamentals`
-    - L3027 `tests.analyst.test_teach`
-    - L3034 `tests.analyst.test_graph`
-    - L3041 `tests.analyst.test_desk`
-    - L3048 `tests.analyst.test_metric_tools`
-    - L3055 `tests.test_reference_data`
-    - L3063 `tests.evals.test_report`
-    - L3068 `tests.test_graph_doc`
-    - L3076 `tests.facts`
-  - L3083 2.13 Non-code nodes
-    - L3085 `sandbox/`
-    - L3090 `evals/`
-    - L3096 `evals/reference/nse-tickers.json`
-    - L3103 `evals/datasets/headlines.jsonl`
-    - L3111 `corpus/`
-    - L3117 `evals/reference/corpus-manifest.json`
-    - L3123 `scripts/fetch-corpus.sh`
-    - L3129 `evals/datasets/retrieval.jsonl`
-    - L3137 `evals/datasets/retrieval-tables.jsonl`
-    - L3145 `evals/datasets/retrieval-paraphrased.jsonl`
-    - L3153 `evals/datasets/tasks.jsonl`
-    - L3160 `docs/framework-comparison.md`
-    - L3165 `docs/tool-runner.md`
-    - L3169 `docs/langgraph.md`
-    - L3174 `docs/agent-frameworks.md`
-    - L3181 `docs/v0.2-agent.md`
-    - L3188 `docs/capstone.md`
-    - L3195 `docs/facts-db.md`
-    - L3201 corpus cache: `corpus/.cache/xbrl/`, `taxonomy/`, `facts.sqlite`
-    - L3206 `evals/reference/fundamentals.json`
-    - L3213 `evals/reference/table-figures.json`
-    - L3220 `docs/context-management.md`
-    - L3225 `LOG.md`
-    - L3231 `docs/development.md`
-    - L3237 `README.md`
-    - L3243 `pyproject.toml`
-    - L3250 `.env.example`
-    - L3254 `CLAUDE.md`
-    - L3261 `.githooks/pre-commit`
-    - L3268 `scripts/check-knowledge-graph.sh`
-    - L3275 `.github/workflows/knowledge-graph.yml`
-    - L3280 `scripts/graph_doc.py`
-    - L3289 `.github/workflows/checks.yml`
-    - L3297 `.github/workflows/main.yml`
-    - L3304 `.github/workflows/release.yml`
-    - L3312 roadmap
-- L3319 3. Edges
-  - L3323 Imports (generated)
-  - L3907 Layering rules (checked)
-  - L3968 Reads and writes
-  - L3982 Enforcement and control flow
-  - L4035 Tested-by
-  - L4071 Environment
-- L4099 4. Invariants
-    - L4103 Invariant 1: Every paid call is preceded by a free count and the per-request check
-    - L4109 Invariant 2: Cost is reported, always
-    - L4113 Invariant 3: The assistant turn is echoed back verbatim
-    - L4116 Invariant 4: All tool results for one turn go back in ONE user message
-    - L4121 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
-    - L4125 Invariant 6: Both loops are capped
-    - L4132 Invariant 7: A file tool resolves before it compares
-    - L4138 Invariant 8: One home each for constants, clients, prices and model calls
-    - L4145 Invariant 9: Paid tests carry `@pytest.mark.live`
-    - L4148 Invariant 10: Types are complete
-    - L4151 Invariant 11: An eval survives its own bad rows
-    - L4155 Invariant 12: Every dollar an eval spends lands in one budget
-    - L4162 Invariant 13: A model is asked to read, never to join
-    - L4167 Invariant 14: The harness imports no capability module
-    - L4171 Invariant 15: An eval is a measurement, so nothing about it may wobble
-    - L4177 Invariant 16: A prompt never quotes its own test set
-    - L4184 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
-    - L4189 Invariant 18: Retrieval is graded before generation, and it is free
-    - L4194 Invariant 19: A page never leaves the page sequence
-    - L4199 Invariant 20: A retrieval label must identify one document, not merely appear in one
-    - L4205 Invariant 21: The ranking that is measured is the ranking that is used
-    - L4211 Invariant 22: A ceiling refuses spending before it happens, not only after
-    - L4218 Invariant 23: Every error the package defines lives in `errors`
-    - L4223 Invariant 24: A call is shaped by the client it goes to
-    - L4229 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
-    - L4235 Invariant 26: Tracing observes and never steers
-    - L4241 Invariant 27: A request is sent again only if it cannot have been billed
-    - L4247 Invariant 28: Text someone else wrote reaches the model fenced
-    - L4253 Invariant 29: A write runs only where a caller opted in, and never overwrites
-    - L4259 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
-- L4265 5. Where the next work attaches
-  - L4269 5.1 Open seams
-    - L4271 Seam: Facts database — step 2
-    - L4277 Seam: Week 6 — LangGraph agent
-    - L4281 Seam: Week 5 — async and batch evals
-    - L4288 Seam: Week 4 — compaction, when a task outgrows a turn
-    - L4294 Seam: Week 3 — measure a pattern
-    - L4299 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
-    - L4304 Seam: Week 3 — anything that searches the reports
-    - L4311 Seam: adding a tool
-    - L4315 Seam: adding a grader
-  - L4319 5.2 Consumed and superseded seams
-    - L4321 Seam: Week 1 — Project 1a
-    - L4326 Seam: Week 1 — prompt caching
-    - L4332 Seam: superseded — caching as two variants of one eval
-    - L4337 Seam: Week 1 — measure the un-saturated eval
-    - L4343 Seam: Week 1 — label the backlog
-    - L4348 Seam: Week 1 — break things on purpose
-    - L4354 Seam: Week 2 — retrieval metrics
-    - L4360 Seam: Week 2 — the four modules
-    - L4366 Seam: Week 2 — the corpus
-    - L4372 Seam: Week 2 — the retrieval dataset
-    - L4377 Seam: Week 2 — the measured run
-    - L4383 Seam: superseded — questions labelled with a quote
-    - L4388 Seam: Week 2 — hybrid and rerank
-    - L4394 Seam: Week 2 — answer-level eval
-    - L4402 Seam: Week 2 — RAG milestone `v0.1-rag`
-    - L4408 Seam: Week 3 — every model call through `llm`
-    - L4415 Seam: Week 3 — the five workflow patterns
-    - L4421 Seam: Week 3 — orchestrator-workers as a graph
-    - L4428 Seam: Week 4 — the toy fine-tune
-    - L4434 Seam: Week 3 — answer locally, judge on Anthropic
-    - L4440 Seam: Week 3 — context management
-    - L4445 Seam: Week 3 — server-side web search
-    - L4452 Seam: Week 5 — SDK tool runner
-    - L4458 Seam: Week 5 — tracing
-    - L4465 Seam: Week 5 — explicit retries
-    - L4471 Seam: Week 5 — guardrails
-    - L4478 Seam: Week 6 — MCP client
-- L4486 Maintenance
+- L537 0. Orientation
+- L623 1. Shape of the system
+- L693 2. Nodes
+  - L697 2.1 Modules
+    - L699 `config`
+    - L704 `llm.pricing`
+    - L711 `llm`
+    - L718 `llm.messages`
+    - L725 `llm.adapters`
+    - L734 `llm.adapters.openai.function_tool`
+    - L741 `llm.adapters.cfg_hostllm`
+    - L748 `llm.adapters.retry`
+    - L757 `llm.core`
+    - L766 `guardrails`
+    - L774 `errors`
+    - L782 `tracing`
+    - L789 `transcript`
+    - L796 `tools`
+    - L804 `report_tools`
+    - L811 `mcp_server`
+    - L819 `mcp_client`
+    - L827 `analyst.specialists`
+    - L834 `analyst.cfg_analyst`
+    - L841 `analyst.router`
+    - L849 `analyst.served`
+    - L857 `analyst.toolbox`
+    - L864 `analyst.experts`
+    - L871 `analyst.memo`
+    - L878 `analyst.graph`
+    - L886 `analyst.run`
+    - L893 `analyst.desk`
+    - L901 `analyst.metric_tools`
+    - L909 `analyst.teach`
+    - L916 `tools_config`
+    - L923 `analyst`
+    - L929 `analyst.filings`
+    - L936 `analyst.fundamentals`
+    - L944 `facts`
+    - L951 `facts.cfg_facts`
+    - L957 `facts.xbrl`
+    - L965 `facts.nse`
+    - L970 `facts.store`
+    - L978 `facts.check`
+    - L983 `facts.build`
+    - L990 `facts.taxonomy`
+    - L998 `facts.lookup`
+    - L1006 `facts.reference`
+    - L1014 `facts.formulas`
+    - L1021 `facts.derived_concepts`
+    - L1028 `facts.share_events`
+    - L1037 `facts.coverage`
+    - L1045 `facts.documents`
+    - L1053 `facts.crosscheck`
+    - L1061 `facts.review`
+    - L1069 `extraction.figures`
+    - L1078 `extraction.research`
+    - L1085 `extraction.figure_training`
+    - L1093 `extraction.figure_eval`
+    - L1100 `extraction.headline_eval`
+    - L1107 `extraction.synthetic`
+    - L1114 `extraction.baseline`
+    - L1122 `extraction.headlines`
+    - L1127 `evals.dataset`
+    - L1131 `evals.grade`
+    - L1138 `evals.judge`
+    - L1142 `evals.runner`
+    - L1146 `evals.report`
+    - L1150 `retrieval.chunk`
+    - L1158 `retrieval.embed`
+    - L1165 `retrieval.dense`
+    - L1172 `retrieval.corpus`
+    - L1180 `retrieval.questions`
+    - L1184 `retrieval.evaluate`
+    - L1191 `retrieval.langchain_rag`
+    - L1196 `retrieval.sparse`
+    - L1200 `retrieval.fuse`
+    - L1204 `retrieval.rerank`
+    - L1209 `retrieval.hits`
+    - L1214 `retrieval.rank`
+    - L1220 `retrieval.keys`
+    - L1227 `workflows.reports`
+    - L1231 `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}`
+    - L1234 `workflows.orchestrator_workers_graph`
+    - L1241 `agent`
+    - L1248 `agent_graph`
+    - L1255 `agent_adk`
+    - L1263 `agent_tasks`
+    - L1272 `retrieval.answer`
+  - L1277 2.2 Settings (`config`)
+    - L1281 `config.MODEL`
+    - L1286 `config.JUDGE_MODEL`
+    - L1292 `config.SMALL_MODEL`
+    - L1299 `config.MAX_USD_PER_REQUEST`
+    - L1304 `config.MAX_USD_PER_TURN`
+    - L1311 `config.MAX_USD_PER_RUN`
+    - L1315 `config.WEB_SEARCH_RESULT_TOKENS`
+    - L1322 `config.MAX_USD_PER_EVAL`
+    - L1326 `config.MAX_USD_PER_TASK`
+    - L1333 `config.DEFAULT_MAX_TOKENS`
+    - L1341 `config.MAX_AGENT_TURNS`
+    - L1348 `config.MIN_TOKENS_FINAL_ANSWER`
+    - L1352 `config.MAX_PARALLEL_CALLS`
+    - L1357 `config.EVAL_WORKERS`
+    - L1364 `config.BATCH_POLL_SECONDS`
+    - L1370 `config.THINKING_WORKFLOW_PARAM`
+    - L1376 `config.MAX_PLAN_TASKS`
+    - L1381 `config.MAX_GRAPH_STEPS`
+    - L1385 `config.MAX_FAILURES_SHOWN`
+    - L1389 `config.TRACING`
+    - L1394 `config.MAX_TASK_CHARS`
+    - L1398 `config.MCP_SERVER_NAME`
+    - L1404 `config.MCP_CALL_TIMEOUT_SECONDS`
+    - L1410 `analyst.cfg_analyst.SPECIALIST_TRIES`
+    - L1416 config.GENERALIST_MODEL and the analyst's other settings (moved)
+    - L1421 `config.EMBED_MODEL`
+    - L1427 `config.EMBED_LOG_EVERY`
+    - L1431 `config.EMBED_SAVE_EVERY`
+    - L1437 `config.EMBED_QUERY_PREFIXES`
+    - L1444 `config.LOCAL_MODEL_DTYPE`
+    - L1451 `config.CHUNK_*`
+    - L1456 `config.ELEMENT_*`
+    - L1462 `config.HEADING_*`
+    - L1465 `config.PASSAGE_MIN_CHARS`
+    - L1471 `config.TOP_K`
+    - L1475 `config.BM25_K1`
+    - L1480 `config.FUSE_DEPTH`
+    - L1485 `config.RRF_K`
+    - L1491 `config.RERANK_*`
+    - L1496 `config.KEY_DEPTH`
+    - L1500 `config.SEARCH_METHOD`
+    - L1508 `config.FURNITURE_*`
+    - L1513 `config.THINKING_EVAL_PARAM`
+    - L1521 `config.CACHE_TTL`
+    - L1528 `config.FIGURE_LABEL_*`
+    - L1534 `config.RESEARCH_*`
+    - L1539 `config.SYNTHETIC_*`
+    - L1544 `config.BASELINE_*`
+    - L1550 `config.PAGE_SEPARATOR`
+    - L1554 `config.DOCLING_OCR`
+    - L1562 `llm.adapters.anthropic.has_credentials`
+    - L1569 `llm.adapters.anthropic.get_client`
+    - L1576 `llm.adapters.anthropic.batch_params`
+  - L1581 2.3 Cost and budget (`pricing`)
+    - L1590 `llm.pricing.Price`
+    - L1597 `llm.pricing.PRICES`
+    - L1604 `llm.pricing.PRICE_PER_WEB_SEARCH`
+    - L1609 `llm.pricing.BATCH_DISCOUNT`
+    - L1617 `llm.pricing.cost_usd`
+    - L1623 `llm.messages.Usage`
+    - L1630 `llm.messages.Failed`
+    - L1635 `llm.pricing.usage_cost`
+    - L1639 `llm.pricing.describe_usage`
+    - L1643 `errors.BudgetExceeded`
+    - L1648 `errors.BatchUnfinished`
+    - L1656 `llm.pricing.worst_case_usd`
+    - L1664 `llm.pricing.affordable_output_tokens`
+    - L1669 `llm.pricing.estimate_eval_usd`
+    - L1675 `llm.pricing.assert_request_within_budget`
+    - L1683 `llm.pricing.Budget`
+    - L1691 `llm.pricing.Budget.admit`
+    - L1699 `llm.pricing.Budget.held_usd`
+    - L1706 `llm.pricing.Budget.tripped`
+  - L1711 2.4 The model door (`llm`)
+    - L1720 `llm.core.Request`
+    - L1727 `llm.core.Llm`
+    - L1732 `llm.core.Llm.for_eval`
+    - L1738 `llm.core.Llm._traced`
+    - L1745 `llm.core.Llm.count`
+    - L1750 `llm.core.Llm.create`
+    - L1755 `llm.core.Llm.parse`
+    - L1762 `llm.core.Llm.stream`
+    - L1766 `llm.core.Llm.gather_text`
+    - L1771 `llm.core.Llm.batch_records`
+    - L1779 `llm.core.Llm._admit`
+    - L1786 `llm.core.Rehearsed`
+    - L1791 `errors.SpecialistUnreachable`
+    - L1798 `errors.StepFailed`
+    - L1803 `llm.core.describe`
+    - L1808 `llm.messages.is_client_tool`
+    - L1813 `llm.core._writes_cache`
+    - L1818 `llm.core.Llm.run_tools`
+    - L1825 `llm.core.Llm.price`
+    - L1832 `llm.core.Llm.turn`
+    - L1839 `llm.core.ToolRun`
+    - L1844 `llm.core.Llm._last_answer`
+    - L1850 `llm.core.Llm._admit_turn`
+    - L1854 `llm.core.Llm._held`
+    - L1859 `errors.TurnsExhausted`
+    - L1864 `llm.core.Dispatch`
+    - L1869 `llm.adapters.anthropic._runnable`
+  - L1874 2.5 Tools (`tools`, `report_tools`)
+    - L1881 `tools.calculate`
+    - L1885 `tools.current_time`
+    - L1889 `tools.read_file`
+    - L1894 `tools.write_file`
+    - L1902 `tools_config.SANDBOX`
+    - L1907 `tools_config.MAX_WEB_SEARCHES`
+    - L1913 `tools.CALCULATOR_TOOL`
+    - L1918 `tools.ALL_TOOLS`
+    - L1925 `tools.WEB_SEARCH_TOOL`
+    - L1932 `tools.execute_tool`
+    - L1939 `tools.WRITE_TOOLS`
+    - L1945 `report_tools.SEARCH_TOOL`
+    - L1950 `report_tools.ReportSearch`
+    - L1955 `report_tools.Searched`
+  - L1959 2.7 Project 1a (`extraction`)
+    - L1961 `extraction.headlines.Extraction`
+    - L1967 `extraction.headlines.METRICS`
+    - L1974 `extraction.headlines.QUARTERS`
+    - L1980 `extraction.headlines.Resolver`
+    - L1987 `extraction.headlines.report_unresolved`
+    - L1992 `extraction.headlines.load_directory`
+    - L1996 `extraction.headlines.Variant`
+    - L2001 `extraction.headlines.CACHE_VARIANTS`
+    - L2009 `extraction.headlines.THINKING`
+    - L2016 `extraction.headlines.measure`
+    - L2023 `extraction.headlines.VARIANTS`
+    - L2029 `extraction.headlines.extraction_task`
+    - L2036 `extraction.headlines.main`
+  - L2044 2.8 Retrieval (`retrieval`)
+    - L2050 `retrieval.chunk.Document`
+    - L2055 `retrieval.chunk.Chunk`
+    - L2060 `retrieval.chunk.Inventory`
+    - L2066 `retrieval.chunk.squeeze`
+    - L2073 `retrieval.chunk.Inventory.containing`
+    - L2079 `retrieval.chunk.fixed`
+    - L2085 `retrieval.chunk.sentences`
+    - L2092 `retrieval.chunk.by_sentence`
+    - L2100 `retrieval.chunk.headings`
+    - L2105 `retrieval.chunk.by_heading`
+    - L2112 `retrieval.chunk.by_element`
+    - L2120 `retrieval.embed.Embedder`
+    - L2125 `retrieval.embed.query_prefix_of`
+    - L2131 `retrieval.embed.LocalEmbedder`
+    - L2138 `retrieval.embed.LocalEmbedder.embed_query`
+    - L2143 `retrieval.embed.LocalEmbedder.count_truncated`
+    - L2148 `retrieval.hits.Hit`
+    - L2153 `retrieval.dense.DenseIndex`
+    - L2158 `retrieval.dense.DenseIndex.build`
+    - L2166 `retrieval.dense.DenseIndex.search`
+    - L2171 `retrieval.dense.DenseIndex.build_cached`
+    - L2178 `retrieval.dense.store_file`
+    - L2185 `retrieval.hits.rank_ids`
+    - L2189 `retrieval.corpus.read_pages`
+    - L2198 `retrieval.corpus.normalise`
+    - L2203 `retrieval.corpus._skeleton`
+    - L2208 `retrieval.corpus.strip_furniture`
+    - L2216 `retrieval.corpus.to_document`
+    - L2222 `retrieval.corpus.load_pdf`
+    - L2227 `retrieval.questions.Question`
+    - L2232 `retrieval.questions.eligible`
+    - L2237 `retrieval.questions.sample_passages`
+    - L2242 `retrieval.questions.verify`
+    - L2250 `retrieval.questions.generate`
+    - L2255 `retrieval.corpus.cache_file`
+    - L2261 `retrieval.corpus.load_pdf_cached`
+    - L2269 `retrieval.corpus.load_corpus`
+    - L2276 `retrieval.evaluate.STRATEGIES`
+    - L2283 `retrieval.evaluate.graders`
+    - L2288 `retrieval.evaluate.load_cases`
+    - L2295 `retrieval.evaluate.label_of`
+    - L2302 `retrieval.evaluate.report_of`
+    - L2309 `retrieval.evaluate.resolve`
+    - L2315 `retrieval.evaluate.retrieval_task`
+    - L2322 `retrieval.evaluate.main`
+    - L2329 `retrieval.langchain_rag.prepare`
+    - L2335 `retrieval.langchain_rag.langchain_task`
+    - L2340 `retrieval.sparse.tokenise`
+    - L2345 `retrieval.sparse.SparseIndex`
+    - L2350 `retrieval.fuse.reciprocal_rank_fusion`
+    - L2356 `retrieval.rerank.Reranker`
+    - L2361 `retrieval.rerank.LocalReranker`
+    - L2368 `retrieval.keys.build_keys`
+    - L2373 `retrieval.keys.table_context`
+    - L2377 `retrieval.keys.ParentRanker`
+    - L2382 `retrieval.keys.keyed_search`
+    - L2387 `retrieval.rerank.rerank`
+    - L2393 `retrieval.rank.METHODS`
+    - L2400 `retrieval.rank.Ranker`
+    - L2405 `retrieval.rank.Indexes`
+    - L2413 `retrieval.rank.DenseRanker`
+    - L2418 `retrieval.rank.HybridRanker`
+    - L2422 `retrieval.rank.Reranked`
+    - L2427 `retrieval.rank.scoped`
+    - L2434 `retrieval.rank.build_ranker`
+    - L2439 `retrieval.chunk.context_block`
+    - L2446 `retrieval.evaluate.ranker_task`
+    - L2453 `retrieval.evaluate.compare_retrieval`
+    - L2460 `retrieval.answer.ARMS`
+    - L2465 `retrieval.answer.Answer`
+    - L2470 `retrieval.answer.answer_task`
+    - L2477 `retrieval.answer.graders`
+    - L2483 `retrieval.answer.main`
+  - L2490 2.9 The workflow patterns (`workflows`)
+    - L2498 `workflows.reports.DocId`
+    - L2503 `workflows.reports.Search`
+    - L2508 `workflows.reports.build_search`
+    - L2515 `workflows.chaining`
+    - L2521 `workflows.routing`
+    - L2526 `workflows.parallelization`
+    - L2531 `workflows.orchestrator_workers`
+    - L2536 `workflows.evaluator_optimizer`
+    - L2541 `workflows.orchestrator_workers_graph.build`
+  - L2547 2.10 The first agent (`agent`)
+    - L2564 `agent.TOOLS`
+    - L2569 `agent.cited`
+    - L2574 `agent.WebSources`
+    - L2581 `agent.run`
+    - L2586 `agent.FINISH`
+  - L2590 2.11 The eval harness (`evals`)
+    - L2595 `evals.dataset.Case`
+    - L2600 `evals.dataset.load_jsonl`
+    - L2605 `evals.dataset.digest`
+    - L2610 `evals.grade.Outcome`
+    - L2615 `evals.grade.Score`
+    - L2620 `evals.grade.Grader`
+    - L2625 `evals.grade.BatchGrader`
+    - L2630 `evals.grade.exact_match`
+    - L2635 `evals.grade.regex`
+    - L2641 `evals.grade.pydantic_valid`
+    - L2645 `evals.grade.field_match`
+    - L2650 `evals.grade.flag`
+    - L2657 `evals.grade.right_tools`
+    - L2664 `evals.grade.resolvable`
+    - L2670 `evals.grade.recall_at_k`
+    - L2676 `evals.grade.hit_at_k`
+    - L2683 `evals.grade.reciprocal_rank`
+    - L2688 `evals.judge.LlmJudge`
+    - L2695 `evals.judge.Verdict`
+    - L2700 `evals.runner.Task`
+    - L2705 `evals.runner.RowResult`
+    - L2710 `evals.runner.EvalRun`
+    - L2715 `evals.runner.run_eval`
+    - L2723 `evals.runner.combine`
+    - L2729 `evals.report.to_markdown`
+    - L2734 `evals.report._metrics_table`
+    - L2739 `evals.report._grading_models`
+    - L2743 `evals.report.write_report`
+  - L2750 2.12 Tests
+    - L2752 `tests.llm.test_pricing`
+    - L2759 `tests.test_tools`
+    - L2766 `tests.llm.test_core`
+    - L2773 `tests.conftest.FakeAnthropic`
+    - L2779 `tests.workflows.test_<pattern>`
+    - L2785 `tests.test_agent`
+    - L2790 `tests.test_agent_graph`
+    - L2797 `tests.test_agent_adk`
+    - L2804 `tests.test_agent_tasks`
+    - L2811 `tests.llm.test_batch`
+    - L2818 `tests.test_report_tools`
+    - L2823 `tests.workflows.test_patterns`
+    - L2828 `tests.workflows.test_reports`
+    - L2835 `tests.conftest.make_judge`
+    - L2840 `tests.conftest.CAPPED`
+    - L2847 `tests.test_api_smoke`
+    - L2851 `tests.evals.test_dataset`
+    - L2856 `tests.evals.test_graders`
+    - L2863 `tests.conftest.KeywordReranker`
+    - L2868 `tests.conftest.BagOfWordsEmbedder`
+    - L2873 `tests.retrieval.test_chunk`
+    - L2878 `tests.retrieval.test_corpus`
+    - L2885 `tests.retrieval.test_questions`
+    - L2891 `tests.retrieval.test_answer`
+    - L2896 `tests.retrieval.test_langchain_rag`
+    - L2902 `tests.retrieval.test_sparse`
+    - L2907 `tests.retrieval.test_fuse`
+    - L2913 `tests.retrieval.test_rerank`
+    - L2918 `tests.retrieval.test_evaluate`
+    - L2925 `tests.retrieval.test_keys`
+    - L2932 `tests.retrieval.test_embed`
+    - L2939 `tests.retrieval.test_rank`
+    - L2944 `tests.retrieval.test_dense`
+    - L2952 `tests.evals.test_runner`
+    - L2959 `tests.extraction.test_synthetic`
+    - L2966 `tests.extraction.test_baseline`
+    - L2973 `tests.extraction.test_headlines`
+    - L2980 `tests.test_underhood`
+    - L2987 `tests.test_mcp_server`
+    - L2995 `tests.test_mcp_client`
+    - L3003 `tests.analyst.test_specialists`
+    - L3010 `tests.analyst.test_router`
+    - L3017 `tests.analyst.test_served`
+    - L3024 `tests.analyst.test_toolbox`
+    - L3031 `tests.analyst.test_fundamentals`
+    - L3038 `tests.analyst.test_teach`
+    - L3045 `tests.analyst.test_graph`
+    - L3052 `tests.analyst.test_desk`
+    - L3059 `tests.analyst.test_metric_tools`
+    - L3066 `tests.test_reference_data`
+    - L3074 `tests.evals.test_report`
+    - L3079 `tests.test_graph_doc`
+    - L3087 `tests.facts`
+  - L3094 2.13 Non-code nodes
+    - L3096 `sandbox/`
+    - L3101 `evals/`
+    - L3107 `evals/reference/nse-tickers.json`
+    - L3114 `evals/datasets/headlines.jsonl`
+    - L3122 `corpus/`
+    - L3128 `evals/reference/corpus-manifest.json`
+    - L3134 `scripts/fetch-corpus.sh`
+    - L3140 `evals/datasets/retrieval.jsonl`
+    - L3148 `evals/datasets/retrieval-tables.jsonl`
+    - L3156 `evals/datasets/retrieval-paraphrased.jsonl`
+    - L3164 `evals/datasets/tasks.jsonl`
+    - L3171 `docs/framework-comparison.md`
+    - L3176 `docs/tool-runner.md`
+    - L3180 `docs/langgraph.md`
+    - L3185 `docs/agent-frameworks.md`
+    - L3192 `docs/v0.2-agent.md`
+    - L3199 `docs/capstone.md`
+    - L3206 `docs/facts-db.md`
+    - L3212 corpus cache: `corpus/.cache/xbrl/`, `taxonomy/`, `facts.sqlite`
+    - L3217 `evals/reference/fundamentals.json`
+    - L3224 `evals/reference/table-figures.json`
+    - L3231 `docs/context-management.md`
+    - L3236 `LOG.md`
+    - L3242 `docs/development.md`
+    - L3248 `README.md`
+    - L3254 `pyproject.toml`
+    - L3261 `.env.example`
+    - L3265 `CLAUDE.md`
+    - L3272 `.githooks/pre-commit`
+    - L3279 `scripts/check-knowledge-graph.sh`
+    - L3286 `.github/workflows/knowledge-graph.yml`
+    - L3291 `scripts/graph_doc.py`
+    - L3300 `.github/workflows/checks.yml`
+    - L3308 `.github/workflows/main.yml`
+    - L3315 `.github/workflows/release.yml`
+    - L3323 roadmap
+- L3330 3. Edges
+  - L3334 Imports (generated)
+  - L3924 Layering rules (checked)
+  - L3985 Reads and writes
+  - L3999 Enforcement and control flow
+  - L4052 Tested-by
+  - L4088 Environment
+- L4116 4. Invariants
+    - L4120 Invariant 1: Every paid call is preceded by a free count and the per-request check
+    - L4126 Invariant 2: Cost is reported, always
+    - L4130 Invariant 3: The assistant turn is echoed back verbatim
+    - L4133 Invariant 4: All tool results for one turn go back in ONE user message
+    - L4138 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
+    - L4142 Invariant 6: Both loops are capped
+    - L4149 Invariant 7: A file tool resolves before it compares
+    - L4155 Invariant 8: One home each for constants, clients, prices and model calls
+    - L4162 Invariant 9: Paid tests carry `@pytest.mark.live`
+    - L4165 Invariant 10: Types are complete
+    - L4168 Invariant 11: An eval survives its own bad rows
+    - L4172 Invariant 12: Every dollar an eval spends lands in one budget
+    - L4179 Invariant 13: A model is asked to read, never to join
+    - L4184 Invariant 14: The harness imports no capability module
+    - L4188 Invariant 15: An eval is a measurement, so nothing about it may wobble
+    - L4194 Invariant 16: A prompt never quotes its own test set
+    - L4201 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
+    - L4206 Invariant 18: Retrieval is graded before generation, and it is free
+    - L4211 Invariant 19: A page never leaves the page sequence
+    - L4216 Invariant 20: A retrieval label must identify one document, not merely appear in one
+    - L4222 Invariant 21: The ranking that is measured is the ranking that is used
+    - L4228 Invariant 22: A ceiling refuses spending before it happens, not only after
+    - L4235 Invariant 23: Every error the package defines lives in `errors`
+    - L4240 Invariant 24: A call is shaped by the client it goes to
+    - L4246 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
+    - L4252 Invariant 26: Tracing observes and never steers
+    - L4258 Invariant 27: A request is sent again only if it cannot have been billed
+    - L4264 Invariant 28: Text someone else wrote reaches the model fenced
+    - L4270 Invariant 29: A write runs only where a caller opted in, and never overwrites
+    - L4276 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
+    - L4282 Invariant 31: A per-share figure is compared only on one share basis
+- L4288 5. Where the next work attaches
+  - L4292 5.1 Open seams
+    - L4294 Seam: Facts database — step 2
+    - L4300 Seam: Week 6 — LangGraph agent
+    - L4304 Seam: Week 5 — async and batch evals
+    - L4311 Seam: Week 4 — compaction, when a task outgrows a turn
+    - L4317 Seam: Week 3 — measure a pattern
+    - L4322 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
+    - L4327 Seam: Week 3 — anything that searches the reports
+    - L4334 Seam: adding a tool
+    - L4338 Seam: adding a grader
+  - L4342 5.2 Consumed and superseded seams
+    - L4344 Seam: Week 1 — Project 1a
+    - L4349 Seam: Week 1 — prompt caching
+    - L4355 Seam: superseded — caching as two variants of one eval
+    - L4360 Seam: Week 1 — measure the un-saturated eval
+    - L4366 Seam: Week 1 — label the backlog
+    - L4371 Seam: Week 1 — break things on purpose
+    - L4377 Seam: Week 2 — retrieval metrics
+    - L4383 Seam: Week 2 — the four modules
+    - L4389 Seam: Week 2 — the corpus
+    - L4395 Seam: Week 2 — the retrieval dataset
+    - L4400 Seam: Week 2 — the measured run
+    - L4406 Seam: superseded — questions labelled with a quote
+    - L4411 Seam: Week 2 — hybrid and rerank
+    - L4417 Seam: Week 2 — answer-level eval
+    - L4425 Seam: Week 2 — RAG milestone `v0.1-rag`
+    - L4431 Seam: Week 3 — every model call through `llm`
+    - L4438 Seam: Week 3 — the five workflow patterns
+    - L4444 Seam: Week 3 — orchestrator-workers as a graph
+    - L4451 Seam: Week 4 — the toy fine-tune
+    - L4457 Seam: Week 3 — answer locally, judge on Anthropic
+    - L4463 Seam: Week 3 — context management
+    - L4468 Seam: Week 3 — server-side web search
+    - L4475 Seam: Week 5 — SDK tool runner
+    - L4481 Seam: Week 5 — tracing
+    - L4488 Seam: Week 5 — explicit retries
+    - L4494 Seam: Week 5 — guardrails
+    - L4501 Seam: Week 6 — MCP client
+- L4509 Maintenance
 <!-- /generated:toc -->
 
 ## 0. Orientation
@@ -891,7 +893,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 #### `analyst.desk`
 - **At:** `src/aigent/analyst/desk.py`
 - **Is:** module. **The analyst desk: the capstone's graph trimmed to the facts database, on a local web page** (`desk.html` beside it). `python -m aigent.analyst.desk --yes` (the `desk` group: FastAPI, uvicorn) serves `http://127.0.0.1:8765`.
-- **Contract:** `answer(question, tools, dispatch, chosen, generalist, critic, facts, writer)` runs `graph.run` on `DESK_PROMPT` (every figure found with `get_metric` first; filed ones fetched with `fundamentals`, derived ones planned) plus `held_to(facts, today)` (today's date, the quarter end each company's latest results are held to, and that a question naming no time asks about the latest time held: a snapshot at the latest quarter end holding it, a flow over the latest quarter unless a year is meant, the time used stated) with only `DESK_SERVED_TOOLS` (`fundamentals`) plus `analyst.metric_tools`' four tools over `facts`, no experts, every call kept by `recorded`, and returns the page's JSON: summary, claims with verdict, reason and each cited fact or computed figure (`cited`), caveats, the draft, the calls, `held_back` (unverified entries `fundamentals` held back), what `write_back` wrote and skipped, and the spend. A tripped guard or the critic's spent budget comes back as `error`; the generalist's is the graph's own `stopped`. `app(ask)` serves the page and `POST /ask`, one question at a time (one MCP session). `main` prints the worst case per question (`MAX_USD_ANALYST_GENERALIST` + `MAX_USD_ANALYST_CRITIC`) and serves only with `--yes`, on `DESK_HOST` only, after one free `WARM_UP` `get_metric` search and `facts.derived_concepts.seed`; each question gets its own `Writer` (`analyst-desk|<model>`, run `desk-<time>`) and connection.
+- **Contract:** `answer(question, tools, dispatch, chosen, generalist, critic, facts, writer)` runs `graph.run` on `DESK_PROMPT` (every figure found with `get_metric` first; filed ones fetched with `fundamentals`, derived ones planned) plus `held_to(facts, today)` (today's date, the quarter end each company's latest results are held to, and that a question naming no time asks about the latest time held: a snapshot at the latest quarter end holding it, a flow over the latest quarter unless a year is meant, the time used stated) with only `DESK_SERVED_TOOLS` (`fundamentals`) plus `analyst.metric_tools`' four tools over `facts`, no experts, every call kept by `recorded`, and returns the page's JSON: summary, claims with verdict, reason and each cited fact or computed figure (`cited`), caveats, the draft, the calls, `held_back` (unverified entries `fundamentals` held back), what `write_back` wrote and skipped, and the spend. A tripped guard or the critic's spent budget comes back as `error`; the generalist's is the graph's own `stopped`. `app(ask)` serves the page and `POST /ask`, one question at a time (one MCP session). `main` prints the worst case per question (`MAX_USD_ANALYST_GENERALIST` + `MAX_USD_ANALYST_CRITIC`) and serves only with `--yes`, on `DESK_HOST` only, after one free `WARM_UP` `get_metric` search and `facts.derived_concepts.seed`; each question gets its own `Writer` (`analyst-desk|<model>`, run `desk-<time>`) and connection. Before serving it also seeds and detects share events (`sync_share_events`, writer `share-events|desk`).
 - **Gotchas:** `RUPEES`, part of `DESK_PROMPT`, asks for rupee amounts in the largest of `INDIAN_RUPEE_UNITS` (crore, lakh, thousand) that fits, else plain rupees, never millions: the first live answer wrote "₹5,81,307.6 million"; the page scales its figures the same way. No filings search, so `compare_unverified` is left out. The first lookup loads the embedder (about 11 s), hence `WARM_UP`. `fundamentals` takes the year as a string.
 - **History:** 2026-11-03: created for a demo (Vedant: the capstone trimmed, a local page, Sonnet 5); `derive` and its write-back the same evening (Vedant: write derived figures and their formulas back), then replaced by plan, fetch and compute over a formula library and named metrics (Vedant's design).
 - **Decided in:** LOG.md 11-03
@@ -899,7 +901,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 #### `analyst.metric_tools`
 - **At:** `src/aigent/analyst/metric_tools.py`
 - **Is:** module. **The agent's metric tools over one question**: `plan_metric`, `compute_metric`, `define_metric`, `propose_formula` (`METRIC_TOOLS`), and the write-back of what a supported claim cites.
-- **Contract:** `MetricTools(conn, evidence, writer, question)`. **`plan`** takes an exact `name` (from `get_metric`) held in the company's scope (else an error pointing to `get_metric`, `define_metric` and the library), plans through any derived inputs, a balance input fetched as at the quarter its span ends, for the company and basis, a **time** (`year`, `quarter`: that quarter's end) and a **period** (`3M` at any quarter, `6M` at Q2, `9M` at Q3, `12M` at Q4; null for a snapshot), and a previous time and period (`previous_year`, `previous_quarter`, `previous_period`: required for a comparing metric, refused for a one-period one, as long as the period). `derived_concepts.kind` (from its leaf concepts' facts) says whether the metric is a `flow`, a `snapshot` (every input a balance; refused a period) or `mixed` (its balances read at the span's end). **When `store.verified_derived` finds the plan's figure already held and verified** (the only `derived` fact of that company, basis, concept and period, its formula column the plan's own: same inputs and periods), it returns `held` with no plan id and one fetch, the figure itself, for `fundamentals`; nothing to compute. Else it keeps the plan as `P<n>` and returns its kind, formula, `periods` (`Q1 FY2026 over Q4 FY2025`, `as at the end of Q4 FY2026`) and a fetch list: per variable, the exact `fundamentals` arguments (`concept`, `year`, `quarter`, `period`, null for a balance) and the cite they give; no metric fitting returns the library. **`compute`** takes a plan id and one cite per variable, each of which must equal the planned cite, have come back from `fundamentals` in this question's evidence and be in a checked tier; it runs the library formula on the facts' stored values (one unit for a `same` formula), keeps the figure as `DERIVED:D<n>` and puts it, with each input's value, into the evidence for the critic. **`define`** takes a scope and checks the name (`name_refusal`) and bindings, each `at` `current` or `previous` (`bindings_refusal` over `available` and `comparing` for that scope, so a concept another taxonomy files is refused) and writes the metric at once as a `derived-concept-ai` row with the question; a name held is refused. **`propose`** writes a `formula-ai` row in `formula_proposals` for a person to turn into library code, nothing computed from it. Every refusal is an error result. `chained(tools, rest)` routes the calls. **`write_back`** writes each computed figure a **supported** claim cites, once, under the metric's name, `derived` naming `<concept>@<person>` when its concept is `derived-concept`, else `derived-ai` (`compute` shows which as `trusted`): the plan's period (as at its end when the period's own inputs are balances), its inputs' ids looked up again in checked tiers (skipped with a reason if one lost its check), **skipped as `already held` (naming the fact) when `store.derived_held` finds a derived fact with the same company, basis, concept, period, segment and formula column**, and the metric, formula, input cites and `periods` as its formula column; a comparing figure's label ends with its `periods`, since its name no longer says which interval.
+- **Contract:** `MetricTools(conn, evidence, writer, question)`. **`plan`** takes an exact `name` (from `get_metric`) held in the company's scope (else an error pointing to `get_metric`, `define_metric` and the library), plans through any derived inputs, a balance input fetched as at the quarter its span ends, for the company and basis, a **time** (`year`, `quarter`: that quarter's end) and a **period** (`3M` at any quarter, `6M` at Q2, `9M` at Q3, `12M` at Q4; null for a snapshot), and a previous time and period (`previous_year`, `previous_quarter`, `previous_period`: required for a comparing metric, refused for a one-period one, as long as the period). `derived_concepts.kind` (from its leaf concepts' facts) says whether the metric is a `flow`, a `snapshot` (every input a balance; refused a period) or `mixed` (its balances read at the span's end). **When `store.verified_derived` finds the plan's figure already held and verified** (the only `derived` fact of that company, basis, concept and period, its formula column the plan's own: same inputs and periods), it returns `held` with no plan id and one fetch, the figure itself, for `fundamentals`; nothing to compute. Else it keeps the plan as `P<n>` and returns its kind, formula, `periods` (`Q1 FY2026 over Q4 FY2025`, `as at the end of Q4 FY2026`) and a fetch list: per variable, the exact `fundamentals` arguments (`concept`, `year`, `quarter`, `period`, null for a balance) and the cite they give; no metric fitting returns the library. **`compute`** takes a plan id and one cite per variable, each of which must equal the planned cite, have come back from `fundamentals` in this question's evidence and be in a checked tier; it runs the library formula on the facts' stored values (one unit for a `same` formula), keeps the figure as `DERIVED:D<n>` and puts it, with each input's value, into the evidence for the critic. **`define`** takes a scope and checks the name (`name_refusal`) and bindings, each `at` `current` or `previous` (`bindings_refusal` over `available` and `comparing` for that scope, so a concept another taxonomy files is refused) and writes the metric at once as a `derived-concept-ai` row with the question; a name held is refused. **`propose`** writes a `formula-ai` row in `formula_proposals` for a person to turn into library code, nothing computed from it. Every refusal is an error result. `chained(tools, rest)` routes the calls. **`write_back`** writes each computed figure a **supported** claim cites, once, under the metric's name, `derived` naming `<concept>@<person>` when its concept is `derived-concept`, else `derived-ai` (`compute` shows which as `trusted`): the plan's period (as at its end when the period's own inputs are balances), its inputs' ids looked up again in checked tiers (skipped with a reason if one lost its check), **skipped as `already held` (naming the fact) when `store.derived_held` finds a derived fact with the same company, basis, concept, period, segment and formula column**, and the metric, formula, input cites and `periods` as its formula column; a comparing figure's label ends with its `periods`, since its name no longer says which interval. **Per-share inputs are restated** (2026-11-06): `plan` finds each checked input's filing (`_fact_row`: id, unit, `broadcast`) and asks `share_events.restatement` for those whose unit ends `PerShare`; it refuses the plan as an error naming the event and `verify-share-event` when an unchecked or unknown event lies between them, else keeps `Plan.restated` and shows it with a note. `compute` multiplies each restated input's filed value and shows `restated` (multiplier, value, events) beside the filed figure; the written-back formula column carries `restated` only when there is one, so earlier rows still match `derived_held` and `verified_derived`.
 - **Gotchas:** The model never types a figure or a formula: values come from the evidence and formulas from the library by name. Definitions and proposals are written straight away, before the critic, since they are definitions, not figures; both are unchecked tiers.
 - **History:** 2026-11-03: created, replacing `analyst.derive` (Vedant: plan returns what to read, the agent reads it with `fundamentals`, compute calls a library formula by name).
 - **Decided in:** LOG.md 11-03
@@ -948,7 +950,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.cfg_facts`
 - **At:** `src/aigent/facts/cfg_facts.py`
-- **Is:** module. The facts database's settings, split from `config` by concern: `FACTS_TICKERS` (the eight in both corpora, and ICICI Bank since 2026-10-31), `FACTS_YEARS` (2024-2026), `NSE_SYMBOLS` (`TATAMOTORS` files as `TMPV`), `VERIFY_TICKERS` (the cross-check's companies, HDFC Bank and ICICI Bank; a test holds them inside `FACTS_TICKERS`), the two listing URLs, `NSE_PAGE_SIZE`, the browser `NSE_USER_AGENT`, `NSE_REQUEST_INTERVAL_S` (1 s), `XBRL_SKIP_CONTEXTS` (related-party transactions), `FUNDAMENTALS_CONCEPTS` (revenue, profit, eps; dividend per share is not filed), `FILING_SUMS` (total, needed terms, terms counted as 0 when not filed), `TAXONOMY_PACKAGES` and the lookup's `FACTS_MATCH_METHOD` (`hybrid`), `FACTS_MATCH_DEPTH` (20), `FACTS_LOOKUP_K` (5) and `COMPARE_AGREE_SHARE` (0.5%); the coverage eval's `COVERAGE_DEFINITIONS` (each frozen metric's fuller words), `COVERAGE_RESULTS_METRICS`, `COVERAGE_FOUND_AT` (1 and k), `COVERAGE_MAX_ROUNDING` (1%) and `COVERAGE_TEACHER_UNITS`; the cross-check documents' `VERIFY_MIN_TEXT_CHARS` (200) and `VERIFY_MAX_TEXT_LESS_SHARE` (10%); the cross-check's `CROSSCHECK_LABEL_MIN` and `CROSSCHECK_DIFFER_LABEL_MIN` (0.6), `CROSSCHECK_DISTINCT_DIGITS` (5), `CROSSCHECK_SAMPLE` (30) and `CROSSCHECK_SEED`, `CROSSCHECK_GROUP_EXAMPLES` (3 distinct values a review group lists), `CROSSCHECK_SPOT_CHECKS` (3 facts a person checks before a group's `right` verdict applies), `CROSSCHECK_SCALES`, `CROSSCHECK_SYNONYMS` and `CROSSCHECK_EXCLUSIVE`.
+- **Is:** module. The facts database's settings, split from `config` by concern: `FACTS_TICKERS` (the eight in both corpora, and ICICI Bank since 2026-10-31), `FACTS_YEARS` (2024-2026), `NSE_SYMBOLS` (`TATAMOTORS` files as `TMPV`), `VERIFY_TICKERS` (the cross-check's companies, HDFC Bank and ICICI Bank; a test holds them inside `FACTS_TICKERS`), the two listing URLs, `NSE_PAGE_SIZE`, the browser `NSE_USER_AGENT`, `NSE_REQUEST_INTERVAL_S` (1 s), `XBRL_SKIP_CONTEXTS` (related-party transactions), `FUNDAMENTALS_CONCEPTS` (revenue, profit, eps; dividend per share is not filed), `FILING_SUMS` (total, needed terms, terms counted as 0 when not filed), `TAXONOMY_PACKAGES` and the lookup's `FACTS_MATCH_METHOD` (`hybrid`), `FACTS_MATCH_DEPTH` (20), `FACTS_LOOKUP_K` (5) and `COMPARE_AGREE_SHARE` (0.5%); the coverage eval's `COVERAGE_DEFINITIONS` (each frozen metric's fuller words), `COVERAGE_RESULTS_METRICS`, `COVERAGE_FOUND_AT` (1 and k), `COVERAGE_MAX_ROUNDING` (1%) and `COVERAGE_TEACHER_UNITS`; the cross-check documents' `VERIFY_MIN_TEXT_CHARS` (200) and `VERIFY_MAX_TEXT_LESS_SHARE` (10%); the cross-check's `CROSSCHECK_LABEL_MIN` and `CROSSCHECK_DIFFER_LABEL_MIN` (0.6), `CROSSCHECK_DISTINCT_DIGITS` (5), `CROSSCHECK_SAMPLE` (30) and `CROSSCHECK_SEED`, `CROSSCHECK_GROUP_EXAMPLES` (3 distinct values a review group lists), `CROSSCHECK_SPOT_CHECKS` (3 facts a person checks before a group's `right` verdict applies), `CROSSCHECK_SCALES`, `CROSSCHECK_SYNONYMS` and `CROSSCHECK_EXCLUSIVE`. `SHARE_JUMP_MIN` (5%), the share-count move between two filings that is held as an unknown share event.
 - **Invariants:** `TAXONOMY_PACKAGES` is a sequence, not sorted: where packages label a concept differently the earliest wins (SEBI Ind AS 2025, SEBI banking 2025, BSE Ind AS 2020, BSE banking 2019).
 - **History:** Taxonomy and lookup settings (2026-10-23); coverage settings (2026-10-25); cross-check document settings (2026-10-31); `CROSSCHECK_GROUP_EXAMPLES` and `CROSSCHECK_SPOT_CHECKS` (2026-11-01).
 
@@ -967,11 +969,11 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.store`
 - **At:** `src/aigent/facts/store.py`
-- **Is:** module. **The SQLite schema, the build's writes, and an agent's derived facts and formulas**, `corpus/.cache/facts.sqlite` in WAL mode. Tables `filings`, `facts`, `derived_from`, `concepts`, `concept_labels` (each concept's other labels), `lookups` `formula_proposals` (for the library: name, expression, variables, `FORMULA_PROPOSAL_TIERS`, question, writer, checker; unique by name and expression) and `derived_concepts` as in the design; `TIERS` (nine), `XBRL_TIERS` (`xbrl-ai` as loaded and unconfirmed, `xbrl-filed` its filed document agreeing, `xbrl` a person's check) and `CHECKED_TIERS`, **the trusted tiers, the only ones the agent may quote**: `xbrl-filed`, `xbrl`, `filed-cell`, `filed-read`, `derived`. A tier says how far a figure is trusted; which document checked it is in `verified_by`.
-- **Contract:** `sync_xbrl_facts` makes a filing's XBRL rows equal what was loaded: a new fact is `xbrl-ai`, **an unchanged fact keeps its row id and its tier**, a changed value is updated, re-attributed (`written_by`, `written_at`, `run_id`) **and `xbrl-ai` again** (`verified_by`, `verified_at` cleared), a fact no longer loaded is deleted, and **a derived fact computed from a changed or deleted fact is deleted first** (`Synced.derived_dropped`, in the build's summary), its links by the schema's cascade, its formula kept; `connect` creates the schema and, below `SCHEMA_VERSION` (`PRAGMA user_version`, 4), rebuilds `facts` under the current constraints with every row and id kept, an old `xbrl` row given its tier by its check (none `xbrl-ai`, a document alone `xbrl-filed`, a person `xbrl`), a `pdf-` tier renamed `filed-`, and a `pdf:<document>` stamp given its origin (`nse-pdf:` for a `.pdf`, `sec-6k-html:` otherwise) (`_rebuild_facts`, foreign keys off while it runs), and on every connect rewrites derived concepts bound by offset to `current`/`previous`, strips period words from their labels and drops one left the same as another of its scope, a checked one kept, else the shorter name (`_bindings_at_periods`, idempotent); new concepts go into `concepts` with their split element name. `apply_labels(conn, labels)` puts each XBRL concept's standard label onto it and its facts, replaces its `concept_labels`, and returns the concepts no package labels. `write_formula_proposal` writes a formula proposal as `formula-ai` in `formula_proposals` or returns the one held under the same name and expression; `write_derived_concept` writes a derived concept as `derived-concept-ai` (its scope normalised; refused when the name is held in an overlapping scope) (`DERIVED_CONCEPT_TIERS`; the `derived_concepts` table: name, label, library formula, bindings, question, writer, checker; older `metrics` and `formulas` tables are moved to their new names on `connect`, tiers renamed) and holds the first by name; `verify_derived_concept` records a person's check, making it `derived-concept`, and **promotes every `derived-ai` fact computed with it whose inputs are all in checked tiers to `derived`** (`verified_by` from `concept_check`: `<concept>@<person>`), returning whether the check was new and how many it promoted, refusing a name not held or no person; `write_derived(…, checked_by)` writes `derived` naming the check it rests on, else `derived-ai`; `write_derived` writes a `DerivedRow` as `derived-ai` with each input once in `derived_from`, refusing (and writing nothing) with no input, a missing one or one in no checked tier.
-- **Invariants:** **The schema refuses** an instant with a start, a duration without one, an unknown tier or basis, a checked tier with no `verified_by`, an `-ai` tier marked checked, and a `verified_by` without a `verified_at` or the reverse. **A tier is checked exactly when it names its checker**: `xbrl-filed` carries `<origin>:<document>` (`nse-pdf:results/…pdf`, `sec-6k-html:results/…htm`), `xbrl` a person's name, or `<origin>:<document>+<name>` for a sampled agreement re-checked; every `-ai` tier carries none; a filing holds an `xbrl` fact once (partial unique index).
-- **History:** `concept_labels` and `apply_labels` (2026-10-23). XBRL rows checkable, the schema versioned and migrated (2026-10-31, Vedant: XBRL rows carry who verified them); `xbrl-ai` and `xbrl-pdf` (2026-11-01, Vedant). Version 4 (2026-11-02, Vedant): `pdf` tiers became `filed`, the document's origin in `verified_by`, once results came from SEC HTML copies too.
-- **Decided in:** LOG.md 10-23, 10-31
+- **Is:** module. **The SQLite schema, the build's writes, and an agent's derived facts and formulas**, `corpus/.cache/facts.sqlite` in WAL mode. Tables `filings`, `facts`, `derived_from`, `concepts`, `concept_labels` (each concept's other labels), `lookups` `formula_proposals` (for the library: name, expression, variables, `FORMULA_PROPOSAL_TIERS`, question, writer, checker; unique by name and expression) and `derived_concepts` as in the design; `TIERS` (nine), `XBRL_TIERS` (`xbrl-ai` as loaded and unconfirmed, `xbrl-filed` its filed document agreeing, `xbrl` a person's check) and `CHECKED_TIERS`, **the trusted tiers, the only ones the agent may quote**: `xbrl-filed`, `xbrl`, `filed-cell`, `filed-read`, `derived`. A tier says how far a figure is trusted; which document checked it is in `verified_by`. **`share_events`** (2026-11-06): a company's bonus, split, issue for value or `unknown` share-count change, its date, ratio as shares after and before, an unknown one's `seen_from`/`seen_to` window and `seen_ratio`, a note, and `SHARE_EVENT_TIERS` (`share-event-ai` seeded or detected, `share-event` a person's check); `filings.broadcast`, when NSE published a filing.
+- **Contract:** `sync_xbrl_facts` makes a filing's XBRL rows equal what was loaded: a new fact is `xbrl-ai`, **an unchanged fact keeps its row id and its tier**, a changed value is updated, re-attributed (`written_by`, `written_at`, `run_id`) **and `xbrl-ai` again** (`verified_by`, `verified_at` cleared), a fact no longer loaded is deleted, and **a derived fact computed from a changed or deleted fact is deleted first** (`Synced.derived_dropped`, in the build's summary), its links by the schema's cascade, its formula kept; `connect` creates the schema and, below `SCHEMA_VERSION` (`PRAGMA user_version`, 4), rebuilds `facts` under the current constraints with every row and id kept, an old `xbrl` row given its tier by its check (none `xbrl-ai`, a document alone `xbrl-filed`, a person `xbrl`), a `pdf-` tier renamed `filed-`, and a `pdf:<document>` stamp given its origin (`nse-pdf:` for a `.pdf`, `sec-6k-html:` otherwise) (`_rebuild_facts`, foreign keys off while it runs), and on every connect rewrites derived concepts bound by offset to `current`/`previous`, strips period words from their labels and drops one left the same as another of its scope, a checked one kept, else the shorter name (`_bindings_at_periods`, idempotent); new concepts go into `concepts` with their split element name. `apply_labels(conn, labels)` puts each XBRL concept's standard label onto it and its facts, replaces its `concept_labels`, and returns the concepts no package labels. `write_formula_proposal` writes a formula proposal as `formula-ai` in `formula_proposals` or returns the one held under the same name and expression; `write_derived_concept` writes a derived concept as `derived-concept-ai` (its scope normalised; refused when the name is held in an overlapping scope) (`DERIVED_CONCEPT_TIERS`; the `derived_concepts` table: name, label, library formula, bindings, question, writer, checker; older `metrics` and `formulas` tables are moved to their new names on `connect`, tiers renamed) and holds the first by name; `verify_derived_concept` records a person's check, making it `derived-concept`, and **promotes every `derived-ai` fact computed with it whose inputs are all in checked tiers to `derived`** (`verified_by` from `concept_check`: `<concept>@<person>`), returning whether the check was new and how many it promoted, refusing a name not held or no person; `write_derived(…, checked_by)` writes `derived` naming the check it rests on, else `derived-ai`; `write_derived` writes a `DerivedRow` as `derived-ai` with each input once in `derived_from`, refusing (and writing nothing) with no input, a missing one or one in no checked tier. `connect` adds `filings.broadcast` to an older table (`_add_broadcast`, empty until the next build); `upsert_filing` writes it and keeps a held one when given none.
+- **Invariants:** **The schema refuses** an instant with a start, a duration without one, an unknown tier or basis, a checked tier with no `verified_by`, an `-ai` tier marked checked, and a `verified_by` without a `verified_at` or the reverse. **A tier is checked exactly when it names its checker**: `xbrl-filed` carries `<origin>:<document>` (`nse-pdf:results/…pdf`, `sec-6k-html:results/…htm`), `xbrl` a person's name, or `<origin>:<document>+<name>` for a sampled agreement re-checked; every `-ai` tier carries none; a filing holds an `xbrl` fact once (partial unique index). **The schema refuses** a share event that cannot be one: an `unknown` change with a date, checked, or with no window; a bonus or split with no ratio (both halves, positive, changing the count), an issue or unknown with one; a checked tier with no checker or the reverse; a second event for a company on one date, or a second unknown change seen at one period end.
+- **History:** `concept_labels` and `apply_labels` (2026-10-23). XBRL rows checkable, the schema versioned and migrated (2026-10-31, Vedant: XBRL rows carry who verified them); `xbrl-ai` and `xbrl-pdf` (2026-11-01, Vedant). Version 4 (2026-11-02, Vedant): `pdf` tiers became `filed`, the document's origin in `verified_by`, once results came from SEC HTML copies too. Share events and broadcast dates (2026-11-06, Vedant: restate EPS across bonuses ourselves, detect unknown changes, check them as any `-ai` label).
+- **Decided in:** LOG.md 10-23, 10-31 11-06
 
 #### `facts.check`
 - **At:** `src/aigent/facts/check.py`
@@ -980,8 +982,8 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.build`
 - **At:** `src/aigent/facts/build.py`
-- **Is:** module, with `__main__.py` (`facts.__main__`: `build`, `coverage`, and `crosscheck [--write]`, which records agreements only with `--write`). `build(conn, xbrl_dir, get, tickers, years, writer, now, fundamentals, taxonomy_dir, packages) → Report`.
-- **Contract:** Fetch unless `get` is None (manifest saved after each company), then load every manifest entry in scope in one transaction, refusing a file not on disk, whose SHA-256 is not the manifest's, or unreadable; then `label_all`: fetch the taxonomy packages not cached (unless `get` is None) and label every concept from them; then the fundamentals check. A failed listing or download is reported and the rest build. **A taxonomy package that cannot be fetched or read is reported and nothing is relabelled**, so a partial set never overrides a label; an offline build with no packages cached says so. `__main__` writes `corpus/.cache/facts-build-report.json`, with `written_by` = `xbrl-loader@<commit>` and `run_id` = `build-<time>`.
+- **Is:** module, with `__main__.py` (`facts.__main__`: `build`, `coverage`, and `crosscheck [--write]`, which records agreements only with `--write`). `build(conn, xbrl_dir, get, tickers, years, writer, now, fundamentals, taxonomy_dir, packages) → Report`. Also `share-events` (lists every event) and `verify-share-event --id N --by P [--kind --effective --ratio]` (a person's check; an unknown one is named a bonus, split or issue with its date and ratio).
+- **Contract:** Fetch unless `get` is None (manifest saved after each company), then load every manifest entry in scope in one transaction, refusing a file not on disk, whose SHA-256 is not the manifest's, or unreadable; then `label_all`: fetch the taxonomy packages not cached (unless `get` is None) and label every concept from them; then the fundamentals check. A failed listing or download is reported and the rest build. **A taxonomy package that cannot be fetched or read is reported and nothing is relabelled**, so a partial set never overrides a label; an offline build with no packages cached says so. `__main__` writes `corpus/.cache/facts-build-report.json`, with `written_by` = `xbrl-loader@<commit>` and `run_id` = `build-<time>`. Each filing's `broadcast` comes from the manifest; after the fundamentals check, `share_events.sync_share_events` seeds `SHARE_EVENTS` and detects unknown changes, counted in `Report.share_events_seeded` and listed in `share_events_unknown` and the summary.
 - **History:** 2026-10-22: created. Labelling (2026-10-23): the first run labelled all 281 concepts, 159 aliases.
 - **Decided in:** LOG.md 10-22, 10-23
 
@@ -1022,6 +1024,15 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 - **Contract:** `compares(concept)` is whether it reads `previous`; `leaves` the filed concepts it reads through derived ones; `kind(conn, concept, held)` is `snapshot` when every leaf is mostly instant facts, `flow` when none is, else `mixed`. `plan(concept, year, period, held, previous)` is a `Step`: each variable a `Fetch` (path such as `denominator.first`, whose `cite_as` is the one `fundamentals` gives) or, when it names a derived concept in `held`, that concept's own `Step` at its binding's period; it refuses a comparing concept with no `previous`, a one-period concept given one, an inner concept that compares, and (`interval_refusal`) a previous period that does not end before the current begins or is not as long (a quarter against any quarter); `Step.fetches()` lists the facts depth first and `evaluate` computes bottom up, one unit for a `same` formula. `matched(what, held)` plans only an exact name or a concept whose name and label hold every word asked but filler; `available(conn, spec)` is what is filed or derived in every scope the spec names. `ranked(what, held)` keeps those sharing a word with `what` (CamelCase split), an exact name first, then most shared, then by name. `name_refusal`: CamelCase, no year, `FY`, quarter, `H1` or `9M`. `bindings_refusal`: a library formula, exactly its variables, concepts available in the scope, `current` or `previous`, no input that compares itself (`comparing(conn, spec)`, growth of a growth would need a third period), never itself (definitions only name concepts already held and never change, so none can loop). `seed(conn, writer)` writes each seeded one not yet held as `derived-concept-ai`, in passes until one writes nothing, so a concept may build on one later in the (scope-then-name sorted) file, and returns the refused with their reasons; `load_derived_concepts` reads them by name. `python -m aigent.facts verify-concept --name N --scope S --by P` shows a concept's bindings and records P's check.
 - **History:** 2026-11-03: created as `facts.metrics` (Vedant: growth of a metric is a named metric, both period-agnostic), renamed the same night (Vedant: derived concepts, beside `concepts`; the agent's tools keep "metric"). Nine seeded for banks: growth in advances, deposits, interest earned, operating profit and net profit (year on year, and net profit quarter on quarter), net interest income, net profit margin, credit-deposit ratio. 2026-11-04: offsets `t`, `t-1y`, `t-1q` replaced by `current` and `previous`, the comparison named at plan time every time (Vedant), so a growth concept serves any interval and the quarter-on-quarter twin went; ind-as seeds added (margins, growth, an EBITDA chain), EPS growth left out (no bonus-adjusted EPS held). 2026-11-05: ind-as `TotalBorrowings` (current plus non-current) and `DebtToAssetsRatio` over `Assets` seeded.
 - **Decided in:** LOG.md 11-03, 11-04
+
+#### `facts.share_events`
+- **At:** `src/aigent/facts/share_events.py`
+- **Is:** module. **Share-count events and per-share figures restated across them**, so EPS filed before a bonus compares with EPS filed after: `ShareEvent` (its `multiplier`, shares before over after, and `described`), `Restated`, `SHARE_EVENTS` (`evals/reference/share-events.jsonl`, sorted by company and date: HDFC Bank, Power Grid, Reliance and Wipro's bonuses), `PER_SHARE`.
+- **Contract:** `share_counts` is each standalone filing's paid-up capital over face value at its period end. `seed_share_events` writes each row not held for its company and date as `share-event-ai` (a row the schema refuses raises); `detect_share_events` holds an `unknown` change for each move of more than `SHARE_JUMP_MIN` between consecutive filings with no event held in that window (`_within`: after the earlier period end, by the later); `sync_share_events` does both. `verify_share_event` makes an event `share-event`, an unknown one named a bonus, split or issue with a date inside its window, a ratio (`after:before`) for a bonus or split and none for an issue; a check that cannot describe an event changes nothing. `restatement(conn, ticker, published)` restates each per-share input to the share basis of the latest-published filing among them (dates compared by day), multiplying across every checked event between, an issue by 1; it refuses an unchecked or unknown event that may fall between, or a missing broadcast while the company holds events.
+- **Invariants:** Only a person's check restates (Invariant 31).
+- **Gotchas:** Ind-as EPS facts are all `xbrl-ai` until a cross-check covers them, so only HDFC Bank's restatement reaches an answer today. A rights issue is not modelled: detected as unknown, it can only be named a bonus, split or issue, so leave it unchecked and the comparison stays refused.
+- **History:** 2026-11-06: created (Vedant: option 2, restate ourselves from XBRL; unknown changes held for a person, as other `-ai` labels; blocked until checked; by broadcast date). 32 of 32 guards mutation-checked in a scratch copy, six after their tests were fixed.
+- **Decided in:** LOG.md 11-06
 
 #### `facts.coverage`
 - **At:** `src/aigent/facts/coverage.py`
@@ -3048,7 +3059,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 #### `tests.analyst.test_metric_tools`
 - **At:** `tests/analyst/test_metric_tools.py`
 - **Is:** test module, free. `analyst.metric_tools` over `concepts_db` (`tests/analyst/conftest.py`: verified operating-profit, advances, deposits and EPS facts, their concepts, and three metrics).
-- **Contract:** A plan's fetch list and cites; no metric fitting pointing to the library; six bad asks; a computation from the planned facts, a ratio of balances, and every refusal (a variable missing or twice, the wrong period's or another fact, one not fetched, one unverified, an unknown plan, mixed units, a zero base); a metric defined and planned, eight refusals writing nothing; a formula proposed once; `chained`; the write-back under the metric's name with its period, formula column and inputs, a balance as at the period's end, nothing for a refused, unjudged or non-computed claim, once for two claims, skipped when an input lost its check; a checked concept's figure trusted and written `derived`, an unchecked one's not.
+- **Contract:** A plan's fetch list and cites; no metric fitting pointing to the library; six bad asks; a computation from the planned facts, a ratio of balances, and every refusal (a variable missing or twice, the wrong period's or another fact, one not fetched, one unverified, an unknown plan, mixed units, a zero base); a metric defined and planned, eight refusals writing nothing; a formula proposed once; `chained`; the write-back under the metric's name with its period, formula column and inputs, a balance as at the period's end, nothing for a refused, unjudged or non-computed claim, once for two claims, skipped when an input lost its check; a checked concept's figure trusted and written `derived`, an unchecked one's not. HDFC Bank's Q2 basic EPS (`eps_db`: two facts in filings published either side of its 1:1 bonus): as filed with no event or a checked issue (-45.0%), restated with a checked bonus (22.08 to 11.04, +9.96%), refused across an unchecked or unknown one, written back with its restatement, and a figure not per share never restated.
 - **History:** 2026-11-03: created; with the library, metrics and lookup, 33 of 33 mutants killed in a scratch copy, one after its test was added.
 - **Decided in:** LOG.md 11-03
 
@@ -3076,7 +3087,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 #### `tests.facts`
 - **At:** `tests/facts/__init__.py`
 - **Is:** test package `tests/facts/`, free and offline. **The facts database**, 245 tests.
-- **Contract:** `conftest`: an XBRL builder (`duration`, `instant`, `num`, `nil`, `text`, `stated`, `filing`, `DECEMBER`), `FakeNse` scripted by URL with `listings(symbol, legacy, integrated pages)`, `fundamental`, the cross-check's `crosscheck_db` (two ICICI Bank filings, one HDFC Bank, a quarter with no document) and `checked_row`, and two real ITC filings trimmed to a dozen concepts in `fixtures/` (FY24's March quarter in the 2020 taxonomy, FY26's December in the integrated one). `test_xbrl`: each fact of the saved samples with its period (the stated year, opening and closing cash, a segment, a `D_` context), what becomes an issue, what is left out quietly, a first quarter, a name filed with a unit. `test_nse`: the chosen filings (latest broadcast, years, governance dropped), paging, the symbol, the financial year, the cache, revisions, the sorted manifest, the polite getter. `test_store`: sync's add, keep, change and remove, the schema's refusals and acceptances, an unversioned and a version-3 database migrated row by row, tier and stamp, `write_formula_proposal` writing and reusing, the proposals table's four refusals, and `write_derived` linking its inputs once, an instant, and its three refusals, `write_derived_concept` holding the first by name, the derived concepts table's four refusals, older `metrics` and `formulas` tables moved across with their tiers, `verify_derived_concept` once and its two refusals, a figure written with a concept check, and a check promoting figures whose inputs are checked but not one whose input is not, nor another concept's, and a rebuild dropping a derived fact whose input was revised, re-filed or removed (once an integrity failure) and keeping it otherwise. `test_formulas`: each formula's arithmetic, a zero base refused, variables as parameters, the library in name order. `test_derived_concepts`: offsets, plans, ranking (an exact name first where words tie), name and binding refusals, the stored shape, seeding once and reporting the refused, every seeded metric well formed, the shipped ind-as seeds resting on what every ind-as company files (`fixtures/ind-as-filed-concepts.txt`, a sorted snapshot of the live database) and a table of them computing from their filed inputs (EBITDA margin without finance costs and depreciation, debt to assets over both borrowings), the verify command. `test_documents`: text-less and OCR'd pages, the scan share, the manifest's fields and order, `origin`, `percent_joined` and `statement_starts` tables, an HTML table of two statements read as two, and the refusals. `test_check`: the fundamentals' four outcomes, sums with optional terms, tolerance. `test_build`: end to end, cached, offline, and each failure as data. `test_crosscheck`: numbers, column periods, sheets, agreement, matching and `apply` (stamped by origin; none for a document raises and writes nothing). `test_review`: issues, groups, spot samples, the decisions file and its refusals, an eleven-row `rule` table (proposed, `wrong`/`elsewhere`, a `right` with no check, all ticked, a tick missing or outside, a new filing's facts, both checked, a changed value, a check made on another group), `*` decisions and a company's own winning, what `apply_rulings` writes, the report's queue and the command's `--write`.
+- **Contract:** `conftest`: an XBRL builder (`duration`, `instant`, `num`, `nil`, `text`, `stated`, `filing`, `DECEMBER`), `FakeNse` scripted by URL with `listings(symbol, legacy, integrated pages)`, `fundamental`, the cross-check's `crosscheck_db` (two ICICI Bank filings, one HDFC Bank, a quarter with no document) and `checked_row`, and two real ITC filings trimmed to a dozen concepts in `fixtures/` (FY24's March quarter in the 2020 taxonomy, FY26's December in the integrated one). `test_xbrl`: each fact of the saved samples with its period (the stated year, opening and closing cash, a segment, a `D_` context), what becomes an issue, what is left out quietly, a first quarter, a name filed with a unit. `test_nse`: the chosen filings (latest broadcast, years, governance dropped), paging, the symbol, the financial year, the cache, revisions, the sorted manifest, the polite getter. `test_store`: sync's add, keep, change and remove, the schema's refusals and acceptances, an unversioned and a version-3 database migrated row by row, tier and stamp, `write_formula_proposal` writing and reusing, the proposals table's four refusals, and `write_derived` linking its inputs once, an instant, and its three refusals, `write_derived_concept` holding the first by name, the derived concepts table's four refusals, older `metrics` and `formulas` tables moved across with their tiers, `verify_derived_concept` once and its two refusals, a figure written with a concept check, and a check promoting figures whose inputs are checked but not one whose input is not, nor another concept's, and a rebuild dropping a derived fact whose input was revised, re-filed or removed (once an integrity failure) and keeping it otherwise. `test_formulas`: each formula's arithmetic, a zero base refused, variables as parameters, the library in name order. `test_derived_concepts`: offsets, plans, ranking (an exact name first where words tie), name and binding refusals, the stored shape, seeding once and reporting the refused, every seeded metric well formed, the shipped ind-as seeds resting on what every ind-as company files (`fixtures/ind-as-filed-concepts.txt`, a sorted snapshot of the live database) and a table of them computing from their filed inputs (EBITDA margin without finance costs and depreciation, debt to assets over both borrowings), the verify command. `test_documents`: text-less and OCR'd pages, the scan share, the manifest's fields and order, `origin`, `percent_joined` and `statement_starts` tables, an HTML table of two statements read as two, and the refusals. `test_check`: the fundamentals' four outcomes, sums with optional terms, tolerance. `test_build`: end to end, cached, offline, and each failure as data. `test_crosscheck`: numbers, column periods, sheets, agreement, matching and `apply` (stamped by origin; none for a document raises and writes nothing). `test_review`: issues, groups, spot samples, the decisions file and its refusals, an eleven-row `rule` table (proposed, `wrong`/`elsewhere`, a `right` with no check, all ticked, a tick missing or outside, a new filing's facts, both checked, a changed value, a check made on another group), `*` decisions and a company's own winning, what `apply_rulings` writes, the report's queue and the command's `--write`. `test_share_events`: detection (a steady count, drift under 5%, a doubling with and without an event held, events on either period end, an issue, a fall, only the pair that moved), once only, standalone only; the shipped events seeded once unchecked; a refused seed row raising; sync; twelve schema refusals; a person's check (five ways) and fourteen refusals changing nothing; restatement over checked events (eleven rows), refused across unchecked ones or with no broadcast, and an unknown change refusing what it may fall inside; the two commands. `test_store` and `test_build` gain the broadcast column and the build's share events.
 - **History:** 2026-10-22: created. **Every guard mutation-checked in a scratch copy, 49 of 49.** 2026-10-23, step 2: `test_taxonomy` (labels read by concept and role, a hyphenated prefix, a five-row merge table, fetched once and again on a new URL, the sorted manifest, priority order, a package not cached or whose digest moved refused), `test_lookup` (a seven-row period table, matching by label and alias, exact fetch by period and basis in tables, a balance at the period's end, segments named and refused in tables, what to cite, the earliest filing, another run's unchecked read, `k`, every call logged, the closest labels, a database not built, the index built once), `test_reference` (the frozen table, moved), the build's labelling (labelled, offline from the cache, offline with nothing cached, a fetch or zip failure relabelling nothing), `apply_labels`, and a column's descriptions being no segment; `facts_db` and `facts_lookup` in the root `conftest` for the tool, toolbox and server tests. Every new guard mutation-checked in a scratch copy, 43 of 44; the one left, `toolbox._lookup`'s list check, only narrows a type and cannot change what it returns. 2026-10-25: `test_coverage` (each source's figures and its reasons to leave one out in tables, a twelve-row precision table, every table figure printed in its quote, held by concept and by value in a fourteen-row table, found and exact in a table, the earliest filing, the lookups deleted on success and on failure, the summary, the report and the CLI's wiring) over its own database fixture; 29 of 30 mutants killed, the one left a found fact's basis in its key, which a lookup asked for one basis cannot exercise. 2026-11-02: OCR'd pages, HTML statements split and `%` joined, the version-4 migration and origin stamps; 25 of 25 mutants killed.
 - **Decided in:** LOG.md 10-22
 
@@ -3400,6 +3411,7 @@ analyst.desk —imports→ analyst.toolbox.{FIND, LOOKUP, Toolbox}
 analyst.desk —imports→ anthropic.types.ToolParam
 analyst.desk —imports→ errors.{BudgetExceeded, GuardrailTripped}
 analyst.desk —imports→ facts.derived_concepts.seed
+analyst.desk —imports→ facts.share_events.sync_share_events
 analyst.desk —imports→ facts.store.{FACTS_DB, Writer, connect}
 analyst.desk —imports→ fastapi.{Body, FastAPI}   (inside a function)
 analyst.desk —imports→ fastapi.FastAPI   (types only)
@@ -3450,6 +3462,7 @@ analyst.metric_tools —imports→ facts.cfg_facts.{COMPANY_SCOPES, FACTS_TICKER
 analyst.metric_tools —imports→ facts.derived_concepts.{ATS, At, Binding, DerivedConcept, Fetch, Step, When, available, bindings_json, bindings_refusal, comparing, evaluate, kind, leaves, load_derived_concepts, name_refusal, plan}
 analyst.metric_tools —imports→ facts.formulas.FORMULAS
 analyst.metric_tools —imports→ facts.lookup.{BASES, LENGTHS, Period, QUARTERS, as_period, as_time, instants, span}
+analyst.metric_tools —imports→ facts.share_events.{PER_SHARE, Restated, restatement}
 analyst.metric_tools —imports→ facts.store.{CHECKED_TIERS, DerivedRow, Writer, concept_check, derived_held, normal_scope, scope_refusal, verified_derived, write_derived, write_derived_concept, write_formula_proposal}
 analyst.metric_tools —imports→ llm.core.Dispatch
 analyst.router —imports→ analyst.specialists.{Invalid, Specialist}
@@ -3609,11 +3622,13 @@ facts.__main__ —imports→ facts.lookup.{Lookup, concept_index}
 facts.__main__ —imports→ facts.nse.{XBRL_DIR, polite_get}
 facts.__main__ —imports→ facts.reference.load_fundamentals
 facts.__main__ —imports→ facts.review.{DECISIONS, apply_rulings, read_decisions, review_groups, review_sample, rule, write_report}
+facts.__main__ —imports→ facts.share_events.{load_share_events, verify_share_event}
 facts.__main__ —imports→ facts.store.{FACTS_DB, Writer, connect, verify_derived_concept}
 facts.__main__ —imports→ facts.taxonomy.TAXONOMY_DIR
 facts.build —imports→ facts.check.{Checked, check_fundamentals, check_sums}
 facts.build —imports→ facts.nse.{Get, fetch, list_filings, read_manifest, write_manifest}
 facts.build —imports→ facts.reference.Fundamental
+facts.build —imports→ facts.share_events.{SHARE_EVENTS, sync_share_events}
 facts.build —imports→ facts.store.{FilingRow, Synced, Writer, apply_labels, sync_xbrl_facts, upsert_filing}
 facts.build —imports→ facts.taxonomy.{fetch_packages, load_labels}
 facts.build —imports→ facts.xbrl.parse
@@ -3651,6 +3666,8 @@ facts.lookup —imports→ retrieval.rank.{Indexes, Ranker, build_ranker}
 facts.nse —imports→ facts.cfg_facts.{NSE_INTEGRATED_LISTING, NSE_LEGACY_LISTING, NSE_PAGE_SIZE, NSE_REQUEST_INTERVAL_S, NSE_SYMBOLS, NSE_TIMEOUT_S, NSE_USER_AGENT}
 facts.review —imports→ facts.cfg_facts.{CROSSCHECK_GROUP_EXAMPLES, CROSSCHECK_SEED, CROSSCHECK_SPOT_CHECKS}
 facts.review —imports→ facts.crosscheck.{Checked, number}
+facts.share_events —imports→ facts.cfg_facts.SHARE_JUMP_MIN
+facts.share_events —imports→ facts.store.{RESTATING_KINDS, Writer, XBRL_TIERS}
 facts.store —imports→ facts.cfg_facts.{COMPANY_SCOPES, SCOPES}
 facts.store —imports→ facts.taxonomy.Labels
 facts.store —imports→ facts.xbrl.{Fact, label_of}
@@ -4261,6 +4278,12 @@ The rules the code encodes. Breaking one of these is a regression even when test
 - **Contract:** XBRL is the source of truth and is never compared with the PDF. A rebuild keeps an unchanged fact's row id, and only a person moves a fact into a checked tier, which the schema enforces. A lookup answers with exactly the company, period, basis and segment asked, never a near one, and never with another run's unchecked row. Fetching is free but scraping: every file is cached, never refetched, one request a second.
 - **History:** 2026-10-22. Segments and lookups (2026-10-23).
 - **Decided in:** LOG.md 10-22, 10-23
+
+#### Invariant 31: A per-share figure is compared only on one share basis
+- **Is:** Per-share figures filed either side of a bonus or split are compared only after the earlier is restated to the later filing's share count, and only across events a person has checked; across an unchecked or unknown change the comparison is refused, never computed.
+- **Contract:** `facts.share_events.restatement`, called by `analyst.metric_tools` at plan time; the filed figure is shown as filed beside its restatement, and a written-back figure records it. An issue for value restates nothing.
+- **History:** 2026-11-06.
+- **Decided in:** LOG.md 11-06
 
 ## 5. Where the next work attaches
 

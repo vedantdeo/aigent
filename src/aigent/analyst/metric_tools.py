@@ -1,7 +1,8 @@
 """The agent's metric tools, over one question: `plan_metric` names the facts a metric needs (in
 the company's scope, through any derived concepts it builds on), `fundamentals` fetches them, and
 `compute_metric` checks each against the plan and runs the library formulas on their stored
-values, so the model never types a figure or a formula.
+values, so the model never types a figure or a formula. Per-share inputs filed either side of a
+checked bonus or split are restated to the latest filing's share basis.
 `define_metric` adds a metric built on a library formula, `propose_formula` asks a person for a new
 formula; both are written at once as `-ai`. Once the critic supports a claim citing a computed
 figure, `write_back` stores it under the metric's name: `derived` when its derived concept is
@@ -12,7 +13,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Mapping, MutableMapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import cast
 
 from anthropic.types import ToolParam
@@ -41,6 +42,7 @@ from aigent.facts.derived_concepts import (
 )
 from aigent.facts.formulas import FORMULAS
 from aigent.facts.lookup import BASES, LENGTHS, QUARTERS, Period, as_period, as_time, instants, span
+from aigent.facts.share_events import PER_SHARE, Restated, restatement
 from aigent.facts.store import (
     CHECKED_TIERS,
     DerivedRow,
@@ -243,6 +245,7 @@ class Plan:
     step: Step
     previous: When | None = None
     snapshot: bool = False
+    restated: Mapping[str, Restated] = field(default_factory=dict[str, Restated])
 
     @property
     def fetches(self) -> list[Fetch]:
@@ -317,6 +320,7 @@ class MetricTools:
         balances = instants(self.conn, sorted(leaves(metric, by_name)))
         step = plan(metric, *at, by_name, previous, balances=balances)
         planned = Plan(metric, company, *at, basis, step, previous, snapshot)
+        planned = replace(planned, restated=_restated(self.conn, planned))
         cites = {f.variable: f.cite_as(company, basis) for f in step.fetches()}
         held = verified_derived(self.conn, _derived_row(planned, 0.0, "", cites))
         if held is not None:
@@ -376,7 +380,17 @@ class MetricTools:
                 }
                 for f in step.fetches()
             ],
-        }
+        } | (
+            {
+                "restated": _shown_restated(planned.restated),
+                "note": (
+                    "These per-share inputs were filed before a bonus or split; compute_metric "
+                    "multiplies each filed figure to the latest filing's share basis."
+                ),
+            }
+            if planned.restated
+            else {}
+        )
 
     def compute(self, arguments: dict[str, object]) -> dict[str, object]:
         plan_id = str(arguments.get("plan_id", ""))
@@ -395,9 +409,13 @@ class MetricTools:
                 raise ValueError(f"{variable} is {wanted[variable]}, not {cite}")
             facts[variable] = self._fact(cite)
         formula = FORMULAS[planned.metric.formula]
+        multipliers = {v: r.multiplier for v, r in planned.restated.items()}
         value, unit = evaluate(
             planned.step,
-            {v: (float(cast(float, f["value"])), str(f["unit"])) for v, f in facts.items()},
+            {
+                v: (float(cast(float, f["value"])) * multipliers.get(v, 1.0), str(f["unit"]))
+                for v, f in facts.items()
+            },
         )
         cite_as = f"DERIVED:D{len(self.made) + 1}"
         inputs = tuple((f.variable, wanted[f.variable]) for f in planned.fetches)
@@ -414,7 +432,21 @@ class MetricTools:
             "company": planned.company,
             "periods": _periods(planned.year, planned.period, planned.previous, planned.snapshot),
             "basis": planned.basis,
-            "inputs": [{"variable": v, **facts[v]} for v, _ in inputs],
+            "inputs": [
+                {"variable": v, **facts[v]}
+                | (
+                    {
+                        "restated": {
+                            "multiplier": planned.restated[v].multiplier,
+                            "value": float(cast(float, facts[v]["value"])) * multipliers[v],
+                            "events": list(planned.restated[v].events),
+                        }
+                    }
+                    if v in planned.restated
+                    else {}
+                )
+                for v, _ in inputs
+            ],
         }
         self.evidence[cite_as] = Passage(
             cite_as, "computed in this conversation", json.dumps(shown)
@@ -489,6 +521,21 @@ class MetricTools:
         if fact.get("tier") not in CHECKED_TIERS:
             raise ValueError(f"{cite} is not verified")
         return fact
+
+
+def _shown_restated(restated: Mapping[str, Restated]) -> dict[str, object]:
+    return {v: {"multiplier": r.multiplier, "events": list(r.events)} for v, r in restated.items()}
+
+
+def _restated(conn: sqlite3.Connection, planned: Plan) -> dict[str, Restated]:
+    """The plan's per-share inputs restated across share events, from when each checked fact's
+    filing was published. ValueError when an event between them is not checked."""
+    published: dict[str, str | None] = {}
+    for fetch in planned.fetches:
+        row = _fact_row(conn, planned, fetch)
+        if row is not None and row[1].endswith(PER_SHARE):
+            published[fetch.variable] = row[2]
+    return restatement(conn, planned.company, published)
 
 
 def _periods(year: int, period: Period, previous: When | None, snapshot: bool = False) -> str:
@@ -613,7 +660,8 @@ def _derived_row(planned: Plan, value: float, unit: str, inputs: Mapping[str, st
                 "formula": planned.metric.formula,
                 "inputs": dict(inputs),
                 "periods": periods,
-            },
+            }
+            | ({"restated": _shown_restated(planned.restated)} if planned.restated else {}),
             sort_keys=True,
         ),
     )
@@ -621,13 +669,22 @@ def _derived_row(planned: Plan, value: float, unit: str, inputs: Mapping[str, st
 
 def _fact_id(conn: sqlite3.Connection, planned: Plan, fetch: Fetch) -> int | None:
     """The checked fact a fetch names, as `fundamentals` finds it, or None."""
+    row = _fact_row(conn, planned, fetch)
+    return None if row is None else row[0]
+
+
+def _fact_row(
+    conn: sqlite3.Connection, planned: Plan, fetch: Fetch
+) -> tuple[int, str, str | None] | None:
+    """The checked fact a fetch names: its id, unit, and when its filing was published."""
     start, end = span(fetch.year, fetch.period)
     row = conn.execute(
-        f"""SELECT id FROM facts WHERE ticker = ? AND basis = ? AND concept = ?
-              AND segment IS NULL AND tier IN ({", ".join("?" for _ in CHECKED_TIERS)})
-              AND ((period_kind = 'duration' AND period_start = ? AND period_end = ?)
-                   OR (period_kind = 'instant' AND period_end = ?))
-            ORDER BY id LIMIT 1""",
+        f"""SELECT f.id, f.unit, g.broadcast FROM facts f LEFT JOIN filings g ON g.id = f.filing_id
+            WHERE f.ticker = ? AND f.basis = ? AND f.concept = ?
+              AND f.segment IS NULL AND f.tier IN ({", ".join("?" for _ in CHECKED_TIERS)})
+              AND ((f.period_kind = 'duration' AND f.period_start = ? AND f.period_end = ?)
+                   OR (f.period_kind = 'instant' AND f.period_end = ?))
+            ORDER BY f.id LIMIT 1""",
         (
             planned.company,
             planned.basis,
@@ -638,4 +695,4 @@ def _fact_id(conn: sqlite3.Connection, planned: Plan, fetch: Fetch) -> int | Non
             end.isoformat(),
         ),
     ).fetchone()
-    return None if row is None else int(row[0])
+    return None if row is None else (int(row[0]), str(row[1]), row[2])

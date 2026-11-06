@@ -1,5 +1,6 @@
-"""`python -m aigent.facts build`: fetch what is missing, load every cached filing's XBRL facts, and
-check them. Free; no model calls. A failed fetch is reported and the rest still build."""
+"""`python -m aigent.facts build`: fetch what is missing, load every cached filing's XBRL facts,
+check them, and seed and detect share events. Free; no model calls. A failed fetch is reported and
+the rest still build."""
 
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from pathlib import Path
 from aigent.facts.check import Checked, check_fundamentals, check_sums
 from aigent.facts.nse import Get, fetch, list_filings, read_manifest, write_manifest
 from aigent.facts.reference import Fundamental
+from aigent.facts.share_events import SHARE_EVENTS, sync_share_events
 from aigent.facts.store import (
     FilingRow,
     Synced,
@@ -49,6 +51,8 @@ class Report:
     taxonomy_fetched: list[str] = field(default_factory=list[str])
     taxonomy_failures: list[str] = field(default_factory=list[str])
     unlabelled: list[str] = field(default_factory=list[str])
+    share_events_seeded: int = 0
+    share_events_unknown: list[str] = field(default_factory=list[str])
 
     def as_json(self) -> dict[str, object]:
         return asdict(self)
@@ -73,6 +77,8 @@ class Report:
             "fundamentals " + ", ".join(f"{n} {s}" for s, n in sorted(counts.items())),
             f"taxonomy {len(self.taxonomy_fetched)} packages fetched, "
             f"{len(self.taxonomy_failures)} failures, {len(self.unlabelled)} concepts unlabelled",
+            f"share events {self.share_events_seeded} seeded, "
+            f"{len(self.share_events_unknown)} unknown detected",
         ]
         return "\n".join(lines)
 
@@ -143,6 +149,7 @@ def load_all(
                     origin=entry["url"],
                     sha256=entry["sha256"],
                     fetched=entry["fetched"],
+                    broadcast=entry.get("broadcast"),
                 ),
             )
             synced = sync_xbrl_facts(
@@ -198,8 +205,10 @@ def build(
     fundamentals: Iterable[Fundamental],
     taxonomy_dir: Path,
     packages: Iterable[tuple[str, str]],
+    share_events: Path = SHARE_EVENTS,
 ) -> Report:
-    """Fetch (unless `get` is None), load, label and check."""
+    """Fetch (unless `get` is None), load, label and check, then seed the events in
+    `share_events` and detect unknown ones."""
     tickers, years = tuple(tickers), tuple(years)
     report = Report()
     if get is not None:
@@ -207,4 +216,7 @@ def build(
     load_all(conn, xbrl_dir, tickers, years, writer, report)
     label_all(conn, taxonomy_dir, get, packages, now, report)
     report.fundamentals = check_fundamentals(conn, fundamentals)
+    seeded, unknown = sync_share_events(conn, writer, share_events)
+    report.share_events_seeded = seeded
+    report.share_events_unknown = [e.described() for e in unknown]
     return report

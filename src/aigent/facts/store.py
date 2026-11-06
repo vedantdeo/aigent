@@ -29,6 +29,9 @@ DERIVED_CONCEPT_TIERS = (
     "derived-concept-ai",
     "derived-concept",
 )  # defined by an agent or seeded unchecked; a person's check
+SHARE_EVENT_TIERS = ("share-event-ai", "share-event")  # seeded or detected; a person's check
+SHARE_EVENT_KINDS = ("bonus", "split", "issue", "unknown")
+RESTATING_KINDS = ("bonus", "split")  # an issue for value restates nothing
 
 _TIER_LIST = ", ".join(f"'{t}'" for t in TIERS)
 _CHECKED_LIST = ", ".join(f"'{t}'" for t in CHECKED_TIERS)
@@ -116,6 +119,38 @@ _DERIVED_CONCEPTS = """CREATE TABLE IF NOT EXISTS derived_concepts (
 );
 """
 
+_SHARE_EVENTS = """CREATE TABLE IF NOT EXISTS share_events (
+    id INTEGER PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('bonus', 'split', 'issue', 'unknown')),
+    effective TEXT,
+    shares_after INTEGER,
+    shares_before INTEGER,
+    seen_from TEXT,
+    seen_to TEXT,
+    seen_ratio REAL,
+    note TEXT,
+    tier TEXT NOT NULL CHECK (tier IN ('share-event-ai', 'share-event')),
+    written_by TEXT NOT NULL,
+    written_at TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    verified_by TEXT,
+    verified_at TEXT,
+    CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
+    CHECK ((tier = 'share-event') = (verified_by IS NOT NULL)),
+    CHECK ((kind = 'unknown') = (effective IS NULL)),
+    CHECK (kind <> 'unknown' OR (tier = 'share-event-ai' AND seen_to IS NOT NULL)),
+    CHECK ((kind IN ('bonus', 'split')) = (shares_after IS NOT NULL)),
+    CHECK ((shares_after IS NULL) = (shares_before IS NULL)),
+    CHECK (shares_after IS NULL
+           OR (shares_after > 0 AND shares_before > 0 AND shares_after <> shares_before))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS share_events_dated ON share_events (ticker, effective)
+    WHERE effective IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS share_events_unknown ON share_events (ticker, seen_to)
+    WHERE kind = 'unknown';
+"""
+
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS filings (
     id INTEGER PRIMARY KEY,
@@ -126,7 +161,8 @@ CREATE TABLE IF NOT EXISTS filings (
     source TEXT NOT NULL CHECK (source IN ('xbrl', 'pdf')),
     origin TEXT NOT NULL UNIQUE,
     sha256 TEXT,
-    fetched TEXT
+    fetched TEXT,
+    broadcast TEXT
 );
 {_FACTS}CREATE UNIQUE INDEX IF NOT EXISTS facts_xbrl_once ON facts (
     filing_id, concept, period_kind, COALESCE(period_start, ''), period_end,
@@ -180,7 +216,7 @@ CREATE TABLE IF NOT EXISTS formula_proposals (
     CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
     CHECK ((tier = 'formula') = (verified_by IS NOT NULL))
 );
-{_DERIVED_CONCEPTS}"""
+{_DERIVED_CONCEPTS}{_SHARE_EVENTS}"""
 
 
 @dataclass(frozen=True)
@@ -193,6 +229,7 @@ class FilingRow:
     origin: str
     sha256: str | None
     fetched: str | None
+    broadcast: str | None = None  # when NSE published it; a per-share figure's share basis
 
 
 @dataclass(frozen=True)
@@ -329,12 +366,21 @@ def _add_scope(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE derived_concepts_before")
 
 
+def _add_broadcast(conn: sqlite3.Connection) -> None:
+    """Gives a filings table from before broadcast dates its column, empty until the next build."""
+    columns = [str(r[1]) for r in conn.execute("PRAGMA table_info(filings)")]
+    if columns and "broadcast" not in columns:
+        with conn:
+            conn.execute("ALTER TABLE filings ADD COLUMN broadcast TEXT")
+
+
 def connect(path: Path = FACTS_DB) -> sqlite3.Connection:
     """The database, its schema created if missing and migrated if older; WAL, since runs write
     while others read."""
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.execute("PRAGMA journal_mode = WAL")
+    _add_broadcast(conn)
     conn.executescript(SCHEMA)
     if conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
         _rebuild_facts(conn)
@@ -384,10 +430,12 @@ def _rebuild_facts(conn: sqlite3.Connection) -> None:
 def upsert_filing(conn: sqlite3.Connection, row: FilingRow) -> int:
     """The filing's id, its row added or updated by origin."""
     conn.execute(
-        """INSERT INTO filings (ticker, fy, period_end, basis, source, origin, sha256, fetched)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """INSERT INTO filings (ticker, fy, period_end, basis, source, origin, sha256, fetched,
+                  broadcast)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (origin) DO UPDATE
-           SET sha256 = excluded.sha256, fetched = excluded.fetched""",
+           SET sha256 = excluded.sha256, fetched = excluded.fetched,
+               broadcast = COALESCE(excluded.broadcast, filings.broadcast)""",
         (
             row.ticker,
             row.fy,
@@ -397,6 +445,7 @@ def upsert_filing(conn: sqlite3.Connection, row: FilingRow) -> int:
             row.origin,
             row.sha256,
             row.fetched,
+            row.broadcast,
         ),
     )
     found = conn.execute("SELECT id FROM filings WHERE origin = ?", (row.origin,)).fetchone()

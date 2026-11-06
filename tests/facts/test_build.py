@@ -13,8 +13,10 @@ import pytest
 
 from aigent.facts.build import Report, build
 from aigent.facts.nse import read_manifest, write_manifest
+from aigent.facts.share_events import load_share_events
 from aigent.facts.store import Writer, connect
 
+from ..conftest import share_filing
 from .conftest import (
     INTEGRATED_Q3,
     LEGACY_Q4,
@@ -83,11 +85,13 @@ def test_a_build_fetches_loads_and_checks(
         ("ITC-2025-12-31-C.xml", [], []),
     ]
     assert [c.status for c in report.fundamentals] == ["equal"]
-    filings = conn.execute("SELECT ticker, fy, period_end, basis, origin FROM filings").fetchall()
+    filings = conn.execute(
+        "SELECT ticker, fy, period_end, basis, origin, broadcast FROM filings"
+    ).fetchall()
     assert sorted(filings) == [
-        ("ITC", 2024, "2024-03-31", "consolidated", MAR),
-        ("ITC", 2026, "2025-12-31", "consolidated", DEC),
-    ]
+        ("ITC", 2024, "2024-03-31", "consolidated", MAR, "2024-05-23T05:03:07"),
+        ("ITC", 2026, "2025-12-31", "consolidated", DEC, "2026-01-29T06:52:14"),
+    ], "each filing with when NSE published it"
     stored = conn.execute("SELECT count(*) FROM facts").fetchone()[0]
     assert stored == sum(x.facts for x in report.loaded) > 0
     assert "fundamentals 1 equal" in report.summary()
@@ -240,3 +244,42 @@ def test_a_taxonomy_failure_is_reported_and_nothing_is_relabelled(
         "SELECT label FROM concepts WHERE concept = 'RevenueFromOperations'"
     ).fetchone()
     assert label == ("Revenue from operations",)
+
+
+def test_a_build_seeds_share_events_and_detects_unknown_ones(
+    scripted: FakeNse, conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    events = tmp_path / "share-events.jsonl"
+    events.write_text(
+        json.dumps(
+            {
+                "ticker": "ITC",
+                "effective": "2023-07-01",
+                "kind": "split",
+                "shares_after": 10,
+                "shares_before": 1,
+            }
+        )
+    )
+    with conn:
+        share_filing(conn, "WIPRO", "2024-09-30", 100.0)
+        share_filing(conn, "WIPRO", "2024-12-31", 200.0)
+    report = build(
+        conn,
+        tmp_path / "xbrl",
+        scripted,
+        ("ITC",),
+        (2024, 2026),
+        WRITER,
+        NOW,
+        [ITC_FY24_REVENUE],
+        tmp_path / "taxonomy",
+        PACKAGES,
+        events,
+    )
+    assert report.share_events_seeded == 1
+    assert [e.ticker for e in load_share_events(conn) if e.kind == "unknown"] == ["WIPRO"]
+    assert report.share_events_unknown == [
+        e.described() for e in load_share_events(conn) if e.kind == "unknown"
+    ]
+    assert "share events 1 seeded, 1 unknown detected" in report.summary()

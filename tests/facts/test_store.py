@@ -54,7 +54,7 @@ def conn(tmp_path: Path) -> sqlite3.Connection:
 
 def test_connect_creates_the_schema_in_wal_mode(conn: sqlite3.Connection) -> None:
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert {"concepts", "derived_from", "facts", "filings", "lookups"} <= tables
+    assert {"concepts", "derived_from", "facts", "filings", "lookups", "share_events"} <= tables
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 
 
@@ -965,3 +965,43 @@ def test_a_label_bound_by_offset_loses_its_period_words(
     _offset_rows(tmp_path / "old.sqlite", ("M", label, _growth("t-1y"), "derived-concept-ai"))
     found = connect(tmp_path / "old.sqlite").execute("SELECT label FROM derived_concepts")
     assert found.fetchone() == (kept,)
+
+
+def test_a_filings_table_from_before_broadcast_dates_gains_the_column(tmp_path: Path) -> None:
+    path = tmp_path / "facts.sqlite"
+    old = sqlite3.connect(path)
+    old.execute(
+        """CREATE TABLE filings (id INTEGER PRIMARY KEY, ticker TEXT NOT NULL, fy INTEGER NOT NULL,
+               period_end TEXT NOT NULL, basis TEXT NOT NULL, source TEXT NOT NULL,
+               origin TEXT NOT NULL UNIQUE, sha256 TEXT, fetched TEXT)"""
+    )
+    old.execute(
+        "INSERT INTO filings VALUES (7, 'ITC', 2025, '2025-03-31', 'standalone', 'xbrl', 'u', "
+        "'s', 't')"
+    )
+    old.commit()
+    old.close()
+    conn = connect(path)
+    assert conn.execute("SELECT id, origin, broadcast FROM filings").fetchall() == [(7, "u", None)]
+    fid = upsert_filing(
+        conn,
+        FilingRow(
+            "ITC", 2025, date(2025, 3, 31), "standalone", "xbrl", "u", "s", "t", "2025-05-01"
+        ),
+    )
+    assert (fid, _broadcast(conn, fid)) == (7, "2025-05-01")
+
+
+def _broadcast(conn: sqlite3.Connection, fid: int) -> object:
+    return conn.execute("SELECT broadcast FROM filings WHERE id = ?", (fid,)).fetchone()[0]
+
+
+def test_a_filing_keeps_its_broadcast_when_a_later_write_has_none(
+    conn: sqlite3.Connection,
+) -> None:
+    row = FilingRow("ITC", 2025, date(2025, 3, 31), "standalone", "xbrl", "u", "s", "t", "b1")
+    fid = upsert_filing(conn, row)
+    assert upsert_filing(conn, replace(row, broadcast=None)) == fid
+    assert _broadcast(conn, fid) == "b1"
+    upsert_filing(conn, replace(row, broadcast="b2"))
+    assert _broadcast(conn, fid) == "b2", "a revision's broadcast replaces the old"

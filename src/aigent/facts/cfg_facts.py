@@ -76,6 +76,10 @@ CROSSCHECK_SYNONYMS: dict[str, str] = {
 }
 CROSSCHECK_EXCLUSIVE: tuple[tuple[str, str], ...] = (("basic", "diluted"), ("gross", "net"))
 
+# Share events: a filed share count moving by more than this share between two filings, with no
+# event held for it, is held as an unknown event for a person to name.
+SHARE_JUMP_MIN = 0.05
+
 # Loading: contexts whose id holds one of these are not results-format facts and are skipped.
 XBRL_SKIP_CONTEXTS: tuple[str, ...] = ("RelatedPartyTransaction",)
 
