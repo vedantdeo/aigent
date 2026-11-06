@@ -2526,3 +2526,15 @@
   88.29 to 44.15), and Reliance's and Wipro's FY24 consolidated and standalone in their FY25 annual
   reports (Reliance 102.90 to 51.45). Against the first post-bonus filing's year to date less its
   quarter, 8/8 within 0.1%, Power Grid's 1:3 included (Q1 FY24 5.16 x 0.75 = 3.87, theirs 3.87).
+- 11-06: **ROE and ROA over average balances, through `opening`, $0.00.** Vedant: a return's own
+  time and period give its opening balance, so a binding gains `opening` (a balance as at the
+  quarter end before the period begins) rather than a previous time; `compares` keeps its meaning,
+  and the library gains `average`. Only a balance, filed or derived over balances at one time,
+  may be read at `opening`; an average of balances plans as `mixed`. Seeded for both scopes:
+  `AverageAssets`, `AverageEquity`, `ReturnOnAssets`, `ReturnOnEquity`, and banks'
+  `ShareholdersEquity` (capital plus reserves and surplus); total profit over total equity, not
+  annualised. Free on a copy of the live database, nine companies, both bases, FY26 and H1 FY26:
+  every figure computes (standalone ROE: HDFC Bank 14.14%, ICICI Bank 15.93%, ITC 29.44%,
+  Reliance 7.91%; Reliance consolidated H1 5.13%), Tata Motors' 68% consolidated and 300%
+  standalone from its demerger gain (FY26 profit Rs 87,569 cr standalone on equity of Rs 25-33k
+  cr). 14/14 guards mutation-checked (two after their tests were added); 2,731 tests.

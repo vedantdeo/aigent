@@ -1,6 +1,7 @@
 """Derived concepts, which the agent calls metrics: a named figure defined as a library formula
-over concepts, each input at the current period or the previous one, both named when it is
-planned, with no company and no period in the definition. Each holds within a scope, the XBRL
+over concepts, each input at the current period, the previous one (both named when it is
+planned) or, for a balance, the current period's opening, with no company and no period in the
+definition. Each holds within a scope, the XBRL
 taxonomy its companies file under, since banks name their figures differently. An input may itself
 be a derived concept of the same scope; a plan turns one into the exact facts to fetch for a
 company, periods and basis."""
@@ -17,7 +18,7 @@ from typing import Literal, cast, get_args
 
 from aigent.facts.cfg_facts import COMPANY_SCOPES
 from aigent.facts.formulas import FORMULAS
-from aigent.facts.lookup import Period, as_time, instants, span
+from aigent.facts.lookup import Period, as_time, instants, opening_of, span
 from aigent.facts.store import (
     XBRL_TIERS,
     Writer,
@@ -30,7 +31,7 @@ from aigent.facts.store import (
 
 SEEDED = Path(__file__).resolve().parents[3] / "evals" / "reference" / "derived-concepts.jsonl"
 
-At = Literal["current", "previous"]
+At = Literal["current", "previous", "opening"]
 ATS: tuple[At, ...] = get_args(At)
 When = tuple[int, Period]  # a financial year and a period of it
 _QUARTERS: tuple[Period, ...] = ("Q1", "Q2", "Q3", "Q4")
@@ -43,7 +44,7 @@ _FILLER = {"a", "an", "and", "as", "for", "in", "of", "over", "per", "the", "to"
 @dataclass(frozen=True)
 class Binding:
     """One input of a formula: a concept, filed or derived, at the current or the previous
-    period."""
+    period, or a balance at the opening of the current one."""
 
     concept: str
     at: At
@@ -97,6 +98,24 @@ def compares(concept: DerivedConcept) -> bool:
     return any(b.at == "previous" for b in concept.bindings.values())
 
 
+def reads_opening(concept: DerivedConcept, held: Mapping[str, DerivedConcept]) -> bool:
+    """Whether `concept` reads a balance at its period's opening, itself or through an input; it
+    then needs a period."""
+    for bound in concept.bindings.values():
+        inner = held.get(bound.concept)
+        if bound.at == "opening" or (inner is not None and reads_opening(inner, held)):
+            return True
+    return False
+
+
+def _one_time(concept: DerivedConcept, held: Mapping[str, DerivedConcept]) -> bool:
+    """Whether every input, through derived ones, is read at the current time."""
+    return all(
+        b.at == "current" and (b.concept not in held or _one_time(held[b.concept], held))
+        for b in concept.bindings.values()
+    )
+
+
 Kind = Literal["flow", "snapshot", "mixed"]
 
 
@@ -113,11 +132,12 @@ def kind(
     conn: sqlite3.Connection, concept: DerivedConcept, held: Mapping[str, DerivedConcept]
 ) -> Kind:
     """`snapshot` when every concept it reads is a balance as at a date, `flow` when none is,
-    else `mixed`; a concept is what most of its facts are."""
+    else `mixed`, as is one reading an opening balance, since it needs a period; a concept is
+    what most of its facts are."""
     read = sorted(leaves(concept, held))
     instant = instants(conn, read)
     if instant == set(read):
-        return "snapshot"
+        return "mixed" if reads_opening(concept, held) else "snapshot"
     return "mixed" if instant else "flow"
 
 
@@ -144,9 +164,10 @@ def plan(
 ) -> Step:
     """`concept` at `year` and `period`, each input a fact to fetch or, when it names a derived
     concept in `held`, that concept's own plan at the input's period; one of `balances` is fetched
-    as at the quarter its period ends. ValueError when `previous`
-    is missing for a concept that compares two periods, given for one that does not, or no
-    earlier period like the current one."""
+    as at the quarter its period ends, and one at `opening` as at the quarter before it begins.
+    ValueError when `previous` is missing for a concept that compares two periods, given for one
+    that does not, or no earlier period like the current one, or when a flow is read at
+    `opening`."""
     if not path:
         if compares(concept) and previous is None:
             raise ValueError(f"{concept.name} compares two periods; give the previous period too")
@@ -157,9 +178,16 @@ def plan(
     inputs: dict[str, Fetch | Step] = {}
     for variable in FORMULAS[concept.formula].variables:
         bound = concept.bindings[variable]
-        at_year, at_period = (year, period) if bound.at == "current" else cast(When, previous)
+        times: dict[At, When | None] = {
+            "current": (year, period),
+            "previous": previous,
+            "opening": opening_of(year, period),
+        }
+        at_year, at_period = cast(When, times[bound.at])
         where = f"{path}{variable}"
         inner = (held or {}).get(bound.concept)
+        if bound.at == "opening" and inner is None and bound.concept not in balances:
+            raise ValueError(f"{bound.concept} is not a balance; only a balance has an opening")
         if inner is not None and compares(inner):
             raise ValueError(f"{inner.name} compares two periods; it cannot be an input")
         inputs[variable] = (
@@ -233,10 +261,11 @@ def bindings_refusal(
     concepts: set[str],
     name: str = "",
     comparing: set[str] | None = None,
+    balances: set[str] | None = None,
 ) -> str | None:
     """Why `bindings` cannot fill `formula` with the scope's `concepts`, or None. A concept naming
     the one being defined is refused, so no definition can loop, and so is one of `comparing`,
-    which compares two periods itself."""
+    which compares two periods itself, and one at `opening` not among `balances`."""
     if formula not in FORMULAS:
         return f"no formula {formula!r}; one of {', '.join(FORMULAS)}"
     wanted = set(FORMULAS[formula].variables)
@@ -253,6 +282,15 @@ def bindings_refusal(
     twice = sorted(b.concept for b in bindings.values() if b.concept in (comparing or set()))
     if twice:
         return f"{', '.join(twice)} compares two periods itself; it cannot be an input"
+    flows = sorted(
+        b.concept
+        for b in bindings.values()
+        if b.at == "opening" and b.concept not in (balances or set())
+    )
+    if flows:
+        return (
+            f"{', '.join(flows)} is not a balance read at one time; only a balance has an opening"
+        )
     return None
 
 
@@ -272,6 +310,20 @@ def available(conn: sqlite3.Connection, scope: str) -> set[str]:
         here = {r[0] for r in filed} | {n for n, spec in held if covers(spec, one)}
         found = here if found is None else found & here
     return found or set()
+
+
+def opening_balances(conn: sqlite3.Connection, scope: str) -> set[str]:
+    """What an input may read at `opening` in `scope`: a filed balance, or a derived concept over
+    balances all read at the current time."""
+    names = available(conn, scope)
+    held = {m.name: m for one in scopes_of(scope) for m in load_derived_concepts(conn, one)}
+    filed = sorted(names - set(held))
+    found = instants(conn, filed) if filed else set()
+    for name in sorted(names & set(held)):
+        read = sorted(leaves(held[name], held))
+        if _one_time(held[name], held) and read and instants(conn, read) == set(read):
+            found.add(name)
+    return found
 
 
 def comparing(conn: sqlite3.Connection, scope: str) -> set[str]:
@@ -323,7 +375,12 @@ def seed(conn: sqlite3.Connection, writer: Writer, path: Path = SEEDED) -> list[
                     scope_refusal(scope)
                     or name_refusal(name)
                     or bindings_refusal(
-                        formula, bindings, available(conn, scope), name, comparing(conn, scope)
+                        formula,
+                        bindings,
+                        available(conn, scope),
+                        name,
+                        comparing(conn, scope),
+                        opening_balances(conn, scope),
                     )
                 )
                 if why:

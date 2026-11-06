@@ -32,6 +32,7 @@ from aigent.analyst.metric_tools import (  # noqa: E402
     chained,
     write_back,
 )
+from aigent.facts.derived_concepts import SEEDED, seed  # noqa: E402
 from aigent.facts.lookup import Lookup, concept_index  # noqa: E402
 from aigent.facts.store import Writer, connect, verify_derived_concept  # noqa: E402
 
@@ -939,3 +940,150 @@ def test_a_figure_not_per_share_is_never_restated(eps_db: sqlite3.Connection) ->
     filed = [{**f, "unit": "INR"} for f in (EPS_Q2_FY25, EPS_Q2_FY26)]
     planned, computed = _eps_computed(_tools(eps_db, *filed))
     assert "restated" not in planned and computed["value"] == pytest.approx(12.14 / 22.08 - 1)
+
+
+def _roe_fact(concept: str, end: str, value: float, start: str | None = None) -> dict[str, object]:
+    year = int(end[:4]) + (1 if end[5:7] > "03" else 0)
+    period = {
+        "2026-03-31": "year" if start else "Q4",
+        "2025-09-30": "H1" if start else "Q2",
+        "2025-03-31": "Q4",
+    }[end]
+    return {
+        "cite_as": f"FACT:ICICIBANK:{year}:standalone:{period}:{concept}",
+        "label": concept,
+        "value": value,
+        "unit": "INR",
+        "period": {"from": start, "to": end} if start else {"as_at": end},
+        "basis": "standalone",
+        "segment": None,
+        "tier": "xbrl-filed",
+        "source": "NSE XBRL results filing",
+    }
+
+
+ROE_FACTS = (
+    _roe_fact("ProfitLossForThePeriod", "2026-03-31", 30.0, "2025-04-01"),
+    _roe_fact("ProfitLossForThePeriod", "2025-09-30", 14.0, "2025-04-01"),
+    _roe_fact("Capital", "2026-03-31", 20.0),
+    _roe_fact("ReservesAndSurplus", "2026-03-31", 200.0),
+    _roe_fact("Capital", "2025-09-30", 20.0),
+    _roe_fact("ReservesAndSurplus", "2025-09-30", 190.0),
+    _roe_fact("Capital", "2025-03-31", 20.0),
+    _roe_fact("ReservesAndSurplus", "2025-03-31", 160.0),
+)
+ROE_ASK: dict[str, object] = {
+    **ASK,
+    **ONE,
+    "name": "ReturnOnEquity",
+    "year": "2026",
+    "quarter": "Q4",
+    "period": "12M",
+}
+
+
+@pytest.fixture
+def roe_db(tmp_path: Path) -> sqlite3.Connection:
+    """ICICI Bank's profit and equity at FY26's ends and H1's, and the shipped banking ROE."""
+    conn = connect(tmp_path / "facts.sqlite")
+    with conn:
+        for fact in ROE_FACTS:
+            period = cast(dict[str, str], fact["period"])
+            conn.execute(
+                """INSERT INTO facts (ticker, basis, concept, label, period_kind, period_start,
+                          period_end, value, unit, tier, written_by, written_at, run_id,
+                          verified_by, verified_at)
+                   VALUES ('ICICIBANK', 'standalone', ?, ?, ?, ?, ?, ?, 'INR', 'xbrl-filed',
+                           'w', 't', 'r', 'sec-6k-html:x', 't')""",
+                (
+                    fact["label"],
+                    fact["label"],
+                    "duration" if "from" in period else "instant",
+                    period.get("from"),
+                    period.get("to", period.get("as_at")),
+                    fact["value"],
+                ),
+            )
+    rows = [line for line in SEEDED.read_text().splitlines() if '"banking"' in line]
+    wanted = [
+        r
+        for r in rows
+        if any(n in r for n in ("ShareholdersEquity", "AverageEquity", "ReturnOnEquity"))
+    ]
+    path = tmp_path / "seeds.jsonl"
+    path.write_text("\n".join(wanted) + "\n")
+    assert seed(conn, Writer("seed", "t", "s"), path) == []
+    return conn
+
+
+@pytest.mark.parametrize(
+    ("quarter", "period", "closing", "value"),
+    [
+        pytest.param("Q4", "12M", "Q4", 30.0 / ((220.0 + 180.0) / 2), id="FY26"),
+        pytest.param("Q2", "6M", "Q2", 14.0 / ((210.0 + 180.0) / 2), id="H1 FY26, not annualised"),
+    ],
+)
+def test_return_on_equity_reads_profit_and_equity_at_the_period_s_end_and_opening(
+    roe_db: sqlite3.Connection, quarter: str, period: str, closing: str, value: float
+) -> None:
+    tools = _tools(roe_db, *ROE_FACTS)
+    planned = _call(tools, PLAN, {**ROE_ASK, "quarter": quarter, "period": period})
+    assert planned["kind"] == "mixed"
+    fetch = cast(list[dict[str, object]], planned["fetch"])
+    told = [cast(dict[str, object], f["fundamentals"]) for f in fetch]
+    assert [(t["concept"], t["year"], t["quarter"], t["period"]) for t in told] == [
+        ("ProfitLossForThePeriod", "2026", quarter, period),
+        ("Capital", "2026", closing, None),
+        ("ReservesAndSurplus", "2026", closing, None),
+        ("Capital", "2025", "Q4", None),
+        ("ReservesAndSurplus", "2025", "Q4", None),
+    ], told
+    inputs = [{"variable": f["variable"], "cite_as": f["cite_as"]} for f in fetch]
+    computed = _call(tools, COMPUTE, {"plan_id": planned["plan_id"], "inputs": inputs})
+    assert computed["value"] == pytest.approx(value), computed
+
+
+@pytest.mark.parametrize(
+    ("changed", "said"),
+    [
+        pytest.param({"period": None}, "reads a span", id="no period, so no opening"),
+        pytest.param(
+            {"previous_year": "2025", "previous_quarter": "Q4", "previous_period": "12M"},
+            "give no previous",
+            id="a previous time given",
+        ),
+    ],
+)
+def test_return_on_equity_is_planned_over_one_period_only(
+    roe_db: sqlite3.Connection, changed: dict[str, object], said: str
+) -> None:
+    content, is_error = _tools(roe_db, *ROE_FACTS)(PLAN, {**ROE_ASK, **changed})
+    assert is_error and said in content, content
+
+
+@pytest.mark.parametrize(
+    ("concept", "said"),
+    [
+        pytest.param("Capital", None, id="a balance at its opening"),
+        pytest.param("ShareholdersEquity", None, id="a derived balance at its opening"),
+        pytest.param("ProfitLossForThePeriod", "only a balance has an opening", id="a flow"),
+        pytest.param("ReturnOnEquity", "only a balance has an opening", id="a return"),
+    ],
+)
+def test_define_takes_an_opening_for_a_balance_only(
+    roe_db: sqlite3.Connection, concept: str, said: str | None
+) -> None:
+    content, is_error = _tools(roe_db)(
+        DEFINE,
+        {
+            "name": "AverageThing",
+            "scope": "banking",
+            "label": "an average over the period",
+            "formula": "average",
+            "bindings": [
+                {"variable": "first", "concept": concept, "at": "current"},
+                {"variable": "second", "concept": concept, "at": "opening"},
+            ],
+        },
+    )
+    assert is_error is (said is not None) and (said is None or said in content), content

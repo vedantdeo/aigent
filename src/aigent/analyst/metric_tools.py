@@ -38,6 +38,7 @@ from aigent.facts.derived_concepts import (
     leaves,
     load_derived_concepts,
     name_refusal,
+    opening_balances,
     plan,
 )
 from aigent.facts.formulas import FORMULAS
@@ -176,9 +177,12 @@ DEFINE_TOOL: ToolParam = {
         f"{_SCOPES}; several joined by commas, or * for all, when every scope named files the "
         "concepts it uses. Bind each formula variable to a concept those scopes file (the names "
         "fundamentals returns, such as InterestEarned) or to a metric already defined in it, at "
-        "'current' or 'previous': a metric reading 'previous' compares two periods, both named "
-        "when it is planned (growth: current at 'current', previous at 'previous'), and cannot be "
-        "an input itself. Name no period in it. It is "
+        "'current', 'previous' or 'opening'. A metric reading 'previous' compares two periods, "
+        "both named when it is planned (growth: current at 'current', previous at 'previous'), "
+        "and cannot be an input itself. 'opening' reads a balance as at the start of the current "
+        "period, the quarter end before it begins, so an average over the period needs no second "
+        "period (AverageEquity: average of Equity at 'current' and Equity at 'opening'); only a "
+        "balance has an opening. Name no period in it. It is "
         "saved, as a derived concept, unchecked for a person to review; then plan it. If no "
         "library formula fits even through other metrics, call propose_formula instead."
     ),
@@ -471,7 +475,12 @@ class MetricTools:
                 raise ValueError(f"{variable} is bound twice")
             bindings[variable] = Binding(str(row.get("concept", "")), cast(At, row.get("at")))
         if why := bindings_refusal(
-            formula, bindings, available(self.conn, scope), name, comparing(self.conn, scope)
+            formula,
+            bindings,
+            available(self.conn, scope),
+            name,
+            comparing(self.conn, scope),
+            opening_balances(self.conn, scope),
         ):
             raise ValueError(why)
         with self.conn:

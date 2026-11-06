@@ -20,6 +20,8 @@ from aigent.facts.formulas import FORMULAS
         pytest.param("ratio", {"numerator": 800.0, "denominator": 1000.0}, 0.8, id="ratio"),
         pytest.param("difference", {"minuend": 10.0, "subtrahend": 4.0}, 6.0, id="difference"),
         pytest.param("total", {"first": 10.0, "second": 4.0}, 14.0, id="total"),
+        pytest.param("average", {"first": 10.0, "second": 4.0}, 7.0, id="average"),
+        pytest.param("average", {"first": -10.0, "second": 4.0}, -3.0, id="an average across zero"),
     ],
 )
 def test_each_formula_computes(name: str, inputs: dict[str, float], expected: float) -> None:

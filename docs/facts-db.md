@@ -503,6 +503,20 @@ and every input is in a trusted tier**, with no per-fact check, and `derived-ai`
 - **Quoting** (Vedant, 11-01): trusted tiers only; unverified facts held back until the agent has
   its own figure, then shown through `compare_unverified` (value first, so it cannot peek).
 
+### Returns on average balances: `opening` (11-06)
+
+ROE and ROA divide a period's profit by the average of a balance at the period's end and at its
+start. **Vedant: the current time and period already give that start**, so a binding gains a third
+position beside `current` and `previous`: `opening`, a balance as at the quarter end before the
+period begins (FY26 and H1 FY26 open at 31 March 2025). The agent names one time and period, no
+previous; `compares` keeps its meaning, two periods compared; and formulas stay arithmetic, with
+`average(first, second)` added. Only a balance has an opening: a filed instant, or a derived
+concept over balances all read at one time (banks' `ShareholdersEquity`, capital plus reserves and
+surplus). An average of balances needs a period, so it plans as `mixed`. ROE and ROA are total
+profit over total equity or assets, since standalone filings carry no owners' share, and not
+annualised. Balance sheets are filed at Q2 and Q4 only, so FY and H1 compute and Q1 and Q3 fail at
+the fetch.
+
 ### Share events: per-share figures across a bonus (11-06)
 
 XBRL files tag only each filing's own quarter and year to date, so a per-share figure from before a

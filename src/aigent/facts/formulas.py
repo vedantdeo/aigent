@@ -45,9 +45,14 @@ def total(first: float, second: float) -> float:
     return first + second
 
 
+def average(first: float, second: float) -> float:
+    return (first + second) / 2
+
+
 FORMULAS: dict[str, Formula] = {
     f.name: f
     for f in (
+        Formula("average", ("first", "second"), "same", "(first + second) / 2", average),
         Formula(
             "difference",
             ("minuend", "subtrahend"),
