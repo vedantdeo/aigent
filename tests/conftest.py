@@ -783,6 +783,9 @@ class FakeOpenAI:
         return reply
 
 
+# EPS filed before a bonus, with the restated figure the company printed after it.
+RESTATED_EPS = Path(__file__).parents[1] / "evals" / "reference" / "restated-eps.jsonl"
+
 # A small facts database: ITC's FY25, both bases, and a model's read from another run.
 FACTS_WRITER = Writer("xbrl-loader@test", "2026-10-23T10:00:00+05:30", "build-test")
 FACTS_NOW = datetime(2026, 10, 23, 10, 0, 0)

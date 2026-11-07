@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import TypedDict, cast
 
 import pytest
 
@@ -21,10 +22,33 @@ from aigent.facts.share_events import (
 )
 from aigent.facts.store import Writer, connect
 
-from ..conftest import share_event, share_filing
+from ..conftest import RESTATED_EPS, share_event, share_filing
 
 WRITER = Writer("xbrl-loader@abc", "2026-11-06T10:00:00+05:30", "build-1")
 Event = tuple[str, str | None, tuple[int, int] | None, bool]  # kind, effective, ratio, checked
+HALF_PAISA = 0.005 + 1e-9  # filed EPS is itself rounded to the paisa
+
+
+class Printed(TypedDict):
+    """One row of `restated-eps.jsonl`: EPS as filed, and as the company printed it restated."""
+
+    ticker: str
+    basis: str
+    period_start: str
+    period_end: str
+    period: str
+    filed: float
+    filed_published: str
+    restated_published: str
+    printed: float
+    printed_in: str
+
+
+PRINTED = [
+    cast(Printed, json.loads(line))
+    for line in RESTATED_EPS.read_text(encoding="utf-8").splitlines()
+    if line
+]
 
 
 @pytest.fixture
@@ -484,6 +508,27 @@ def test_a_restatement_across_an_unchecked_event_is_refused(
     _events(conn, *events)
     with pytest.raises(ValueError, match=said):
         restatement(conn, "HDFCBANK", published)
+
+
+def test_the_printed_restated_eps_reference_holds_rows() -> None:
+    assert PRINTED, RESTATED_EPS
+
+
+@pytest.mark.parametrize("row", PRINTED, ids=lambda r: f"{r['ticker']} {r['basis']} {r['period']}")
+def test_restated_eps_matches_what_the_company_printed(
+    conn: sqlite3.Connection, row: Printed
+) -> None:
+    seed_share_events(conn, WRITER)
+    for event in load_share_events(conn):
+        verify_share_event(conn, event.id, "vedant", "2026-11-07T10:00:00+05:30")
+    published = {"filed": row["filed_published"], "printed": row["restated_published"]}
+    got = restatement(conn, row["ticker"], published)
+    multiplier = got["filed"].multiplier if "filed" in got else 1.0
+    ours = row["filed"] * multiplier
+    assert abs(ours - row["printed"]) <= HALF_PAISA, (
+        f"{row['filed']} x {multiplier} = {ours:.3f}, printed {row['printed']} "
+        f"in {row['printed_in']}"
+    )
 
 
 @pytest.mark.parametrize(

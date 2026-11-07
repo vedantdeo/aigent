@@ -2538,3 +2538,11 @@
   Reliance 7.91%; Reliance consolidated H1 5.13%), Tata Motors' 68% consolidated and 300%
   standalone from its demerger gain (FY26 profit Rs 87,569 cr standalone on equity of Rs 25-33k
   cr). 14/14 guards mutation-checked (two after their tests were added); 2,731 tests.
+- 11-07: **the restatement pinned against printed restated EPS, $0.00.** The 11 printed figures
+  checked on 11-06 are now `evals/reference/restated-eps.jsonl` (filed EPS, both filings' publish
+  dates, the printed figure and where it was printed), read by one parametrized test that seeds
+  and checks the shipped share events on a fresh database and restates through `restatement`,
+  within half a paisa. Vedant: the 8 year-to-date-less-quarter rows stay out, being our own
+  figures rather than printed ones. 5/5 mutants killed (Wipro's ratio, HDFC Bank's date, a unit
+  multiplier, an emptied file, rows out of order); 2,745 tests. Tests and data only, so the
+  knowledge graph is unchanged.
