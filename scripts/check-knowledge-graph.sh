@@ -50,8 +50,7 @@ elif [ "$mode" = "local" ]; then
 else
   headline="the knowledge graph is out of step with this change."
   label="Files the graph describes, changed here:"
-  fix="  Update $GRAPH in this branch — the rows this change moves, and the
-  \"verified against\" line at the top — and push again."
+  fix="  Update $GRAPH in this branch — the rows this change moves — and push again."
 fi
 
 cat >&2 <<EOF
@@ -62,7 +61,7 @@ cat >&2 <<EOF
 $(printf '%s\n' "$watched" | sed 's/^/    /' | head -12)
 
   $GRAPH is unchanged. Update the rows this change moves — nodes, edges,
-  contracts, invariants, seams — and bump the "verified against" line at the top.
+  contracts, invariants, seams.
 
 $fix
 

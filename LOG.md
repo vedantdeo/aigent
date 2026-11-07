@@ -2546,3 +2546,25 @@
   figures rather than printed ones. 5/5 mutants killed (Wipro's ratio, HDFC Bank's date, a unit
   multiplier, an emptied file, rows out of order); 2,745 tests. Tests and data only, so the
   knowledge graph is unchanged.
+- 11-07: **the cross-check widened to the seven ind-as companies: their documents, $0.00.** Fetched
+  from NSE: 84 quarterly results FY24-FY26 (the first results or board-meeting announcement after
+  each quarter end whose PDF prints EPS) and 21 annual reports. **76 of the 84 results are scans
+  with an OCR text layer** ("~asic (in~) 2.50", "Earnlngs"); the companies' sites hold the same
+  scans or none (Wipro's text copy is IFRS), NSE's integrated filings attach scans too, and BSE
+  refuses automated clients. Every annual report has text. Vedant's option: annual reports for a
+  year's figures and 31 March balances, OCR'd results for the rest, one tier (`xbrl-filed`), the
+  stamp `nse-pdf-ocr` telling them apart; aim: OCR read as well as a text PDF, measured on the
+  facts both copies print. Built: `documents.refusal` (an OCR'd scan read for `VERIFY_OCR_TICKERS`,
+  a page with no text never), `crosscheck.documents_for` (annual report first, best outcome kept),
+  all nine companies in `VERIFY_TICKERS`, Invariant 32. Docling with OCR off reads the OCR layer
+  (Wipro Sep-2025: 32 tables, 18 sheets). Three results stay unread, too many image-only pages
+  (Tata Motors Jun-2023, Bajaj Auto Jun-2024, Reliance Jun-2025). Five annual reports in the
+  retrieval corpus (ITC FY25, Reliance and Tata Motors FY24-FY25) are its copies, the same
+  statements without the AGM notice, since the parse cache keeps one entry per name: the NSE
+  edition of Reliance FY25 had evicted the corpus one's (re-parsed, 9 min). 13/13 mutants killed;
+  2,774 tests. Parsing runs in the background (about 2.4 s a page, 4-10 s at low priority).
+- 11-07: **the knowledge graph's "verified against" line dropped, $0.00.** Vedant: the graph is
+  for agents, nothing else. The line had grown into a changelog that told an agent nothing about
+  the repo and had stopped at 11-01 while six PRs went in; the hook and CI already refuse a change to
+  `src/` without the graph. §0 now says that in one sentence, and `CLAUDE.md`, the hook's messages
+  and the graph's Maintenance no longer ask for a bump.

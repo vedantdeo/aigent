@@ -21,14 +21,18 @@ from aigent.facts.crosscheck import (
     column_periods,
     crosscheck,
     document_scale,
+    documents_for,
     facts_to_check,
     label_share,
     number,
     sheets,
 )
+from aigent.facts.documents import Entry
+from aigent.facts.store import FilingRow, sync_xbrl_facts, upsert_filing
+from aigent.facts.xbrl import Fact as XbrlFact
 from aigent.retrieval.chunk import Document, Table
 
-from .conftest import CROSSCHECK_Q1, checked_row
+from .conftest import CROSSCHECK_Q1, CROSSCHECK_WRITER, checked_row
 
 Q1 = CROSSCHECK_Q1
 NOW = datetime(2026, 11, 1, 9, 0)
@@ -316,7 +320,11 @@ def test_a_fact_records_where_it_agreed() -> None:
     assert (checked.page, checked.row_label) == (1, "Interest earned")
 
 
-MANIFEST = {"results/ICICIBANK-2024-06-30.pdf": {}, "results/HDFCBANK-2024-06-30.pdf": {}}
+FLAGGED: Entry = {"format": "pdf", "pages": 2, "text_less_pages": [], "ocr_pages": []}
+MANIFEST: dict[str, Entry] = {
+    "results/ICICIBANK-2024-06-30.pdf": FLAGGED,
+    "results/HDFCBANK-2024-06-30.pdf": FLAGGED,
+}
 
 
 def test_facts_to_check_are_the_companies_named_with_a_document(
@@ -335,6 +343,142 @@ def test_facts_to_check_skip_a_fact_not_from_xbrl(crosscheck_db: sqlite3.Connect
     crosscheck_db.execute("UPDATE facts SET tier = 'filed-cell-ai' WHERE concept = 'OtherIncome'")
     facts = facts_to_check(crosscheck_db, ("ICICIBANK",), MANIFEST)
     assert "OtherIncome" not in {f.concept for f in facts}
+
+
+@pytest.mark.parametrize(
+    ("period", "filed", "stems"),
+    [
+        pytest.param(Q1, date(2024, 6, 30), ("ICICIBANK-2024-06-30",), id="a quarter"),
+        pytest.param(
+            (date(2023, 4, 1), date(2024, 3, 31)),
+            date(2024, 3, 31),
+            ("ICICIBANK-FY24", "ICICIBANK-2024-03-31"),
+            id="a year's figure tries its annual report first",
+        ),
+        pytest.param(
+            (None, date(2025, 3, 31)),
+            date(2025, 3, 31),
+            ("ICICIBANK-FY25", "ICICIBANK-2025-03-31"),
+            id="a 31 March balance",
+        ),
+        pytest.param(
+            (date(2025, 1, 1), date(2025, 3, 31)),
+            date(2025, 3, 31),
+            ("ICICIBANK-2025-03-31",),
+            id="the fourth quarter alone is not in the annual report",
+        ),
+        pytest.param(
+            (None, date(2024, 3, 31)),
+            date(2025, 3, 31),
+            ("ICICIBANK-2025-03-31",),
+            id="a balance at another day than the filing's",
+        ),
+        pytest.param(
+            (None, date(2024, 9, 30)),
+            date(2024, 9, 30),
+            ("ICICIBANK-2024-09-30",),
+            id="a half-year balance",
+        ),
+        pytest.param(
+            (date(2024, 4, 1), date(2024, 12, 31)),
+            date(2024, 12, 31),
+            ("ICICIBANK-2024-12-31",),
+            id="nine months",
+        ),
+    ],
+)
+def test_documents_for(
+    period: tuple[date | None, date], filed: date, stems: tuple[str, ...]
+) -> None:
+    assert documents_for(_fact(period=period), filed) == stems
+
+
+_OCR_SCAN: Entry = {
+    "format": "pdf",
+    "pages": 10,
+    "text_less_pages": [],
+    "ocr_pages": list(range(2, 11)),
+}
+_IMAGE_SCAN: Entry = {
+    "format": "pdf",
+    "pages": 10,
+    "text_less_pages": list(range(2, 11)),
+    "ocr_pages": [],
+}
+
+
+@pytest.mark.parametrize(
+    ("entry", "ocr_tickers", "checked"),
+    [
+        pytest.param(FLAGGED, (), True, id="a text pdf"),
+        pytest.param({}, (), False, id="an entry not flagged"),
+        pytest.param(_OCR_SCAN, ("ICICIBANK",), True, id="an ocr'd scan of a company read so"),
+        pytest.param(_OCR_SCAN, ("HDFCBANK",), False, id="an ocr'd scan of another company"),
+        pytest.param(_IMAGE_SCAN, ("ICICIBANK",), False, id="a scan with no text"),
+    ],
+)
+def test_facts_to_check_leave_out_a_document_that_cannot_be_read(
+    crosscheck_db: sqlite3.Connection, entry: Entry, ocr_tickers: tuple[str, ...], checked: bool
+) -> None:
+    manifest = {"results/ICICIBANK-2024-06-30.pdf": entry}
+    facts = facts_to_check(crosscheck_db, ("ICICIBANK",), manifest, ocr_tickers)
+    assert bool(facts) is checked, facts
+
+
+_YEAR = (date(2023, 4, 1), date(2024, 3, 31))
+_ANNUAL, _MARCH = "annual/ICICIBANK-FY24.pdf", "results/ICICIBANK-2024-03-31.pdf"
+
+
+def _year_column(printed: str) -> Document:
+    rows = (*_HEADER, ("1", "Interest earned", "1.00", "1.00", "1.00", printed))
+    return _document("STANDALONE FINANCIAL RESULTS (₹ in crore)", rows)
+
+
+_AGREES, _DIFFERS = _year_column("142,890.94"), _year_column("142,000.00")
+_SILENT = _document("STANDALONE FINANCIAL RESULTS (₹ in crore)")
+
+
+@pytest.mark.parametrize(
+    ("annual", "results", "outcome", "document", "loaded"),
+    [
+        pytest.param(_AGREES, _DIFFERS, "agree", _ANNUAL, [_ANNUAL], id="the annual report agrees"),
+        pytest.param(
+            _DIFFERS, _AGREES, "agree", _MARCH, [_ANNUAL, _MARCH], id="the results agree after"
+        ),
+        pytest.param(
+            _SILENT, _DIFFERS, "differ", _MARCH, [_ANNUAL, _MARCH], id="a difference beats silence"
+        ),
+        pytest.param(
+            _DIFFERS, _DIFFERS, "differ", _ANNUAL, [_ANNUAL, _MARCH], id="a tie keeps the first"
+        ),
+    ],
+)
+def test_crosscheck_keeps_each_facts_best_outcome_across_its_documents(
+    crosscheck_db: sqlite3.Connection,
+    tmp_path: Path,
+    annual: Document,
+    results: Document,
+    outcome: str,
+    document: str,
+    loaded: list[str],
+) -> None:
+    fid = upsert_filing(
+        crosscheck_db,
+        FilingRow("ICICIBANK", 2024, date(2024, 3, 31), "standalone", "xbrl", "march", "s", "t"),
+    )
+    year = XbrlFact("InterestEarned", "duration", *_YEAR, None, 1428909400000.0, "INR", -5)
+    sync_xbrl_facts(crosscheck_db, fid, "ICICIBANK", "standalone", [year], CROSSCHECK_WRITER)
+    manifest = {_ANNUAL: FLAGGED, _MARCH: FLAGGED}
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    read: list[str] = []
+
+    def load(name: str, verify_dir: Path) -> Document:
+        read.append(name)
+        return annual if name == _ANNUAL else results
+
+    checked = crosscheck(crosscheck_db, ("ICICIBANK",), tmp_path, load)
+    assert [(c.outcome, c.document) for c in checked] == [(outcome, document)], checked
+    assert read == loaded
 
 
 def test_crosscheck_reads_each_document_once(

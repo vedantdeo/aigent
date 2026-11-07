@@ -1,6 +1,7 @@
-"""The XBRL cross-check: each fact of a cross-checked company against what its results document
-prints, matched by value at the table's scale, in a column stating the fact's period, in a table for
-its basis. An agreement makes the fact `xbrl-filed`; anything else stays `xbrl-ai` for a person."""
+"""The XBRL cross-check: each fact of a cross-checked company against what its annual report or
+results document prints, matched by value at the table's scale, in a column stating the fact's
+period, in a table for its basis. An agreement makes the fact `xbrl-filed`; anything else stays
+`xbrl-ai` for a person."""
 
 from __future__ import annotations
 
@@ -20,12 +21,20 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_LABEL_MIN,
     CROSSCHECK_SCALES,
     CROSSCHECK_SYNONYMS,
+    VERIFY_OCR_TICKERS,
 )
-from aigent.facts.documents import VERIFY_DIR, load_verify_document, read_manifest
+from aigent.facts.documents import (
+    VERIFY_DIR,
+    Entry,
+    load_verify_document,
+    read_manifest,
+    refusal,
+)
 from aigent.facts.store import XBRL_TIERS
 from aigent.retrieval.chunk import Document
 
 Outcome = Literal["agree", "differ", "unmatched"]
+_RANK: dict[Outcome, int] = {"unmatched": 0, "differ": 1, "agree": 2}
 
 _ZERO = {"..", "-", "–", "—", "nil", "0"}
 _MONTHS = {
@@ -399,15 +408,33 @@ def _with(base: Checked, outcome: Outcome, sheet: Sheet, cell: Cell) -> Checked:
     )
 
 
+def documents_for(fact: Fact, filed: date) -> tuple[str, ...]:
+    """The stems of the documents a fact is printed in, in the order they are tried: its year's
+    annual report for a year's figure or a 31 March balance in a March filing, then its quarter's
+    results."""
+    results = f"{fact.ticker}-{filed.isoformat()}"
+    year_end = filed.month == 3 and fact.period_end == filed
+    if year_end and months_of(fact.period_start, fact.period_end) in (0, 12):
+        return (f"{fact.ticker}-FY{filed.year % 100:02d}", results)
+    return (results,)
+
+
 def facts_to_check(
-    conn: sqlite3.Connection, tickers: Sequence[str], manifest: Mapping[str, object]
+    conn: sqlite3.Connection,
+    tickers: Sequence[str],
+    manifest: Mapping[str, Entry],
+    ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS,
 ) -> list[Fact]:
-    """Every XBRL fact of `tickers` whose quarter has a results document in the manifest, with its
-    standard label and aliases."""
+    """Every XBRL fact of `tickers` once per readable document it is printed in (`documents_for`,
+    in that order), with its standard label and aliases; a fact with none is left out."""
     aliases: dict[str, list[str]] = {}
     for concept, label in conn.execute("SELECT concept, label FROM concept_labels"):
         aliases.setdefault(concept, []).append(label)
-    documents = {Path(name).stem: name for name in manifest if name.startswith("results/")}
+    documents = {
+        Path(name).stem: name
+        for name, entry in manifest.items()
+        if name.startswith(("results/", "annual/")) and refusal(name, entry, ocr_tickers) is None
+    }
     marks = ", ".join("?" for _ in tickers)
     tiers = ", ".join("?" for _ in XBRL_TIERS)
     rows = conn.execute(
@@ -434,26 +461,24 @@ def facts_to_check(
         tier,
         filed,
     ) in rows:
-        document = documents.get(f"{ticker}-{filed}")
-        if document is None:
-            continue
-        out.append(
-            Fact(
-                fid,
-                ticker,
-                basis,
-                concept,
-                (label, *aliases.get(concept, [])),
-                segment,
-                None if start is None else date.fromisoformat(start),
-                date.fromisoformat(end),
-                float(value),
-                unit,
-                dec,
-                tier,
-                document,
-            )
+        fact = Fact(
+            fid,
+            ticker,
+            basis,
+            concept,
+            (label, *aliases.get(concept, [])),
+            segment,
+            None if start is None else date.fromisoformat(start),
+            date.fromisoformat(end),
+            float(value),
+            unit,
+            dec,
+            tier,
+            "",
         )
+        for stem in documents_for(fact, date.fromisoformat(filed)):
+            if stem in documents:
+                out.append(replace(fact, document=documents[stem]))
     return out
 
 
@@ -463,16 +488,21 @@ def crosscheck(
     verify_dir: Path = VERIFY_DIR,
     load: Callable[[str, Path], Document] = load_verify_document,
 ) -> list[Checked]:
-    """Every fact of `tickers` checked against its quarter's results document, each document read
-    once."""
+    """Every fact of `tickers` checked against the documents it is printed in, in order until one
+    agrees, keeping its best outcome; each document read once."""
     facts = facts_to_check(conn, tickers, read_manifest(verify_dir))
     read: dict[str, list[Sheet]] = {}
-    out: list[Checked] = []
+    best: dict[int, Checked] = {}
     for fact in facts:
+        held = best.get(fact.fact_id)
+        if held is not None and held.outcome == "agree":
+            continue
         if fact.document not in read:
             read[fact.document] = sheets(load(fact.document, verify_dir))
-        out.append(check_fact(fact, read[fact.document]))
-    return out
+        checked = check_fact(fact, read[fact.document])
+        if held is None or _RANK[checked.outcome] > _RANK[held.outcome]:
+            best[fact.fact_id] = checked
+    return list(best.values())
 
 
 def apply(

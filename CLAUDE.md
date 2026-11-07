@@ -31,8 +31,8 @@ not drift; the hand-written fields can.
 A commit that changes what the graph records — a module, symbol or edge; a contract, price, default
 or ceiling; an invariant or a consumed seam — updates `docs/knowledge-graph.md` in the *same commit*.
 Run `uv run python scripts/graph_doc.py --write` to refresh its generated parts (contents, `At:`
-lines, import edges), fix what it reports, update the hand-written fields the change moves in their
-fixed order, and bump the "verified against" line in its §0.
+lines, import edges), fix what it reports, and update the hand-written fields the change moves in
+their fixed order.
 
 **Why:** a graph that lags the code is worse than none. The next session trusts a stale anchor or a
 retired invariant and works from a map of a repo that no longer exists.
