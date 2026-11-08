@@ -196,13 +196,25 @@ def _html_reader(path: Path, doc_id: str) -> Document:
 @pytest.mark.parametrize(
     ("name", "ocr_tickers", "doc_id"),
     [
-        pytest.param("results/TEXT-2025-03-31.pdf", (), "pdf:TEXT-2025-03-31", id="a text pdf"),
-        pytest.param("results/PHOTO-FY25.pdf", (), "pdf:PHOTO-FY25", id="a few photo pages pass"),
-        pytest.param("results/WEB-2023-06-30.htm", (), "html:WEB-2023-06-30", id="an html filing"),
+        pytest.param(
+            "results/TEXT-2025-03-31.pdf", (), "pdf:verify-results-TEXT-2025-03-31", id="a text pdf"
+        ),
+        pytest.param(
+            "results/PHOTO-FY25.pdf",
+            (),
+            "pdf:verify-results-PHOTO-FY25",
+            id="a few photo pages pass",
+        ),
+        pytest.param(
+            "results/WEB-2023-06-30.htm",
+            (),
+            "html:verify-results-WEB-2023-06-30",
+            id="an html filing",
+        ),
         pytest.param(
             "results/OCR-2025-03-31.pdf",
             ("OCR",),
-            "pdf:OCR-2025-03-31",
+            "pdf:verify-results-OCR-2025-03-31",
             id="a scan with OCR text, of a company read so",
         ),
     ],
@@ -277,6 +289,18 @@ def test_is_ocr_scan(pages: int, text_less: list[int], ocr: list[int], ocr_scan:
 )
 def test_ticker_of(name: str, ticker: str) -> None:
     assert documents.ticker_of(name) == ticker
+
+
+@pytest.mark.parametrize(
+    ("name", "doc_id"),
+    [
+        ("annual/ITC-FY25.pdf", "verify-annual-ITC-FY25"),
+        ("results/BAJAJ-AUTO-2025-09-30.pdf", "verify-results-BAJAJ-AUTO-2025-09-30"),
+        ("results/HDFCBANK-2023-06-30.htm", "verify-results-HDFCBANK-2023-06-30"),
+    ],
+)
+def test_doc_id_of_keeps_a_verify_document_apart_from_the_corpus(name: str, doc_id: str) -> None:
+    assert documents.doc_id_of(name) == doc_id
 
 
 def test_ticker_of_refuses_a_name_with_no_period() -> None:

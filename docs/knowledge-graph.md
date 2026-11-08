@@ -1045,10 +1045,10 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.documents`
 - **At:** `src/aigent/facts/documents.py`
-- **Is:** module. **The filed documents the XBRL cross-check reads against**, under `corpus/verify/` (outside both the retrieval corpus and `corpus/training/`): `results/<TICKER>-<quarter end>.pdf|.htm` and `annual/<TICKER>-FY<yy>.pdf`, listed in a sorted `manifest.json` with URL, SHA-256, fetch time, `source` (`nse` or `sec-6k`), and the fields `flag_documents` sets: `format` (`pdf`/`html`), `pages`, `text_less_pages` and `ocr_pages`. `origin(entry)` is `<source>-<format>`, the stamp's prefix, with `-ocr` for a scan read through its OCR text (`nse-pdf-ocr`). `ticker_of(name)` is the company a manifest path names.
+- **Is:** module. **The filed documents the XBRL cross-check reads against**, under `corpus/verify/` (outside both the retrieval corpus and `corpus/training/`): `results/<TICKER>-<quarter end>.pdf|.htm` and `annual/<TICKER>-FY<yy>.pdf`, listed in a sorted `manifest.json` with URL, SHA-256, fetch time, `source` (`nse` or `sec-6k`), and the fields `flag_documents` sets: `format` (`pdf`/`html`), `pages`, `text_less_pages` and `ocr_pages`. `origin(entry)` is `<source>-<format>`, the stamp's prefix, with `-ocr` for a scan read through its OCR text (`nse-pdf-ocr`). `ticker_of(name)` is the company a manifest path names. `doc_id_of(name)` is its name in the parse cache, `verify-<folder>-<stem>` (`annual/ITC-FY25.pdf` is `verify-annual-ITC-FY25`), so a corpus or training copy of the same report never evicts it; `load_verify_document` reads by it.
 - **Contract:** `text_less_pages` counts a page text-less below `VERIFY_MIN_TEXT_CHARS` characters in its text layer; `ocr_pages` are the pages whose text objects are mostly drawn invisible (render mode 3), a scan with OCR text behind it; `is_scan` is more than `VERIFY_MAX_TEXT_LESS_SHARE` of a PDF's pages text-less or OCR'd, a page both counted once. `load_verify_document(name)` reads an entry by its recorded format: a PDF through `retrieval.corpus.load_pdf_cached` (the corpus's parse and cache, OCR off), an HTML filing through Docling's HTML reader and `html_elements` (one page, body items in reading order, tables by `table_rows`, a lone `%` cell joined to the figure before it by `percent_joined`, and a table holding several statements split by `statement_starts` before the text rows leading to each row of two or more dates that follows figures, each part its own element with sections re-based and Docling's header count on the first only), not cached. `is_ocr_scan` is a scan that is within `VERIFY_MAX_TEXT_LESS_SHARE` on its text-less pages alone, its pages OCR'd. **`refusal(name, entry, ocr_tickers)`** says why an entry cannot be read: not flagged (`ocr_pages` included), or a scan, unless it `is_ocr_scan` and its company is in `VERIFY_OCR_TICKERS`. `load_verify_document` raises KeyError for a name not in the manifest and ValueError for any refusal; `facts.crosscheck` leaves refused documents out.
 - **Gotchas:** HTML has no pages, so `retrieval.corpus.elements_of`, which places every item by its PDF page, drops all of it; hence `html_elements`. Annual reports carry a few text-less pages (covers, photos, the AGM notice), never in the statements: at most 16 of 585. SEC filers lay several statements in one `<table>`, and HDFC Bank's put `%` in a cell of its own.
-- **History:** 2026-10-31: created. 9 of HDFC Bank's 12 NSE results PDFs FY24-FY26 and 16 pages of ICICI Bank's Sep-2024 are scans; OCR was tried (RapidOCR, read cleanly) and dropped for the same filings' text on SEC EDGAR, filed as 6-K exhibits for the banks' ADRs. 2026-11-02: every ICICI Bank results PDF and three of HDFC Bank's turned out to be scans with an OCR text layer, which the text-less test missed; `ocr_pages` added and those 14 replaced by their SEC copies, checked figure by figure against the PDFs. 2026-11-07: the seven ind-as companies' 84 quarterly results fetched from NSE (76 are scans with OCR text behind, as their sites and NSE's integrated filings also hold; BSE refuses automated clients) and their 21 annual reports, all with text; OCR'd scans read for `VERIFY_OCR_TICKERS` (Vedant: one tier with text PDFs, told apart by the stamp). Five annual reports also in the retrieval corpus (ITC FY25, Reliance and Tata Motors FY24-FY25) are its copies, `copied_from`, since the parse cache holds one entry per name and two editions evict each other.
+- **History:** 2026-10-31: created. 9 of HDFC Bank's 12 NSE results PDFs FY24-FY26 and 16 pages of ICICI Bank's Sep-2024 are scans; OCR was tried (RapidOCR, read cleanly) and dropped for the same filings' text on SEC EDGAR, filed as 6-K exhibits for the banks' ADRs. 2026-11-02: every ICICI Bank results PDF and three of HDFC Bank's turned out to be scans with an OCR text layer, which the text-less test missed; `ocr_pages` added and those 14 replaced by their SEC copies, checked figure by figure against the PDFs. 2026-11-07: the seven ind-as companies' 84 quarterly results fetched from NSE (76 are scans with OCR text behind, as their sites and NSE's integrated filings also hold; BSE refuses automated clients) and their 21 annual reports, all with text; OCR'd scans read for `VERIFY_OCR_TICKERS` (Vedant: one tier with text PDFs, told apart by the stamp). Five annual reports also in the retrieval corpus (ITC FY25, Reliance and Tata Motors FY24-FY25) are its copies, `copied_from`, since the parse cache holds one entry per name and two editions evict each other. 2026-11-08: verify documents cached under `doc_id_of` names (200 entries moved, 16 copied where an identical corpus or training PDF keeps the old name), after seven training reports turned out to clash; Bajaj Auto FY24 (130 photos up to 88 MP, 18.7 GB) parsed on Kaggle at `main`, its fingerprints matching.
 - **Decided in:** LOG.md 10-31 · `docs/facts-db.md`
 
 #### `facts.crosscheck`
@@ -1554,10 +1554,10 @@ Values, plus the one function that turns them into a client. No arithmetic lives
 
 #### `config.DOCLING_OCR`
 - **At:** `src/aigent/config.py:246`
-- **Is:** constants `DOCLING_OCR` / `DOCLING_DEVICE`, and `PDF_RUPEE_KEYS`. Docling's settings: OCR off, the reports carrying a text layer; the device `auto`, Docling's pick of what the machine has, MPS here and CPU in CI.
-- **Contract:** Both feed the cache fingerprint, with Docling's version. **`PDF_RUPEE_KEYS`**: the fonts that draw ₹ on a keyboard key, by family, and the keys each draws it on — `` ` `` for `Rupee`, `RupeeForadian` and `IndianRupee`, `CDEHIJKL` for `ITFRupee` — every one seen before an amount across the 15 reports, and also fingerprinted.
+- **Is:** constants `DOCLING_OCR` / `DOCLING_DEVICE` / `DOCLING_QUEUE_MAX_SIZE`, and `PDF_RUPEE_KEYS`. Docling's settings: OCR off, the reports carrying a text layer; the device `auto`, Docling's pick of what the machine has, MPS here and CPU in CI.
+- **Contract:** `DOCLING_OCR` and `DOCLING_DEVICE` feed the cache fingerprint, with Docling's version. **`DOCLING_QUEUE_MAX_SIZE`** (8) does not: it bounds the pages held between Docling's pipeline stages, memory only, set by `corpus._queue_capped` before each parse. **`PDF_RUPEE_KEYS`**: the fonts that draw ₹ on a keyboard key, by family, and the keys each draws it on — `` ` `` for `Rupee`, `RupeeForadian` and `IndianRupee`, `CDEHIJKL` for `ITFRupee` — every one seen before an amount across the 15 reports, and also fingerprinted.
 - **Gotchas:** With OCR on, 17 s a page against 0.9 to 1.3 s off. Foradian is a full font: TATAMOTORS-FY25 sets chart labels and digits in it, ITC-FY24 its nil dashes, HDFCBANK-FY24 a printed "R 23,768", so nothing beyond the listed keys maps.
-- **History:** 2026-10-20: created; **`PDF_RUPEE_KEYS`** (2026-10-20).
+- **History:** 2026-10-20: created; **`PDF_RUPEE_KEYS`** (2026-10-20); `DOCLING_QUEUE_MAX_SIZE` (2026-11-08: Docling's 100 pages in flight per stage grew one process to 17 GB on a 16 GB Mac and froze it; 8 held Power Grid FY25 at 9 GB).
 - **Decided in:** LOG.md 10-20
 
 #### `llm.adapters.anthropic.has_credentials`
@@ -2188,7 +2188,7 @@ often as the question is worth asking.
 - **Is:** function. Hits → the ranked list of ids the retrieval graders read.
 
 #### `retrieval.corpus.read_pages`
-- **At:** `src/aigent/retrieval/corpus.py:401`
+- **At:** `src/aigent/retrieval/corpus.py:402`
 - **Is:** function. Raw extracted text, one string per page: each page's `Element`s joined, a table one row a line. `read_elements` is the pages as elements.
 - **Contract:** `convert` is **the only function that touches the parser**, handed the PDF through `rupees_decoded`: each font `config.PDF_RUPEE_KEYS` names gets a ToUnicode reading its keys as ₹ — an existing map edited entry by entry (`_rupee_entries`, only entries already reading as a key), a WinAnsi font without one given a map built from its encoding and `/Differences` (`_simple_font_map`), any other encoding untouched — in memory, the path passed on unchanged when no font needed it. **Every font a page's resources reach, form XObjects included** (`_fonts_of`). **Then `captions_restored`**: with `generate_parsed_pages` on, Docling's own printed lines are kept, and each line inside a table's box, in none of its cells and level with or above its first row (`_stray_caption`), becomes a caption *of that table* (`table.captions`), not loose text; one already its caption is not added again. `elements_of` prints a table's captions (Docling's own, such as "Table 6: Standalone Profit and Loss Statement", and the restored) as its first rows, counted as header rows, and its footnotes as its last rows (`_notes`; `_captions` is the parse step's own copy, kept apart so rendering can change without re-parsing), so they ride in its chunk, repeat on every split and are read for its scale. Then a `DocumentConverter` built once (`_converter`, OCR `DOCLING_OCR` off, device `DOCLING_DEVICE`); `elements_of` turns a `DoclingDocument` into elements, text, heading (`SectionHeaderItem`, `TitleItem`) or table, text drawn inside a picture included (`traverse_pictures`: ITC's "6.50 per share (Interim)" dividend sits in one), a page with nothing on it kept as an empty page (invariant 19); `table_rows` gives a cell spanning columns once, in its first; `header_rows` counts the leading rows Docling marked as column headers.
 - **Invariants:** Tests run on a fake converter over `DoclingDocument`s built in code (`tests/retrieval/conftest.py`), so CI never downloads Docling's models.
@@ -2197,17 +2197,17 @@ often as the question is worth asking.
 - **Decided in:** LOG.md 10-20
 
 #### `retrieval.corpus.normalise`
-- **At:** `src/aigent/retrieval/corpus.py:406`
+- **At:** `src/aigent/retrieval/corpus.py:407`
 - **Is:** function. One page, cleaned of what extraction did to it and nothing else: NFKC (ligatures, thin and non-breaking spaces, `CO₂`→`CO2`), tabs to spaces, runs of spaces collapsed, a word hyphenated across a line break rejoined, blank-line runs collapsed.
 - **Invariants:** **It deliberately does not fold curly quotes or dashes** — those are what the document says, not an artefact, so they stay in the citation and `_squeeze` handles them at match time.
 
 #### `retrieval.corpus._skeleton`
-- **At:** `src/aigent/retrieval/corpus.py:420`
+- **At:** `src/aigent/retrieval/corpus.py:421`
 - **Is:** function. A line with its digits masked.
 - **Contract:** Small, and the reason the furniture rule works at all: `\d+` collapses a run to one `#`, so two printings of one header match and page 9 matches page 147.
 
 #### `retrieval.corpus.strip_furniture`
-- **At:** `src/aigent/retrieval/corpus.py:455`
+- **At:** `src/aigent/retrieval/corpus.py:456`
 - **Is:** function. Running headers, footers and page numbers, by repetition among **edge lines with digits masked**.
 - **Contract:** Candidacy is decided at the edges — `(Rs. in crore)` repeats on 86 ITC pages mid-table and is content — but a skeleton that qualifies is then removed wherever it appears, since extraction sometimes drops a footer mid-stream. Counted over a **set per page**, so a header printed twice on one page is one page, not two. A page that was nothing but furniture stays, empty: dropping it would renumber every citation after it. **`furniture` finds the lines and `assembled` strips them from text elements only.**
 - **Gotchas:** Known cost — Reliance's `CONSOLIDATED FINANCIAL STATEMENTS` runs on 52 pages and goes with them, so `by_heading` loses that section label. With Docling a statement page opens with its heading and its table's scale row, `(H In Crore)`, the very edge lines that repeat on a hundred Bajaj pages, so stripping them from tables would delete every scale.
@@ -2215,13 +2215,13 @@ often as the question is worth asking.
 - **Decided in:** LOG.md 10-20
 
 #### `retrieval.corpus.to_document`
-- **At:** `src/aigent/retrieval/corpus.py:468`
+- **At:** `src/aigent/retrieval/corpus.py:469`
 - **Is:** function. Joins pages with `PAGE_SEPARATOR`, recording the offset each starts at.
 - **Invariants:** `page_starts` must be built **while joining the normalised pages**.
 - **Gotchas:** Computed from the raw ones it is wrong by however much normalisation removed, which shows up as citations drifting a page late in long documents and as nothing at all in a short test.
 
 #### `retrieval.corpus.load_pdf`
-- **At:** `src/aigent/retrieval/corpus.py:550`
+- **At:** `src/aigent/retrieval/corpus.py:551`
 - **Is:** function. `read_elements`, then `assembled`: normalise each element, strip furniture from text, join, record the spans.
 - **Gotchas:** `doc_id` defaults to the filename stem, so renaming a file renames every chunk in it.
 
@@ -2254,21 +2254,21 @@ often as the question is worth asking.
 - **Gotchas:** **Unused by the shipped dataset**, which was authored by hand (see the dataset node); kept as the reproducible regeneration route and covered by its own tests.
 
 #### `retrieval.corpus.cache_file`
-- **At:** `src/aigent/retrieval/corpus.py:632`
+- **At:** `src/aigent/retrieval/corpus.py:643`
 - **Is:** function. Where a PDF's extracted text is kept, named `{doc_id}-{pdf digest}-{ingest fingerprint}`.
 - **Contract:** **Both halves are load-bearing.** The bytes catch a company republishing a report; the fingerprint — a hash of `read_pages`, `normalise`, `_skeleton`, `strip_furniture`, `to_document` and the constants they read — catches an edit to the ingestion code. There is no version number to remember to bump.
 - **Gotchas:** A filename-keyed or bytes-only cache would serve text the current code never produced, and would do it silently.
 
 #### `retrieval.corpus.load_pdf_cached`
-- **At:** `src/aigent/retrieval/corpus.py:642`
+- **At:** `src/aigent/retrieval/corpus.py:653`
 - **Is:** function. `load_pdf` memoised on disk in `corpus/.cache/` (git-ignored). Reached only through `load_corpus(cache=True)`, never by default.
-- **Contract:** Written to a `.partial` and moved into place, so an interrupted run leaves nothing readable behind; a corrupt or truncated entry is deleted and re-parsed rather than raised on; superseded entries for the same document are swept. **Two layers**: beneath the rendered document, `parse_cached` keeps Docling's own reading of the PDF (`{doc}.{digest}-{parse fingerprint}.docling`, Docling's JSON) keyed by `_PARSE_FINGERPRINT` alone — the converter, `rupees_decoded` and its helpers, Docling's version, `DOCLING_OCR`, `PDF_RUPEE_KEYS` — so a change to rendering (`elements_of` down to `assembled`) re-renders from the kept parse in seconds rather than re-parsing for hours; `_INGEST_FINGERPRINT` hashes the parse fingerprint with the rendering code. Same `.partial`, truncation and sweep rules for both layers.
-- **Gotchas:** **Cold 27.8s, warm 0.04s** (pypdf; Docling's cold parse is about 8 minutes a report on MPS).
+- **Contract:** Written to a `.partial` and moved into place, so an interrupted run leaves nothing readable behind; a corrupt or truncated entry is deleted and re-parsed rather than raised on; superseded entries for the same document are swept. **Two layers**: beneath the rendered document, `parse_cached` keeps Docling's own reading of the PDF (`{doc}.{digest}-{parse fingerprint}.docling`, Docling's JSON) keyed by `_PARSE_FINGERPRINT` alone — the converter, `rupees_decoded` and its helpers, Docling's version, `DOCLING_OCR`, `PDF_RUPEE_KEYS` — so a change to rendering (`elements_of` down to `assembled`) re-renders from the kept parse in seconds rather than re-parsing for hours; `_INGEST_FINGERPRINT` hashes the parse fingerprint with the rendering code. Same `.partial`, truncation and sweep rules for both layers. `parse_cached` caps Docling's queue (`_queue_capped`, outside the fingerprint) before converting.
+- **Gotchas:** **The cache keeps one entry per `doc_id`**, sweeping the rest, so two different PDFs under one name evict each other; hence `facts.documents.doc_id_of`. **Cold 27.8s, warm 0.04s** (pypdf; Docling's cold parse is about 8 minutes a report on MPS).
 - **History:** **Two layers since 2026-10-20.**
 - **Decided in:** LOG.md 10-20
 
 #### `retrieval.corpus.load_corpus`
-- **At:** `src/aigent/retrieval/corpus.py:705`
+- **At:** `src/aigent/retrieval/corpus.py:716`
 - **Is:** function. Every PDF directly in a directory, in filename order.
 - **Contract:** **Directly, not recursively**: the fine-tune's training reports live in `corpus/training/` (`TRAINING_DIR`), listed in `evals/reference/training-manifest.json` (`TRAINING_MANIFEST`), so they never enter retrieval, `search_reports` or an eval; a test fails if a report in that folder is loaded. **`cache=False` by default, opt-in only**: reading the PDFs is always correct, while a cache is correct until it is not, and a stale hit is wrong *quietly* — the one failure mode the keying works hard to prevent but cannot rule out. 28 seconds is a price worth paying unless a caller has a reason, and then the caller says so at the call site where it can be seen. A test pins the default, so it cannot drift back. **Raises on an empty directory** rather than returning nothing — an empty corpus scores zero recall on every question and reads exactly like a bad retriever. **`doc_ids`** loads exactly the reports named and raises on one that is missing, so a typo cannot shrink the corpus; every published eval passes `FY25_REPORTS` (`ITC-FY25`, `RELIANCE-FY25`, `TATAMOTORS-FY25`), and only the capstone reads all six.
 - **History:** Not recursive (2026-10-10). Opt-in cache (decided 2026-09-18). **`doc_ids`** (2026-10-12), since the FY24 reports joined `corpus/`.
@@ -3781,7 +3781,7 @@ retrieval.answer —imports→ retrieval.dense.DenseIndex
 retrieval.answer —imports→ retrieval.embed.{Embedder, LocalEmbedder, Vectors}
 retrieval.answer —imports→ retrieval.evaluate.{DATASET, STRATEGIES, resolve}
 retrieval.chunk —imports→ config.{CHUNK_CHARS, CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, CHUNK_OVERLAP_CHARS, CHUNK_OVERLAP_SENTENCES, ELEMENT_TABLE_CHARS, ELEMENT_TEXT_CHARS, HEADING_MAX_CHARS, HEADING_MAX_WORDS, HEADING_MIN_CAPITAL_RATIO}
-retrieval.corpus —imports→ config.{DOCLING_DEVICE, DOCLING_OCR, FURNITURE_EDGE_LINES, FURNITURE_MIN_PAGES, FURNITURE_RATIO, PAGE_SEPARATOR, PDF_RUPEE_KEYS}
+retrieval.corpus —imports→ config.{DOCLING_DEVICE, DOCLING_OCR, DOCLING_QUEUE_MAX_SIZE, FURNITURE_EDGE_LINES, FURNITURE_MIN_PAGES, FURNITURE_RATIO, PAGE_SEPARATOR, PDF_RUPEE_KEYS}
 retrieval.corpus —imports→ docling.datamodel.accelerator_options.{AcceleratorDevice, AcceleratorOptions}
 retrieval.corpus —imports→ docling.datamodel.base_models.{DocumentStream, InputFormat}
 retrieval.corpus —imports→ docling.datamodel.pipeline_options.PdfPipelineOptions

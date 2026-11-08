@@ -117,6 +117,13 @@ def ticker_of(name: str) -> str:
     return found.group(1)
 
 
+def doc_id_of(name: str) -> str:
+    """A manifest path's name in the parse cache, which holds one entry per name, so a corpus copy
+    of the same report never evicts it: `annual/ITC-FY25.pdf` is `verify-annual-ITC-FY25`."""
+    path = Path(name)
+    return f"verify-{path.parent.name}-{path.stem}"
+
+
 def refusal(name: str, entry: Entry, ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS) -> str | None:
     """Why a manifest entry cannot be read, or None: not flagged yet, or a scan, unless its pages
     carry OCR text and its company is in `ocr_tickers`."""
@@ -264,5 +271,5 @@ def load_verify_document(
         raise ValueError(refused)
     path = verify_dir / name
     if entry["format"] == "html":
-        return html(path, path.stem)
-    return pdf(path, path.stem)
+        return html(path, doc_id_of(name))
+    return pdf(path, doc_id_of(name))

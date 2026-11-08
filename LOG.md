@@ -2568,3 +2568,18 @@
   the repo and had stopped at 11-01 while six PRs went in; the hook and CI already refuse a change to
   `src/` without the graph. §0 now says that in one sentence, and `CLAUDE.md`, the hook's messages
   and the graph's Maintenance no longer ask for a bump.
+- 11-07 to 11-08: **the cross-check's documents parsed, and two parse-cache fixes, $0.00.**
+  **Memory:** one process parsing the annual reports grew to 17 GB on this 16 GB Mac and froze it
+  (a button reset at 22:00). Docling holds up to `queue_max_size` (100) pages between each pipeline
+  stage, and five pages alone peak at ~3.5 GB. `config.DOCLING_QUEUE_MAX_SIZE = 8` (Vedant: keep
+  it) is set by `corpus._queue_capped` before each parse, outside the parse fingerprint, so nothing
+  re-parses. Power Grid FY25, killed at 11-12 GB three times, parsed at 9 GB.
+  `DOCLING_PERF_PAGE_BATCH_SIZE=1` did not help. Bajaj Auto FY24 (130 photos up to 88 MP) still
+  needed 18.7 GB, so it was parsed on Kaggle (free T4, private kernel at `main` `2c69bd2`): its
+  fingerprints matched and its cache files load here. All 102 verify documents are parsed.
+  **Names:** the cache keeps one entry per name, and seven training reports (Bajaj Auto FY24-FY25,
+  Power Grid FY26, Sun Pharma FY24-FY25, Wipro FY24-FY25) are different files under verify
+  names; six of their parses were evicted (re-parsed when next used). `documents.doc_id_of` names
+  verify documents `verify-<folder>-<stem>`; 200 cache entries moved and 16 copied, where an
+  identical corpus or training PDF still uses the old name, so nothing re-parsed (108 load from
+  cache). 4/4 mutants killed; 2,778 tests.
