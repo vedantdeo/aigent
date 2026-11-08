@@ -2583,3 +2583,19 @@
   verify documents `verify-<folder>-<stem>`; 200 cache entries moved and 16 copied, where an
   identical corpus or training PDF still uses the old name, so nothing re-parsed (108 load from
   cache). 4/4 mutants killed; 2,778 tests.
+- 11-08: **the cross-check run on all nine companies, and ind-as headers read, $0.00.** First run
+  (`f284384`, no `--write`): 38,083 facts, 12,657 agree, but the annual reports of Bajaj Auto,
+  ITC, Power Grid and Reliance agreed on nothing and Reliance's results on nothing: their columns
+  read undated. Four forms the matcher missed, all in `crosscheck.column_periods` and `sheets`:
+  day-first dates (`31st March, 2025`) and Reliance's `30 Jun'24` with OCR'd months (`Sen`, `Seo`)
+  read by two letters only where no other month shares them; financial-year labels (`2024 - 25`,
+  `FY25`); a bare year (`2025`) beside dated columns sharing one day (Bajaj Auto); and a table
+  with no dated column continuing the one before it. Rerun: 14,643 agree, 1,986 more and none
+  fewer; annual reports at 25-49% for those four; banks unchanged. A first version dated Tata
+  Motors' wrapped title year as a column and lost 2 agreements; a bare year must now stand alone
+  in a cell of a row with other headers. 30 new agreements audited by hand: 29 right, 1 a zero
+  matched to a dash on an MSMED-interest row (the existing zero rule). EPS still agrees almost
+  nowhere: Indian statements print `Basic (in ₹)` under an `Earnings per equity share` heading,
+  short of the 0.6 label share against XBRL's long label, and OCR damages it (`~asic`). 15/15
+  mutants killed; 2,796 tests. Breakdown: annual vs OCR'd results on the FY facts both print,
+  annual agreeing more often for every company.

@@ -60,6 +60,11 @@ _MONTHS = {
 }
 _NUMERIC_DATE = re.compile(r"(\d{1,2})[.,/-](\d{1,2})[.,/-](\d{4})")
 _WORDED_DATE = re.compile(r"([a-z]{3,9})\.?\s*(\d{1,2})\s*,?\s*(\d{4})")
+_DAY_FIRST_DATE = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)?\s*([a-z]{3,9})\.?\s*,?\s*(\d{4})")
+_APOSTROPHE_DATE = re.compile(r"(\d[\do]?)\s*([a-z]{3})[a-z]*\s*['’‘`]\s*(\d{2})\b")  # 30 Jun'24
+_FY_SPAN = re.compile(r"(20\d{2})\s*[-–]\s*(\d{2})\b")  # 2024-25
+_FY_SHORT = re.compile(r"\bfy\s*'?(\d{2}|20\d{2})\b")  # FY25, FY 2025
+_BARE_YEAR = re.compile(r"(20\d{2})")
 _SCALE = re.compile(r"\bin\s*(crore|lac|lakh|million)s?\b")
 _STOP = {"of", "and", "the", "in", "on", "or", "to", "for", "from", "by", "a", "an", "with", "at"}
 
@@ -171,6 +176,15 @@ def number(text: str) -> tuple[float, int, bool] | None:
     return value, places, bool(match.group(5))
 
 
+def _month_of(word: str) -> int | None:
+    """A month by its name, or for an OCR'd one by its first two letters when no other month
+    starts so: `sen` is September, `jul` must be spelled out."""
+    if word in _MONTHS:
+        return _MONTHS[word]
+    starting = {m for name, m in _MONTHS.items() if name[:2] == word[:2]}
+    return starting.pop() if len(starting) == 1 else None
+
+
 def _date_in(text: str) -> date | None:
     found: list[date] = []
     for d, m, y in _NUMERIC_DATE.findall(text):
@@ -186,7 +200,34 @@ def _date_in(text: str) -> date | None:
             found.append(date(int(y), month, int(d)))
         except ValueError:
             continue
+    for d, name, y in _DAY_FIRST_DATE.findall(text.lower()):
+        month = _MONTHS.get(name)
+        if month is None:
+            continue
+        try:
+            found.append(date(int(y), month, int(d)))
+        except ValueError:
+            continue
+    for d, name, y in _APOSTROPHE_DATE.findall(text.lower()):
+        month = _month_of(name)
+        if month is None:
+            continue
+        try:
+            found.append(date(2000 + int(y), month, int(d.replace("o", "0"))))
+        except ValueError:
+            continue
     return found[-1] if found else None
+
+
+def _fy_end_in(text: str) -> date | None:
+    """The day a financial year stated as `2024-25`, `FY25` or `FY 2025` ends: 31 March 2025."""
+    t = text.lower()
+    for first, second in _FY_SPAN.findall(t):
+        if (int(first) + 1) % 100 == int(second):
+            return date(int(first) + 1, 3, 31)
+    for year in _FY_SHORT.findall(t):
+        return date(int(year) if len(year) == 4 else 2000 + int(year), 3, 31)
+    return None
 
 
 def _months_in(text: str) -> int | None:
@@ -211,21 +252,40 @@ def column_periods(header: Sequence[Sequence[str]]) -> dict[int, Column]:
     width = max((len(row) for row in header), default=0)
     own: dict[int, list[str]] = {j: [] for j in range(width)}
     carried: dict[int, list[str]] = {j: [] for j in range(width)}
+    years: dict[int, int] = {}
     for row in header:
         carry = ""
+        filled = sum(bool(c.strip()) for c in row)
         for j in range(width):
             cell = row[j].strip() if j < len(row) else ""
             if cell:
                 carry = cell
                 own[j].append(cell)
+                if filled >= 2 and (year := _BARE_YEAR.fullmatch(cell)):
+                    years[j] = int(year.group(1))  # a year alone, among the row's other headers
             elif carry:
                 carried[j].append(carry)
     columns: dict[int, Column] = {}
     for j in range(width):
-        end = _date_in(" ".join(own[j])) or _date_in(" ".join(carried[j]))
+        mine, theirs = " ".join(own[j]), " ".join(carried[j])
+        months = _months_in(mine)
+        months = _months_in(theirs) if months is None else months
+        end = _date_in(mine) or _date_in(theirs)
+        if end is None and (end := _fy_end_in(mine) or _fy_end_in(theirs)) is not None:
+            months = 12 if months is None else months
         if end is not None:
-            months = _months_in(" ".join(own[j]))
-            columns[j] = Column(end, _months_in(" ".join(carried[j])) if months is None else months)
+            columns[j] = Column(end, months)
+    days = {(c.end.month, c.end.day) for c in columns.values() if c.end is not None}
+    if len(days) == 1:
+        month, day = days.pop()
+        for j, year in years.items():
+            if j in columns:
+                continue
+            mine, theirs = " ".join(own[j]), " ".join(carried[j])
+            months = _months_in(mine)
+            columns[j] = Column(
+                date(year, month, day), _months_in(theirs) if months is None else months
+            )
     return columns
 
 
@@ -256,6 +316,8 @@ def sheets(document: Document) -> list[Sheet]:
     basis: str | None = None
     scale: float | None = document_scale(document.text)
     previous_end = 0
+    before_columns: Mapping[int, Column] = {}
+    before_width, before_page = 0, 0
     for index, table in enumerate(document.tables):
         before = document.text[previous_end : table.start].lower()
         previous_end = table.end
@@ -270,7 +332,13 @@ def sheets(document: Document) -> list[Sheet]:
         own = " ".join(" ".join(row) for row in header).lower()
         basis = _basis_in(before + " " + own) or basis
         scale = _scale_in(before[-300:] + " " + own) or scale
-        columns = column_periods(header)
+        columns: Mapping[int, Column] = column_periods(header)
+        width = max(len(row) for row in table.rows)
+        page = bisect.bisect_right(document.page_starts, table.start) or 1
+        if not columns and width == before_width and page - before_page in (0, 1):
+            columns = (
+                before_columns  # a statement continued past a page break, its header left behind
+            )
         cells: list[Cell] = []
         for r in range(first, len(table.rows)):
             row = table.rows[r]
@@ -285,8 +353,8 @@ def sheets(document: Document) -> list[Sheet]:
             )
             for j, parsed, period in _aligned(numbers, columns):
                 cells.append(Cell(r, j, period, label, row[j].strip(), *parsed))
-        page = bisect.bisect_right(document.page_starts, table.start) or 1
         out.append(Sheet(index, basis, scale, page, columns, tuple(cells)))
+        before_columns, before_width, before_page = columns, width, page
     return out
 
 

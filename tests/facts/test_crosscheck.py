@@ -169,6 +169,91 @@ def test_number(printed: str, read: tuple[float, int, bool] | None) -> None:
             {1: Column(date(2024, 12, 31), None)},
             id="a date with no length",
         ),
+        pytest.param(
+            (
+                ("Particulars", "Quarter Ended", "", "", "Half Year Ended"),
+                ("", "30 Sep'24", "30 Jun'24", "30 Sep'23", "30 Sep'24"),
+            ),
+            {
+                1: Column(date(2024, 9, 30), 3),
+                2: Column(date(2024, 6, 30), 3),
+                3: Column(date(2023, 9, 30), 3),
+                4: Column(date(2024, 9, 30), 6),
+            },
+            id="Reliance's day, month and two-digit year",
+        ),
+        pytest.param(
+            (("", "Quarter Ended", "", ""), ("", "3osea'24", "30 Sen'23", "30 Seo'24")),
+            {
+                1: Column(date(2024, 9, 30), 3),
+                2: Column(date(2023, 9, 30), 3),
+                3: Column(date(2024, 9, 30), 3),
+            },
+            id="an OCR'd month read by the two letters only September starts with",
+        ),
+        pytest.param(
+            (("", "Quarter Ended", ""), ("", "30 Jnu'24", "31 Mav'24")),
+            {},
+            id="an OCR'd month two months start like is left undated",
+        ),
+        pytest.param(
+            (("", "", "(₹ in crores)", ""), ("", "PROFITS", "2024 - 25", "2023 - 24")),
+            {2: Column(date(2025, 3, 31), 12), 3: Column(date(2024, 3, 31), 12)},
+            id="ITC's financial years",
+        ),
+        pytest.param(
+            (("Particulars", "FY25", "FY 2024"),),
+            {1: Column(date(2025, 3, 31), 12), 2: Column(date(2024, 3, 31), 12)},
+            id="FY short forms",
+        ),
+        pytest.param(
+            (("Particulars", "2019-24"),),
+            {},
+            id="a span of years is no financial year",
+        ),
+        pytest.param(
+            (
+                ("", "", "For the year ended", ""),
+                ("Particulars", "Note No.", "2025", "(₹ In Crore) 31 March 2024"),
+            ),
+            {2: Column(date(2025, 3, 31), 12), 3: Column(date(2024, 3, 31), 12)},
+            id="Bajaj Auto's bare year takes its neighbour's day",
+        ),
+        pytest.param(
+            (("Particulars", "2025", "2024"),),
+            {},
+            id="bare years with no dated neighbour stay undated",
+        ),
+        pytest.param(
+            (("", "Year ended", "", ""), ("Particulars", "2025", "31 March 2024", "31.12.2023")),
+            {2: Column(date(2024, 3, 31), 12), 3: Column(date(2023, 12, 31), 12)},
+            id="a bare year among neighbours of different days stays undated",
+        ),
+        pytest.param(
+            (("Particulars", "Year ended 31st March, 2025", "As at 31 March 2024"),),
+            {1: Column(date(2025, 3, 31), 12), 2: Column(date(2024, 3, 31), 0)},
+            id="the day first, as annual reports print it",
+        ),
+        pytest.param(
+            (("Particulars", "December 2023", "31.03.2024"),),
+            {2: Column(date(2024, 3, 31), None)},
+            id="a month and year with no day takes no neighbour's day",
+        ),
+        pytest.param(
+            (
+                ("(₹ in crores)",),
+                ("2024",),
+                ("", "", "As at March 31, 2025", "As at March 31,"),
+                ("", "", "2024", ""),
+            ),
+            {2: Column(date(2025, 3, 31), 0)},
+            id="Tata Motors' year on a line of its own is a wrapped title, not a column",
+        ),
+        pytest.param(
+            (("Particulars", "31.03.2025", "31.03.2024"), ("Restated", "2024", "")),
+            {1: Column(date(2025, 3, 31), None), 2: Column(date(2024, 3, 31), None)},
+            id="a dated column keeps its date over a stray year",
+        ),
     ],
 )
 def test_column_periods(header: tuple[tuple[str, ...], ...], expected: dict[int, Column]) -> None:
@@ -209,6 +294,52 @@ def test_a_sheet_takes_its_basis_and_scale_from_the_text_before_it() -> None:
 def test_a_sheet_with_no_scale_near_it_takes_the_documents() -> None:
     document = _document("STANDALONE RESULTS", _RESULTS, "Notes (₹ in crore) and (₹ in crore)")
     assert sheets(document)[0].scale == 1e7
+
+
+def _pages(*tables: tuple[int, tuple[tuple[str, ...], ...]]) -> Document:
+    """A document of tables, each on the page given, its rows printed one a line."""
+    text, starts, parts = "", [0], []
+    for page, rows in tables:
+        while len(starts) < page:
+            text += "\f"
+            starts.append(len(text))
+        start = len(text)
+        text += "\n".join(" ".join(c for c in row if c) for row in rows) + "\n"
+        parts.append(Table(start, len(text), rows))
+    return Document("D", text, page_starts=tuple(starts), tables=tuple(parts))
+
+
+_STATEMENT = (
+    ("", "Quarter ended", "", "Year ended"),
+    ("Particulars", "30.09.2024", "30.06.2024", "31.03.2024"),
+    ("Revenue", "100", "90", "380"),
+)
+_CONTINUED = (("Basic EPS", "2.50", "3.53", "10.44"), ("Diluted EPS", "2.49", "3.52", "10.40"))
+
+
+@pytest.mark.parametrize(
+    ("later", "inherits"),
+    [
+        pytest.param((1, _CONTINUED), True, id="the rest of a statement on the same page"),
+        pytest.param((2, _CONTINUED), True, id="the rest of a statement on the next page"),
+        pytest.param((3, _CONTINUED), False, id="a table two pages on"),
+        pytest.param(
+            (2, (("Basic EPS", "2.50", "3.53", "10.44", "9.80"),)),
+            False,
+            id="a table of another width",
+        ),
+        pytest.param(
+            (2, (("Particulars", "31.12.2024", "30.09.2024", "31.03.2024"), *_CONTINUED)),
+            False,
+            id="a table with dated columns of its own",
+        ),
+    ],
+)
+def test_a_table_continuing_a_statement_takes_its_columns(
+    later: tuple[int, tuple[tuple[str, ...], ...]], inherits: bool
+) -> None:
+    first, second = sheets(_pages((1, _STATEMENT), later))
+    assert (second.columns == first.columns) is inherits, second.columns
 
 
 def test_a_rows_serial_number_is_not_a_figure() -> None:
