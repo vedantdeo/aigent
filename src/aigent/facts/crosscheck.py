@@ -61,8 +61,10 @@ _MONTHS = {
 }
 _NUMERIC_DATE = re.compile(r"(\d{1,2})[.,/-](\d{1,2})[.,/-](\d{4})")
 _WORDED_DATE = re.compile(r"([a-z]{3,9})\.?\s*(\d{1,2})\s*,?\s*(\d{4})")
-_DAY_FIRST_DATE = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)?\s*([a-z]{3,9})\.?\s*,?\s*(\d{4})")
-_APOSTROPHE_DATE = re.compile(r"(\d[\do]?)\s*([a-z]{3})[a-z]*\s*['’‘`]\s*(\d{2})\b")  # 30 Jun'24
+_DAY_FIRST_DATE = re.compile(r"\b(\d{1,2})\s*(?:st|nd|rd|th)?\s*([a-z]{3,9})\.?\s*,?\s*(\d{4})")
+_APOSTROPHE_DATE = re.compile(  # 30 Jun'24, 30th Sep'25
+    r"(\d[\do]?)\s*(?:st|nd|rd|th)?\s*([a-z]{3})[a-z]*\s*['’‘`]\s*(\d{2})\b"
+)
 _FY_SPAN = re.compile(r"(20\d{2})\s*[-–]\s*(\d{2})\b")  # 2024-25
 _FY_SHORT = re.compile(r"\bfy\s*'?(\d{2}|20\d{2})\b")  # FY25, FY 2025
 _BARE_YEAR = re.compile(r"(20\d{2})")
@@ -251,18 +253,24 @@ def _months_in(text: str) -> int | None:
 def column_periods(header: Sequence[Sequence[str]]) -> dict[int, Column]:
     """Each column's period from the header rows. A group heading covers the empty cells to its
     right ("Quarter ended" over three dated columns), but a column's own cells ("Q2-2026") say
-    its length first."""
+    its length first; a line below the last line of dates is a title, carried nowhere."""
     width = max((len(row) for row in header), default=0)
+    dated = [
+        i
+        for i, row in enumerate(header)
+        if any(_date_in(c) or _fy_end_in(c) or _BARE_YEAR.fullmatch(c.strip()) for c in row)
+    ]
+    last_dated = max(dated, default=len(header) - 1)
     own: dict[int, list[str]] = {j: [] for j in range(width)}
     carried: dict[int, list[str]] = {j: [] for j in range(width)}
     years: dict[int, int] = {}
-    for row in header:
+    for i, row in enumerate(header):
         carry = ""
         filled = sum(bool(c.strip()) for c in row)
         for j in range(width):
             cell = row[j].strip() if j < len(row) else ""
             if cell:
-                carry = cell
+                carry = cell if i <= last_dated else ""
                 own[j].append(cell)
                 if filled >= 2 and (year := _BARE_YEAR.fullmatch(cell)):
                     years[j] = int(year.group(1))  # a year alone, among the row's other headers
@@ -344,7 +352,9 @@ def sheets(document: Document) -> list[Sheet]:
                 before_columns  # a statement continued past a page break, its header left behind
             )
         continued = columns is before_columns and bool(columns)
-        heading = before_heading if continued else ""
+        heading = (
+            before_heading if continued else " ".join(c for c in header[-1] if c) if header else ""
+        )
         cells: list[Cell] = []
         for r in range(first, len(table.rows)):
             row = table.rows[r]
