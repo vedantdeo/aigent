@@ -2599,3 +2599,17 @@
   short of the 0.6 label share against XBRL's long label, and OCR damages it (`~asic`). 15/15
   mutants killed; 2,796 tests. Breakdown: annual vs OCR'd results on the FY facts both print,
   annual agreeing more often for every company.
+- 11-08: **EPS read on ind-as statements, $0.00.** Indian statements print `Basic (in ₹)` and
+  `Diluted (in ₹)` under an `Earnings per equity share` heading, short of the 0.6 label share
+  against XBRL's long labels. `crosscheck.per_share_row`: a per-share fact also agrees on a row
+  whose words, with its heading (the last figureless row above, carried into a continued table),
+  name its kind, earnings per share, and discontinued operations on both sides or neither; OCR'd
+  words one letter off (`~asic`, `IDiluted`, `Earnin11s` beside `EPS`). Every label match now
+  refuses a row or fact of discontinued operations alone against one that is not, not a symmetric
+  exclusive pair: Power Grid prints total EPS as "from continuing operations". Against `4e029dd`:
+  560 more agree, all EPS, 10 fewer (6 false: Power Grid zeros on discontinued-operations dashes,
+  a Tata Motors discontinued EPS on a continuing row; 3 true, lost to merged or OCR'd rows; 1
+  unclear); 15,193 of 38,083. EPS in results: Power Grid 53%, Wipro 40%, Bajaj Auto 39%, Sun
+  Pharma 25%, Tata Motors 22%, ITC 12%, Reliance 0%. 30 new EPS agreements audited: 28 right, 1
+  unreadable here, 1 the discontinued case the rule now refuses. 11/11 mutants killed; 2,813
+  tests. Reports `crosscheck-20261108-1653` (before the header fixes) and `-1901` (after E).

@@ -455,84 +455,84 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
     - L3324 roadmap
 - L3331 3. Edges
   - L3335 Imports (generated)
-  - L3925 Layering rules (checked)
-  - L3986 Reads and writes
-  - L4000 Enforcement and control flow
-  - L4053 Tested-by
-  - L4089 Environment
-- L4117 4. Invariants
-    - L4121 Invariant 1: Every paid call is preceded by a free count and the per-request check
-    - L4127 Invariant 2: Cost is reported, always
-    - L4131 Invariant 3: The assistant turn is echoed back verbatim
-    - L4134 Invariant 4: All tool results for one turn go back in ONE user message
-    - L4139 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
-    - L4143 Invariant 6: Both loops are capped
-    - L4150 Invariant 7: A file tool resolves before it compares
-    - L4156 Invariant 8: One home each for constants, clients, prices and model calls
-    - L4163 Invariant 9: Paid tests carry `@pytest.mark.live`
-    - L4166 Invariant 10: Types are complete
-    - L4169 Invariant 11: An eval survives its own bad rows
-    - L4173 Invariant 12: Every dollar an eval spends lands in one budget
-    - L4180 Invariant 13: A model is asked to read, never to join
-    - L4185 Invariant 14: The harness imports no capability module
-    - L4189 Invariant 15: An eval is a measurement, so nothing about it may wobble
-    - L4195 Invariant 16: A prompt never quotes its own test set
-    - L4202 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
-    - L4207 Invariant 18: Retrieval is graded before generation, and it is free
-    - L4212 Invariant 19: A page never leaves the page sequence
-    - L4217 Invariant 20: A retrieval label must identify one document, not merely appear in one
-    - L4223 Invariant 21: The ranking that is measured is the ranking that is used
-    - L4229 Invariant 22: A ceiling refuses spending before it happens, not only after
-    - L4236 Invariant 23: Every error the package defines lives in `errors`
-    - L4241 Invariant 24: A call is shaped by the client it goes to
-    - L4247 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
-    - L4253 Invariant 26: Tracing observes and never steers
-    - L4259 Invariant 27: A request is sent again only if it cannot have been billed
-    - L4265 Invariant 28: Text someone else wrote reaches the model fenced
-    - L4271 Invariant 29: A write runs only where a caller opted in, and never overwrites
-    - L4277 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
-    - L4283 Invariant 31: A per-share figure is compared only on one share basis
-    - L4289 Invariant 32: A filed figure is matched only against text, and its stamp names the copy
-- L4295 5. Where the next work attaches
-  - L4299 5.1 Open seams
-    - L4301 Seam: Facts database — step 2
-    - L4307 Seam: Week 6 — LangGraph agent
-    - L4311 Seam: Week 5 — async and batch evals
-    - L4318 Seam: Week 4 — compaction, when a task outgrows a turn
-    - L4324 Seam: Week 3 — measure a pattern
-    - L4329 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
-    - L4334 Seam: Week 3 — anything that searches the reports
-    - L4341 Seam: adding a tool
-    - L4345 Seam: adding a grader
-  - L4349 5.2 Consumed and superseded seams
-    - L4351 Seam: Week 1 — Project 1a
-    - L4356 Seam: Week 1 — prompt caching
-    - L4362 Seam: superseded — caching as two variants of one eval
-    - L4367 Seam: Week 1 — measure the un-saturated eval
-    - L4373 Seam: Week 1 — label the backlog
-    - L4378 Seam: Week 1 — break things on purpose
-    - L4384 Seam: Week 2 — retrieval metrics
-    - L4390 Seam: Week 2 — the four modules
-    - L4396 Seam: Week 2 — the corpus
-    - L4402 Seam: Week 2 — the retrieval dataset
-    - L4407 Seam: Week 2 — the measured run
-    - L4413 Seam: superseded — questions labelled with a quote
-    - L4418 Seam: Week 2 — hybrid and rerank
-    - L4424 Seam: Week 2 — answer-level eval
-    - L4432 Seam: Week 2 — RAG milestone `v0.1-rag`
-    - L4438 Seam: Week 3 — every model call through `llm`
-    - L4445 Seam: Week 3 — the five workflow patterns
-    - L4451 Seam: Week 3 — orchestrator-workers as a graph
-    - L4458 Seam: Week 4 — the toy fine-tune
-    - L4464 Seam: Week 3 — answer locally, judge on Anthropic
-    - L4470 Seam: Week 3 — context management
-    - L4475 Seam: Week 3 — server-side web search
-    - L4482 Seam: Week 5 — SDK tool runner
-    - L4488 Seam: Week 5 — tracing
-    - L4495 Seam: Week 5 — explicit retries
-    - L4501 Seam: Week 5 — guardrails
-    - L4508 Seam: Week 6 — MCP client
-- L4516 Maintenance
+  - L3926 Layering rules (checked)
+  - L3987 Reads and writes
+  - L4001 Enforcement and control flow
+  - L4054 Tested-by
+  - L4090 Environment
+- L4118 4. Invariants
+    - L4122 Invariant 1: Every paid call is preceded by a free count and the per-request check
+    - L4128 Invariant 2: Cost is reported, always
+    - L4132 Invariant 3: The assistant turn is echoed back verbatim
+    - L4135 Invariant 4: All tool results for one turn go back in ONE user message
+    - L4140 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
+    - L4144 Invariant 6: Both loops are capped
+    - L4151 Invariant 7: A file tool resolves before it compares
+    - L4157 Invariant 8: One home each for constants, clients, prices and model calls
+    - L4164 Invariant 9: Paid tests carry `@pytest.mark.live`
+    - L4167 Invariant 10: Types are complete
+    - L4170 Invariant 11: An eval survives its own bad rows
+    - L4174 Invariant 12: Every dollar an eval spends lands in one budget
+    - L4181 Invariant 13: A model is asked to read, never to join
+    - L4186 Invariant 14: The harness imports no capability module
+    - L4190 Invariant 15: An eval is a measurement, so nothing about it may wobble
+    - L4196 Invariant 16: A prompt never quotes its own test set
+    - L4203 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
+    - L4208 Invariant 18: Retrieval is graded before generation, and it is free
+    - L4213 Invariant 19: A page never leaves the page sequence
+    - L4218 Invariant 20: A retrieval label must identify one document, not merely appear in one
+    - L4224 Invariant 21: The ranking that is measured is the ranking that is used
+    - L4230 Invariant 22: A ceiling refuses spending before it happens, not only after
+    - L4237 Invariant 23: Every error the package defines lives in `errors`
+    - L4242 Invariant 24: A call is shaped by the client it goes to
+    - L4248 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
+    - L4254 Invariant 26: Tracing observes and never steers
+    - L4260 Invariant 27: A request is sent again only if it cannot have been billed
+    - L4266 Invariant 28: Text someone else wrote reaches the model fenced
+    - L4272 Invariant 29: A write runs only where a caller opted in, and never overwrites
+    - L4278 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
+    - L4284 Invariant 31: A per-share figure is compared only on one share basis
+    - L4290 Invariant 32: A filed figure is matched only against text, and its stamp names the copy
+- L4296 5. Where the next work attaches
+  - L4300 5.1 Open seams
+    - L4302 Seam: Facts database — step 2
+    - L4308 Seam: Week 6 — LangGraph agent
+    - L4312 Seam: Week 5 — async and batch evals
+    - L4319 Seam: Week 4 — compaction, when a task outgrows a turn
+    - L4325 Seam: Week 3 — measure a pattern
+    - L4330 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
+    - L4335 Seam: Week 3 — anything that searches the reports
+    - L4342 Seam: adding a tool
+    - L4346 Seam: adding a grader
+  - L4350 5.2 Consumed and superseded seams
+    - L4352 Seam: Week 1 — Project 1a
+    - L4357 Seam: Week 1 — prompt caching
+    - L4363 Seam: superseded — caching as two variants of one eval
+    - L4368 Seam: Week 1 — measure the un-saturated eval
+    - L4374 Seam: Week 1 — label the backlog
+    - L4379 Seam: Week 1 — break things on purpose
+    - L4385 Seam: Week 2 — retrieval metrics
+    - L4391 Seam: Week 2 — the four modules
+    - L4397 Seam: Week 2 — the corpus
+    - L4403 Seam: Week 2 — the retrieval dataset
+    - L4408 Seam: Week 2 — the measured run
+    - L4414 Seam: superseded — questions labelled with a quote
+    - L4419 Seam: Week 2 — hybrid and rerank
+    - L4425 Seam: Week 2 — answer-level eval
+    - L4433 Seam: Week 2 — RAG milestone `v0.1-rag`
+    - L4439 Seam: Week 3 — every model call through `llm`
+    - L4446 Seam: Week 3 — the five workflow patterns
+    - L4452 Seam: Week 3 — orchestrator-workers as a graph
+    - L4459 Seam: Week 4 — the toy fine-tune
+    - L4465 Seam: Week 3 — answer locally, judge on Anthropic
+    - L4471 Seam: Week 3 — context management
+    - L4476 Seam: Week 3 — server-side web search
+    - L4483 Seam: Week 5 — SDK tool runner
+    - L4489 Seam: Week 5 — tracing
+    - L4496 Seam: Week 5 — explicit retries
+    - L4502 Seam: Week 5 — guardrails
+    - L4509 Seam: Week 6 — MCP client
+- L4517 Maintenance
 <!-- /generated:toc -->
 
 ## 0. Orientation
@@ -1054,9 +1054,9 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 #### `facts.crosscheck`
 - **At:** `src/aigent/facts/crosscheck.py`
 - **Is:** module. **The XBRL cross-check**: each XBRL fact of `VERIFY_TICKERS` against the documents it is printed in (`facts.documents`): its year's annual report, then its quarter's results, `python -m aigent.facts crosscheck [--write]`, free. `documents_for(fact, filed)` → the stems tried, an annual report first for a year's figure or 31 March balance in a March filing; `facts_to_check` yields a fact once per readable document (`documents.refusal`); `crosscheck(conn, tickers)` → a `Checked` per fact, its best outcome (`agree`, `differ`, `unmatched`) across its documents, stopping at the first agreement, a tie kept by the first; `apply` makes each agreeing `xbrl-ai` fact `xbrl-filed`, stamped with its document's origin. What is not agreed goes to `facts.review`.
-- **Contract:** `sheets(document)` reads each table with figures: **basis** the last "standalone"/"consolidated" in the text since the table before (else the one before's), **scale** the last "in crore"/"in lac"/"in million" there or in its header lines (else the one before's, else `document_scale`, the document's most stated), each **column's period** from its header (`column_periods`: a date in its own cells or under a group heading, as `30.06.2024`, `June 30, 2024`, `31st March, 2025` or `30 Jun'24`, an OCR'd month read by its first two letters only when no other month shares them (`Sen'23` is September, `Jnu` stays unread), else a financial year (`2024-25`, `FY25`) as 31 March of its second year, 12 months unless said otherwise, else a year alone in a cell of a row with other headers (`2025` beside `31 March 2024`) taking the day the other dated columns share, when they share one; its length from its own cells first, "Q2-2026", "H1", "FY", then the heading's, "Quarter ended", "Nine months", "As at" for 0); **a table with no dated column takes the columns of the table before it** when as wide and on the same or the next page, a statement continued past a page break; and each number (`number`: Indian grouping, a decimal comma, points misread for separators, a bracket alone negative, `..` and dashes a zero; text, dates and two numbers in a cell none). A row with one number per dated column is read by order, since rows sit a column off their header; else by its own column; a first-cell serial is no figure. **`check_fact` agrees only** on a cell of the fact's basis (or none stated) and period (an instant: any column ending that day; a duration: the same length, or the only column ending that day when no length is stated), equal **to the last printed digit** at the table's scale (per share and pure unscaled, a percentage /100; a percentage never for rupees; no scale, no agreement), and its row carrying the label (`label_share` ≥ `CROSSCHECK_LABEL_MIN`, abbreviations in `CROSSCHECK_SYNONYMS` read in full, a row naming only the other of a `CROSSCHECK_EXCLUSIVE` pair scored 0) or the figure distinctive alone (`CROSSCHECK_DISTINCT_DIGITS` significant digits). Else `differ` on the best-labelled cell there at `CROSSCHECK_DIFFER_LABEL_MIN`, else `unmatched`. `apply` never touches a fact a person checked or one already `xbrl-filed`, and records `<origin>:<document>` (from the manifest; a document with no origin raises and writes nothing), printed figure and page. Each document is read once.
+- **Contract:** `sheets(document)` reads each table with figures: **basis** the last "standalone"/"consolidated" in the text since the table before (else the one before's), **scale** the last "in crore"/"in lac"/"in million" there or in its header lines (else the one before's, else `document_scale`, the document's most stated), each **column's period** from its header (`column_periods`: a date in its own cells or under a group heading, as `30.06.2024`, `June 30, 2024`, `31st March, 2025` or `30 Jun'24`, an OCR'd month read by its first two letters only when no other month shares them (`Sen'23` is September, `Jnu` stays unread), else a financial year (`2024-25`, `FY25`) as 31 March of its second year, 12 months unless said otherwise, else a year alone in a cell of a row with other headers (`2025` beside `31 March 2024`) taking the day the other dated columns share, when they share one; its length from its own cells first, "Q2-2026", "H1", "FY", then the heading's, "Quarter ended", "Nine months", "As at" for 0); **a table with no dated column takes the columns of the table before it** when as wide and on the same or the next page, a statement continued past a page break; and each number (`number`: Indian grouping, a decimal comma, points misread for separators, a bracket alone negative, `..` and dashes a zero; text, dates and two numbers in a cell none). A row with one number per dated column is read by order, since rows sit a column off their header; else by its own column; a first-cell serial is no figure. Each cell carries its **heading**, the last row above it with no figures. **`check_fact` agrees only** on a cell of the fact's basis (or none stated) and period (an instant: any column ending that day; a duration: the same length, or the only column ending that day when no length is stated), equal **to the last printed digit** at the table's scale (per share and pure unscaled, a percentage /100; a percentage never for rupees; no scale, no agreement), and its row carrying the label (`label_share` ≥ `CROSSCHECK_LABEL_MIN`, abbreviations in `CROSSCHECK_SYNONYMS` read in full, a row naming only the other of a `CROSSCHECK_EXCLUSIVE` pair scored 0) or the figure distinctive alone (`CROSSCHECK_DISTINCT_DIGITS` significant digits), or, for a per-share fact, `per_share_row` on its heading and row; a label whose words are of discontinued operations alone matches only a row that is too, and the reverse. Else `differ` on the best-labelled cell there at `CROSSCHECK_DIFFER_LABEL_MIN`, else `unmatched`. `apply` never touches a fact a person checked or one already `xbrl-filed`, and records `<origin>:<document>` (from the manifest; a document with no origin raises and writes nothing), printed figure and page. Each document is read once.
 - **Gotchas:** XBRL's own `decimals` is not a tolerance: ICICI Bank files `-7` (a crore) for figures exact to a lakh, and taking it would let a zero agree with anything under half a crore. "lac" occurs inside words ("place"), hence the "in …" form. ICICI Bank's scale line prints after its first table, hence the document fallback. ICICI Bank's results PDFs carry a text layer that was itself OCR'd ("11.GG5.G9", "Bonkinq"), so they are read from SEC copies since 2026-11-02.
-- **History:** 2026-11-01: created (Vedant: policy (b); `xbrl-ai` agreeing becomes `xbrl-pdf`, now `xbrl-filed`, the rest go to a person with a sample of agreements). First run 3,523 of 6,784 agreeing; a sample of 50 agreements audited by hand found one false (a 4-digit figure matched by value alone) and the diluted-EPS-on-basic-row case, hence 5 digits, 0.6, the exclusive pairs and printed precision only; final 4,144. The review queue moved to `facts.review` the same day. 2026-11-02: on SEC copies of the 14 OCR'd results, 4,739 agree. 2026-11-07: annual reports read (Vedant's option: annual reports for the year, OCR'd results for the rest) and all nine companies checked. 2026-11-08: ind-as headers read: day-first and apostrophe dates, financial-year labels, a bare year beside dated columns, continued statements; 1,986 more facts agree, none fewer (12,657 to 14,643 of 38,083), the annual reports of Bajaj Auto, ITC, Power Grid and Reliance from 0% to 25-49%. Tata Motors' wrapped title year (`2024` on a line of its own) is why a bare year must stand among other headers.
+- **History:** 2026-11-01: created (Vedant: policy (b); `xbrl-ai` agreeing becomes `xbrl-pdf`, now `xbrl-filed`, the rest go to a person with a sample of agreements). First run 3,523 of 6,784 agreeing; a sample of 50 agreements audited by hand found one false (a 4-digit figure matched by value alone) and the diluted-EPS-on-basic-row case, hence 5 digits, 0.6, the exclusive pairs and printed precision only; final 4,144. The review queue moved to `facts.review` the same day. 2026-11-02: on SEC copies of the 14 OCR'd results, 4,739 agree. 2026-11-07: annual reports read (Vedant's option: annual reports for the year, OCR'd results for the rest) and all nine companies checked. 2026-11-08: ind-as headers read: day-first and apostrophe dates, financial-year labels, a bare year beside dated columns, continued statements; 1,986 more facts agree, none fewer (12,657 to 14,643 of 38,083), the annual reports of Bajaj Auto, ITC, Power Grid and Reliance from 0% to 25-49%. Tata Motors' wrapped title year (`2024` on a line of its own) is why a bare year must stand among other headers. The same day, EPS: a per-share fact also agrees on a row whose words, with the last figureless row above it (its heading, carried into a continued table), name its kind (basic or diluted; `Basic & Diluted` both), earnings per share, and discontinued operations on both sides or neither, OCR'd words one letter off (`per_share_row`); and every label match refuses a row or fact of discontinued operations alone against one that is not. 560 more EPS facts agree, 10 others fewer (6 of them false: zeros on discontinued-operations dashes), 15,193 of 38,083.
 - **Decided in:** LOG.md 11-01 · `docs/facts-db.md`
 
 #### `facts.review`
@@ -3642,6 +3642,7 @@ facts.coverage —imports→ facts.lookup.{Lookup, NotFound, span}
 facts.coverage —imports→ facts.reference.Fundamental
 facts.crosscheck —imports→ facts.cfg_facts.{CROSSCHECK_DIFFER_LABEL_MIN, CROSSCHECK_DISTINCT_DIGITS, CROSSCHECK_EXCLUSIVE, CROSSCHECK_LABEL_MIN, CROSSCHECK_SCALES, CROSSCHECK_SYNONYMS, VERIFY_OCR_TICKERS}
 facts.crosscheck —imports→ facts.documents.{Entry, VERIFY_DIR, load_verify_document, read_manifest, refusal}
+facts.crosscheck —imports→ facts.share_events.PER_SHARE
 facts.crosscheck —imports→ facts.store.XBRL_TIERS
 facts.crosscheck —imports→ retrieval.chunk.Document
 facts.derived_concepts —imports→ facts.cfg_facts.COMPANY_SCOPES

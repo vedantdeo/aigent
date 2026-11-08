@@ -30,6 +30,7 @@ from aigent.facts.documents import (
     read_manifest,
     refusal,
 )
+from aigent.facts.share_events import PER_SHARE
 from aigent.facts.store import XBRL_TIERS
 from aigent.retrieval.chunk import Document
 
@@ -66,6 +67,7 @@ _FY_SPAN = re.compile(r"(20\d{2})\s*[-–]\s*(\d{2})\b")  # 2024-25
 _FY_SHORT = re.compile(r"\bfy\s*'?(\d{2}|20\d{2})\b")  # FY25, FY 2025
 _BARE_YEAR = re.compile(r"(20\d{2})")
 _SCALE = re.compile(r"\bin\s*(crore|lac|lakh|million)s?\b")
+_EPS_WORDS = ("basic", "diluted", "earnings", "share", "continuing", "discontinued")
 _STOP = {"of", "and", "the", "in", "on", "or", "to", "for", "from", "by", "a", "an", "with", "at"}
 
 
@@ -91,6 +93,7 @@ class Cell:
     value: float
     places: int
     percent: bool
+    heading: str = ""  # the last row above it with no figures, as "Earnings per equity share"
 
 
 @dataclass(frozen=True)
@@ -317,6 +320,7 @@ def sheets(document: Document) -> list[Sheet]:
     scale: float | None = document_scale(document.text)
     previous_end = 0
     before_columns: Mapping[int, Column] = {}
+    before_heading = ""
     before_width, before_page = 0, 0
     for index, table in enumerate(document.tables):
         before = document.text[previous_end : table.start].lower()
@@ -339,6 +343,8 @@ def sheets(document: Document) -> list[Sheet]:
             columns = (
                 before_columns  # a statement continued past a page break, its header left behind
             )
+        continued = columns is before_columns and bool(columns)
+        heading = before_heading if continued else ""
         cells: list[Cell] = []
         for r in range(first, len(table.rows)):
             row = table.rows[r]
@@ -351,10 +357,13 @@ def sheets(document: Document) -> list[Sheet]:
             label = " ".join(
                 c for j, c in enumerate(row) if c and j not in taken and not _serial(j, c)
             )
+            if not numbers:
+                heading = label or heading
+                continue
             for j, parsed, period in _aligned(numbers, columns):
-                cells.append(Cell(r, j, period, label, row[j].strip(), *parsed))
+                cells.append(Cell(r, j, period, label, row[j].strip(), *parsed, heading=heading))
         out.append(Sheet(index, basis, scale, page, columns, tuple(cells)))
-        before_columns, before_width, before_page = columns, width, page
+        before_columns, before_width, before_page, before_heading = columns, width, page, heading
     return out
 
 
@@ -387,21 +396,54 @@ def _words(text: str) -> set[str]:
     return set(spelled.split()) - _STOP
 
 
+def _discontinued_alone(words: set[str]) -> bool:
+    """Words about discontinued operations without continuing ones."""
+    return "discontinued" in words and "continuing" not in words
+
+
 def label_share(labels: Iterable[str], segment: str | None, row_label: str) -> float:
     """The largest share of any of a fact's labels' words, its segment's added, found in the row;
-    0 for a row naming only the other of an exclusive pair the label names ("basic", "diluted")."""
+    0 for a row naming only the other of an exclusive pair the label names ("basic", "diluted"), or
+    for discontinued operations alone where the label is not."""
     row = _words(row_label)
     best = 0.0
     for label in labels:
         words = _words(f"{label} {segment or ''}")
-        if not words or any(
-            mine in words and other in row and mine not in row
-            for pair in CROSSCHECK_EXCLUSIVE
-            for mine, other in (pair, pair[::-1])
+        if (
+            not words
+            or _discontinued_alone(words) != _discontinued_alone(row)
+            or any(
+                mine in words and other in row and mine not in row
+                for pair in CROSSCHECK_EXCLUSIVE
+                for mine, other in (pair, pair[::-1])
+            )
         ):
             continue
         best = max(best, len(words & row) / len(words))
     return best
+
+
+def _one_off(word: str, target: str) -> bool:
+    """`word` is `target` or one letter off it: changed, missing or added."""
+    if word == target:
+        return True
+    if len(word) == len(target):
+        return sum(a != b for a, b in zip(word, target, strict=True)) == 1
+    short, long = sorted((word, target), key=len)
+    return any(long[:i] + long[i + 1 :] == short for i in range(len(long)))
+
+
+def per_share_row(labels: Iterable[str], text: str) -> bool:
+    """A row, with its heading, printing a per-share fact: its kind (basic or diluted), earnings per
+    share, and discontinued operations on both or neither; OCR'd words one letter off."""
+    words = _words(text)
+    row = words | {t for w in words for t in _EPS_WORDS if _one_off(w, t)}
+    named = set().union(*(_words(label) for label in labels))
+    if not {"basic", "diluted"} & named & row:
+        return False
+    if _discontinued_alone(row) != _discontinued_alone(named):
+        return False
+    return bool({"earnings", "eps"} & row) or {"per", "share"} <= row
 
 
 def agrees(fact: Fact, cell: Cell, scale: float | None) -> bool:
@@ -460,7 +502,12 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
                 continue
             share = label_share(fact.labels, fact.segment, cell.label)
             if agrees(fact, cell, sheet.scale) and (
-                share >= CROSSCHECK_LABEL_MIN or _distinct(cell.printed)
+                share >= CROSSCHECK_LABEL_MIN
+                or _distinct(cell.printed)
+                or (
+                    fact.unit.endswith(PER_SHARE)
+                    and per_share_row(fact.labels, f"{cell.heading} {cell.label}")
+                )
             ):
                 return _with(base, "agree", sheet, cell)
             if share >= CROSSCHECK_DIFFER_LABEL_MIN and (best is None or share > best[0]):

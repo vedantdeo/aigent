@@ -342,6 +342,127 @@ def test_a_table_continuing_a_statement_takes_its_columns(
     assert (second.columns == first.columns) is inherits, second.columns
 
 
+_TOTAL_EPS = "Basic earnings (loss) per share from continuing and discontinued operations"
+_DILUTED_EPS = "Diluted earnings (loss) per share from continuing and discontinued operations"
+_CONTINUING_EPS = "Basic earnings (loss) per share from continuing operations"
+_DISCONTINUED_EPS = "Basic earnings (loss) per share from discontinued operations"
+_WEIGHTED = "Weighted average number of equity shares for basic earnings per share"
+_EPS_HEADING = ("", "Earnings per equity share", "", "", "", "")
+
+
+def _eps_row(label: str) -> tuple[str, ...]:
+    return ("", label, "15.73", "15.26", "13.80", "58.38")
+
+
+@pytest.mark.parametrize(
+    ("rows", "label", "unit", "agreed"),
+    [
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic (in ₹)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            True,
+            id="a short row under its heading",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("~asic (in~)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            True,
+            id="an OCR'd kind one letter off",
+        ),
+        pytest.param(
+            (("", "XIII Earnin11s oer share /EPS)", "", "", "", ""), _eps_row("Basic (in ₹)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            True,
+            id="an OCR'd heading still naming EPS",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic (in ₹)")),
+            _DILUTED_EPS,
+            "INRPerShare",
+            False,
+            id="a diluted fact on a basic row",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic and diluted (in ₹)")),
+            _DILUTED_EPS,
+            "INRPerShare",
+            True,
+            id="a row printing both kinds",
+        ),
+        pytest.param(
+            (("", "Other income", "", "", "", ""), _eps_row("Basic (in ₹)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            False,
+            id="no earnings per share above it",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic EPS from discontinued operations")),
+            _CONTINUING_EPS,
+            "INRPerShare",
+            False,
+            id="a continuing fact on a discontinued row",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic (in ₹)")),
+            _DISCONTINUED_EPS,
+            "INRPerShare",
+            False,
+            id="a discontinued fact on a plain row",
+        ),
+        pytest.param(
+            (
+                ("", "Earnings per share from discontinued operations", "", "", "", ""),
+                _eps_row("Basic"),
+            ),
+            _DISCONTINUED_EPS,
+            "INRPerShare",
+            True,
+            id="a discontinued fact under a discontinued heading",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic EPS from continuing and discontinued operations")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            True,
+            id="a total fact on a row naming both",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Baslo (in ₹)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            False,
+            id="a word two letters off is no kind",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic (in ₹)")),
+            _WEIGHTED,
+            "shares",
+            False,
+            id="a fact that is no per-share figure",
+        ),
+    ],
+)
+def test_a_per_share_fact_agrees_on_its_kind_of_row(
+    rows: tuple[tuple[str, ...], ...], label: str, unit: str, agreed: bool
+) -> None:
+    scaled = ("", "STANDALONE RESULTS (₹ in crore)", "", "", "", "")
+    figures = ("1", "Interest earned", "38,995.78", "37,948.36", "33,327.61", "1")
+    read = sheets(_pages((1, (scaled, *_HEADER, figures, *rows))))
+    fact = _fact("EPS", 15.73 if unit == "INRPerShare" else 157_300_000.0, (label,), unit=unit)
+    assert (check_fact(fact, read).outcome == "agree") is agreed, check_fact(fact, read)
+
+
+def test_a_heading_carries_into_the_statement_it_continues() -> None:
+    first = (*_HEADER, ("1", "Interest earned", "1.00", "2.00", "3.00", "4.00"), _EPS_HEADING)
+    read = sheets(_pages((1, first), (2, (_eps_row("Basic (in ₹)"),))))
+    fact = _fact("EPS", 15.73, (_TOTAL_EPS,), unit="INRPerShare", decimals=2)
+    assert check_fact(fact, read).outcome == "agree", read[-1].cells[:1]
+
+
 def test_a_rows_serial_number_is_not_a_figure() -> None:
     [sheet] = sheets(STANDALONE)
     assert all(c.column != 0 for c in sheet.cells)
@@ -751,6 +872,30 @@ def test_the_command_records_agreements_only_when_told(
         pytest.param("Gross NPA", "(a) Gross NPAs", 1.0, id="NPA read in full"),
         pytest.param("Interest earned", "Other income", 0.0, id="nothing shared"),
         pytest.param("Interest earned", "Interest expended", 0.5, id="half shared"),
+        pytest.param(
+            "Current tax",
+            "Current tax on profits for the year discontinued operations",
+            0.0,
+            id="a row of discontinued operations alone takes no other fact",
+        ),
+        pytest.param(
+            "Profit from discontinued operations",
+            "Profit for the period",
+            0.0,
+            id="a fact of discontinued operations alone takes no other row",
+        ),
+        pytest.param(
+            "Profit before tax",
+            "Profit before tax from continuing operations",
+            1.0,
+            id="a total takes a continuing-operations row",
+        ),
+        pytest.param(
+            "Profit from continuing and discontinued operations",
+            "Profit from continuing and discontinued operations",
+            1.0,
+            id="both kinds on both sides",
+        ),
     ],
 )
 def test_label_share(label: str, row: str, share: float) -> None:
