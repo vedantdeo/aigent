@@ -50,6 +50,7 @@ from pypdf.generic import (
 from aigent.config import (
     DOCLING_DEVICE,
     DOCLING_OCR,
+    DOCLING_QUEUE_MAX_SIZE,
     FURNITURE_EDGE_LINES,
     FURNITURE_MIN_PAGES,
     FURNITURE_RATIO,
@@ -611,6 +612,15 @@ def parse_file(path: Path, doc_id: str, cache_dir: Path = CACHE_DIR) -> Path:
     return cache_dir / f"{doc_id}.{_digest(path)}-{_PARSE_FINGERPRINT}.docling"
 
 
+def _queue_capped() -> None:
+    """Bounds the pages Docling holds between its pipeline stages, `DOCLING_QUEUE_MAX_SIZE`. It
+    changes memory, not what a PDF turns into, so it stays out of the parse fingerprint."""
+    options = _converter().format_to_options[InputFormat.PDF].pipeline_options
+    if not isinstance(options, PdfPipelineOptions):
+        raise TypeError(f"Docling's PDF options are {type(options).__name__}")
+    options.queue_max_size = DOCLING_QUEUE_MAX_SIZE
+
+
 def parse_cached(path: Path, doc_id: str, cache_dir: Path = CACHE_DIR) -> DoclingDocument:
     """`convert`, memoised on disk, so a change to rendering never parses a PDF again."""
     kept = parse_file(path, doc_id, cache_dir)
@@ -619,6 +629,7 @@ def parse_cached(path: Path, doc_id: str, cache_dir: Path = CACHE_DIR) -> Doclin
             return DoclingDocument.load_from_json(kept)
         except ValueError:
             kept.unlink(missing_ok=True)
+    _queue_capped()
     document = convert(path)
     cache_dir.mkdir(parents=True, exist_ok=True)
     for stale in cache_dir.glob(f"{doc_id}.*.docling"):

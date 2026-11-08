@@ -33,3 +33,6 @@ sandbox/**
 # macOS
 .DS_Store
 scratch/
+
+# Per-fact cross-check rows: reproducible from the code and database, too large to keep.
+evals/reports/*.rows.jsonl

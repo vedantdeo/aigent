@@ -1,6 +1,7 @@
-"""The XBRL cross-check: each fact of a cross-checked company against what its results document
-prints, matched by value at the table's scale, in a column stating the fact's period, in a table for
-its basis. An agreement makes the fact `xbrl-filed`; anything else stays `xbrl-ai` for a person."""
+"""The XBRL cross-check: each fact of a cross-checked company against what its annual report or
+results document prints, matched by value at the table's scale, in a column stating the fact's
+period, in a table for its basis. An agreement makes the fact `xbrl-filed`; anything else stays
+`xbrl-ai` for a person."""
 
 from __future__ import annotations
 
@@ -20,12 +21,21 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_LABEL_MIN,
     CROSSCHECK_SCALES,
     CROSSCHECK_SYNONYMS,
+    VERIFY_OCR_TICKERS,
 )
-from aigent.facts.documents import VERIFY_DIR, load_verify_document, read_manifest
+from aigent.facts.documents import (
+    VERIFY_DIR,
+    Entry,
+    load_verify_document,
+    read_manifest,
+    refusal,
+)
+from aigent.facts.share_events import PER_SHARE
 from aigent.facts.store import XBRL_TIERS
 from aigent.retrieval.chunk import Document
 
 Outcome = Literal["agree", "differ", "unmatched"]
+_RANK: dict[Outcome, int] = {"unmatched": 0, "differ": 1, "agree": 2}
 
 _ZERO = {"..", "-", "–", "—", "nil", "0"}
 _MONTHS = {
@@ -51,7 +61,13 @@ _MONTHS = {
 }
 _NUMERIC_DATE = re.compile(r"(\d{1,2})[.,/-](\d{1,2})[.,/-](\d{4})")
 _WORDED_DATE = re.compile(r"([a-z]{3,9})\.?\s*(\d{1,2})\s*,?\s*(\d{4})")
+_DAY_FIRST_DATE = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)?\s*([a-z]{3,9})\.?\s*,?\s*(\d{4})")
+_APOSTROPHE_DATE = re.compile(r"(\d[\do]?)\s*([a-z]{3})[a-z]*\s*['’‘`]\s*(\d{2})\b")  # 30 Jun'24
+_FY_SPAN = re.compile(r"(20\d{2})\s*[-–]\s*(\d{2})\b")  # 2024-25
+_FY_SHORT = re.compile(r"\bfy\s*'?(\d{2}|20\d{2})\b")  # FY25, FY 2025
+_BARE_YEAR = re.compile(r"(20\d{2})")
 _SCALE = re.compile(r"\bin\s*(crore|lac|lakh|million)s?\b")
+_EPS_WORDS = ("basic", "diluted", "earnings", "share", "continuing", "discontinued")
 _STOP = {"of", "and", "the", "in", "on", "or", "to", "for", "from", "by", "a", "an", "with", "at"}
 
 
@@ -77,6 +93,7 @@ class Cell:
     value: float
     places: int
     percent: bool
+    heading: str = ""  # the last row above it with no figures, as "Earnings per equity share"
 
 
 @dataclass(frozen=True)
@@ -162,6 +179,15 @@ def number(text: str) -> tuple[float, int, bool] | None:
     return value, places, bool(match.group(5))
 
 
+def _month_of(word: str) -> int | None:
+    """A month by its name, or for an OCR'd one by its first two letters when no other month
+    starts so: `sen` is September, `jul` must be spelled out."""
+    if word in _MONTHS:
+        return _MONTHS[word]
+    starting = {m for name, m in _MONTHS.items() if name[:2] == word[:2]}
+    return starting.pop() if len(starting) == 1 else None
+
+
 def _date_in(text: str) -> date | None:
     found: list[date] = []
     for d, m, y in _NUMERIC_DATE.findall(text):
@@ -177,7 +203,34 @@ def _date_in(text: str) -> date | None:
             found.append(date(int(y), month, int(d)))
         except ValueError:
             continue
+    for d, name, y in _DAY_FIRST_DATE.findall(text.lower()):
+        month = _MONTHS.get(name)
+        if month is None:
+            continue
+        try:
+            found.append(date(int(y), month, int(d)))
+        except ValueError:
+            continue
+    for d, name, y in _APOSTROPHE_DATE.findall(text.lower()):
+        month = _month_of(name)
+        if month is None:
+            continue
+        try:
+            found.append(date(2000 + int(y), month, int(d.replace("o", "0"))))
+        except ValueError:
+            continue
     return found[-1] if found else None
+
+
+def _fy_end_in(text: str) -> date | None:
+    """The day a financial year stated as `2024-25`, `FY25` or `FY 2025` ends: 31 March 2025."""
+    t = text.lower()
+    for first, second in _FY_SPAN.findall(t):
+        if (int(first) + 1) % 100 == int(second):
+            return date(int(first) + 1, 3, 31)
+    for year in _FY_SHORT.findall(t):
+        return date(int(year) if len(year) == 4 else 2000 + int(year), 3, 31)
+    return None
 
 
 def _months_in(text: str) -> int | None:
@@ -202,21 +255,40 @@ def column_periods(header: Sequence[Sequence[str]]) -> dict[int, Column]:
     width = max((len(row) for row in header), default=0)
     own: dict[int, list[str]] = {j: [] for j in range(width)}
     carried: dict[int, list[str]] = {j: [] for j in range(width)}
+    years: dict[int, int] = {}
     for row in header:
         carry = ""
+        filled = sum(bool(c.strip()) for c in row)
         for j in range(width):
             cell = row[j].strip() if j < len(row) else ""
             if cell:
                 carry = cell
                 own[j].append(cell)
+                if filled >= 2 and (year := _BARE_YEAR.fullmatch(cell)):
+                    years[j] = int(year.group(1))  # a year alone, among the row's other headers
             elif carry:
                 carried[j].append(carry)
     columns: dict[int, Column] = {}
     for j in range(width):
-        end = _date_in(" ".join(own[j])) or _date_in(" ".join(carried[j]))
+        mine, theirs = " ".join(own[j]), " ".join(carried[j])
+        months = _months_in(mine)
+        months = _months_in(theirs) if months is None else months
+        end = _date_in(mine) or _date_in(theirs)
+        if end is None and (end := _fy_end_in(mine) or _fy_end_in(theirs)) is not None:
+            months = 12 if months is None else months
         if end is not None:
-            months = _months_in(" ".join(own[j]))
-            columns[j] = Column(end, _months_in(" ".join(carried[j])) if months is None else months)
+            columns[j] = Column(end, months)
+    days = {(c.end.month, c.end.day) for c in columns.values() if c.end is not None}
+    if len(days) == 1:
+        month, day = days.pop()
+        for j, year in years.items():
+            if j in columns:
+                continue
+            mine, theirs = " ".join(own[j]), " ".join(carried[j])
+            months = _months_in(mine)
+            columns[j] = Column(
+                date(year, month, day), _months_in(theirs) if months is None else months
+            )
     return columns
 
 
@@ -247,6 +319,9 @@ def sheets(document: Document) -> list[Sheet]:
     basis: str | None = None
     scale: float | None = document_scale(document.text)
     previous_end = 0
+    before_columns: Mapping[int, Column] = {}
+    before_heading = ""
+    before_width, before_page = 0, 0
     for index, table in enumerate(document.tables):
         before = document.text[previous_end : table.start].lower()
         previous_end = table.end
@@ -261,7 +336,15 @@ def sheets(document: Document) -> list[Sheet]:
         own = " ".join(" ".join(row) for row in header).lower()
         basis = _basis_in(before + " " + own) or basis
         scale = _scale_in(before[-300:] + " " + own) or scale
-        columns = column_periods(header)
+        columns: Mapping[int, Column] = column_periods(header)
+        width = max(len(row) for row in table.rows)
+        page = bisect.bisect_right(document.page_starts, table.start) or 1
+        if not columns and width == before_width and page - before_page in (0, 1):
+            columns = (
+                before_columns  # a statement continued past a page break, its header left behind
+            )
+        continued = columns is before_columns and bool(columns)
+        heading = before_heading if continued else ""
         cells: list[Cell] = []
         for r in range(first, len(table.rows)):
             row = table.rows[r]
@@ -274,10 +357,13 @@ def sheets(document: Document) -> list[Sheet]:
             label = " ".join(
                 c for j, c in enumerate(row) if c and j not in taken and not _serial(j, c)
             )
+            if not numbers:
+                heading = label or heading
+                continue
             for j, parsed, period in _aligned(numbers, columns):
-                cells.append(Cell(r, j, period, label, row[j].strip(), *parsed))
-        page = bisect.bisect_right(document.page_starts, table.start) or 1
+                cells.append(Cell(r, j, period, label, row[j].strip(), *parsed, heading=heading))
         out.append(Sheet(index, basis, scale, page, columns, tuple(cells)))
+        before_columns, before_width, before_page, before_heading = columns, width, page, heading
     return out
 
 
@@ -310,21 +396,54 @@ def _words(text: str) -> set[str]:
     return set(spelled.split()) - _STOP
 
 
+def _discontinued_alone(words: set[str]) -> bool:
+    """Words about discontinued operations without continuing ones."""
+    return "discontinued" in words and "continuing" not in words
+
+
 def label_share(labels: Iterable[str], segment: str | None, row_label: str) -> float:
     """The largest share of any of a fact's labels' words, its segment's added, found in the row;
-    0 for a row naming only the other of an exclusive pair the label names ("basic", "diluted")."""
+    0 for a row naming only the other of an exclusive pair the label names ("basic", "diluted"), or
+    for discontinued operations alone where the label is not."""
     row = _words(row_label)
     best = 0.0
     for label in labels:
         words = _words(f"{label} {segment or ''}")
-        if not words or any(
-            mine in words and other in row and mine not in row
-            for pair in CROSSCHECK_EXCLUSIVE
-            for mine, other in (pair, pair[::-1])
+        if (
+            not words
+            or _discontinued_alone(words) != _discontinued_alone(row)
+            or any(
+                mine in words and other in row and mine not in row
+                for pair in CROSSCHECK_EXCLUSIVE
+                for mine, other in (pair, pair[::-1])
+            )
         ):
             continue
         best = max(best, len(words & row) / len(words))
     return best
+
+
+def _one_off(word: str, target: str) -> bool:
+    """`word` is `target` or one letter off it: changed, missing or added."""
+    if word == target:
+        return True
+    if len(word) == len(target):
+        return sum(a != b for a, b in zip(word, target, strict=True)) == 1
+    short, long = sorted((word, target), key=len)
+    return any(long[:i] + long[i + 1 :] == short for i in range(len(long)))
+
+
+def per_share_row(labels: Iterable[str], text: str) -> bool:
+    """A row, with its heading, printing a per-share fact: its kind (basic or diluted), earnings per
+    share, and discontinued operations on both or neither; OCR'd words one letter off."""
+    words = _words(text)
+    row = words | {t for w in words for t in _EPS_WORDS if _one_off(w, t)}
+    named = set().union(*(_words(label) for label in labels))
+    if not {"basic", "diluted"} & named & row:
+        return False
+    if _discontinued_alone(row) != _discontinued_alone(named):
+        return False
+    return bool({"earnings", "eps"} & row) or {"per", "share"} <= row
 
 
 def agrees(fact: Fact, cell: Cell, scale: float | None) -> bool:
@@ -383,7 +502,12 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
                 continue
             share = label_share(fact.labels, fact.segment, cell.label)
             if agrees(fact, cell, sheet.scale) and (
-                share >= CROSSCHECK_LABEL_MIN or _distinct(cell.printed)
+                share >= CROSSCHECK_LABEL_MIN
+                or _distinct(cell.printed)
+                or (
+                    fact.unit.endswith(PER_SHARE)
+                    and per_share_row(fact.labels, f"{cell.heading} {cell.label}")
+                )
             ):
                 return _with(base, "agree", sheet, cell)
             if share >= CROSSCHECK_DIFFER_LABEL_MIN and (best is None or share > best[0]):
@@ -399,15 +523,33 @@ def _with(base: Checked, outcome: Outcome, sheet: Sheet, cell: Cell) -> Checked:
     )
 
 
+def documents_for(fact: Fact, filed: date) -> tuple[str, ...]:
+    """The stems of the documents a fact is printed in, in the order they are tried: its year's
+    annual report for a year's figure or a 31 March balance in a March filing, then its quarter's
+    results."""
+    results = f"{fact.ticker}-{filed.isoformat()}"
+    year_end = filed.month == 3 and fact.period_end == filed
+    if year_end and months_of(fact.period_start, fact.period_end) in (0, 12):
+        return (f"{fact.ticker}-FY{filed.year % 100:02d}", results)
+    return (results,)
+
+
 def facts_to_check(
-    conn: sqlite3.Connection, tickers: Sequence[str], manifest: Mapping[str, object]
+    conn: sqlite3.Connection,
+    tickers: Sequence[str],
+    manifest: Mapping[str, Entry],
+    ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS,
 ) -> list[Fact]:
-    """Every XBRL fact of `tickers` whose quarter has a results document in the manifest, with its
-    standard label and aliases."""
+    """Every XBRL fact of `tickers` once per readable document it is printed in (`documents_for`,
+    in that order), with its standard label and aliases; a fact with none is left out."""
     aliases: dict[str, list[str]] = {}
     for concept, label in conn.execute("SELECT concept, label FROM concept_labels"):
         aliases.setdefault(concept, []).append(label)
-    documents = {Path(name).stem: name for name in manifest if name.startswith("results/")}
+    documents = {
+        Path(name).stem: name
+        for name, entry in manifest.items()
+        if name.startswith(("results/", "annual/")) and refusal(name, entry, ocr_tickers) is None
+    }
     marks = ", ".join("?" for _ in tickers)
     tiers = ", ".join("?" for _ in XBRL_TIERS)
     rows = conn.execute(
@@ -434,26 +576,24 @@ def facts_to_check(
         tier,
         filed,
     ) in rows:
-        document = documents.get(f"{ticker}-{filed}")
-        if document is None:
-            continue
-        out.append(
-            Fact(
-                fid,
-                ticker,
-                basis,
-                concept,
-                (label, *aliases.get(concept, [])),
-                segment,
-                None if start is None else date.fromisoformat(start),
-                date.fromisoformat(end),
-                float(value),
-                unit,
-                dec,
-                tier,
-                document,
-            )
+        fact = Fact(
+            fid,
+            ticker,
+            basis,
+            concept,
+            (label, *aliases.get(concept, [])),
+            segment,
+            None if start is None else date.fromisoformat(start),
+            date.fromisoformat(end),
+            float(value),
+            unit,
+            dec,
+            tier,
+            "",
         )
+        for stem in documents_for(fact, date.fromisoformat(filed)):
+            if stem in documents:
+                out.append(replace(fact, document=documents[stem]))
     return out
 
 
@@ -463,16 +603,21 @@ def crosscheck(
     verify_dir: Path = VERIFY_DIR,
     load: Callable[[str, Path], Document] = load_verify_document,
 ) -> list[Checked]:
-    """Every fact of `tickers` checked against its quarter's results document, each document read
-    once."""
+    """Every fact of `tickers` checked against the documents it is printed in, in order until one
+    agrees, keeping its best outcome; each document read once."""
     facts = facts_to_check(conn, tickers, read_manifest(verify_dir))
     read: dict[str, list[Sheet]] = {}
-    out: list[Checked] = []
+    best: dict[int, Checked] = {}
     for fact in facts:
+        held = best.get(fact.fact_id)
+        if held is not None and held.outcome == "agree":
+            continue
         if fact.document not in read:
             read[fact.document] = sheets(load(fact.document, verify_dir))
-        out.append(check_fact(fact, read[fact.document]))
-    return out
+        checked = check_fact(fact, read[fact.document])
+        if held is None or _RANK[checked.outcome] > _RANK[held.outcome]:
+            best[fact.fact_id] = checked
+    return list(best.values())
 
 
 def apply(

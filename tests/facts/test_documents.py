@@ -194,35 +194,118 @@ def _html_reader(path: Path, doc_id: str) -> Document:
 
 
 @pytest.mark.parametrize(
-    ("name", "doc_id"),
+    ("name", "ocr_tickers", "doc_id"),
     [
-        pytest.param("results/TEXT-2025-03-31.pdf", "pdf:TEXT-2025-03-31", id="a text pdf"),
-        pytest.param("results/PHOTO-FY25.pdf", "pdf:PHOTO-FY25", id="a few photo pages pass"),
-        pytest.param("results/WEB-2023-06-30.htm", "html:WEB-2023-06-30", id="an html filing"),
+        pytest.param(
+            "results/TEXT-2025-03-31.pdf", (), "pdf:verify-results-TEXT-2025-03-31", id="a text pdf"
+        ),
+        pytest.param(
+            "results/PHOTO-FY25.pdf",
+            (),
+            "pdf:verify-results-PHOTO-FY25",
+            id="a few photo pages pass",
+        ),
+        pytest.param(
+            "results/WEB-2023-06-30.htm",
+            (),
+            "html:verify-results-WEB-2023-06-30",
+            id="an html filing",
+        ),
+        pytest.param(
+            "results/OCR-2025-03-31.pdf",
+            ("OCR",),
+            "pdf:verify-results-OCR-2025-03-31",
+            id="a scan with OCR text, of a company read so",
+        ),
     ],
 )
-def test_load_verify_document_reads_by_format(verify_dir: Path, name: str, doc_id: str) -> None:
+def test_load_verify_document_reads_by_format(
+    verify_dir: Path, name: str, ocr_tickers: tuple[str, ...], doc_id: str
+) -> None:
     documents.flag_documents(verify_dir)
-    read = documents.load_verify_document(name, verify_dir, _pdf_reader, _html_reader)
+    read = documents.load_verify_document(name, verify_dir, _pdf_reader, _html_reader, ocr_tickers)
     assert read.doc_id == doc_id, read.doc_id
 
 
 @pytest.mark.parametrize(
-    ("flag_first", "name", "error"),
+    ("flag_first", "name", "ocr_tickers", "error"),
     [
-        pytest.param(True, "results/NOPE.pdf", KeyError, id="a path not in the manifest"),
-        pytest.param(False, "results/TEXT-2025-03-31.pdf", ValueError, id="an entry not flagged"),
-        pytest.param(True, "results/SCAN-2025-03-31.pdf", ValueError, id="a scanned pdf"),
-        pytest.param(True, "results/OCR-2025-03-31.pdf", ValueError, id="a scan with OCR text"),
+        pytest.param(True, "results/NOPE.pdf", (), KeyError, id="a path not in the manifest"),
+        pytest.param(
+            False, "results/TEXT-2025-03-31.pdf", (), ValueError, id="an entry not flagged"
+        ),
+        pytest.param(True, "results/SCAN-2025-03-31.pdf", (), ValueError, id="a scanned pdf"),
+        pytest.param(
+            True,
+            "results/SCAN-2025-03-31.pdf",
+            ("SCAN",),
+            ValueError,
+            id="a scan with no text, even of a company read through OCR",
+        ),
+        pytest.param(
+            True,
+            "results/OCR-2025-03-31.pdf",
+            ("TEXT",),
+            ValueError,
+            id="a scan with OCR text, of a company not read so",
+        ),
     ],
 )
 def test_load_verify_document_refuses(
-    verify_dir: Path, flag_first: bool, name: str, error: type[Exception]
+    verify_dir: Path,
+    flag_first: bool,
+    name: str,
+    ocr_tickers: tuple[str, ...],
+    error: type[Exception],
 ) -> None:
     if flag_first:
         documents.flag_documents(verify_dir)
     with pytest.raises(error):
-        documents.load_verify_document(name, verify_dir, _pdf_reader, _html_reader)
+        documents.load_verify_document(name, verify_dir, _pdf_reader, _html_reader, ocr_tickers)
+
+
+@pytest.mark.parametrize(
+    ("pages", "text_less", "ocr", "ocr_scan"),
+    [
+        pytest.param(10, [], [], False, id="typed pages"),
+        pytest.param(24, [], list(range(3, 16)), True, id="a scan with OCR text behind"),
+        pytest.param(10, [1], list(range(2, 11)), True, id="one text-less page among OCR'd"),
+        pytest.param(10, [1, 2], list(range(3, 11)), False, id="text-less pages over the share"),
+        pytest.param(13, list(range(2, 14)), [], False, id="a scan with no text"),
+    ],
+)
+def test_is_ocr_scan(pages: int, text_less: list[int], ocr: list[int], ocr_scan: bool) -> None:
+    entry: documents.Entry = {"pages": pages, "text_less_pages": text_less, "ocr_pages": ocr}
+    assert documents.is_ocr_scan(entry) is ocr_scan, entry
+
+
+@pytest.mark.parametrize(
+    ("name", "ticker"),
+    [
+        ("results/BAJAJ-AUTO-2025-09-30.pdf", "BAJAJ-AUTO"),
+        ("results/HDFCBANK-2023-06-30.htm", "HDFCBANK"),
+        ("annual/ITC-FY25.pdf", "ITC"),
+    ],
+)
+def test_ticker_of(name: str, ticker: str) -> None:
+    assert documents.ticker_of(name) == ticker
+
+
+@pytest.mark.parametrize(
+    ("name", "doc_id"),
+    [
+        ("annual/ITC-FY25.pdf", "verify-annual-ITC-FY25"),
+        ("results/BAJAJ-AUTO-2025-09-30.pdf", "verify-results-BAJAJ-AUTO-2025-09-30"),
+        ("results/HDFCBANK-2023-06-30.htm", "verify-results-HDFCBANK-2023-06-30"),
+    ],
+)
+def test_doc_id_of_keeps_a_verify_document_apart_from_the_corpus(name: str, doc_id: str) -> None:
+    assert documents.doc_id_of(name) == doc_id
+
+
+def test_ticker_of_refuses_a_name_with_no_period() -> None:
+    with pytest.raises(ValueError, match="no company and period"):
+        documents.ticker_of("results/ITC.pdf")
 
 
 def test_every_cross_checked_company_is_one_the_database_holds() -> None:
@@ -331,9 +414,20 @@ def test_an_html_table_of_two_statements_reads_as_two(tmp_path: Path) -> None:
     assert tables[0].rows[2] == ("Return on assets", "0.48%", "", "0.47%", ""), tables[0].rows
 
 
+_TYPED: documents.Entry = {"pages": 10, "text_less_pages": [], "ocr_pages": []}
+_OCRD: documents.Entry = {"pages": 10, "text_less_pages": [], "ocr_pages": list(range(2, 11))}
+
+
 @pytest.mark.parametrize(
-    ("source", "kind", "expected"),
-    [("nse", "pdf", "nse-pdf"), ("sec-6k", "html", "sec-6k-html")],
+    ("entry", "expected"),
+    [
+        pytest.param({"source": "nse", "format": "pdf"}, "nse-pdf", id="an nse pdf"),
+        pytest.param({"source": "sec-6k", "format": "html"}, "sec-6k-html", id="an sec copy"),
+        pytest.param({"source": "nse", "format": "pdf", **_TYPED}, "nse-pdf", id="a typed pdf"),
+        pytest.param(
+            {"source": "nse", "format": "pdf", **_OCRD}, "nse-pdf-ocr", id="a scan with OCR text"
+        ),
+    ],
 )
-def test_origin_names_source_and_form(source: str, kind: str, expected: str) -> None:
-    assert documents.origin({"source": source, "format": kind}) == expected
+def test_origin_names_source_and_form(entry: documents.Entry, expected: str) -> None:
+    assert documents.origin(entry) == expected

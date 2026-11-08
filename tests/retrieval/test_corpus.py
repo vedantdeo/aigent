@@ -13,12 +13,14 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from docling.datamodel.base_models import DocumentStream
+from docling.datamodel.base_models import DocumentStream, InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling_core.types.doc.base import BoundingBox, CoordOrigin
+from docling_core.types.doc.document import DoclingDocument
 from pypdf import PdfReader
 from pypdf.generic import DictionaryObject, StreamObject
 
-from aigent.config import PAGE_SEPARATOR
+from aigent.config import DOCLING_QUEUE_MAX_SIZE, PAGE_SEPARATOR
 from aigent.retrieval import corpus
 from aigent.retrieval.corpus import (
     FY25_REPORTS,
@@ -39,7 +41,7 @@ from aigent.retrieval.corpus import (
     to_document,
 )
 
-from .conftest import Footer, Grid, Heading, Picture, Piece, Running, docling
+from .conftest import Footer, Grid, Heading, Picture, Piece, Running, docling, lines_of
 
 pytestmark = pytest.mark.usefixtures("fake_docling")
 
@@ -575,6 +577,24 @@ def test_a_truncated_parse_is_parsed_again_rather_than_raising(
 
     assert len(fake_docling) == 2, fake_docling
     assert "final dividend" in parsed.export_to_text()
+
+
+def test_docling_holds_at_most_the_capped_pages_between_its_stages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    options = corpus._converter().format_to_options[InputFormat.PDF].pipeline_options
+    assert isinstance(options, PdfPipelineOptions)
+    monkeypatch.setattr(options, "queue_max_size", 100)  # Docling's default
+    held: list[int] = []
+
+    def convert(path: Path) -> DoclingDocument:
+        held.append(options.queue_max_size)
+        return lines_of(path)
+
+    monkeypatch.setattr(corpus, "convert", convert)
+    parse_cached(annual_report(tmp_path), "RELIANCE-FY25", tmp_path / ".cache")
+
+    assert held == [DOCLING_QUEUE_MAX_SIZE], held
 
 
 def test_republishing_the_report_keeps_one_parse(tmp_path: Path, fake_docling: list[Path]) -> None:

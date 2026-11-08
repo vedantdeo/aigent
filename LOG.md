@@ -2538,3 +2538,78 @@
   Reliance 7.91%; Reliance consolidated H1 5.13%), Tata Motors' 68% consolidated and 300%
   standalone from its demerger gain (FY26 profit Rs 87,569 cr standalone on equity of Rs 25-33k
   cr). 14/14 guards mutation-checked (two after their tests were added); 2,731 tests.
+- 11-07: **the restatement pinned against printed restated EPS, $0.00.** The 11 printed figures
+  checked on 11-06 are now `evals/reference/restated-eps.jsonl` (filed EPS, both filings' publish
+  dates, the printed figure and where it was printed), read by one parametrized test that seeds
+  and checks the shipped share events on a fresh database and restates through `restatement`,
+  within half a paisa. Vedant: the 8 year-to-date-less-quarter rows stay out, being our own
+  figures rather than printed ones. 5/5 mutants killed (Wipro's ratio, HDFC Bank's date, a unit
+  multiplier, an emptied file, rows out of order); 2,745 tests. Tests and data only, so the
+  knowledge graph is unchanged.
+- 11-07: **the cross-check widened to the seven ind-as companies: their documents, $0.00.** Fetched
+  from NSE: 84 quarterly results FY24-FY26 (the first results or board-meeting announcement after
+  each quarter end whose PDF prints EPS) and 21 annual reports. **76 of the 84 results are scans
+  with an OCR text layer** ("~asic (in~) 2.50", "Earnlngs"); the companies' sites hold the same
+  scans or none (Wipro's text copy is IFRS), NSE's integrated filings attach scans too, and BSE
+  refuses automated clients. Every annual report has text. Vedant's option: annual reports for a
+  year's figures and 31 March balances, OCR'd results for the rest, one tier (`xbrl-filed`), the
+  stamp `nse-pdf-ocr` telling them apart; aim: OCR read as well as a text PDF, measured on the
+  facts both copies print. Built: `documents.refusal` (an OCR'd scan read for `VERIFY_OCR_TICKERS`,
+  a page with no text never), `crosscheck.documents_for` (annual report first, best outcome kept),
+  all nine companies in `VERIFY_TICKERS`, Invariant 32. Docling with OCR off reads the OCR layer
+  (Wipro Sep-2025: 32 tables, 18 sheets). Three results stay unread, too many image-only pages
+  (Tata Motors Jun-2023, Bajaj Auto Jun-2024, Reliance Jun-2025). Five annual reports in the
+  retrieval corpus (ITC FY25, Reliance and Tata Motors FY24-FY25) are its copies, the same
+  statements without the AGM notice, since the parse cache keeps one entry per name: the NSE
+  edition of Reliance FY25 had evicted the corpus one's (re-parsed, 9 min). 13/13 mutants killed;
+  2,774 tests. Parsing runs in the background (about 2.4 s a page, 4-10 s at low priority).
+- 11-07: **the knowledge graph's "verified against" line dropped, $0.00.** Vedant: the graph is
+  for agents, nothing else. The line had grown into a changelog that told an agent nothing about
+  the repo and had stopped at 11-01 while six PRs went in; the hook and CI already refuse a change to
+  `src/` without the graph. §0 now says that in one sentence, and `CLAUDE.md`, the hook's messages
+  and the graph's Maintenance no longer ask for a bump.
+- 11-07 to 11-08: **the cross-check's documents parsed, and two parse-cache fixes, $0.00.**
+  **Memory:** one process parsing the annual reports grew to 17 GB on this 16 GB Mac and froze it
+  (a button reset at 22:00). Docling holds up to `queue_max_size` (100) pages between each pipeline
+  stage, and five pages alone peak at ~3.5 GB. `config.DOCLING_QUEUE_MAX_SIZE = 8` (Vedant: keep
+  it) is set by `corpus._queue_capped` before each parse, outside the parse fingerprint, so nothing
+  re-parses. Power Grid FY25, killed at 11-12 GB three times, parsed at 9 GB.
+  `DOCLING_PERF_PAGE_BATCH_SIZE=1` did not help. Bajaj Auto FY24 (130 photos up to 88 MP) still
+  needed 18.7 GB, so it was parsed on Kaggle (free T4, private kernel at `main` `2c69bd2`): its
+  fingerprints matched and its cache files load here. All 102 verify documents are parsed.
+  **Names:** the cache keeps one entry per name, and seven training reports (Bajaj Auto FY24-FY25,
+  Power Grid FY26, Sun Pharma FY24-FY25, Wipro FY24-FY25) are different files under verify
+  names; six of their parses were evicted (re-parsed when next used). `documents.doc_id_of` names
+  verify documents `verify-<folder>-<stem>`; 200 cache entries moved and 16 copied, where an
+  identical corpus or training PDF still uses the old name, so nothing re-parsed (108 load from
+  cache). 4/4 mutants killed; 2,778 tests.
+- 11-08: **the cross-check run on all nine companies, and ind-as headers read, $0.00.** First run
+  (`f284384`, no `--write`): 38,083 facts, 12,657 agree, but the annual reports of Bajaj Auto,
+  ITC, Power Grid and Reliance agreed on nothing and Reliance's results on nothing: their columns
+  read undated. Four forms the matcher missed, all in `crosscheck.column_periods` and `sheets`:
+  day-first dates (`31st March, 2025`) and Reliance's `30 Jun'24` with OCR'd months (`Sen`, `Seo`)
+  read by two letters only where no other month shares them; financial-year labels (`2024 - 25`,
+  `FY25`); a bare year (`2025`) beside dated columns sharing one day (Bajaj Auto); and a table
+  with no dated column continuing the one before it. Rerun: 14,643 agree, 1,986 more and none
+  fewer; annual reports at 25-49% for those four; banks unchanged. A first version dated Tata
+  Motors' wrapped title year as a column and lost 2 agreements; a bare year must now stand alone
+  in a cell of a row with other headers. 30 new agreements audited by hand: 29 right, 1 a zero
+  matched to a dash on an MSMED-interest row (the existing zero rule). EPS still agrees almost
+  nowhere: Indian statements print `Basic (in ₹)` under an `Earnings per equity share` heading,
+  short of the 0.6 label share against XBRL's long label, and OCR damages it (`~asic`). 15/15
+  mutants killed; 2,796 tests. Breakdown: annual vs OCR'd results on the FY facts both print,
+  annual agreeing more often for every company.
+- 11-08: **EPS read on ind-as statements, $0.00.** Indian statements print `Basic (in ₹)` and
+  `Diluted (in ₹)` under an `Earnings per equity share` heading, short of the 0.6 label share
+  against XBRL's long labels. `crosscheck.per_share_row`: a per-share fact also agrees on a row
+  whose words, with its heading (the last figureless row above, carried into a continued table),
+  name its kind, earnings per share, and discontinued operations on both sides or neither; OCR'd
+  words one letter off (`~asic`, `IDiluted`, `Earnin11s` beside `EPS`). Every label match now
+  refuses a row or fact of discontinued operations alone against one that is not, not a symmetric
+  exclusive pair: Power Grid prints total EPS as "from continuing operations". Against `4e029dd`:
+  560 more agree, all EPS, 10 fewer (6 false: Power Grid zeros on discontinued-operations dashes,
+  a Tata Motors discontinued EPS on a continuing row; 3 true, lost to merged or OCR'd rows; 1
+  unclear); 15,193 of 38,083. EPS in results: Power Grid 53%, Wipro 40%, Bajaj Auto 39%, Sun
+  Pharma 25%, Tata Motors 22%, ITC 12%, Reliance 0%. 30 new EPS agreements audited: 28 right, 1
+  unreadable here, 1 the discontinued case the rule now refuses. 11/11 mutants killed; 2,813
+  tests. Reports `crosscheck-20261108-1653` (before the header fixes) and `-1901` (after E).

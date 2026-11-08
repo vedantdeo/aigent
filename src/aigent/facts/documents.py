@@ -19,7 +19,11 @@ from docling_core.types.doc.items.node import DocItem
 from docling_core.types.doc.items.table.table import TableItem
 from docling_core.types.doc.items.text import SectionHeaderItem, TextItem, TitleItem
 
-from aigent.facts.cfg_facts import VERIFY_MAX_TEXT_LESS_SHARE, VERIFY_MIN_TEXT_CHARS
+from aigent.facts.cfg_facts import (
+    VERIFY_MAX_TEXT_LESS_SHARE,
+    VERIFY_MIN_TEXT_CHARS,
+    VERIFY_OCR_TICKERS,
+)
 from aigent.retrieval.chunk import Document
 from aigent.retrieval.corpus import (
     CORPUS_DIR,
@@ -87,9 +91,51 @@ def is_scan(entry: Entry, max_share: float = VERIFY_MAX_TEXT_LESS_SHARE) -> bool
     return pages > 0 and len(scanned) > max_share * pages
 
 
+def is_ocr_scan(entry: Entry, max_share: float = VERIFY_MAX_TEXT_LESS_SHARE) -> bool:
+    """A scan whose pages carry OCR text: over the share once OCR'd pages count, within it on its
+    text-less pages alone."""
+    pages = cast(int, entry["pages"])
+    return (
+        is_scan(entry, max_share)
+        and len(cast(list[int], entry["text_less_pages"])) <= max_share * pages
+    )
+
+
 def origin(entry: Entry) -> str:
-    """Where a flagged entry's copy came from, and its form: `nse-pdf`, `sec-6k-html`."""
-    return f"{entry['source']}-{entry['format']}"
+    """Where a flagged entry's copy came from, and its form: `nse-pdf`, `sec-6k-html`, and
+    `nse-pdf-ocr` for a scan read through its OCR text."""
+    form = f"{entry['source']}-{entry['format']}"
+    return f"{form}-ocr" if "pages" in entry and is_ocr_scan(entry) else form
+
+
+def ticker_of(name: str) -> str:
+    """The company a manifest path names, as in `results/BAJAJ-AUTO-2025-09-30.pdf` or
+    `annual/ITC-FY25.pdf`."""
+    found = re.fullmatch(r"(.+)-(?:\d{4}-\d{2}-\d{2}|FY\d{2})", Path(name).stem)
+    if found is None:
+        raise ValueError(f"{name} names no company and period")
+    return found.group(1)
+
+
+def doc_id_of(name: str) -> str:
+    """A manifest path's name in the parse cache, which holds one entry per name, so a corpus copy
+    of the same report never evicts it: `annual/ITC-FY25.pdf` is `verify-annual-ITC-FY25`."""
+    path = Path(name)
+    return f"verify-{path.parent.name}-{path.stem}"
+
+
+def refusal(name: str, entry: Entry, ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS) -> str | None:
+    """Why a manifest entry cannot be read, or None: not flagged yet, or a scan, unless its pages
+    carry OCR text and its company is in `ocr_tickers`."""
+    if not {"format", "pages", "text_less_pages", "ocr_pages"} <= entry.keys():
+        return f"{name} is not flagged yet; run flag_documents first"
+    if entry["format"] == "html" or not is_scan(entry):
+        return None
+    if is_ocr_scan(entry) and ticker_of(name) in ocr_tickers:
+        return None
+    return f"{name} is a scan: no text layer on pages {entry['text_less_pages']}" + (
+        f", OCR text on pages {entry['ocr_pages']}" if entry["ocr_pages"] else ""
+    )
 
 
 def read_manifest(verify_dir: Path = VERIFY_DIR) -> dict[str, Entry]:
@@ -213,17 +259,17 @@ def load_verify_document(
     verify_dir: Path = VERIFY_DIR,
     pdf: Callable[[Path, str], Document] = load_pdf_cached,
     html: Callable[[Path, str], Document] = load_html,
+    ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS,
 ) -> Document:
     """One manifest entry as a `Document`, read by the format its entry records. Refuses a path not
-    in the manifest, an entry not yet flagged, and a scan."""
+    in the manifest (KeyError) and whatever `refusal` names (ValueError)."""
     entry = read_manifest(verify_dir).get(name)
     if entry is None:
         raise KeyError(f"{name} is not in {verify_dir / MANIFEST_NAME}")
-    if not {"format", "pages", "text_less_pages", "ocr_pages"} <= entry.keys():
-        raise ValueError(f"{name} is not flagged yet; run flag_documents first")
+    refused = refusal(name, entry, ocr_tickers)
+    if refused is not None:
+        raise ValueError(refused)
     path = verify_dir / name
     if entry["format"] == "html":
-        return html(path, path.stem)
-    if is_scan(entry):
-        raise ValueError(f"{name} is a scan: no text layer on pages {entry['text_less_pages']}")
-    return pdf(path, path.stem)
+        return html(path, doc_id_of(name))
+    return pdf(path, doc_id_of(name))

@@ -27,6 +27,8 @@ from aigent.facts.share_events import SHARE_EVENTS
 from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 
+from .conftest import RESTATED_EPS
+
 PARAPHRASED = DATASET.with_name("retrieval-paraphrased.jsonl")
 TABLES = DATASET.with_name("retrieval-tables.jsonl")
 TASKS = DATASET.parent / "tasks.jsonl"
@@ -104,6 +106,11 @@ ORDERED_FILES = [
     Ordered(DECISIONS, key="id", load=jsonl_ids("id")),
     Ordered(SEEDED, key="scope/name", load=jsonl_keys("scope", "name")),
     Ordered(SHARE_EVENTS, key="ticker/effective", load=jsonl_keys("ticker", "effective")),
+    Ordered(
+        RESTATED_EPS,
+        key="ticker/basis/period_start/period_end",
+        load=jsonl_keys("ticker", "basis", "period_start", "period_end"),
+    ),
     Ordered(IND_AS_FILED, key="concept", load=lambda p: p.read_text(encoding="utf-8").split()),
     Ordered(MANIFEST, key="doc_id", load=json_keys("documents")),
     Ordered(TRAINING_MANIFEST, key="doc_id", load=json_keys("documents")),

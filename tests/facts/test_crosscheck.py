@@ -21,14 +21,18 @@ from aigent.facts.crosscheck import (
     column_periods,
     crosscheck,
     document_scale,
+    documents_for,
     facts_to_check,
     label_share,
     number,
     sheets,
 )
+from aigent.facts.documents import Entry
+from aigent.facts.store import FilingRow, sync_xbrl_facts, upsert_filing
+from aigent.facts.xbrl import Fact as XbrlFact
 from aigent.retrieval.chunk import Document, Table
 
-from .conftest import CROSSCHECK_Q1, checked_row
+from .conftest import CROSSCHECK_Q1, CROSSCHECK_WRITER, checked_row
 
 Q1 = CROSSCHECK_Q1
 NOW = datetime(2026, 11, 1, 9, 0)
@@ -165,6 +169,91 @@ def test_number(printed: str, read: tuple[float, int, bool] | None) -> None:
             {1: Column(date(2024, 12, 31), None)},
             id="a date with no length",
         ),
+        pytest.param(
+            (
+                ("Particulars", "Quarter Ended", "", "", "Half Year Ended"),
+                ("", "30 Sep'24", "30 Jun'24", "30 Sep'23", "30 Sep'24"),
+            ),
+            {
+                1: Column(date(2024, 9, 30), 3),
+                2: Column(date(2024, 6, 30), 3),
+                3: Column(date(2023, 9, 30), 3),
+                4: Column(date(2024, 9, 30), 6),
+            },
+            id="Reliance's day, month and two-digit year",
+        ),
+        pytest.param(
+            (("", "Quarter Ended", "", ""), ("", "3osea'24", "30 Sen'23", "30 Seo'24")),
+            {
+                1: Column(date(2024, 9, 30), 3),
+                2: Column(date(2023, 9, 30), 3),
+                3: Column(date(2024, 9, 30), 3),
+            },
+            id="an OCR'd month read by the two letters only September starts with",
+        ),
+        pytest.param(
+            (("", "Quarter Ended", ""), ("", "30 Jnu'24", "31 Mav'24")),
+            {},
+            id="an OCR'd month two months start like is left undated",
+        ),
+        pytest.param(
+            (("", "", "(₹ in crores)", ""), ("", "PROFITS", "2024 - 25", "2023 - 24")),
+            {2: Column(date(2025, 3, 31), 12), 3: Column(date(2024, 3, 31), 12)},
+            id="ITC's financial years",
+        ),
+        pytest.param(
+            (("Particulars", "FY25", "FY 2024"),),
+            {1: Column(date(2025, 3, 31), 12), 2: Column(date(2024, 3, 31), 12)},
+            id="FY short forms",
+        ),
+        pytest.param(
+            (("Particulars", "2019-24"),),
+            {},
+            id="a span of years is no financial year",
+        ),
+        pytest.param(
+            (
+                ("", "", "For the year ended", ""),
+                ("Particulars", "Note No.", "2025", "(₹ In Crore) 31 March 2024"),
+            ),
+            {2: Column(date(2025, 3, 31), 12), 3: Column(date(2024, 3, 31), 12)},
+            id="Bajaj Auto's bare year takes its neighbour's day",
+        ),
+        pytest.param(
+            (("Particulars", "2025", "2024"),),
+            {},
+            id="bare years with no dated neighbour stay undated",
+        ),
+        pytest.param(
+            (("", "Year ended", "", ""), ("Particulars", "2025", "31 March 2024", "31.12.2023")),
+            {2: Column(date(2024, 3, 31), 12), 3: Column(date(2023, 12, 31), 12)},
+            id="a bare year among neighbours of different days stays undated",
+        ),
+        pytest.param(
+            (("Particulars", "Year ended 31st March, 2025", "As at 31 March 2024"),),
+            {1: Column(date(2025, 3, 31), 12), 2: Column(date(2024, 3, 31), 0)},
+            id="the day first, as annual reports print it",
+        ),
+        pytest.param(
+            (("Particulars", "December 2023", "31.03.2024"),),
+            {2: Column(date(2024, 3, 31), None)},
+            id="a month and year with no day takes no neighbour's day",
+        ),
+        pytest.param(
+            (
+                ("(₹ in crores)",),
+                ("2024",),
+                ("", "", "As at March 31, 2025", "As at March 31,"),
+                ("", "", "2024", ""),
+            ),
+            {2: Column(date(2025, 3, 31), 0)},
+            id="Tata Motors' year on a line of its own is a wrapped title, not a column",
+        ),
+        pytest.param(
+            (("Particulars", "31.03.2025", "31.03.2024"), ("Restated", "2024", "")),
+            {1: Column(date(2025, 3, 31), None), 2: Column(date(2024, 3, 31), None)},
+            id="a dated column keeps its date over a stray year",
+        ),
     ],
 )
 def test_column_periods(header: tuple[tuple[str, ...], ...], expected: dict[int, Column]) -> None:
@@ -205,6 +294,173 @@ def test_a_sheet_takes_its_basis_and_scale_from_the_text_before_it() -> None:
 def test_a_sheet_with_no_scale_near_it_takes_the_documents() -> None:
     document = _document("STANDALONE RESULTS", _RESULTS, "Notes (₹ in crore) and (₹ in crore)")
     assert sheets(document)[0].scale == 1e7
+
+
+def _pages(*tables: tuple[int, tuple[tuple[str, ...], ...]]) -> Document:
+    """A document of tables, each on the page given, its rows printed one a line."""
+    text, starts, parts = "", [0], []
+    for page, rows in tables:
+        while len(starts) < page:
+            text += "\f"
+            starts.append(len(text))
+        start = len(text)
+        text += "\n".join(" ".join(c for c in row if c) for row in rows) + "\n"
+        parts.append(Table(start, len(text), rows))
+    return Document("D", text, page_starts=tuple(starts), tables=tuple(parts))
+
+
+_STATEMENT = (
+    ("", "Quarter ended", "", "Year ended"),
+    ("Particulars", "30.09.2024", "30.06.2024", "31.03.2024"),
+    ("Revenue", "100", "90", "380"),
+)
+_CONTINUED = (("Basic EPS", "2.50", "3.53", "10.44"), ("Diluted EPS", "2.49", "3.52", "10.40"))
+
+
+@pytest.mark.parametrize(
+    ("later", "inherits"),
+    [
+        pytest.param((1, _CONTINUED), True, id="the rest of a statement on the same page"),
+        pytest.param((2, _CONTINUED), True, id="the rest of a statement on the next page"),
+        pytest.param((3, _CONTINUED), False, id="a table two pages on"),
+        pytest.param(
+            (2, (("Basic EPS", "2.50", "3.53", "10.44", "9.80"),)),
+            False,
+            id="a table of another width",
+        ),
+        pytest.param(
+            (2, (("Particulars", "31.12.2024", "30.09.2024", "31.03.2024"), *_CONTINUED)),
+            False,
+            id="a table with dated columns of its own",
+        ),
+    ],
+)
+def test_a_table_continuing_a_statement_takes_its_columns(
+    later: tuple[int, tuple[tuple[str, ...], ...]], inherits: bool
+) -> None:
+    first, second = sheets(_pages((1, _STATEMENT), later))
+    assert (second.columns == first.columns) is inherits, second.columns
+
+
+_TOTAL_EPS = "Basic earnings (loss) per share from continuing and discontinued operations"
+_DILUTED_EPS = "Diluted earnings (loss) per share from continuing and discontinued operations"
+_CONTINUING_EPS = "Basic earnings (loss) per share from continuing operations"
+_DISCONTINUED_EPS = "Basic earnings (loss) per share from discontinued operations"
+_WEIGHTED = "Weighted average number of equity shares for basic earnings per share"
+_EPS_HEADING = ("", "Earnings per equity share", "", "", "", "")
+
+
+def _eps_row(label: str) -> tuple[str, ...]:
+    return ("", label, "15.73", "15.26", "13.80", "58.38")
+
+
+@pytest.mark.parametrize(
+    ("rows", "label", "unit", "agreed"),
+    [
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic (in ₹)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            True,
+            id="a short row under its heading",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("~asic (in~)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            True,
+            id="an OCR'd kind one letter off",
+        ),
+        pytest.param(
+            (("", "XIII Earnin11s oer share /EPS)", "", "", "", ""), _eps_row("Basic (in ₹)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            True,
+            id="an OCR'd heading still naming EPS",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic (in ₹)")),
+            _DILUTED_EPS,
+            "INRPerShare",
+            False,
+            id="a diluted fact on a basic row",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic and diluted (in ₹)")),
+            _DILUTED_EPS,
+            "INRPerShare",
+            True,
+            id="a row printing both kinds",
+        ),
+        pytest.param(
+            (("", "Other income", "", "", "", ""), _eps_row("Basic (in ₹)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            False,
+            id="no earnings per share above it",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic EPS from discontinued operations")),
+            _CONTINUING_EPS,
+            "INRPerShare",
+            False,
+            id="a continuing fact on a discontinued row",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic (in ₹)")),
+            _DISCONTINUED_EPS,
+            "INRPerShare",
+            False,
+            id="a discontinued fact on a plain row",
+        ),
+        pytest.param(
+            (
+                ("", "Earnings per share from discontinued operations", "", "", "", ""),
+                _eps_row("Basic"),
+            ),
+            _DISCONTINUED_EPS,
+            "INRPerShare",
+            True,
+            id="a discontinued fact under a discontinued heading",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic EPS from continuing and discontinued operations")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            True,
+            id="a total fact on a row naming both",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Baslo (in ₹)")),
+            _TOTAL_EPS,
+            "INRPerShare",
+            False,
+            id="a word two letters off is no kind",
+        ),
+        pytest.param(
+            (_EPS_HEADING, _eps_row("Basic (in ₹)")),
+            _WEIGHTED,
+            "shares",
+            False,
+            id="a fact that is no per-share figure",
+        ),
+    ],
+)
+def test_a_per_share_fact_agrees_on_its_kind_of_row(
+    rows: tuple[tuple[str, ...], ...], label: str, unit: str, agreed: bool
+) -> None:
+    scaled = ("", "STANDALONE RESULTS (₹ in crore)", "", "", "", "")
+    figures = ("1", "Interest earned", "38,995.78", "37,948.36", "33,327.61", "1")
+    read = sheets(_pages((1, (scaled, *_HEADER, figures, *rows))))
+    fact = _fact("EPS", 15.73 if unit == "INRPerShare" else 157_300_000.0, (label,), unit=unit)
+    assert (check_fact(fact, read).outcome == "agree") is agreed, check_fact(fact, read)
+
+
+def test_a_heading_carries_into_the_statement_it_continues() -> None:
+    first = (*_HEADER, ("1", "Interest earned", "1.00", "2.00", "3.00", "4.00"), _EPS_HEADING)
+    read = sheets(_pages((1, first), (2, (_eps_row("Basic (in ₹)"),))))
+    fact = _fact("EPS", 15.73, (_TOTAL_EPS,), unit="INRPerShare", decimals=2)
+    assert check_fact(fact, read).outcome == "agree", read[-1].cells[:1]
 
 
 def test_a_rows_serial_number_is_not_a_figure() -> None:
@@ -316,7 +572,11 @@ def test_a_fact_records_where_it_agreed() -> None:
     assert (checked.page, checked.row_label) == (1, "Interest earned")
 
 
-MANIFEST = {"results/ICICIBANK-2024-06-30.pdf": {}, "results/HDFCBANK-2024-06-30.pdf": {}}
+FLAGGED: Entry = {"format": "pdf", "pages": 2, "text_less_pages": [], "ocr_pages": []}
+MANIFEST: dict[str, Entry] = {
+    "results/ICICIBANK-2024-06-30.pdf": FLAGGED,
+    "results/HDFCBANK-2024-06-30.pdf": FLAGGED,
+}
 
 
 def test_facts_to_check_are_the_companies_named_with_a_document(
@@ -335,6 +595,142 @@ def test_facts_to_check_skip_a_fact_not_from_xbrl(crosscheck_db: sqlite3.Connect
     crosscheck_db.execute("UPDATE facts SET tier = 'filed-cell-ai' WHERE concept = 'OtherIncome'")
     facts = facts_to_check(crosscheck_db, ("ICICIBANK",), MANIFEST)
     assert "OtherIncome" not in {f.concept for f in facts}
+
+
+@pytest.mark.parametrize(
+    ("period", "filed", "stems"),
+    [
+        pytest.param(Q1, date(2024, 6, 30), ("ICICIBANK-2024-06-30",), id="a quarter"),
+        pytest.param(
+            (date(2023, 4, 1), date(2024, 3, 31)),
+            date(2024, 3, 31),
+            ("ICICIBANK-FY24", "ICICIBANK-2024-03-31"),
+            id="a year's figure tries its annual report first",
+        ),
+        pytest.param(
+            (None, date(2025, 3, 31)),
+            date(2025, 3, 31),
+            ("ICICIBANK-FY25", "ICICIBANK-2025-03-31"),
+            id="a 31 March balance",
+        ),
+        pytest.param(
+            (date(2025, 1, 1), date(2025, 3, 31)),
+            date(2025, 3, 31),
+            ("ICICIBANK-2025-03-31",),
+            id="the fourth quarter alone is not in the annual report",
+        ),
+        pytest.param(
+            (None, date(2024, 3, 31)),
+            date(2025, 3, 31),
+            ("ICICIBANK-2025-03-31",),
+            id="a balance at another day than the filing's",
+        ),
+        pytest.param(
+            (None, date(2024, 9, 30)),
+            date(2024, 9, 30),
+            ("ICICIBANK-2024-09-30",),
+            id="a half-year balance",
+        ),
+        pytest.param(
+            (date(2024, 4, 1), date(2024, 12, 31)),
+            date(2024, 12, 31),
+            ("ICICIBANK-2024-12-31",),
+            id="nine months",
+        ),
+    ],
+)
+def test_documents_for(
+    period: tuple[date | None, date], filed: date, stems: tuple[str, ...]
+) -> None:
+    assert documents_for(_fact(period=period), filed) == stems
+
+
+_OCR_SCAN: Entry = {
+    "format": "pdf",
+    "pages": 10,
+    "text_less_pages": [],
+    "ocr_pages": list(range(2, 11)),
+}
+_IMAGE_SCAN: Entry = {
+    "format": "pdf",
+    "pages": 10,
+    "text_less_pages": list(range(2, 11)),
+    "ocr_pages": [],
+}
+
+
+@pytest.mark.parametrize(
+    ("entry", "ocr_tickers", "checked"),
+    [
+        pytest.param(FLAGGED, (), True, id="a text pdf"),
+        pytest.param({}, (), False, id="an entry not flagged"),
+        pytest.param(_OCR_SCAN, ("ICICIBANK",), True, id="an ocr'd scan of a company read so"),
+        pytest.param(_OCR_SCAN, ("HDFCBANK",), False, id="an ocr'd scan of another company"),
+        pytest.param(_IMAGE_SCAN, ("ICICIBANK",), False, id="a scan with no text"),
+    ],
+)
+def test_facts_to_check_leave_out_a_document_that_cannot_be_read(
+    crosscheck_db: sqlite3.Connection, entry: Entry, ocr_tickers: tuple[str, ...], checked: bool
+) -> None:
+    manifest = {"results/ICICIBANK-2024-06-30.pdf": entry}
+    facts = facts_to_check(crosscheck_db, ("ICICIBANK",), manifest, ocr_tickers)
+    assert bool(facts) is checked, facts
+
+
+_YEAR = (date(2023, 4, 1), date(2024, 3, 31))
+_ANNUAL, _MARCH = "annual/ICICIBANK-FY24.pdf", "results/ICICIBANK-2024-03-31.pdf"
+
+
+def _year_column(printed: str) -> Document:
+    rows = (*_HEADER, ("1", "Interest earned", "1.00", "1.00", "1.00", printed))
+    return _document("STANDALONE FINANCIAL RESULTS (₹ in crore)", rows)
+
+
+_AGREES, _DIFFERS = _year_column("142,890.94"), _year_column("142,000.00")
+_SILENT = _document("STANDALONE FINANCIAL RESULTS (₹ in crore)")
+
+
+@pytest.mark.parametrize(
+    ("annual", "results", "outcome", "document", "loaded"),
+    [
+        pytest.param(_AGREES, _DIFFERS, "agree", _ANNUAL, [_ANNUAL], id="the annual report agrees"),
+        pytest.param(
+            _DIFFERS, _AGREES, "agree", _MARCH, [_ANNUAL, _MARCH], id="the results agree after"
+        ),
+        pytest.param(
+            _SILENT, _DIFFERS, "differ", _MARCH, [_ANNUAL, _MARCH], id="a difference beats silence"
+        ),
+        pytest.param(
+            _DIFFERS, _DIFFERS, "differ", _ANNUAL, [_ANNUAL, _MARCH], id="a tie keeps the first"
+        ),
+    ],
+)
+def test_crosscheck_keeps_each_facts_best_outcome_across_its_documents(
+    crosscheck_db: sqlite3.Connection,
+    tmp_path: Path,
+    annual: Document,
+    results: Document,
+    outcome: str,
+    document: str,
+    loaded: list[str],
+) -> None:
+    fid = upsert_filing(
+        crosscheck_db,
+        FilingRow("ICICIBANK", 2024, date(2024, 3, 31), "standalone", "xbrl", "march", "s", "t"),
+    )
+    year = XbrlFact("InterestEarned", "duration", *_YEAR, None, 1428909400000.0, "INR", -5)
+    sync_xbrl_facts(crosscheck_db, fid, "ICICIBANK", "standalone", [year], CROSSCHECK_WRITER)
+    manifest = {_ANNUAL: FLAGGED, _MARCH: FLAGGED}
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    read: list[str] = []
+
+    def load(name: str, verify_dir: Path) -> Document:
+        read.append(name)
+        return annual if name == _ANNUAL else results
+
+    checked = crosscheck(crosscheck_db, ("ICICIBANK",), tmp_path, load)
+    assert [(c.outcome, c.document) for c in checked] == [(outcome, document)], checked
+    assert read == loaded
 
 
 def test_crosscheck_reads_each_document_once(
@@ -476,6 +872,30 @@ def test_the_command_records_agreements_only_when_told(
         pytest.param("Gross NPA", "(a) Gross NPAs", 1.0, id="NPA read in full"),
         pytest.param("Interest earned", "Other income", 0.0, id="nothing shared"),
         pytest.param("Interest earned", "Interest expended", 0.5, id="half shared"),
+        pytest.param(
+            "Current tax",
+            "Current tax on profits for the year discontinued operations",
+            0.0,
+            id="a row of discontinued operations alone takes no other fact",
+        ),
+        pytest.param(
+            "Profit from discontinued operations",
+            "Profit for the period",
+            0.0,
+            id="a fact of discontinued operations alone takes no other row",
+        ),
+        pytest.param(
+            "Profit before tax",
+            "Profit before tax from continuing operations",
+            1.0,
+            id="a total takes a continuing-operations row",
+        ),
+        pytest.param(
+            "Profit from continuing and discontinued operations",
+            "Profit from continuing and discontinued operations",
+            1.0,
+            id="both kinds on both sides",
+        ),
     ],
 )
 def test_label_share(label: str, row: str, share: float) -> None:

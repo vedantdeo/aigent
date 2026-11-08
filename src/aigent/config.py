@@ -245,6 +245,7 @@ PAGE_SEPARATOR = "\n\n"
 # is Docling's choice of what the machine has (MPS here, CPU in CI).
 DOCLING_OCR = False
 DOCLING_DEVICE = "auto"
+DOCLING_QUEUE_MAX_SIZE = 8  # pages held between Docling's pipeline stages; its 100 outgrew 16 GB
 # Fonts drawing ₹ on a keyboard key, by family, and the keys each draws it on; nothing else maps.
 PDF_RUPEE_KEYS: dict[str, str] = {
     "ITFRupee": "CDEHIJKL",

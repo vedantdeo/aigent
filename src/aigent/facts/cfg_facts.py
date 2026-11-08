@@ -17,7 +17,27 @@ FACTS_TICKERS: tuple[str, ...] = (
 )
 FACTS_YEARS: tuple[int, ...] = (2024, 2025, 2026)  # the year a FY ends: 2025 is FY 2024-25
 NSE_SYMBOLS: dict[str, str] = {"TATAMOTORS": "TMPV"}  # files under its post-demerger symbol
-VERIFY_TICKERS: tuple[str, ...] = ("HDFCBANK", "ICICIBANK")  # XBRL cross-checked against filings
+VERIFY_TICKERS: tuple[str, ...] = (  # XBRL cross-checked against filings
+    "BAJAJ-AUTO",
+    "HDFCBANK",
+    "ICICIBANK",
+    "ITC",
+    "POWERGRID",
+    "RELIANCE",
+    "SUNPHARMA",
+    "TATAMOTORS",
+    "WIPRO",
+)
+# Companies whose results are filed as scans with OCR text behind, read through that text.
+VERIFY_OCR_TICKERS: tuple[str, ...] = (
+    "BAJAJ-AUTO",
+    "ITC",
+    "POWERGRID",
+    "RELIANCE",
+    "SUNPHARMA",
+    "TATAMOTORS",
+    "WIPRO",
+)
 # The XBRL taxonomy each company files under, which is a derived concept's scope: banks name their
 # figures differently (InterestEarned, ProfitLossFromOrdinaryActivitiesBeforeTax).
 SCOPES: tuple[str, ...] = ("banking", "ind-as")
