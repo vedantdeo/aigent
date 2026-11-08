@@ -197,6 +197,47 @@ def test_number(printed: str, read: tuple[float, int, bool] | None) -> None:
             id="an OCR'd month two months start like is left undated",
         ),
         pytest.param(
+            (
+                ("Particulars", "Quarter Ended", "", "", "Half Year Ended", "", "Year Ended"),
+                (
+                    "",
+                    "30thSeo'25",
+                    "30 th Jun'25",
+                    "30 th Sep'24",
+                    "30th Sep'25",
+                    "30th Seo'24",
+                    "31 st Mar'25",
+                ),
+            ),
+            {
+                1: Column(date(2025, 9, 30), 3),
+                2: Column(date(2025, 6, 30), 3),
+                3: Column(date(2024, 9, 30), 3),
+                4: Column(date(2025, 9, 30), 6),
+                5: Column(date(2024, 9, 30), 6),
+                6: Column(date(2025, 3, 31), 12),
+            },
+            id="Reliance's ordinal days",
+        ),
+        pytest.param(
+            (
+                ("", "Quarter Ended", "", "Half Year Ended"),
+                ("Particulars", "30.09.2025", "30.06.2025", "30.09.2025"),
+                (
+                    "Earnings per equity share (Not Annualised for the quarter/half year)",
+                    "",
+                    "",
+                    "",
+                ),
+            ),
+            {
+                1: Column(date(2025, 9, 30), 3),
+                2: Column(date(2025, 6, 30), 3),
+                3: Column(date(2025, 9, 30), 6),
+            },
+            id="a title in the label column carries over no column",
+        ),
+        pytest.param(
             (("", "", "(₹ in crores)", ""), ("", "PROFITS", "2024 - 25", "2023 - 24")),
             {2: Column(date(2025, 3, 31), 12), 3: Column(date(2024, 3, 31), 12)},
             id="ITC's financial years",
@@ -230,7 +271,7 @@ def test_number(printed: str, read: tuple[float, int, bool] | None) -> None:
             id="a bare year among neighbours of different days stays undated",
         ),
         pytest.param(
-            (("Particulars", "Year ended 31st March, 2025", "As at 31 March 2024"),),
+            (("Particulars", "Year ended 31st March, 2025", "As at 31 st March 2024"),),
             {1: Column(date(2025, 3, 31), 12), 2: Column(date(2024, 3, 31), 0)},
             id="the day first, as annual reports print it",
         ),
@@ -454,6 +495,13 @@ def test_a_per_share_fact_agrees_on_its_kind_of_row(
     read = sheets(_pages((1, (scaled, *_HEADER, figures, *rows))))
     fact = _fact("EPS", 15.73 if unit == "INRPerShare" else 157_300_000.0, (label,), unit=unit)
     assert (check_fact(fact, read).outcome == "agree") is agreed, check_fact(fact, read)
+
+
+def test_a_heading_printed_above_the_first_figures_counts() -> None:
+    header = (*_HEADER, _EPS_HEADING)
+    read = sheets(_pages((1, (*header, _eps_row("a) Basic (in ₹)")))))
+    fact = _fact("EPS", 15.73, (_TOTAL_EPS,), unit="INRPerShare", decimals=2)
+    assert check_fact(fact, read).outcome == "agree", read[0].cells[:1]
 
 
 def test_a_heading_carries_into_the_statement_it_continues() -> None:

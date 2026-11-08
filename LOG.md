@@ -2613,3 +2613,15 @@
   Pharma 25%, Tata Motors 22%, ITC 12%, Reliance 0%. 30 new EPS agreements audited: 28 right, 1
   unreadable here, 1 the discontinued case the rule now refuses. 11/11 mutants killed; 2,813
   tests. Reports `crosscheck-20261108-1653` (before the header fixes) and `-1901` (after E).
+- 11-08: **Reliance read, $0.00.** Its results agreed on almost nothing and its EPS on nothing.
+  Three causes, in `crosscheck`: its dates carry an ordinal (`30thSeo'25`, `31 st Mar'25`); its EPS
+  heading sits above the first row of figures, in the table's header, where per-share rows never
+  saw it (a body now starts with its header's last line as heading); and that heading's
+  "(Not Annualised for the quarter/half year)" was carried across the empty cells beside it,
+  reading the June quarter as six months (a line below the last line of dates is now a title,
+  carried nowhere; a column-position rule tried first broke Sun Pharma, whose `Quarter ended`
+  sits left of its dates). Against `6911fd0`: 245 more agree, all Reliance, 12 fewer, all one
+  cash-flow table whose current column is OCR'd past reading (`3()1h SeD'`) and was dated before
+  only by a stray line, its neighbour misread as a balance at 1 March 2025. 15,426 of 38,083.
+  Reliance's results EPS is 8 of 238 now: the rest are OCR'd beyond these rules. All mutants
+  killed (4 new, earlier sets rechecked); 2,816 tests.
