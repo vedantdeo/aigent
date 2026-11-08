@@ -26,9 +26,12 @@ from aigent.facts.cfg_facts import (
 from aigent.facts.documents import (
     VERIFY_DIR,
     Entry,
+    is_reading,
     load_verify_document,
     read_manifest,
+    readings_of,
     refusal,
+    reocr_built,
 )
 from aigent.facts.share_events import PER_SHARE
 from aigent.facts.store import XBRL_TIERS
@@ -549,17 +552,24 @@ def facts_to_check(
     tickers: Sequence[str],
     manifest: Mapping[str, Entry],
     ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS,
+    built: Callable[[str], bool] = reocr_built,
 ) -> list[Fact]:
     """Every XBRL fact of `tickers` once per readable document it is printed in (`documents_for`,
-    in that order), with its standard label and aliases; a fact with none is left out."""
+    in that order), and after a scan once per re-OCR'd reading `built` holds, with its standard
+    label and aliases; a fact with none is left out."""
     aliases: dict[str, list[str]] = {}
     for concept, label in conn.execute("SELECT concept, label FROM concept_labels"):
         aliases.setdefault(concept, []).append(label)
-    documents = {
-        Path(name).stem: name
-        for name, entry in manifest.items()
-        if name.startswith(("results/", "annual/")) and refusal(name, entry, ocr_tickers) is None
-    }
+    documents: dict[str, list[str]] = {}
+    for name, entry in manifest.items():
+        if not name.startswith(("results/", "annual/")):
+            continue
+        for reading in readings_of(name, entry, ocr_tickers):
+            usable = (
+                built(reading) if is_reading(reading) else not refusal(name, entry, ocr_tickers)
+            )
+            if usable:
+                documents.setdefault(Path(name).stem, []).append(reading)
     marks = ", ".join("?" for _ in tickers)
     tiers = ", ".join("?" for _ in XBRL_TIERS)
     rows = conn.execute(
@@ -602,8 +612,7 @@ def facts_to_check(
             "",
         )
         for stem in documents_for(fact, date.fromisoformat(filed)):
-            if stem in documents:
-                out.append(replace(fact, document=documents[stem]))
+            out.extend(replace(fact, document=name) for name in documents.get(stem, ()))
     return out
 
 
@@ -612,10 +621,12 @@ def crosscheck(
     tickers: Sequence[str],
     verify_dir: Path = VERIFY_DIR,
     load: Callable[[str, Path], Document] = load_verify_document,
+    built: Callable[[str], bool] = reocr_built,
+    ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS,
 ) -> list[Checked]:
     """Every fact of `tickers` checked against the documents it is printed in, in order until one
     agrees, keeping its best outcome; each document read once."""
-    facts = facts_to_check(conn, tickers, read_manifest(verify_dir))
+    facts = facts_to_check(conn, tickers, read_manifest(verify_dir), ocr_tickers, built)
     read: dict[str, list[Sheet]] = {}
     best: dict[int, Checked] = {}
     for fact in facts:

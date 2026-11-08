@@ -4,11 +4,16 @@ the tier it moves to, the sample for a person and the report."""
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import subprocess
+import sys
+import time
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 
+import psutil
 import pytest
 
 from aigent.facts import __main__ as cli
@@ -962,3 +967,142 @@ def test_the_best_of_a_facts_labels_counts() -> None:
         )
         == 1.0
     )
+
+
+_OCR_ENTRY: Entry = {
+    "source": "nse",
+    "format": "pdf",
+    "pages": 10,
+    "text_less_pages": [],
+    "ocr_pages": list(range(2, 11)),
+}
+_IMAGE_ENTRY: Entry = {**_OCR_ENTRY, "text_less_pages": list(range(2, 11)), "ocr_pages": []}
+_SCAN = "results/ICICIBANK-2024-06-30.pdf"
+
+
+@pytest.mark.parametrize(
+    ("entry", "built", "documents"),
+    [
+        pytest.param(_OCR_ENTRY, True, [_SCAN, f"{_SCAN}#rapidocr"], id="a reading after its scan"),
+        pytest.param(_OCR_ENTRY, False, [_SCAN], id="a reading not built is not tried"),
+        pytest.param(
+            _IMAGE_ENTRY, True, [f"{_SCAN}#rapidocr"], id="an image-only scan's reading alone"
+        ),
+        pytest.param(FLAGGED, True, [_SCAN], id="a text pdf has no reading"),
+    ],
+)
+def test_facts_to_check_try_a_scan_then_its_reading(
+    crosscheck_db: sqlite3.Connection, entry: Entry, built: bool, documents: list[str]
+) -> None:
+    facts = facts_to_check(
+        crosscheck_db, ("ICICIBANK",), {_SCAN: entry}, ("ICICIBANK",), built=lambda _: built
+    )
+    first = facts[0].fact_id
+    assert [f.document for f in facts if f.fact_id == first] == documents
+
+
+def test_crosscheck_keeps_a_readings_agreement_over_its_scans_silence(
+    crosscheck_db: sqlite3.Connection, tmp_path: Path
+) -> None:
+    (tmp_path / "manifest.json").write_text(json.dumps({_SCAN: _OCR_ENTRY}), encoding="utf-8")
+    silent = _document("STANDALONE FINANCIAL RESULTS (₹ in crore)")
+
+    def load(name: str, verify_dir: Path) -> Document:
+        return STANDALONE if name.endswith("#rapidocr") else silent
+
+    checked = crosscheck(
+        crosscheck_db, ("ICICIBANK",), tmp_path, load, lambda _: True, ("ICICIBANK",)
+    )
+    agreed = {c.document for c in checked if c.outcome == "agree"}
+    assert agreed == {f"{_SCAN}#rapidocr"}, [(c.concept, c.outcome, c.document) for c in checked]
+
+
+_QUEUE_MANIFEST: dict[str, Entry] = {
+    "results/WIPRO-2025-03-31.pdf": {**_OCR_ENTRY},
+    "results/WIPRO-2025-06-30.pdf": {**_OCR_ENTRY},
+    "results/ITC-2025-03-31.pdf": {**_OCR_ENTRY},
+    "results/ITC-2025-06-30.pdf": {**FLAGGED},
+}
+
+
+@pytest.mark.parametrize(
+    ("documents", "tickers", "built", "todo", "unknown"),
+    [
+        pytest.param(
+            [],
+            [],
+            set(),
+            ["ITC-2025-03-31", "WIPRO-2025-03-31", "WIPRO-2025-06-30"],
+            [],
+            id="every scan when none is named",
+        ),
+        pytest.param(
+            [], ["WIPRO"], set(), ["WIPRO-2025-03-31", "WIPRO-2025-06-30"], [], id="a company's"
+        ),
+        pytest.param(
+            ["results/ITC-2025-03-31.pdf"], [], set(), ["ITC-2025-03-31"], [], id="a document"
+        ),
+        pytest.param(
+            [], ["WIPRO"], {"WIPRO-2025-03-31"}, ["WIPRO-2025-06-30"], [], id="built ones skipped"
+        ),
+        pytest.param(
+            ["results/ITC-2025-06-30.pdf"],
+            [],
+            set(),
+            [],
+            ["results/ITC-2025-06-30.pdf"],
+            id="a text pdf asked for has none",
+        ),
+    ],
+)
+def test_reocr_queue(
+    documents: list[str], tickers: list[str], built: set[str], todo: list[str], unknown: list[str]
+) -> None:
+    def is_built(reading: str) -> bool:
+        return Path(reading.removesuffix("#rapidocr")).stem in built
+
+    got, missing = cli.reocr_queue(_QUEUE_MANIFEST, documents, tickers, is_built)
+    assert [Path(r.removesuffix("#rapidocr")).stem for r in got] == todo, got
+    assert missing == unknown
+
+
+@pytest.mark.parametrize(
+    ("code", "rss", "outcome"),
+    [
+        pytest.param("pass", 0.5, "ok", id="a run that ends"),
+        pytest.param("raise SystemExit(3)", 0.5, "failed exit 3", id="a run that fails"),
+        pytest.param("import time; time.sleep(30)", 99.0, "stopped over 10 GB", id="one too big"),
+    ],
+)
+def test_a_guarded_run_is_stopped_past_its_memory(code: str, rss: float, outcome: str) -> None:
+    got, peak = cli.guarded([sys.executable, "-c", code], 10.0, 0.05, lambda _: rss)
+    assert got == outcome, (got, peak)
+
+
+def test_a_process_tree_s_memory_is_counted() -> None:
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        time.sleep(0.5)
+        own = psutil.Process(os.getpid()).memory_info().rss / 2**30
+        assert cli.tree_rss_gb(os.getpid()) > own, "a child's memory is counted"
+    finally:
+        child.kill()
+        child.wait()
+    assert cli.tree_rss_gb(2**22 + 7) == 0.0
+
+
+def test_the_command_names_readings_not_yet_built(
+    crosscheck_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db = Path(crosscheck_db.execute("PRAGMA database_list").fetchone()[2])
+    crosscheck_db.close()
+    monkeypatch.setattr(cli, "FACTS_DB", db)
+    monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
+    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [])
+    monkeypatch.setattr(cli, "read_manifest", lambda: {"results/WIPRO-2025-03-31.pdf": _OCR_ENTRY})
+    monkeypatch.setattr(cli, "reocr_built", lambda _: False)
+    cli.cross_check(NOW, write=False, decisions=tmp_path / "none.jsonl")
+    assert "1 scans have no re-OCR'd reading yet" in capsys.readouterr().out

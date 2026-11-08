@@ -455,84 +455,84 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
     - L3324 roadmap
 - L3331 3. Edges
   - L3335 Imports (generated)
-  - L3926 Layering rules (checked)
-  - L3987 Reads and writes
-  - L4001 Enforcement and control flow
-  - L4054 Tested-by
-  - L4090 Environment
-- L4118 4. Invariants
-    - L4122 Invariant 1: Every paid call is preceded by a free count and the per-request check
-    - L4128 Invariant 2: Cost is reported, always
-    - L4132 Invariant 3: The assistant turn is echoed back verbatim
-    - L4135 Invariant 4: All tool results for one turn go back in ONE user message
-    - L4140 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
-    - L4144 Invariant 6: Both loops are capped
-    - L4151 Invariant 7: A file tool resolves before it compares
-    - L4157 Invariant 8: One home each for constants, clients, prices and model calls
-    - L4164 Invariant 9: Paid tests carry `@pytest.mark.live`
-    - L4167 Invariant 10: Types are complete
-    - L4170 Invariant 11: An eval survives its own bad rows
-    - L4174 Invariant 12: Every dollar an eval spends lands in one budget
-    - L4181 Invariant 13: A model is asked to read, never to join
-    - L4186 Invariant 14: The harness imports no capability module
-    - L4190 Invariant 15: An eval is a measurement, so nothing about it may wobble
-    - L4196 Invariant 16: A prompt never quotes its own test set
-    - L4203 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
-    - L4208 Invariant 18: Retrieval is graded before generation, and it is free
-    - L4213 Invariant 19: A page never leaves the page sequence
-    - L4218 Invariant 20: A retrieval label must identify one document, not merely appear in one
-    - L4224 Invariant 21: The ranking that is measured is the ranking that is used
-    - L4230 Invariant 22: A ceiling refuses spending before it happens, not only after
-    - L4237 Invariant 23: Every error the package defines lives in `errors`
-    - L4242 Invariant 24: A call is shaped by the client it goes to
-    - L4248 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
-    - L4254 Invariant 26: Tracing observes and never steers
-    - L4260 Invariant 27: A request is sent again only if it cannot have been billed
-    - L4266 Invariant 28: Text someone else wrote reaches the model fenced
-    - L4272 Invariant 29: A write runs only where a caller opted in, and never overwrites
-    - L4278 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
-    - L4284 Invariant 31: A per-share figure is compared only on one share basis
-    - L4290 Invariant 32: A filed figure is matched only against text, and its stamp names the copy
-- L4296 5. Where the next work attaches
-  - L4300 5.1 Open seams
-    - L4302 Seam: Facts database — step 2
-    - L4308 Seam: Week 6 — LangGraph agent
-    - L4312 Seam: Week 5 — async and batch evals
-    - L4319 Seam: Week 4 — compaction, when a task outgrows a turn
-    - L4325 Seam: Week 3 — measure a pattern
-    - L4330 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
-    - L4335 Seam: Week 3 — anything that searches the reports
-    - L4342 Seam: adding a tool
-    - L4346 Seam: adding a grader
-  - L4350 5.2 Consumed and superseded seams
-    - L4352 Seam: Week 1 — Project 1a
-    - L4357 Seam: Week 1 — prompt caching
-    - L4363 Seam: superseded — caching as two variants of one eval
-    - L4368 Seam: Week 1 — measure the un-saturated eval
-    - L4374 Seam: Week 1 — label the backlog
-    - L4379 Seam: Week 1 — break things on purpose
-    - L4385 Seam: Week 2 — retrieval metrics
-    - L4391 Seam: Week 2 — the four modules
-    - L4397 Seam: Week 2 — the corpus
-    - L4403 Seam: Week 2 — the retrieval dataset
-    - L4408 Seam: Week 2 — the measured run
-    - L4414 Seam: superseded — questions labelled with a quote
-    - L4419 Seam: Week 2 — hybrid and rerank
-    - L4425 Seam: Week 2 — answer-level eval
-    - L4433 Seam: Week 2 — RAG milestone `v0.1-rag`
-    - L4439 Seam: Week 3 — every model call through `llm`
-    - L4446 Seam: Week 3 — the five workflow patterns
-    - L4452 Seam: Week 3 — orchestrator-workers as a graph
-    - L4459 Seam: Week 4 — the toy fine-tune
-    - L4465 Seam: Week 3 — answer locally, judge on Anthropic
-    - L4471 Seam: Week 3 — context management
-    - L4476 Seam: Week 3 — server-side web search
-    - L4483 Seam: Week 5 — SDK tool runner
-    - L4489 Seam: Week 5 — tracing
-    - L4496 Seam: Week 5 — explicit retries
-    - L4502 Seam: Week 5 — guardrails
-    - L4509 Seam: Week 6 — MCP client
-- L4517 Maintenance
+  - L3931 Layering rules (checked)
+  - L3992 Reads and writes
+  - L4006 Enforcement and control flow
+  - L4059 Tested-by
+  - L4095 Environment
+- L4123 4. Invariants
+    - L4127 Invariant 1: Every paid call is preceded by a free count and the per-request check
+    - L4133 Invariant 2: Cost is reported, always
+    - L4137 Invariant 3: The assistant turn is echoed back verbatim
+    - L4140 Invariant 4: All tool results for one turn go back in ONE user message
+    - L4145 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
+    - L4149 Invariant 6: Both loops are capped
+    - L4156 Invariant 7: A file tool resolves before it compares
+    - L4162 Invariant 8: One home each for constants, clients, prices and model calls
+    - L4169 Invariant 9: Paid tests carry `@pytest.mark.live`
+    - L4172 Invariant 10: Types are complete
+    - L4175 Invariant 11: An eval survives its own bad rows
+    - L4179 Invariant 12: Every dollar an eval spends lands in one budget
+    - L4186 Invariant 13: A model is asked to read, never to join
+    - L4191 Invariant 14: The harness imports no capability module
+    - L4195 Invariant 15: An eval is a measurement, so nothing about it may wobble
+    - L4201 Invariant 16: A prompt never quotes its own test set
+    - L4208 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
+    - L4213 Invariant 18: Retrieval is graded before generation, and it is free
+    - L4218 Invariant 19: A page never leaves the page sequence
+    - L4223 Invariant 20: A retrieval label must identify one document, not merely appear in one
+    - L4229 Invariant 21: The ranking that is measured is the ranking that is used
+    - L4235 Invariant 22: A ceiling refuses spending before it happens, not only after
+    - L4242 Invariant 23: Every error the package defines lives in `errors`
+    - L4247 Invariant 24: A call is shaped by the client it goes to
+    - L4253 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
+    - L4259 Invariant 26: Tracing observes and never steers
+    - L4265 Invariant 27: A request is sent again only if it cannot have been billed
+    - L4271 Invariant 28: Text someone else wrote reaches the model fenced
+    - L4277 Invariant 29: A write runs only where a caller opted in, and never overwrites
+    - L4283 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
+    - L4289 Invariant 31: A per-share figure is compared only on one share basis
+    - L4295 Invariant 32: A filed figure is matched only against text, and its stamp names the copy and the reading
+- L4301 5. Where the next work attaches
+  - L4305 5.1 Open seams
+    - L4307 Seam: Facts database — step 2
+    - L4313 Seam: Week 6 — LangGraph agent
+    - L4317 Seam: Week 5 — async and batch evals
+    - L4324 Seam: Week 4 — compaction, when a task outgrows a turn
+    - L4330 Seam: Week 3 — measure a pattern
+    - L4335 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
+    - L4340 Seam: Week 3 — anything that searches the reports
+    - L4347 Seam: adding a tool
+    - L4351 Seam: adding a grader
+  - L4355 5.2 Consumed and superseded seams
+    - L4357 Seam: Week 1 — Project 1a
+    - L4362 Seam: Week 1 — prompt caching
+    - L4368 Seam: superseded — caching as two variants of one eval
+    - L4373 Seam: Week 1 — measure the un-saturated eval
+    - L4379 Seam: Week 1 — label the backlog
+    - L4384 Seam: Week 1 — break things on purpose
+    - L4390 Seam: Week 2 — retrieval metrics
+    - L4396 Seam: Week 2 — the four modules
+    - L4402 Seam: Week 2 — the corpus
+    - L4408 Seam: Week 2 — the retrieval dataset
+    - L4413 Seam: Week 2 — the measured run
+    - L4419 Seam: superseded — questions labelled with a quote
+    - L4424 Seam: Week 2 — hybrid and rerank
+    - L4430 Seam: Week 2 — answer-level eval
+    - L4438 Seam: Week 2 — RAG milestone `v0.1-rag`
+    - L4444 Seam: Week 3 — every model call through `llm`
+    - L4451 Seam: Week 3 — the five workflow patterns
+    - L4457 Seam: Week 3 — orchestrator-workers as a graph
+    - L4464 Seam: Week 4 — the toy fine-tune
+    - L4470 Seam: Week 3 — answer locally, judge on Anthropic
+    - L4476 Seam: Week 3 — context management
+    - L4481 Seam: Week 3 — server-side web search
+    - L4488 Seam: Week 5 — SDK tool runner
+    - L4494 Seam: Week 5 — tracing
+    - L4501 Seam: Week 5 — explicit retries
+    - L4507 Seam: Week 5 — guardrails
+    - L4514 Seam: Week 6 — MCP client
+- L4522 Maintenance
 <!-- /generated:toc -->
 
 ## 0. Orientation
@@ -944,14 +944,14 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts`
 - **At:** `src/aigent/facts/__init__.py`
-- **Is:** package. **The facts database**: every reported number stored once in SQLite with its source and tier, looked up by `analyst.fundamentals`. So far the XBRL half: `python -m aigent.facts build [--offline]` fetches, loads, labels and checks, and `python -m aigent.facts coverage` scores what it holds; free, no model calls.
+- **Is:** package. **The facts database**: every reported number stored once in SQLite with its source and tier, looked up by `analyst.fundamentals`. So far the XBRL half: `python -m aigent.facts build [--offline]` fetches, loads, labels and checks, `python -m aigent.facts coverage` scores what it holds, and `python -m aigent.facts reocr [--documents P ...] [--tickers T ...]` OCRs scanned results afresh, one process each, stopped past `VERIFY_REOCR_MAX_GB` of resident memory (the process tree, by `psutil`); free, no model calls.
 - **Contract:** Imports nothing from `analyst` (checked: §3 rules); `analyst.fundamentals` and `mcp_server` import it.
 - **History:** 2026-10-22, step 1 of `docs/facts-db.md`: created, importing `analyst.fundamentals` for the check's reference table. 2026-10-23, step 2: labels from NSE's taxonomy, the lookup, and the reference table moved in as `facts.reference`.
 - **Decided in:** LOG.md 10-22, 10-23 · `docs/facts-db.md`
 
 #### `facts.cfg_facts`
 - **At:** `src/aigent/facts/cfg_facts.py`
-- **Is:** module. The facts database's settings, split from `config` by concern: `FACTS_TICKERS` (the eight in both corpora, and ICICI Bank since 2026-10-31), `FACTS_YEARS` (2024-2026), `NSE_SYMBOLS` (`TATAMOTORS` files as `TMPV`), `VERIFY_TICKERS` (the cross-check's companies, all nine since 2026-11-07; a test holds them inside `FACTS_TICKERS`), `VERIFY_OCR_TICKERS` (the seven ind-as companies, whose results are scans read through their OCR text), the two listing URLs, `NSE_PAGE_SIZE`, the browser `NSE_USER_AGENT`, `NSE_REQUEST_INTERVAL_S` (1 s), `XBRL_SKIP_CONTEXTS` (related-party transactions), `FUNDAMENTALS_CONCEPTS` (revenue, profit, eps; dividend per share is not filed), `FILING_SUMS` (total, needed terms, terms counted as 0 when not filed), `TAXONOMY_PACKAGES` and the lookup's `FACTS_MATCH_METHOD` (`hybrid`), `FACTS_MATCH_DEPTH` (20), `FACTS_LOOKUP_K` (5) and `COMPARE_AGREE_SHARE` (0.5%); the coverage eval's `COVERAGE_DEFINITIONS` (each frozen metric's fuller words), `COVERAGE_RESULTS_METRICS`, `COVERAGE_FOUND_AT` (1 and k), `COVERAGE_MAX_ROUNDING` (1%) and `COVERAGE_TEACHER_UNITS`; the cross-check documents' `VERIFY_MIN_TEXT_CHARS` (200) and `VERIFY_MAX_TEXT_LESS_SHARE` (10%); the cross-check's `CROSSCHECK_LABEL_MIN` and `CROSSCHECK_DIFFER_LABEL_MIN` (0.6), `CROSSCHECK_DISTINCT_DIGITS` (5), `CROSSCHECK_SAMPLE` (30) and `CROSSCHECK_SEED`, `CROSSCHECK_GROUP_EXAMPLES` (3 distinct values a review group lists), `CROSSCHECK_SPOT_CHECKS` (3 facts a person checks before a group's `right` verdict applies), `CROSSCHECK_SCALES`, `CROSSCHECK_SYNONYMS` and `CROSSCHECK_EXCLUSIVE`. `SHARE_JUMP_MIN` (5%), the share-count move between two filings that is held as an unknown share event.
+- **Is:** module. The facts database's settings, split from `config` by concern: `FACTS_TICKERS` (the eight in both corpora, and ICICI Bank since 2026-10-31), `FACTS_YEARS` (2024-2026), `NSE_SYMBOLS` (`TATAMOTORS` files as `TMPV`), `VERIFY_TICKERS` (the cross-check's companies, all nine since 2026-11-07; a test holds them inside `FACTS_TICKERS`), `VERIFY_OCR_TICKERS` (the seven ind-as companies, whose results are scans read through their OCR text), `VERIFY_REOCR` (`rapidocr`, the engine that re-reads their scans), `VERIFY_REOCR_MAX_GB` (10) and `VERIFY_REOCR_POLL_S` (3), the two listing URLs, `NSE_PAGE_SIZE`, the browser `NSE_USER_AGENT`, `NSE_REQUEST_INTERVAL_S` (1 s), `XBRL_SKIP_CONTEXTS` (related-party transactions), `FUNDAMENTALS_CONCEPTS` (revenue, profit, eps; dividend per share is not filed), `FILING_SUMS` (total, needed terms, terms counted as 0 when not filed), `TAXONOMY_PACKAGES` and the lookup's `FACTS_MATCH_METHOD` (`hybrid`), `FACTS_MATCH_DEPTH` (20), `FACTS_LOOKUP_K` (5) and `COMPARE_AGREE_SHARE` (0.5%); the coverage eval's `COVERAGE_DEFINITIONS` (each frozen metric's fuller words), `COVERAGE_RESULTS_METRICS`, `COVERAGE_FOUND_AT` (1 and k), `COVERAGE_MAX_ROUNDING` (1%) and `COVERAGE_TEACHER_UNITS`; the cross-check documents' `VERIFY_MIN_TEXT_CHARS` (200) and `VERIFY_MAX_TEXT_LESS_SHARE` (10%); the cross-check's `CROSSCHECK_LABEL_MIN` and `CROSSCHECK_DIFFER_LABEL_MIN` (0.6), `CROSSCHECK_DISTINCT_DIGITS` (5), `CROSSCHECK_SAMPLE` (30) and `CROSSCHECK_SEED`, `CROSSCHECK_GROUP_EXAMPLES` (3 distinct values a review group lists), `CROSSCHECK_SPOT_CHECKS` (3 facts a person checks before a group's `right` verdict applies), `CROSSCHECK_SCALES`, `CROSSCHECK_SYNONYMS` and `CROSSCHECK_EXCLUSIVE`. `SHARE_JUMP_MIN` (5%), the share-count move between two filings that is held as an unknown share event.
 - **Invariants:** `TAXONOMY_PACKAGES` is a sequence, not sorted: where packages label a concept differently the earliest wins (SEBI Ind AS 2025, SEBI banking 2025, BSE Ind AS 2020, BSE banking 2019).
 - **History:** Taxonomy and lookup settings (2026-10-23); coverage settings (2026-10-25); cross-check document settings (2026-10-31); `CROSSCHECK_GROUP_EXAMPLES` and `CROSSCHECK_SPOT_CHECKS` (2026-11-01); all nine companies cross-checked and `VERIFY_OCR_TICKERS` (2026-11-07).
 
@@ -1045,7 +1045,7 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.documents`
 - **At:** `src/aigent/facts/documents.py`
-- **Is:** module. **The filed documents the XBRL cross-check reads against**, under `corpus/verify/` (outside both the retrieval corpus and `corpus/training/`): `results/<TICKER>-<quarter end>.pdf|.htm` and `annual/<TICKER>-FY<yy>.pdf`, listed in a sorted `manifest.json` with URL, SHA-256, fetch time, `source` (`nse` or `sec-6k`), and the fields `flag_documents` sets: `format` (`pdf`/`html`), `pages`, `text_less_pages` and `ocr_pages`. `origin(entry)` is `<source>-<format>`, the stamp's prefix, with `-ocr` for a scan read through its OCR text (`nse-pdf-ocr`). `ticker_of(name)` is the company a manifest path names. `doc_id_of(name)` is its name in the parse cache, `verify-<folder>-<stem>` (`annual/ITC-FY25.pdf` is `verify-annual-ITC-FY25`), so a corpus or training copy of the same report never evicts it; `load_verify_document` reads by it.
+- **Is:** module. **The filed documents the XBRL cross-check reads against**, under `corpus/verify/` (outside both the retrieval corpus and `corpus/training/`): `results/<TICKER>-<quarter end>.pdf|.htm` and `annual/<TICKER>-FY<yy>.pdf`, listed in a sorted `manifest.json` with URL, SHA-256, fetch time, `source` (`nse` or `sec-6k`), and the fields `flag_documents` sets: `format` (`pdf`/`html`), `pages`, `text_less_pages` and `ocr_pages`. `origin(entry)` is `<source>-<format>`, the stamp's prefix, with `-ocr` for a scan read through its OCR text (`nse-pdf-ocr`). `ticker_of(name)` is the company a manifest path names. `doc_id_of(name)` is its name in the parse cache, `verify-<folder>-<stem>` (`annual/ITC-FY25.pdf` is `verify-annual-ITC-FY25`), so a corpus or training copy of the same report never evicts it; `load_verify_document` reads by it. **Re-OCR'd readings:** `readings_of(name, entry)` is an entry and, for a scan of a `VERIFY_OCR_TICKERS` company (image-only scans too), its reading `<name>#rapidocr`; `build_reocr` copies the scan with its text layer removed (`strip_text_layer`: Docling reads a table's words from the text layer before any OCR), reads it with RapidOCR on every page (torch backend, the queue cap) and renders it through the corpus's `elements_of` and `assembled`, cached as `verify-<folder>-<stem>-rapidocr-<scan digest>-<re-OCR fingerprint>.json`, the fingerprint over its own code, the Docling and RapidOCR versions and the corpus's ingest fingerprint, so the corpus parse is untouched; `load_reocr` reads a built one and refuses, naming the command, one not built; `origin_of` stamps a reading `<source>-<format>-rapidocr-<version>`.
 - **Contract:** `text_less_pages` counts a page text-less below `VERIFY_MIN_TEXT_CHARS` characters in its text layer; `ocr_pages` are the pages whose text objects are mostly drawn invisible (render mode 3), a scan with OCR text behind it; `is_scan` is more than `VERIFY_MAX_TEXT_LESS_SHARE` of a PDF's pages text-less or OCR'd, a page both counted once. `load_verify_document(name)` reads an entry by its recorded format: a PDF through `retrieval.corpus.load_pdf_cached` (the corpus's parse and cache, OCR off), an HTML filing through Docling's HTML reader and `html_elements` (one page, body items in reading order, tables by `table_rows`, a lone `%` cell joined to the figure before it by `percent_joined`, and a table holding several statements split by `statement_starts` before the text rows leading to each row of two or more dates that follows figures, each part its own element with sections re-based and Docling's header count on the first only), not cached. `is_ocr_scan` is a scan that is within `VERIFY_MAX_TEXT_LESS_SHARE` on its text-less pages alone, its pages OCR'd. **`refusal(name, entry, ocr_tickers)`** says why an entry cannot be read: not flagged (`ocr_pages` included), or a scan, unless it `is_ocr_scan` and its company is in `VERIFY_OCR_TICKERS`. `load_verify_document` raises KeyError for a name not in the manifest and ValueError for any refusal; `facts.crosscheck` leaves refused documents out.
 - **Gotchas:** HTML has no pages, so `retrieval.corpus.elements_of`, which places every item by its PDF page, drops all of it; hence `html_elements`. Annual reports carry a few text-less pages (covers, photos, the AGM notice), never in the statements: at most 16 of 585. SEC filers lay several statements in one `<table>`, and HDFC Bank's put `%` in a cell of its own.
 - **History:** 2026-10-31: created. 9 of HDFC Bank's 12 NSE results PDFs FY24-FY26 and 16 pages of ICICI Bank's Sep-2024 are scans; OCR was tried (RapidOCR, read cleanly) and dropped for the same filings' text on SEC EDGAR, filed as 6-K exhibits for the banks' ADRs. 2026-11-02: every ICICI Bank results PDF and three of HDFC Bank's turned out to be scans with an OCR text layer, which the text-less test missed; `ocr_pages` added and those 14 replaced by their SEC copies, checked figure by figure against the PDFs. 2026-11-07: the seven ind-as companies' 84 quarterly results fetched from NSE (76 are scans with OCR text behind, as their sites and NSE's integrated filings also hold; BSE refuses automated clients) and their 21 annual reports, all with text; OCR'd scans read for `VERIFY_OCR_TICKERS` (Vedant: one tier with text PDFs, told apart by the stamp). Five annual reports also in the retrieval corpus (ITC FY25, Reliance and Tata Motors FY24-FY25) are its copies, `copied_from`, since the parse cache holds one entry per name and two editions evict each other. 2026-11-08: verify documents cached under `doc_id_of` names (200 entries moved, 16 copied where an identical corpus or training PDF keeps the old name), after seven training reports turned out to clash; Bajaj Auto FY24 (130 photos up to 88 MP, 18.7 GB) parsed on Kaggle at `main`, its fingerprints matching.
@@ -1053,10 +1053,10 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts.crosscheck`
 - **At:** `src/aigent/facts/crosscheck.py`
-- **Is:** module. **The XBRL cross-check**: each XBRL fact of `VERIFY_TICKERS` against the documents it is printed in (`facts.documents`): its year's annual report, then its quarter's results, `python -m aigent.facts crosscheck [--write]`, free. `documents_for(fact, filed)` → the stems tried, an annual report first for a year's figure or 31 March balance in a March filing; `facts_to_check` yields a fact once per readable document (`documents.refusal`); `crosscheck(conn, tickers)` → a `Checked` per fact, its best outcome (`agree`, `differ`, `unmatched`) across its documents, stopping at the first agreement, a tie kept by the first; `apply` makes each agreeing `xbrl-ai` fact `xbrl-filed`, stamped with its document's origin. What is not agreed goes to `facts.review`.
+- **Is:** module. **The XBRL cross-check**: each XBRL fact of `VERIFY_TICKERS` against the documents it is printed in (`facts.documents`): its year's annual report, then its quarter's results, `python -m aigent.facts crosscheck [--write]`, free. `documents_for(fact, filed)` → the stems tried, an annual report first for a year's figure or 31 March balance in a March filing; `facts_to_check` yields a fact once per readable document (`documents.refusal`), then once per re-OCR'd reading built (`documents.reocr_built`), an image-only scan by its reading alone; `crosscheck(conn, tickers)` → a `Checked` per fact, its best outcome (`agree`, `differ`, `unmatched`) across its documents, stopping at the first agreement, a tie kept by the first; `apply` makes each agreeing `xbrl-ai` fact `xbrl-filed`, stamped with its document's origin. What is not agreed goes to `facts.review`.
 - **Contract:** `sheets(document)` reads each table with figures: **basis** the last "standalone"/"consolidated" in the text since the table before (else the one before's), **scale** the last "in crore"/"in lac"/"in million" there or in its header lines (else the one before's, else `document_scale`, the document's most stated), each **column's period** from its header (`column_periods`: a date in its own cells or under a group heading, as `30.06.2024`, `June 30, 2024`, `31st March, 2025` or `30 Jun'24` (an ordinal allowed: `30th Sep'25`, `31 st Mar'25`), an OCR'd month read by its first two letters only when no other month shares them (`Sen'23` is September, `Jnu` stays unread), else a financial year (`2024-25`, `FY25`) as 31 March of its second year, 12 months unless said otherwise, else a year alone in a cell of a row with other headers (`2025` beside `31 March 2024`) taking the day the other dated columns share, when they share one; its length from its own cells first, "Q2-2026", "H1", "FY", then the heading's (a line below the last line of dates is a title, carried over no column), "Quarter ended", "Nine months", "As at" for 0); **a table with no dated column takes the columns of the table before it** when as wide and on the same or the next page, a statement continued past a page break; and each number (`number`: Indian grouping, a decimal comma, points misread for separators, a bracket alone negative, `..` and dashes a zero; text, dates and two numbers in a cell none). A row with one number per dated column is read by order, since rows sit a column off their header; else by its own column; a first-cell serial is no figure. Each cell carries its **heading**, the last row above it with no figures, a table's body starting from its header's last line. **`check_fact` agrees only** on a cell of the fact's basis (or none stated) and period (an instant: any column ending that day; a duration: the same length, or the only column ending that day when no length is stated), equal **to the last printed digit** at the table's scale (per share and pure unscaled, a percentage /100; a percentage never for rupees; no scale, no agreement), and its row carrying the label (`label_share` ≥ `CROSSCHECK_LABEL_MIN`, abbreviations in `CROSSCHECK_SYNONYMS` read in full, a row naming only the other of a `CROSSCHECK_EXCLUSIVE` pair scored 0) or the figure distinctive alone (`CROSSCHECK_DISTINCT_DIGITS` significant digits), or, for a per-share fact, `per_share_row` on its heading and row; a label whose words are of discontinued operations alone matches only a row that is too, and the reverse. Else `differ` on the best-labelled cell there at `CROSSCHECK_DIFFER_LABEL_MIN`, else `unmatched`. `apply` never touches a fact a person checked or one already `xbrl-filed`, and records `<origin>:<document>` (from the manifest; a document with no origin raises and writes nothing), printed figure and page. Each document is read once.
 - **Gotchas:** XBRL's own `decimals` is not a tolerance: ICICI Bank files `-7` (a crore) for figures exact to a lakh, and taking it would let a zero agree with anything under half a crore. "lac" occurs inside words ("place"), hence the "in …" form. ICICI Bank's scale line prints after its first table, hence the document fallback. ICICI Bank's results PDFs carry a text layer that was itself OCR'd ("11.GG5.G9", "Bonkinq"), so they are read from SEC copies since 2026-11-02.
-- **History:** 2026-11-01: created (Vedant: policy (b); `xbrl-ai` agreeing becomes `xbrl-pdf`, now `xbrl-filed`, the rest go to a person with a sample of agreements). First run 3,523 of 6,784 agreeing; a sample of 50 agreements audited by hand found one false (a 4-digit figure matched by value alone) and the diluted-EPS-on-basic-row case, hence 5 digits, 0.6, the exclusive pairs and printed precision only; final 4,144. The review queue moved to `facts.review` the same day. 2026-11-02: on SEC copies of the 14 OCR'd results, 4,739 agree. 2026-11-07: annual reports read (Vedant's option: annual reports for the year, OCR'd results for the rest) and all nine companies checked. 2026-11-08: ind-as headers read: day-first and apostrophe dates, financial-year labels, a bare year beside dated columns, continued statements; 1,986 more facts agree, none fewer (12,657 to 14,643 of 38,083), the annual reports of Bajaj Auto, ITC, Power Grid and Reliance from 0% to 25-49%. Tata Motors' wrapped title year (`2024` on a line of its own) is why a bare year must stand among other headers. The same day, EPS: a per-share fact also agrees on a row whose words, with the last figureless row above it (its heading, carried into a continued table), name its kind (basic or diluted; `Basic & Diluted` both), earnings per share, and discontinued operations on both sides or neither, OCR'd words one letter off (`per_share_row`); and every label match refuses a row or fact of discontinued operations alone against one that is not. 560 more EPS facts agree, 10 others fewer (6 of them false: zeros on discontinued-operations dashes), 15,193 of 38,083. Then Reliance: ordinal days in its dates, its EPS heading printed above the first figures, and a title line below the dates no longer carried into the columns' lengths; 245 more agree, 12 fewer (one OCR-garbled cash-flow header read right by luck before), 15,426.
+- **History:** 2026-11-01: created (Vedant: policy (b); `xbrl-ai` agreeing becomes `xbrl-pdf`, now `xbrl-filed`, the rest go to a person with a sample of agreements). First run 3,523 of 6,784 agreeing; a sample of 50 agreements audited by hand found one false (a 4-digit figure matched by value alone) and the diluted-EPS-on-basic-row case, hence 5 digits, 0.6, the exclusive pairs and printed precision only; final 4,144. The review queue moved to `facts.review` the same day. 2026-11-02: on SEC copies of the 14 OCR'd results, 4,739 agree. 2026-11-07: annual reports read (Vedant's option: annual reports for the year, OCR'd results for the rest) and all nine companies checked. 2026-11-08: ind-as headers read: day-first and apostrophe dates, financial-year labels, a bare year beside dated columns, continued statements; 1,986 more facts agree, none fewer (12,657 to 14,643 of 38,083), the annual reports of Bajaj Auto, ITC, Power Grid and Reliance from 0% to 25-49%. Tata Motors' wrapped title year (`2024` on a line of its own) is why a bare year must stand among other headers. The same day, EPS: a per-share fact also agrees on a row whose words, with the last figureless row above it (its heading, carried into a continued table), name its kind (basic or diluted; `Basic & Diluted` both), earnings per share, and discontinued operations on both sides or neither, OCR'd words one letter off (`per_share_row`); and every label match refuses a row or fact of discontinued operations alone against one that is not. 560 more EPS facts agree, 10 others fewer (6 of them false: zeros on discontinued-operations dashes), 15,193 of 38,083. Then Reliance: ordinal days in its dates, its EPS heading printed above the first figures, and a title line below the dates no longer carried into the columns' lengths; 245 more agree, 12 fewer (one OCR-garbled cash-flow header read right by luck before), 15,426. 2026-11-09: re-OCR'd readings tried after their scans (Vedant: an explicit command, rebuilt, the engine's version in the stamp).
 - **Decided in:** LOG.md 11-01 · `docs/facts-db.md`
 
 #### `facts.review`
@@ -2254,13 +2254,13 @@ often as the question is worth asking.
 - **Gotchas:** **Unused by the shipped dataset**, which was authored by hand (see the dataset node); kept as the reproducible regeneration route and covered by its own tests.
 
 #### `retrieval.corpus.cache_file`
-- **At:** `src/aigent/retrieval/corpus.py:643`
+- **At:** `src/aigent/retrieval/corpus.py:648`
 - **Is:** function. Where a PDF's extracted text is kept, named `{doc_id}-{pdf digest}-{ingest fingerprint}`.
 - **Contract:** **Both halves are load-bearing.** The bytes catch a company republishing a report; the fingerprint — a hash of `read_pages`, `normalise`, `_skeleton`, `strip_furniture`, `to_document` and the constants they read — catches an edit to the ingestion code. There is no version number to remember to bump.
 - **Gotchas:** A filename-keyed or bytes-only cache would serve text the current code never produced, and would do it silently.
 
 #### `retrieval.corpus.load_pdf_cached`
-- **At:** `src/aigent/retrieval/corpus.py:653`
+- **At:** `src/aigent/retrieval/corpus.py:736`
 - **Is:** function. `load_pdf` memoised on disk in `corpus/.cache/` (git-ignored). Reached only through `load_corpus(cache=True)`, never by default.
 - **Contract:** Written to a `.partial` and moved into place, so an interrupted run leaves nothing readable behind; a corrupt or truncated entry is deleted and re-parsed rather than raised on; superseded entries for the same document are swept. **Two layers**: beneath the rendered document, `parse_cached` keeps Docling's own reading of the PDF (`{doc}.{digest}-{parse fingerprint}.docling`, Docling's JSON) keyed by `_PARSE_FINGERPRINT` alone — the converter, `rupees_decoded` and its helpers, Docling's version, `DOCLING_OCR`, `PDF_RUPEE_KEYS` — so a change to rendering (`elements_of` down to `assembled`) re-renders from the kept parse in seconds rather than re-parsing for hours; `_INGEST_FINGERPRINT` hashes the parse fingerprint with the rendering code. Same `.partial`, truncation and sweep rules for both layers. `parse_cached` caps Docling's queue (`_queue_capped`, outside the fingerprint) before converting.
 - **Gotchas:** **The cache keeps one entry per `doc_id`**, sweeping the rest, so two different PDFs under one name evict each other; hence `facts.documents.doc_id_of`. **Cold 27.8s, warm 0.04s** (pypdf; Docling's cold parse is about 8 minutes a report on MPS).
@@ -2268,7 +2268,7 @@ often as the question is worth asking.
 - **Decided in:** LOG.md 10-20
 
 #### `retrieval.corpus.load_corpus`
-- **At:** `src/aigent/retrieval/corpus.py:716`
+- **At:** `src/aigent/retrieval/corpus.py:757`
 - **Is:** function. Every PDF directly in a directory, in filename order.
 - **Contract:** **Directly, not recursively**: the fine-tune's training reports live in `corpus/training/` (`TRAINING_DIR`), listed in `evals/reference/training-manifest.json` (`TRAINING_MANIFEST`), so they never enter retrieval, `search_reports` or an eval; a test fails if a report in that folder is loaded. **`cache=False` by default, opt-in only**: reading the PDFs is always correct, while a cache is correct until it is not, and a stale hit is wrong *quietly* — the one failure mode the keying works hard to prevent but cannot rule out. 28 seconds is a price worth paying unless a caller has a reason, and then the caller says so at the call site where it can be seen. A test pins the default, so it cannot drift back. **Raises on an empty directory** rather than returning nothing — an empty corpus scores zero recall on every question and reads exactly like a bad retriever. **`doc_ids`** loads exactly the reports named and raises on one that is missing, so a typo cannot shrink the corpus; every published eval passes `FY25_REPORTS` (`ITC-FY25`, `RELIANCE-FY25`, `TATAMOTORS-FY25`), and only the capstone reads all six.
 - **History:** Not recursive (2026-10-10). Opt-in cache (decided 2026-09-18). **`doc_ids`** (2026-10-12), since the FY24 reports joined `corpus/`.
@@ -3615,10 +3615,10 @@ extraction.synthetic —imports→ extraction.headlines.{DATASET, Extraction, ME
 extraction.synthetic —imports→ llm.adapters.{build, spec}
 extraction.synthetic —imports→ llm.adapters.openai.OpenAI
 facts.__main__ —imports→ facts.build.build
-facts.__main__ —imports→ facts.cfg_facts.{CROSSCHECK_SAMPLE, CROSSCHECK_SEED, FACTS_MATCH_METHOD, FACTS_TICKERS, FACTS_YEARS, TAXONOMY_PACKAGES, VERIFY_TICKERS}
+facts.__main__ —imports→ facts.cfg_facts.{CROSSCHECK_SAMPLE, CROSSCHECK_SEED, FACTS_MATCH_METHOD, FACTS_TICKERS, FACTS_YEARS, TAXONOMY_PACKAGES, VERIFY_REOCR_MAX_GB, VERIFY_REOCR_POLL_S, VERIFY_TICKERS}
 facts.__main__ —imports→ facts.coverage.{evaluate, fundamentals_figures, table_figures, teacher_figures, write_report}
 facts.__main__ —imports→ facts.crosscheck.{apply, crosscheck}
-facts.__main__ —imports→ facts.documents.{origin, read_manifest}
+facts.__main__ —imports→ facts.documents.{Entry, build_reocr, filed_of, is_reading, origin_of, read_manifest, readings_of, reocr_built, ticker_of}
 facts.__main__ —imports→ facts.lookup.{Lookup, concept_index}
 facts.__main__ —imports→ facts.nse.{XBRL_DIR, polite_get}
 facts.__main__ —imports→ facts.reference.load_fundamentals
@@ -3626,6 +3626,7 @@ facts.__main__ —imports→ facts.review.{DECISIONS, apply_rulings, read_decisi
 facts.__main__ —imports→ facts.share_events.{load_share_events, verify_share_event}
 facts.__main__ —imports→ facts.store.{FACTS_DB, Writer, connect, verify_derived_concept}
 facts.__main__ —imports→ facts.taxonomy.TAXONOMY_DIR
+facts.__main__ —imports→ psutil
 facts.build —imports→ facts.check.{Checked, check_fundamentals, check_sums}
 facts.build —imports→ facts.nse.{Get, fetch, list_filings, read_manifest, write_manifest}
 facts.build —imports→ facts.reference.Fundamental
@@ -3641,7 +3642,7 @@ facts.coverage —imports→ facts.check.tolerance
 facts.coverage —imports→ facts.lookup.{Lookup, NotFound, span}
 facts.coverage —imports→ facts.reference.Fundamental
 facts.crosscheck —imports→ facts.cfg_facts.{CROSSCHECK_DIFFER_LABEL_MIN, CROSSCHECK_DISTINCT_DIGITS, CROSSCHECK_EXCLUSIVE, CROSSCHECK_LABEL_MIN, CROSSCHECK_SCALES, CROSSCHECK_SYNONYMS, VERIFY_OCR_TICKERS}
-facts.crosscheck —imports→ facts.documents.{Entry, VERIFY_DIR, load_verify_document, read_manifest, refusal}
+facts.crosscheck —imports→ facts.documents.{Entry, VERIFY_DIR, is_reading, load_verify_document, read_manifest, readings_of, refusal, reocr_built}
 facts.crosscheck —imports→ facts.share_events.PER_SHARE
 facts.crosscheck —imports→ facts.store.XBRL_TIERS
 facts.crosscheck —imports→ retrieval.chunk.Document
@@ -3649,17 +3650,21 @@ facts.derived_concepts —imports→ facts.cfg_facts.COMPANY_SCOPES
 facts.derived_concepts —imports→ facts.formulas.FORMULAS
 facts.derived_concepts —imports→ facts.lookup.{Period, as_time, instants, opening_of, span}
 facts.derived_concepts —imports→ facts.store.{Writer, XBRL_TIERS, covers, normal_scope, scope_refusal, scopes_of, write_derived_concept}
-facts.documents —imports→ docling.document_converter.DocumentConverter
+facts.documents —imports→ config.{DOCLING_DEVICE, DOCLING_QUEUE_MAX_SIZE}
+facts.documents —imports→ docling.datamodel.accelerator_options.{AcceleratorDevice, AcceleratorOptions}
+facts.documents —imports→ docling.datamodel.base_models.InputFormat
+facts.documents —imports→ docling.datamodel.pipeline_options.{OcrMode, PdfPipelineOptions, RapidOcrOptions}
+facts.documents —imports→ docling.document_converter.{DocumentConverter, PdfFormatOption}
 facts.documents —imports→ docling_core.types.doc.common.content_layer.ContentLayer
 facts.documents —imports→ docling_core.types.doc.document.DoclingDocument
 facts.documents —imports→ docling_core.types.doc.items.node.DocItem
 facts.documents —imports→ docling_core.types.doc.items.table.table.TableItem
 facts.documents —imports→ docling_core.types.doc.items.text.{SectionHeaderItem, TextItem, TitleItem}
-facts.documents —imports→ facts.cfg_facts.{VERIFY_MAX_TEXT_LESS_SHARE, VERIFY_MIN_TEXT_CHARS, VERIFY_OCR_TICKERS}
+facts.documents —imports→ facts.cfg_facts.{VERIFY_MAX_TEXT_LESS_SHARE, VERIFY_MIN_TEXT_CHARS, VERIFY_OCR_TICKERS, VERIFY_REOCR}
 facts.documents —imports→ pypdfium2
 facts.documents —imports→ pypdfium2.raw
 facts.documents —imports→ retrieval.chunk.Document
-facts.documents —imports→ retrieval.corpus.{CORPUS_DIR, Element, assembled, header_rows, load_pdf_cached, section_rows, table_rows}
+facts.documents —imports→ retrieval.corpus.{CACHE_DIR, CORPUS_DIR, Element, StoredDocument, assembled, captions_restored, document_from_json, elements_of, header_rows, load_pdf_cached, section_rows, table_rows, write_cached}
 facts.lookup —imports→ facts.cfg_facts.{FACTS_LOOKUP_K, FACTS_MATCH_DEPTH, FACTS_MATCH_METHOD}
 facts.lookup —imports→ facts.store.{CHECKED_TIERS, connect}
 facts.lookup —imports→ retrieval.chunk.{Chunk, Inventory}
@@ -4287,10 +4292,10 @@ The rules the code encodes. Breaking one of these is a regression even when test
 - **History:** 2026-11-06.
 - **Decided in:** LOG.md 11-06
 
-#### Invariant 32: A filed figure is matched only against text, and its stamp names the copy
-- **Is:** The cross-check reads a document's text layer only: a page drawn as an image with no text behind it is never read or guessed at, and a scan's OCR text is read only for a company listed for it. Each agreement's `verified_by` names the copy and its form, `nse-pdf`, `nse-pdf-ocr` or `sec-6k-html`.
-- **Contract:** `facts.documents.refusal`, used by `load_verify_document` and `facts.crosscheck.facts_to_check`; `facts.documents.origin`.
-- **History:** 2026-11-07.
+#### Invariant 32: A filed figure is matched only against text, and its stamp names the copy and the reading
+- **Is:** The cross-check reads a filed document's text layer only: a page drawn as an image with no text behind it is never read from the filing or guessed at, and a scan's own OCR text is read only for a company listed for it. A scan is read afresh only through a re-OCR'd reading built on request (`python -m aigent.facts reocr`), never during a cross-check. Each agreement's `verified_by` names the copy and how it was read: `nse-pdf`, `nse-pdf-ocr`, `sec-6k-html`, or `nse-pdf-rapidocr-<version>` for a reading.
+- **Contract:** `facts.documents.refusal` and `readings_of`, used by `load_verify_document` and `facts.crosscheck.facts_to_check`; `facts.documents.origin_of`.
+- **History:** 2026-11-07. 2026-11-09: re-OCR'd readings.
 - **Decided in:** LOG.md 11-07
 
 ## 5. Where the next work attaches

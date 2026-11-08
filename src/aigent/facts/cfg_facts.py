@@ -38,6 +38,9 @@ VERIFY_OCR_TICKERS: tuple[str, ...] = (
     "TATAMOTORS",
     "WIPRO",
 )
+VERIFY_REOCR = "rapidocr"  # the engine re-reading scans; its reading of a scan is `<path>#rapidocr`
+VERIFY_REOCR_MAX_GB = 10.0  # a re-OCR process past this much resident memory is stopped
+VERIFY_REOCR_POLL_S = 3.0  # how often that memory is read
 # The XBRL taxonomy each company files under, which is a derived concept's scope: banks name their
 # figures differently (InterestEarned, ProfitLossFromOrdinaryActivitiesBeforeTax).
 SCOPES: tuple[str, ...] = ("banking", "ind-as")
