@@ -2657,3 +2657,18 @@
   loans one still out (the zero on a dash, the existing zero rule, back). 17,701 of 38,510 agree.
   3/3 mutants killed (a fourth equivalent: only unlabelled rows qualify); 2,850 tests (the free
   token-count smoke test had failed on an expired API key until Vedant renewed it).
+- 11-09: **spot check, cards 11-20, and numbered main lines, $0.00.** Vedant: 7 right, 1 wrong, 2
+  unsure; none a false agreement on review. s18 (Bajaj Auto segment liabilities): the fact is the
+  Automotive segment's own (`...01Member`, 6,406.08); the sub-total he expected is the separate
+  `NetSegmentLiabilities` (6,577.84). s13: Reliance files profit before its share of associates as
+  `ProfitLossForPeriodFromContinuingOperations` (36,549 against a 36,768 total, discontinued 0).
+  s20: `EarningsLoss` concepts carry a loss as a negative value (Tata Motors FY26, -17.50); there
+  is no `BasicEarningsPerShare...` concept in Ind AS. s14 (Tata Motors' segment table): Docling
+  puts each figure one row below its label in both the filed OCR layer and the RapidOCR reading, so
+  OCR cannot fix it; an agreement there rests on the right figure under the wrong row (noted, not
+  fixed). s17 (Power Grid's profit, its label pushed into line XI by OCR) read as "VIII Tax
+  expense", six rows up, under `6482662`'s heading rule. Vedant turned down a distance guard; a
+  numbered main line with figures now heads its own block (upper case only: case-insensitive took
+  Reliance's `a) Basic` for a main line and lost 34 EPS facts). Against `6482662`: 32 more, 9
+  fewer, all EPS where OCR put a main line's numeral on the Basic row (Sun Pharma Dec-2024, Tata
+  Motors Jun-2023); 17,724 of 38,510. s17 now reads "XI ... Profit for the period". 2/2 mutants.

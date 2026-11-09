@@ -71,6 +71,7 @@ _APOSTROPHE_DATE = re.compile(  # 30 Jun'24, 30th Sep'25
 _FY_SPAN = re.compile(r"(20\d{2})\s*[-–]\s*(\d{2})\b")  # 2024-25
 _FY_SHORT = re.compile(r"\bfy\s*'?(\d{2}|20\d{2})\b")  # FY25, FY 2025
 _BARE_YEAR = re.compile(r"(20\d{2})")
+_MAIN_LINE = re.compile(r"\s*(?:[IVX]{1,5}|[A-H])[.)]?\s")  # IX, XI, D., II. open a main line
 _SCALE = re.compile(r"\bin\s*(crore|lac|lakh|million)s?\b")
 _EPS_WORDS = ("basic", "diluted", "earnings", "share", "continuing", "discontinued")
 _STOP = {"of", "and", "the", "in", "on", "or", "to", "for", "from", "by", "a", "an", "with", "at"}
@@ -374,6 +375,9 @@ def sheets(document: Document) -> list[Sheet]:
             if not numbers:
                 heading, block = label or heading, block + 1
                 continue
+            # a numbered main line (IX, XI, D.) heads its own block
+            if _MAIN_LINE.match(" ".join(c for c in row if c)):
+                heading, block = label, block + 1
             body.append((r, numbers, label, heading, block))
         closes = {
             block: i for i, (_, _, label, _, block) in reversed(list(enumerate(body))) if not label

@@ -543,6 +543,73 @@ def test_a_headings_first_row_or_closing_subtotal_reads_as_it(
     assert (check_fact(fact, read).outcome == "agree") is agreed, check_fact(fact, read)
 
 
+@pytest.mark.parametrize(
+    ("rows", "label", "agreed"),
+    [
+        pytest.param(
+            (
+                ("", "VIII Tax expense:", "", "", "", ""),
+                ("", "Deferred tax", "1", "1", "1", "1"),
+                ("IX", "Profit before regulatory movements", "2", "2", "2", "2"),
+                ("XI", "Profit for the period", "3", "3", "3", "3"),
+                ("", "", "1,234", "1", "1", "1"),
+            ),
+            "Profit for the period",
+            True,
+            id="a subtotal after a numbered line takes that line, not a heading above",
+        ),
+        pytest.param(
+            (
+                ("", "VIII Tax expense:", "", "", "", ""),
+                ("", "Deferred tax", "1", "1", "1", "1"),
+                ("XI", "Profit for the period", "3", "3", "3", "3"),
+                ("", "", "1,234", "1", "1", "1"),
+            ),
+            "Tax expense",
+            False,
+            id="the heading above a numbered line names nothing after it",
+        ),
+    ],
+)
+def test_a_numbered_main_line_heads_its_own_block(
+    rows: tuple[tuple[str, ...], ...], label: str, agreed: bool
+) -> None:
+    scaled = ("", "STANDALONE RESULTS (₹ in crore)", "", "", "", "")
+    read = sheets(_pages((1, (scaled, *_HEADER, ("", "Revenue", "1", "2", "3", "4"), *rows))))
+    fact = _fact("X", 12_340_000_000.0, (label,))
+    assert (check_fact(fact, read).outcome == "agree") is agreed, check_fact(fact, read)
+
+
+@pytest.mark.parametrize(
+    ("rows", "agreed"),
+    [
+        pytest.param(
+            (
+                ("XIII", "Earnings per equity share Basic", "15.73", "1", "1", "1"),
+                _eps_row("Diluted"),
+            ),
+            True,
+            id="a diluted row under a numbered EPS line",
+        ),
+        pytest.param(
+            (
+                _EPS_HEADING,
+                ("a)", "Basic (in ₹)", "1", "1", "1", "1"),
+                ("b)", "Diluted", "15.73", "1", "1", "1"),
+            ),
+            True,
+            id="lettered sub-rows keep the EPS heading",
+        ),
+    ],
+)
+def test_eps_rows_read_with_their_main_line(
+    rows: tuple[tuple[str, ...], ...], agreed: bool
+) -> None:
+    read = sheets(_pages((1, (*_HEADER, ("1", "Interest earned", "1", "2", "3", "4"), *rows))))
+    fact = _fact("EPS", 15.73, (_DILUTED_EPS,), unit="INRPerShare", decimals=2)
+    assert (check_fact(fact, read).outcome == "agree") is agreed, check_fact(fact, read)
+
+
 def test_a_heading_carries_into_the_statement_it_continues() -> None:
     first = (*_HEADER, ("1", "Interest earned", "1.00", "2.00", "3.00", "4.00"), _EPS_HEADING)
     read = sheets(_pages((1, first), (2, (_eps_row("Basic (in ₹)"),))))
