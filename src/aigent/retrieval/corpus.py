@@ -21,7 +21,7 @@ from functools import cache
 from importlib.metadata import version
 from io import BytesIO
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import DocumentStream, InputFormat
@@ -603,6 +603,11 @@ _INGEST_FINGERPRINT = hashlib.sha256(
 ).hexdigest()[:12]
 
 
+def ingest_fingerprint() -> str:
+    """The hash of everything that decides what a PDF renders as; part of a derived cache's key."""
+    return _INGEST_FINGERPRINT
+
+
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
@@ -650,6 +655,84 @@ def cache_file(path: Path, doc_id: str, cache_dir: Path = CACHE_DIR) -> Path:
     return cache_dir / f"{doc_id}-{_digest(path)}-{_INGEST_FINGERPRINT}.json"
 
 
+class StoredTable(TypedDict):
+    start: int
+    end: int
+    rows: list[list[str]]
+    header_rows: int
+    sections: list[int]
+
+
+class StoredSpan(TypedDict):
+    start: int
+    end: int
+
+
+class StoredDocument(TypedDict):
+    """A rendered document as the cache stores it, in JSON."""
+
+    doc_id: str
+    text: str
+    source: str
+    page_starts: list[int]
+    tables: list[StoredTable]
+    headings: list[StoredSpan]
+    running: list[str]
+
+
+def document_json(document: Document) -> StoredDocument:
+    """A rendered document as the cache stores it."""
+    return {
+        "doc_id": document.doc_id,
+        "text": document.text,
+        "source": document.source,
+        "page_starts": list(document.page_starts),
+        "tables": [
+            {
+                "start": t.start,
+                "end": t.end,
+                "rows": [list(row) for row in t.rows],
+                "header_rows": t.header_rows,
+                "sections": list(t.sections),
+            }
+            for t in document.tables
+        ],
+        "headings": [{"start": h.start, "end": h.end} for h in document.headings],
+        "running": list(document.running),
+    }
+
+
+def document_from_json(stored: StoredDocument) -> Document:
+    """A rendered document back from the cache; KeyError or TypeError for a malformed one."""
+    return Document(
+        doc_id=stored["doc_id"],
+        text=stored["text"],
+        source=stored["source"],
+        page_starts=tuple(stored["page_starts"]),
+        tables=tuple(
+            Table(
+                t["start"],
+                t["end"],
+                tuple(tuple(row) for row in t["rows"]),
+                t["header_rows"],
+                tuple(t["sections"]),
+            )
+            for t in stored["tables"]
+        ),
+        headings=tuple(Heading(h["start"], h["end"]) for h in stored["headings"]),
+        running=tuple(stored["running"]),
+    )
+
+
+def write_cached(cached: Path, document: Document) -> None:
+    """Writes a rendered document aside and moves it into place, so an interrupted run leaves no
+    half-file to be read back as text."""
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    partial = cached.with_suffix(".partial")
+    partial.write_text(json.dumps(document_json(document)), encoding="utf-8")
+    partial.replace(cached)
+
+
 def load_pdf_cached(path: Path, doc_id: str | None = None, cache_dir: Path = CACHE_DIR) -> Document:
     """`load_pdf`, memoised on disk twice: the rendered document, and Docling's parse beneath it
     (`parse_cached`)."""
@@ -657,25 +740,8 @@ def load_pdf_cached(path: Path, doc_id: str | None = None, cache_dir: Path = CAC
     cached = cache_file(path, name, cache_dir)
     if cached.exists():
         try:
-            stored = json.loads(cached.read_text(encoding="utf-8"))
-            return Document(
-                doc_id=stored["doc_id"],
-                text=stored["text"],
-                source=stored["source"],
-                page_starts=tuple(stored["page_starts"]),
-                tables=tuple(
-                    Table(
-                        t["start"],
-                        t["end"],
-                        tuple(tuple(row) for row in t["rows"]),
-                        t["header_rows"],
-                        tuple(t["sections"]),
-                    )
-                    for t in stored["tables"]
-                ),
-                headings=tuple(Heading(h["start"], h["end"]) for h in stored["headings"]),
-                running=tuple(stored["running"]),
-            )
+            stored = cast(StoredDocument, json.loads(cached.read_text(encoding="utf-8")))
+            return document_from_json(stored)
         except (json.JSONDecodeError, KeyError, TypeError):
             cached.unlink(missing_ok=True)
 
@@ -684,32 +750,7 @@ def load_pdf_cached(path: Path, doc_id: str | None = None, cache_dir: Path = CAC
     cache_dir.mkdir(parents=True, exist_ok=True)
     for stale in cache_dir.glob(f"{name}-*.json"):
         stale.unlink(missing_ok=True)
-    # Written aside and moved, so an interrupted run leaves no half-file to be read back as text.
-    partial = cached.with_suffix(".partial")
-    partial.write_text(
-        json.dumps(
-            {
-                "doc_id": document.doc_id,
-                "text": document.text,
-                "source": document.source,
-                "page_starts": list(document.page_starts),
-                "tables": [
-                    {
-                        "start": t.start,
-                        "end": t.end,
-                        "rows": [list(row) for row in t.rows],
-                        "header_rows": t.header_rows,
-                        "sections": list(t.sections),
-                    }
-                    for t in document.tables
-                ],
-                "headings": [{"start": h.start, "end": h.end} for h in document.headings],
-                "running": list(document.running),
-            }
-        ),
-        encoding="utf-8",
-    )
-    partial.replace(cached)
+    write_cached(cached, document)
     return document
 
 

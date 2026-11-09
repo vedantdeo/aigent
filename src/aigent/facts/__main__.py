@@ -3,6 +3,8 @@
 `python -m aigent.facts crosscheck [--write]`: check the cross-checked companies' XBRL facts against
 their results documents, rule on the review decisions and write the review queue; `--write` makes
 agreements `xbrl-filed` and the groups decided `right` `xbrl`.
+`python -m aigent.facts reocr [--documents PATH ...] [--tickers T ...]`: OCR scanned results afresh,
+each in its own process, into the readings the cross-check tries after them; free, minutes each.
 `python -m aigent.facts verify-concept --name N --scope S --by P`: a person's check of a derived
 concept. `python -m aigent.facts share-events` lists the share events held, and
 `verify-share-event --id N --by P [--kind K --effective D --ratio A:B]` records a person's check
@@ -13,9 +15,14 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
+import time
 from collections import Counter
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
+
+import psutil
 
 from aigent.facts.build import build
 from aigent.facts.cfg_facts import (
@@ -25,6 +32,8 @@ from aigent.facts.cfg_facts import (
     FACTS_TICKERS,
     FACTS_YEARS,
     TAXONOMY_PACKAGES,
+    VERIFY_REOCR_MAX_GB,
+    VERIFY_REOCR_POLL_S,
     VERIFY_TICKERS,
 )
 from aigent.facts.coverage import (
@@ -35,7 +44,17 @@ from aigent.facts.coverage import (
     write_report,
 )
 from aigent.facts.crosscheck import apply, crosscheck
-from aigent.facts.documents import origin, read_manifest
+from aigent.facts.documents import (
+    Entry,
+    build_reocr,
+    filed_of,
+    is_reading,
+    origin_of,
+    read_manifest,
+    readings_of,
+    reocr_built,
+    ticker_of,
+)
 from aigent.facts.lookup import Lookup, concept_index
 from aigent.facts.nse import XBRL_DIR, polite_get
 from aigent.facts.reference import load_fundamentals
@@ -75,6 +94,7 @@ def main(argv: list[str] | None = None) -> None:
             "build",
             "coverage",
             "crosscheck",
+            "reocr",
             "verify-concept",
             "share-events",
             "verify-share-event",
@@ -93,6 +113,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--write", action="store_true", help="crosscheck: record agreements and decisions"
     )
+    parser.add_argument(
+        "--documents", nargs="*", default=[], help="reocr: scans by manifest path, as results/X.pdf"
+    )
+    parser.add_argument("--tickers", nargs="*", default=[], help="reocr: every scan of these")
+    parser.add_argument("--one", help=argparse.SUPPRESS)  # reocr's child: build one reading
     args = parser.parse_args(argv)
     now = datetime.now().astimezone()
     if args.command == "coverage":
@@ -100,6 +125,12 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "crosscheck":
         cross_check(now, write=args.write)
+        return
+    if args.command == "reocr":
+        if args.one:
+            build_reocr(args.one)
+            return
+        reocr(args.documents, args.tickers)
         return
     if args.command == "verify-concept":
         verify_concept(str(args.name or ""), str(args.scope or ""), str(args.by or ""), now)
@@ -203,7 +234,8 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
     try:
         checked = crosscheck(conn, VERIFY_TICKERS)
         rulings = rule(review_groups(checked), read_decisions(decisions))
-        origins = {name: origin(entry) for name, entry in read_manifest().items()}
+        manifest = read_manifest()
+        origins = {r: origin_of(r, e) for n, e in manifest.items() for r in readings_of(n, e)}
         moved = apply(conn, checked, now, origins) if write else 0
         checked_by_person = apply_rulings(conn, rulings, now) if write else 0
     finally:
@@ -234,6 +266,81 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
         f"{len(checked)} facts, {agreed} agree, {moved} written xbrl-filed, "
         f"{checked_by_person} written xbrl; decisions: {header['decisions']}; report: {path}"
     )
+    missing = [r for r in origins if is_reading(r) and not reocr_built(r)]
+    if missing:
+        print(f"{len(missing)} scans have no re-OCR'd reading yet: python -m aigent.facts reocr")
+
+
+def tree_rss_gb(pid: int) -> float:
+    """The resident memory of a process and everything it started, in GB; 0 once it has gone."""
+    try:
+        root = psutil.Process(pid)
+        processes = [root, *root.children(recursive=True)]
+    except psutil.NoSuchProcess:
+        return 0.0
+    total = 0
+    for process in processes:
+        try:
+            total += process.memory_info().rss
+        except psutil.NoSuchProcess:
+            continue
+    return total / 2**30
+
+
+def guarded(
+    argv: Sequence[str],
+    max_gb: float = VERIFY_REOCR_MAX_GB,
+    poll_s: float = VERIFY_REOCR_POLL_S,
+    rss_gb: Callable[[int], float] = tree_rss_gb,
+) -> tuple[str, float]:
+    """Runs `argv`, stopping it and all it started once their memory passes `max_gb`: its outcome
+    ("ok", "failed exit N" or "stopped over N GB") and the peak seen."""
+    child = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    peak = 0.0
+    while child.poll() is None:
+        peak = max(peak, rss_gb(child.pid))
+        if peak > max_gb:
+            for process in psutil.Process(child.pid).children(recursive=True):
+                process.kill()
+            child.kill()
+            child.wait()
+            return f"stopped over {max_gb:g} GB", peak
+        time.sleep(poll_s)
+    return ("ok" if child.returncode == 0 else f"failed exit {child.returncode}"), peak
+
+
+def reocr_queue(
+    manifest: dict[str, Entry],
+    documents: Sequence[str],
+    tickers: Sequence[str],
+    built: Callable[[str], bool] = reocr_built,
+) -> tuple[list[str], list[str]]:
+    """The re-OCR'd readings asked for, every scan's when neither `documents` nor `tickers` names
+    any, still to build; and the names asked for that have no reading, not being such a scan."""
+    readings = [r for n, e in sorted(manifest.items()) for r in readings_of(n, e) if is_reading(r)]
+    chosen = [
+        r
+        for r in readings
+        if (not documents and not tickers)
+        or filed_of(r) in documents
+        or ticker_of(filed_of(r)) in tickers
+    ]
+    unknown = sorted(set(documents) - {filed_of(r) for r in readings})
+    return [r for r in chosen if not built(r)], unknown
+
+
+def reocr(documents: Sequence[str], tickers: Sequence[str]) -> None:
+    """Builds each re-OCR'd reading asked for that is not built, one process each, guarded."""
+    todo, unknown = reocr_queue(read_manifest(), documents, tickers)
+    if unknown:
+        raise SystemExit(f"not scans with a re-OCR'd reading: {', '.join(unknown)}")
+    print(f"{len(todo)} re-OCR'd readings to build", flush=True)
+    for reading in todo:
+        start = time.monotonic()
+        outcome, peak = guarded([sys.executable, "-m", "aigent.facts", "reocr", "--one", reading])
+        print(
+            f"{reading}: {outcome}, {time.monotonic() - start:.0f}s, peak {peak:.1f} GB", flush=True
+        )
 
 
 def coverage(now: datetime) -> None:

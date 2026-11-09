@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
+from docling_core.types.doc.document import DoclingDocument
 from pypdf import PdfWriter
 from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
 
 from aigent.facts import documents
 from aigent.facts.cfg_facts import FACTS_TICKERS, VERIFY_TICKERS
 from aigent.retrieval.chunk import Document
+
+from ..retrieval.conftest import docling
 
 _TEXT = "Interest earned 4858681 Other income 922986 Total income 5781667 " * 5
 _HTML = """<html><body>
@@ -431,3 +435,134 @@ _OCRD: documents.Entry = {"pages": 10, "text_less_pages": [], "ocr_pages": list(
 )
 def test_origin_names_source_and_form(entry: documents.Entry, expected: str) -> None:
     assert documents.origin(entry) == expected
+
+
+_SCANNED: documents.Entry = {
+    "source": "nse",
+    "format": "pdf",
+    "pages": 10,
+    "text_less_pages": [],
+    "ocr_pages": list(range(2, 11)),
+}
+_IMAGE_ONLY: documents.Entry = {**_SCANNED, "text_less_pages": list(range(2, 11)), "ocr_pages": []}
+_TEXT_PDF: documents.Entry = {**_SCANNED, "ocr_pages": []}
+_REOCR = "results/OCR-2025-03-31.pdf#rapidocr"
+
+
+def test_stripping_a_scan_leaves_its_pages_and_no_text(tmp_path: Path) -> None:
+    source = _pdf(tmp_path / "scan.pdf", [_TEXT] * 3, {2: [3], 3: [3]})
+    removed = documents.strip_text_layer(source, tmp_path / "stripped.pdf")
+    pages, text_less = documents.text_less_pages(tmp_path / "stripped.pdf")
+    assert (removed, pages, text_less) == (3, 3, [1, 2, 3]), (removed, pages, text_less)
+
+
+@pytest.mark.parametrize(
+    ("name", "entry", "ocr_tickers", "readings"),
+    [
+        pytest.param(
+            "results/OCR-2025-03-31.pdf", _SCANNED, ("OCR",), 2, id="a scan of a company read so"
+        ),
+        pytest.param(
+            "results/OCR-2025-03-31.pdf", _IMAGE_ONLY, ("OCR",), 2, id="an image-only scan too"
+        ),
+        pytest.param(
+            "results/OCR-2025-03-31.pdf", _SCANNED, ("TEXT",), 1, id="a scan of another company"
+        ),
+        pytest.param("results/OCR-2025-03-31.pdf", _TEXT_PDF, ("OCR",), 1, id="a text pdf"),
+        pytest.param(
+            "results/WEB-2023-06-30.htm",
+            {
+                "source": "sec-6k",
+                "format": "html",
+                "pages": 0,
+                "text_less_pages": [],
+                "ocr_pages": [],
+            },
+            ("WEB",),
+            1,
+            id="an html filing",
+        ),
+        pytest.param(
+            "results/OCR-2025-03-31.pdf",
+            {"source": "nse", "format": "pdf"},
+            ("OCR",),
+            1,
+            id="an entry not flagged",
+        ),
+    ],
+)
+def test_readings_of(
+    name: str, entry: documents.Entry, ocr_tickers: tuple[str, ...], readings: int
+) -> None:
+    got = documents.readings_of(name, entry, ocr_tickers)
+    assert got == (name, f"{name}#rapidocr")[:readings], got
+
+
+def test_a_reading_is_stamped_with_its_engine_and_version() -> None:
+    assert documents.origin_of(_REOCR, _SCANNED) == f"nse-pdf-rapidocr-{version('rapidocr')}"
+    assert documents.origin_of("results/OCR-2025-03-31.pdf", _SCANNED) == "nse-pdf-ocr"
+
+
+def test_a_reading_has_its_own_name_and_reads_its_scan() -> None:
+    assert documents.doc_id_of(_REOCR) == "verify-results-OCR-2025-03-31-rapidocr"
+    assert documents.filed_of(_REOCR) == "results/OCR-2025-03-31.pdf"
+    assert documents.is_reading(_REOCR) and not documents.is_reading(documents.filed_of(_REOCR))
+
+
+def _reocr_reader(name: str, verify_dir: Path) -> Document:
+    return Document(doc_id=f"reocr:{name}", text="", source=str(verify_dir))
+
+
+@pytest.mark.parametrize(
+    ("name", "ocr_tickers", "outcome"),
+    [
+        pytest.param(_REOCR, ("OCR",), "reocr:" + _REOCR, id="a scan's reading"),
+        pytest.param(_REOCR, ("TEXT",), ValueError, id="a reading of a company not read so"),
+        pytest.param(
+            "results/TEXT-2025-03-31.pdf#rapidocr", ("TEXT",), ValueError, id="a text pdf's"
+        ),
+        pytest.param("results/NOPE.pdf#rapidocr", ("NOPE",), KeyError, id="a scan not held"),
+    ],
+)
+def test_load_verify_document_reads_a_reading_through_reocr(
+    verify_dir: Path, name: str, ocr_tickers: tuple[str, ...], outcome: str | type[Exception]
+) -> None:
+    documents.flag_documents(verify_dir)
+
+    def load() -> Document:
+        return documents.load_verify_document(
+            name, verify_dir, _pdf_reader, _html_reader, ocr_tickers, _reocr_reader
+        )
+
+    if isinstance(outcome, str):
+        assert load().doc_id == outcome
+    else:
+        with pytest.raises(outcome):
+            load()
+
+
+def test_a_reading_is_built_once_and_kept_under_its_fingerprint(
+    verify_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "cache"
+    parsed: list[Path] = []
+
+    def parse(path: Path) -> DoclingDocument:
+        parsed.append(path)
+        return docling([["Revenue 100 90"]])
+
+    assert not documents.reocr_built(_REOCR, verify_dir, cache)
+    with pytest.raises(ValueError, match="python -m aigent.facts reocr --documents"):
+        documents.load_reocr(_REOCR, verify_dir, cache)
+    kept = documents.build_reocr(_REOCR, verify_dir, cache, parse)
+    read = documents.load_reocr(_REOCR, verify_dir, cache)
+    assert documents.reocr_built(_REOCR, verify_dir, cache) and len(parsed) == 1
+    assert read.doc_id == "verify-results-OCR-2025-03-31-rapidocr" and "Revenue" in read.text
+    monkeypatch.setattr(documents, "_REOCR_FINGERPRINT", "0123456789ab")
+    assert not documents.reocr_built(_REOCR, verify_dir, cache), "another engine's reading reused"
+    documents.build_reocr(_REOCR, verify_dir, cache, parse)
+    assert not kept.exists(), "the superseded reading is swept"
+
+
+def test_a_reading_of_a_scan_not_held_is_never_built(tmp_path: Path) -> None:
+    assert not documents.reocr_built("results/NOPE-2025-03-31.pdf#rapidocr", tmp_path, tmp_path)

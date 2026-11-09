@@ -2625,3 +2625,21 @@
   only by a stray line, its neighbour misread as a balance at 1 March 2025. 15,426 of 38,083.
   Reliance's results EPS is 8 of 238 now: the rest are OCR'd beyond these rules. All mutants
   killed (4 new, earlier sets rechecked); 2,816 tests.
+- 11-08 to 11-09: **OCR pilot, then re-OCR'd readings, $0.00.** Docling with OCR on changed
+  nothing in tables: its table model reads a page's words from the PDF's text layer and falls
+  back to OCR only where the layer is empty, so the companies' own bad OCR always won. With the
+  text layer stripped from a copy, Reliance Dec-2024 went from 0 of 292 agreeing to 75 (RapidOCR)
+  or 45 (Apple Vision). All 77 scans, both engines, in scratch: 8,146 of 29,077 facts agreeing on
+  the filed layer, 10,046 RapidOCR, 6,233 Vision, 10,475 either; Reliance 12.9% to 35.7%, its EPS
+  8 to 80 of 294; ITC and Power Grid flat, their own layers already decent. Most of RapidOCR's
+  differences were XBRL (Reliance's debt ratios filed 0.00) or matcher (segment rows), not
+  misread digits. Vedant: build it in, an explicit command (so badly read scans can be chosen),
+  rebuilt rather than imported, the engine's version in the stamp; Vision left out (macOS only).
+  `documents.readings_of` gives each scan of an OCR company a reading `<path>#rapidocr`, built by
+  `python -m aigent.facts reocr [--documents ...] [--tickers ...]` (text layer stripped, RapidOCR
+  on every page, one process per scan, stopped past 10 GB of process-tree memory), cached under
+  its own fingerprint (its code, the Docling and RapidOCR versions, the corpus ingest
+  fingerprint); the corpus parse fingerprints are unchanged. The cross-check tries a reading after
+  its scan, an image-only scan by its reading alone, and stamps `nse-pdf-rapidocr-3.10.0`; it
+  never builds one, and names the command when some are missing. `psutil` and `rapidocr` are now
+  declared. 16/16 mutants killed; 2,846 tests.
