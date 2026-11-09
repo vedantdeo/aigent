@@ -509,6 +509,40 @@ def test_a_heading_printed_above_the_first_figures_counts() -> None:
     assert check_fact(fact, read).outcome == "agree", read[0].cells[:1]
 
 
+_TOTAL = ("", "", "1,234", "1", "1", "1")
+_SHARES = ("", "Equity share capital", "737", "1", "1", "1")
+_RESERVES = ("", "Other equity", "497", "1", "1", "1")
+
+
+@pytest.mark.parametrize(
+    ("block", "agreed"),
+    [
+        pytest.param((_SHARES, _RESERVES, _TOTAL), True, id="an unlabelled last row"),
+        pytest.param((_TOTAL, _SHARES, _RESERVES), True, id="an unlabelled first row"),
+        pytest.param((_SHARES, _TOTAL, _RESERVES), True, id="a subtotal with figures following it"),
+        pytest.param(
+            (_SHARES, ("", "", "1", "1", "1", "1"), _RESERVES, _TOTAL),
+            False,
+            id="a second unlabelled row after the subtotal",
+        ),
+        pytest.param(
+            (_SHARES, _RESERVES, ("", "Other reserves", "1,234", "1", "1", "1")),
+            False,
+            id="a labelled last row keeps its label",
+        ),
+    ],
+)
+def test_a_headings_first_row_or_closing_subtotal_reads_as_it(
+    block: tuple[tuple[str, ...], ...], agreed: bool
+) -> None:
+    scaled = ("", "STANDALONE BALANCE SHEET (₹ in crore)", "", "", "", "")
+    first = ("", "Revenue", "1", "2", "3", "4")
+    rows = (scaled, *_HEADER, first, ("", "Equity", "", "", "", ""), *block)
+    read = sheets(_pages((1, rows)))
+    fact = _fact("Equity", 12_340_000_000.0, ("Equity",), period=(None, date(2024, 6, 30)))
+    assert (check_fact(fact, read).outcome == "agree") is agreed, check_fact(fact, read)
+
+
 def test_a_heading_carries_into_the_statement_it_continues() -> None:
     first = (*_HEADER, ("1", "Interest earned", "1.00", "2.00", "3.00", "4.00"), _EPS_HEADING)
     read = sheets(_pages((1, first), (2, (_eps_row("Basic (in ₹)"),))))

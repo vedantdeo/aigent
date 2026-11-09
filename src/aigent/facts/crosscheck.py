@@ -358,7 +358,8 @@ def sheets(document: Document) -> list[Sheet]:
         heading = (
             before_heading if continued else " ".join(c for c in header[-1] if c) if header else ""
         )
-        cells: list[Cell] = []
+        body: list[tuple[int, list[tuple[int, tuple[float, int, bool]]], str, str, int]] = []
+        block = 0
         for r in range(first, len(table.rows)):
             row = table.rows[r]
             numbers = [
@@ -371,10 +372,20 @@ def sheets(document: Document) -> list[Sheet]:
                 c for j, c in enumerate(row) if c and j not in taken and not _serial(j, c)
             )
             if not numbers:
-                heading = label or heading
+                heading, block = label or heading, block + 1
                 continue
+            body.append((r, numbers, label, heading, block))
+        closes = {
+            block: i for i, (_, _, label, _, block) in reversed(list(enumerate(body))) if not label
+        }
+        cells: list[Cell] = []
+        for i, (r, numbers, label, under, block) in enumerate(body):
+            subtotal = i == closes.get(block)  # its heading's first unlabelled row
+            named = label or (under if subtotal else "")
             for j, parsed, period in _aligned(numbers, columns):
-                cells.append(Cell(r, j, period, label, row[j].strip(), *parsed, heading=heading))
+                cells.append(
+                    Cell(r, j, period, named, table.rows[r][j].strip(), *parsed, heading=under)
+                )
         out.append(Sheet(index, basis, scale, page, columns, tuple(cells)))
         before_columns, before_width, before_page, before_heading = columns, width, page, heading
     return out

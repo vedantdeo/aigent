@@ -2643,3 +2643,17 @@
   its scan, an image-only scan by its reading alone, and stamps `nse-pdf-rapidocr-3.10.0`; it
   never builds one, and names the command when some are missing. `psutil` and `rapidocr` are now
   declared. 16/16 mutants killed; 2,846 tests.
+- 11-09: **spot check, first 10 of 30, and subtotals read by their heading, $0.00.** Vedant marked
+  9 right and 1 unsure (Wipro's `DividendsPaidClassifiedAsFinancingActivities`: Ind AS names a
+  cash flow by its classification; every company files dividends paid as financing and received
+  as investing, and no derived concept uses dividends yet; kept as is). On s10 (Tata Motors'
+  equity on an unlabelled subtotal row) he proposed naming such rows by their heading. Measured
+  against `fb25fef` in a scratch copy: "Total" plus the heading, or the heading alone, both 17 more
+  agreeing and none fewer, 2 of them for the wrong reason (Sun Pharma's loans under "(1)
+  Non-current assets", a zero on a dash). His refinement, only the first or last row with figures
+  under a heading: 9 more, but Power Grid's OCI tax subtotals lost, because a labelled result line
+  with figures follows them and a block ends only at a line without figures. Final: the first
+  unlabelled row under a heading, the subtotal that closes its block: 16 more, none fewer, the
+  loans one still out (the zero on a dash, the existing zero rule, back). 17,701 of 38,510 agree.
+  3/3 mutants killed (a fourth equivalent: only unlabelled rows qualify); 2,850 tests (the free
+  token-count smoke test had failed on an expired API key until Vedant renewed it).
