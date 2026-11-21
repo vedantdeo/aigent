@@ -20,6 +20,7 @@ from aigent.facts import __main__ as cli
 from aigent.facts.crosscheck import (
     Column,
     Fact,
+    RowRead,
     agrees,
     apply,
     check_fact,
@@ -37,36 +38,21 @@ from aigent.facts.store import FilingRow, sync_xbrl_facts, upsert_filing
 from aigent.facts.xbrl import Fact as XbrlFact
 from aigent.retrieval.chunk import Document, Table
 
-from .conftest import CROSSCHECK_Q1, CROSSCHECK_WRITER, checked_row
+from .conftest import (
+    CROSSCHECK_HEADER,
+    CROSSCHECK_Q1,
+    CROSSCHECK_RESULTS,
+    CROSSCHECK_WRITER,
+    checked_row,
+    crosscheck_document,
+)
 
 Q1 = CROSSCHECK_Q1
 NOW = datetime(2026, 11, 1, 9, 0)
 
-_HEADER = (
-    ("", "", "Quarter ended", "", "", "Year ended"),
-    ("Sr", "Particulars", "30.06.2024", "31.03.2024", "30.06.2023", "31.03.2024"),
-)
-_RESULTS = (
-    *_HEADER,
-    ("1", "Interest earned", "38,995.78", "37,948.36", "33,327.61", "142,890.94"),
-    ("2", "Other income", "7,001.92", "5,648.78", "5,435.25", "22,957.77"),
-    ("3", "Exceptional items", "..", "..", "..", ".."),
-    ("4", "Basic EPS", "15.73", "15.26", "13.80", "58.38"),
-    ("5", "Gross NPA ratio", "2.15%", "2.16%", "2.76%", "2.16%"),
-)
-
-
-def _document(*parts: str | tuple[tuple[str, ...], ...]) -> Document:
-    """A document of text and tables in order, each table printed one row a line."""
-    text, tables = "", []
-    for part in parts:
-        if isinstance(part, str):
-            text += part + "\n"
-            continue
-        start = len(text)
-        text += "\n".join(" ".join(c for c in row if c) for row in part) + "\n"
-        tables.append(Table(start, len(text), part))
-    return Document("D", text, page_starts=(0,), tables=tuple(tables))
+_HEADER = CROSSCHECK_HEADER
+_RESULTS = CROSSCHECK_RESULTS
+_document = crosscheck_document
 
 
 def _fact(
@@ -723,7 +709,65 @@ def test_check_fact(fact: Fact, outcome: str, printed: str | None) -> None:
 
 def test_a_fact_records_where_it_agreed() -> None:
     checked = check_fact(_fact(), sheets(STANDALONE))
-    assert (checked.page, checked.row_label) == (1, "Interest earned")
+    where = (checked.page, checked.row_label, checked.sheet, checked.row, checked.column)
+    assert where == (1, "Interest earned", 0, 2, 2), checked
+    assert (checked.heading, checked.share) == (" ".join(_HEADER[-1]), 1.0), checked
+
+
+_EPS_UNDER_HEADING = _pages((1, (*_HEADER, _EPS_HEADING, _eps_row("a) Basic (in ₹)"))))
+
+
+@pytest.mark.parametrize(
+    ("fact", "document", "outcome", "rule"),
+    [
+        pytest.param(_fact(), STANDALONE, "agree", "label", id="a labelled distinct figure"),
+        pytest.param(
+            _fact("OtherIncome", 70019200000.0, ("Income not from interest",)),
+            STANDALONE,
+            "agree",
+            "distinct",
+            id="a distinctive figure in an unlabelled row",
+        ),
+        pytest.param(
+            _fact("EPS", 15.73, (_TOTAL_EPS,), unit="INRPerShare", decimals=2),
+            _EPS_UNDER_HEADING,
+            "agree",
+            "per-share",
+            id="a short figure under its per-share heading",
+        ),
+        pytest.param(
+            _fact(value=390000000000.0), STANDALONE, "differ", None, id="a difference has no rule"
+        ),
+    ],
+)
+def test_an_agreement_records_the_rule_it_agreed_by(
+    fact: Fact, document: Document, outcome: str, rule: str | None
+) -> None:
+    checked = check_fact(fact, sheets(document))
+    assert (checked.outcome, checked.rule) == (outcome, rule), checked
+
+
+def test_a_sheet_records_how_it_read_each_row() -> None:
+    rows = (
+        *_HEADER,
+        ("", "Revenue", "1", "2", "3", "4"),
+        ("", "Equity", "", "", "", ""),
+        _SHARES,
+        _RESERVES,
+        _TOTAL,
+        ("IX", "Tax expense", "5", "6", "7", "8"),
+    )
+    [sheet] = sheets(_document("STANDALONE (₹ in crore)", rows))
+    top = " ".join(_HEADER[-1])
+    assert sheet.header == 2
+    assert sheet.rows == (
+        RowRead(2, "figures", "Revenue", "Revenue", top, 0),
+        RowRead(3, "heading", "Equity", "", "Equity", 1),
+        RowRead(4, "figures", "Equity share capital", "Equity share capital", "Equity", 1),
+        RowRead(5, "figures", "Other equity", "Other equity", "Equity", 1),
+        RowRead(6, "figures", "", "Equity", "Equity", 1),
+        RowRead(7, "main line", "IX Tax expense", "IX Tax expense", "IX Tax expense", 2),
+    ), sheet.rows
 
 
 FLAGGED: Entry = {"format": "pdf", "pages": 2, "text_less_pages": [], "ocr_pages": []}

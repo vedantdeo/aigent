@@ -2672,3 +2672,25 @@
   Reliance's `a) Basic` for a main line and lost 34 EPS facts). Against `6482662`: 32 more, 9
   fewer, all EPS where OCR put a main line's numeral on the Basic row (Sun Pharma Dec-2024, Tata
   Motors Jun-2023); 17,724 of 38,510. s17 now reads "XI ... Profit for the period". 2/2 mutants.
+- 11-21: spot-check cards s21-s30 marked by Vedant, all right. Four notes are label quality on
+  RapidOCR readings, the figure agreeing on the right row: s23 Sun Pharma depreciation printed
+  `2,855.3` read as `2.855.3`; s26 Bajaj Auto's `(b) Other current liabilities` read as `(t) Other
+  cument liabies`; s27 Bajaj Auto's `Face value of ₹10` lost its ₹ (a reading strips the text
+  layer, so the rupee-font fix never reaches it); s29 Tata Motors' Passenger Vehicle revenue on the
+  Commercial Vehicle row. Of the 30, 26 right, s18 wrong, s06/s13/s20 unsure, all four dealt with
+  11-09. Known limits, not fixed.
+- 11-21: traces (Vedant: show the parsed and processed versions on the cards). `Checked` records
+  its cell (table, row, column, heading, label share) and the rule it agreed by; each `Sheet` a
+  reading of each row; `facts.trace` and `python -m aigent.facts trace` show both. Cross-check at
+  the new code, without `--write`: 17,724 of 38,510, unchanged, 85 s; 12,979 agreements unverified.
+  s29's trace showed the cause: Docling copied the spanning cell `A 1. II. B.` into column 0 of
+  every row of Tata Motors' segment table, so every row reads as a numbered main line, and two
+  OCR'd rows merged (`-Total Others 103,546 1,436`) read as a heading; the figure agreed as
+  distinctive alone. Not fixed. 20/20 mutants.
+- 11-21: review pages formalised (Vedant: the scratchpad builder was lost and rebuilt this
+  session): `python -m aigent.facts review-page`, card lists in `evals/reference/review-pages/`,
+  the template `facts/review_page.html`, agreements or differences, batches drawn evenly over the
+  kinds of copy. `spot-check` holds s01-s30 and a fresh batch s31-s60 (10 each of born-digital,
+  OCR layer and RapidOCR; no SEC copy left unverified). The first republish showed no cards:
+  `append` chained on a real DOM returns nothing, which a Node shim had hidden; now checked in
+  jsdom. `pypdfium2` and `pillow` made direct dependencies. 28/28 mutants. $0.00.

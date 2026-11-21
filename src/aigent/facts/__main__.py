@@ -8,7 +8,13 @@ each in its own process, into the readings the cross-check tries after them; fre
 `python -m aigent.facts verify-concept --name N --scope S --by P`: a person's check of a derived
 concept. `python -m aigent.facts share-events` lists the share events held, and
 `verify-share-event --id N --by P [--kind K --effective D --ratio A:B]` records a person's check
-of one, naming an unknown one's kind, date and ratio."""
+of one, naming an unknown one's kind, date and ratio.
+`python -m aigent.facts trace --rows PATH --facts N ...`: each fact's cell from a cross-check run's
+`.rows.jsonl`, traced through its table as Docling parsed it and the cross-check read it, as JSON
+on stdout; free, from the parse caches.
+`python -m aigent.facts review-page --name N [--outcome agree|differ] [--add K] [--rows PATH]
+[--url U]`: build review page N's HTML from a run's rows (the newest by default), first drawing K
+more cards when asked, into `evals/review-pages/N/index.html` for Claude to publish; free."""
 
 from __future__ import annotations
 
@@ -18,9 +24,11 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import psutil
 
@@ -31,6 +39,7 @@ from aigent.facts.cfg_facts import (
     FACTS_MATCH_METHOD,
     FACTS_TICKERS,
     FACTS_YEARS,
+    REVIEW_PAGE_SEED,
     TAXONOMY_PACKAGES,
     VERIFY_REOCR_MAX_GB,
     VERIFY_REOCR_POLL_S,
@@ -43,12 +52,13 @@ from aigent.facts.coverage import (
     teacher_figures,
     write_report,
 )
-from aigent.facts.crosscheck import apply, crosscheck
+from aigent.facts.crosscheck import Checked, Sheet, apply, crosscheck, sheets
 from aigent.facts.documents import (
     Entry,
     build_reocr,
     filed_of,
     is_reading,
+    load_verify_document,
     origin_of,
     read_manifest,
     readings_of,
@@ -67,12 +77,28 @@ from aigent.facts.review import (
     rule,
 )
 from aigent.facts.review import write_report as write_crosscheck_report
+from aigent.facts.review_page import (
+    REVIEW_PAGES,
+    TEMPLATE,
+    PageList,
+    PageOutcome,
+    build_page,
+    draw,
+    kinds_of,
+    page_cards,
+    page_image,
+    read_page_list,
+    write_page_list,
+)
 from aigent.facts.share_events import load_share_events, verify_share_event
 from aigent.facts.store import FACTS_DB, Writer, connect, verify_derived_concept
 from aigent.facts.taxonomy import TAXONOMY_DIR
+from aigent.facts.trace import trace, trace_json
+from aigent.retrieval.chunk import Document
 
 REPORT = FACTS_DB.with_name("facts-build-report.json")
 CROSSCHECK_DIR = Path(__file__).resolve().parents[3] / "evals" / "reports"
+REVIEW_PAGES_OUT = CROSSCHECK_DIR.parent / "review-pages"
 
 
 def _commit() -> str:
@@ -98,6 +124,8 @@ def main(argv: list[str] | None = None) -> None:
             "verify-concept",
             "share-events",
             "verify-share-event",
+            "trace",
+            "review-page",
         ],
     )
     parser.add_argument("--name", help="verify-concept: the derived concept checked")
@@ -117,6 +145,11 @@ def main(argv: list[str] | None = None) -> None:
         "--documents", nargs="*", default=[], help="reocr: scans by manifest path, as results/X.pdf"
     )
     parser.add_argument("--tickers", nargs="*", default=[], help="reocr: every scan of these")
+    parser.add_argument("--rows", type=Path, help="trace: a cross-check run's .rows.jsonl")
+    parser.add_argument("--facts", nargs="*", type=int, default=[], help="trace: fact ids")
+    parser.add_argument("--outcome", choices=["agree", "differ"], help="review-page: a new page's")
+    parser.add_argument("--add", type=int, default=0, help="review-page: cards to draw anew")
+    parser.add_argument("--url", help="review-page: the artifact the page is published at")
     parser.add_argument("--one", help=argparse.SUPPRESS)  # reocr's child: build one reading
     args = parser.parse_args(argv)
     now = datetime.now().astimezone()
@@ -137,6 +170,17 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "share-events":
         list_share_events()
+        return
+    if args.command == "trace":
+        if args.rows is None or not args.facts:
+            raise SystemExit("give a run's --rows file and the --facts to trace")
+        print(json.dumps(trace_facts(args.rows, list(args.facts)), indent=1))
+        return
+    if args.command == "review-page":
+        if not args.name:
+            raise SystemExit("give the page's --name, as spot-check")
+        outcome = cast(PageOutcome | None, args.outcome)
+        review_page(str(args.name), outcome, args.rows, int(args.add), args.url)
         return
     if args.command == "verify-share-event":
         if args.id is None:
@@ -269,6 +313,91 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
     missing = [r for r in origins if is_reading(r) and not reocr_built(r)]
     if missing:
         print(f"{len(missing)} scans have no re-OCR'd reading yet: python -m aigent.facts reocr")
+
+
+def trace_facts(
+    rows: Path,
+    fact_ids: Sequence[int],
+    load: Callable[[str], Document] = load_verify_document,
+) -> list[dict[str, object]]:
+    """Each fact's trace from a run's rows, in the order asked, each document read once; a fact not
+    in the run, or one that cannot be traced, comes back as its id and the error."""
+    wanted = set(fact_ids)
+    found: dict[int, Checked] = {}
+    for line in rows.read_text(encoding="utf-8").splitlines():
+        fields = json.loads(line)
+        if fields["fact_id"] in wanted:
+            found[fields["fact_id"]] = Checked(**fields)
+    read: dict[str, tuple[Document, list[Sheet]]] = {}
+    out: list[dict[str, object]] = []
+    for fid in fact_ids:
+        checked = found.get(fid)
+        if checked is None:
+            out.append({"fact_id": fid, "error": f"not in {rows.name}"})
+            continue
+        if checked.document not in read:
+            document = load(checked.document)
+            read[checked.document] = (document, sheets(document))
+        try:
+            out.append(trace_json(trace(checked, *read[checked.document])))
+        except ValueError as e:
+            out.append({"fact_id": fid, "error": str(e)})
+    return out
+
+
+def newest_rows(directory: Path = CROSSCHECK_DIR) -> Path:
+    """The newest cross-check run's rows; SystemExit when there is none."""
+    runs = sorted(directory.glob("crosscheck-*.rows.jsonl"))
+    if not runs:
+        raise SystemExit(f"no cross-check run in {directory}: python -m aigent.facts crosscheck")
+    return runs[-1]
+
+
+def review_page(
+    name: str,
+    outcome: PageOutcome | None,
+    rows_path: Path | None,
+    add: int,
+    url: str | None,
+    lists: Path = REVIEW_PAGES,
+    out_dir: Path = REVIEW_PAGES_OUT,
+    load: Callable[[str], Document] = load_verify_document,
+    image: Callable[[Path, int], str] = page_image,
+    manifest: Mapping[str, Entry] | None = None,
+) -> Path:
+    """Builds review page `name`, drawing `add` new cards first and recording `url`; its card list
+    is kept in `lists`, the page written under `out_dir`. Returns the page's path."""
+    rows_path = rows_path or newest_rows()
+    list_path = lists / f"{name}.json"
+    page = read_page_list(list_path)
+    if page is None:
+        if outcome is None:
+            raise SystemExit(f"{name} is a new page: give its --outcome, agree or differ")
+        page = PageList(outcome, None, ())
+    elif outcome is not None and outcome != page.outcome:
+        raise SystemExit(f"{name} shows {page.outcome} facts, not {outcome}")
+    rows = [Checked(**json.loads(line)) for line in rows_path.read_text().splitlines() if line]
+    manifest = read_manifest() if manifest is None else manifest
+    if add:
+        kinds = kinds_of((r.document for r in rows), manifest)
+        page = draw(rows, page, kinds, add, REVIEW_PAGE_SEED)
+    if url:
+        page = replace(page, url=url)
+    write_page_list(list_path, page)
+    ids = [c.fact_id for c in page.cards]
+    traces = {cast(int, t["fact_id"]): t for t in trace_facts(rows_path, ids, load)}
+    cards = page_cards(page, rows, traces, manifest, image=image)
+    still_open = sum(r.outcome == page.outcome and r.tier == "xbrl-ai" for r in rows)
+    html = build_page(cards, page.outcome, still_open, TEMPLATE.read_text(encoding="utf-8"))
+    target = out_dir / name / "index.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(html, encoding="utf-8")
+    batch = max((c.batch for c in page.cards), default=0)
+    print(
+        f"{len(cards)} cards ({add} new in batch {batch}) from {rows_path.name}, "
+        f"{len(html.encode()) / 1e6:.1f} MB: {target}; publish it to {page.url or 'a new artifact'}"
+    )
+    return target
 
 
 def tree_rss_gb(pid: int) -> float:

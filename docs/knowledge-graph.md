@@ -24,515 +24,517 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
 ## Contents
 
 <!-- generated:toc (uv run python scripts/graph_doc.py --write) -->
-- L538 0. Orientation
-- L624 1. Shape of the system
-- L694 2. Nodes
-  - L698 2.1 Modules
-    - L700 `config`
-    - L705 `llm.pricing`
-    - L712 `llm`
-    - L719 `llm.messages`
-    - L726 `llm.adapters`
-    - L735 `llm.adapters.openai.function_tool`
-    - L742 `llm.adapters.cfg_hostllm`
-    - L749 `llm.adapters.retry`
-    - L758 `llm.core`
-    - L767 `guardrails`
-    - L775 `errors`
-    - L783 `tracing`
-    - L790 `transcript`
-    - L797 `tools`
-    - L805 `report_tools`
-    - L812 `mcp_server`
-    - L820 `mcp_client`
-    - L828 `analyst.specialists`
-    - L835 `analyst.cfg_analyst`
-    - L842 `analyst.router`
-    - L850 `analyst.served`
-    - L858 `analyst.toolbox`
-    - L865 `analyst.experts`
-    - L872 `analyst.memo`
-    - L879 `analyst.graph`
-    - L887 `analyst.run`
-    - L894 `analyst.desk`
-    - L902 `analyst.metric_tools`
-    - L910 `analyst.teach`
-    - L917 `tools_config`
-    - L924 `analyst`
-    - L930 `analyst.filings`
-    - L937 `analyst.fundamentals`
-    - L945 `facts`
-    - L952 `facts.cfg_facts`
-    - L958 `facts.xbrl`
-    - L966 `facts.nse`
-    - L971 `facts.store`
-    - L979 `facts.check`
-    - L984 `facts.build`
-    - L991 `facts.taxonomy`
-    - L999 `facts.lookup`
-    - L1007 `facts.reference`
-    - L1015 `facts.formulas`
-    - L1022 `facts.derived_concepts`
-    - L1029 `facts.share_events`
-    - L1038 `facts.coverage`
-    - L1046 `facts.documents`
-    - L1054 `facts.crosscheck`
-    - L1062 `facts.review`
-    - L1070 `extraction.figures`
-    - L1079 `extraction.research`
-    - L1086 `extraction.figure_training`
-    - L1094 `extraction.figure_eval`
-    - L1101 `extraction.headline_eval`
-    - L1108 `extraction.synthetic`
-    - L1115 `extraction.baseline`
-    - L1123 `extraction.headlines`
-    - L1128 `evals.dataset`
-    - L1132 `evals.grade`
-    - L1139 `evals.judge`
-    - L1143 `evals.runner`
-    - L1147 `evals.report`
-    - L1151 `retrieval.chunk`
-    - L1159 `retrieval.embed`
-    - L1166 `retrieval.dense`
-    - L1173 `retrieval.corpus`
-    - L1181 `retrieval.questions`
-    - L1185 `retrieval.evaluate`
-    - L1192 `retrieval.langchain_rag`
-    - L1197 `retrieval.sparse`
-    - L1201 `retrieval.fuse`
-    - L1205 `retrieval.rerank`
-    - L1210 `retrieval.hits`
-    - L1215 `retrieval.rank`
-    - L1221 `retrieval.keys`
-    - L1228 `workflows.reports`
-    - L1232 `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}`
-    - L1235 `workflows.orchestrator_workers_graph`
-    - L1242 `agent`
-    - L1249 `agent_graph`
-    - L1256 `agent_adk`
-    - L1264 `agent_tasks`
-    - L1273 `retrieval.answer`
-  - L1278 2.2 Settings (`config`)
-    - L1282 `config.MODEL`
-    - L1287 `config.JUDGE_MODEL`
-    - L1293 `config.SMALL_MODEL`
-    - L1300 `config.MAX_USD_PER_REQUEST`
-    - L1305 `config.MAX_USD_PER_TURN`
-    - L1312 `config.MAX_USD_PER_RUN`
-    - L1316 `config.WEB_SEARCH_RESULT_TOKENS`
-    - L1323 `config.MAX_USD_PER_EVAL`
-    - L1327 `config.MAX_USD_PER_TASK`
-    - L1334 `config.DEFAULT_MAX_TOKENS`
-    - L1342 `config.MAX_AGENT_TURNS`
-    - L1349 `config.MIN_TOKENS_FINAL_ANSWER`
-    - L1353 `config.MAX_PARALLEL_CALLS`
-    - L1358 `config.EVAL_WORKERS`
-    - L1365 `config.BATCH_POLL_SECONDS`
-    - L1371 `config.THINKING_WORKFLOW_PARAM`
-    - L1377 `config.MAX_PLAN_TASKS`
-    - L1382 `config.MAX_GRAPH_STEPS`
-    - L1386 `config.MAX_FAILURES_SHOWN`
-    - L1390 `config.TRACING`
-    - L1395 `config.MAX_TASK_CHARS`
-    - L1399 `config.MCP_SERVER_NAME`
-    - L1405 `config.MCP_CALL_TIMEOUT_SECONDS`
-    - L1411 `analyst.cfg_analyst.SPECIALIST_TRIES`
-    - L1417 config.GENERALIST_MODEL and the analyst's other settings (moved)
-    - L1422 `config.EMBED_MODEL`
-    - L1428 `config.EMBED_LOG_EVERY`
-    - L1432 `config.EMBED_SAVE_EVERY`
-    - L1438 `config.EMBED_QUERY_PREFIXES`
-    - L1445 `config.LOCAL_MODEL_DTYPE`
-    - L1452 `config.CHUNK_*`
-    - L1457 `config.ELEMENT_*`
-    - L1463 `config.HEADING_*`
-    - L1466 `config.PASSAGE_MIN_CHARS`
-    - L1472 `config.TOP_K`
-    - L1476 `config.BM25_K1`
-    - L1481 `config.FUSE_DEPTH`
-    - L1486 `config.RRF_K`
-    - L1492 `config.RERANK_*`
-    - L1497 `config.KEY_DEPTH`
-    - L1501 `config.SEARCH_METHOD`
-    - L1509 `config.FURNITURE_*`
-    - L1514 `config.THINKING_EVAL_PARAM`
-    - L1522 `config.CACHE_TTL`
-    - L1529 `config.FIGURE_LABEL_*`
-    - L1535 `config.RESEARCH_*`
-    - L1540 `config.SYNTHETIC_*`
-    - L1545 `config.BASELINE_*`
-    - L1551 `config.PAGE_SEPARATOR`
-    - L1555 `config.DOCLING_OCR`
-    - L1563 `llm.adapters.anthropic.has_credentials`
-    - L1570 `llm.adapters.anthropic.get_client`
-    - L1577 `llm.adapters.anthropic.batch_params`
-  - L1582 2.3 Cost and budget (`pricing`)
-    - L1591 `llm.pricing.Price`
-    - L1598 `llm.pricing.PRICES`
-    - L1605 `llm.pricing.PRICE_PER_WEB_SEARCH`
-    - L1610 `llm.pricing.BATCH_DISCOUNT`
-    - L1618 `llm.pricing.cost_usd`
-    - L1624 `llm.messages.Usage`
-    - L1631 `llm.messages.Failed`
-    - L1636 `llm.pricing.usage_cost`
-    - L1640 `llm.pricing.describe_usage`
-    - L1644 `errors.BudgetExceeded`
-    - L1649 `errors.BatchUnfinished`
-    - L1657 `llm.pricing.worst_case_usd`
-    - L1665 `llm.pricing.affordable_output_tokens`
-    - L1670 `llm.pricing.estimate_eval_usd`
-    - L1676 `llm.pricing.assert_request_within_budget`
-    - L1684 `llm.pricing.Budget`
-    - L1692 `llm.pricing.Budget.admit`
-    - L1700 `llm.pricing.Budget.held_usd`
-    - L1707 `llm.pricing.Budget.tripped`
-  - L1712 2.4 The model door (`llm`)
-    - L1721 `llm.core.Request`
-    - L1728 `llm.core.Llm`
-    - L1733 `llm.core.Llm.for_eval`
-    - L1739 `llm.core.Llm._traced`
-    - L1746 `llm.core.Llm.count`
-    - L1751 `llm.core.Llm.create`
-    - L1756 `llm.core.Llm.parse`
-    - L1763 `llm.core.Llm.stream`
-    - L1767 `llm.core.Llm.gather_text`
-    - L1772 `llm.core.Llm.batch_records`
-    - L1780 `llm.core.Llm._admit`
-    - L1787 `llm.core.Rehearsed`
-    - L1792 `errors.SpecialistUnreachable`
-    - L1799 `errors.StepFailed`
-    - L1804 `llm.core.describe`
-    - L1809 `llm.messages.is_client_tool`
-    - L1814 `llm.core._writes_cache`
-    - L1819 `llm.core.Llm.run_tools`
-    - L1826 `llm.core.Llm.price`
-    - L1833 `llm.core.Llm.turn`
-    - L1840 `llm.core.ToolRun`
-    - L1845 `llm.core.Llm._last_answer`
-    - L1851 `llm.core.Llm._admit_turn`
-    - L1855 `llm.core.Llm._held`
-    - L1860 `errors.TurnsExhausted`
-    - L1865 `llm.core.Dispatch`
-    - L1870 `llm.adapters.anthropic._runnable`
-  - L1875 2.5 Tools (`tools`, `report_tools`)
-    - L1882 `tools.calculate`
-    - L1886 `tools.current_time`
-    - L1890 `tools.read_file`
-    - L1895 `tools.write_file`
-    - L1903 `tools_config.SANDBOX`
-    - L1908 `tools_config.MAX_WEB_SEARCHES`
-    - L1914 `tools.CALCULATOR_TOOL`
-    - L1919 `tools.ALL_TOOLS`
-    - L1926 `tools.WEB_SEARCH_TOOL`
-    - L1933 `tools.execute_tool`
-    - L1940 `tools.WRITE_TOOLS`
-    - L1946 `report_tools.SEARCH_TOOL`
-    - L1951 `report_tools.ReportSearch`
-    - L1956 `report_tools.Searched`
-  - L1960 2.7 Project 1a (`extraction`)
-    - L1962 `extraction.headlines.Extraction`
-    - L1968 `extraction.headlines.METRICS`
-    - L1975 `extraction.headlines.QUARTERS`
-    - L1981 `extraction.headlines.Resolver`
-    - L1988 `extraction.headlines.report_unresolved`
-    - L1993 `extraction.headlines.load_directory`
-    - L1997 `extraction.headlines.Variant`
-    - L2002 `extraction.headlines.CACHE_VARIANTS`
-    - L2010 `extraction.headlines.THINKING`
-    - L2017 `extraction.headlines.measure`
-    - L2024 `extraction.headlines.VARIANTS`
-    - L2030 `extraction.headlines.extraction_task`
-    - L2037 `extraction.headlines.main`
-  - L2045 2.8 Retrieval (`retrieval`)
-    - L2051 `retrieval.chunk.Document`
-    - L2056 `retrieval.chunk.Chunk`
-    - L2061 `retrieval.chunk.Inventory`
-    - L2067 `retrieval.chunk.squeeze`
-    - L2074 `retrieval.chunk.Inventory.containing`
-    - L2080 `retrieval.chunk.fixed`
-    - L2086 `retrieval.chunk.sentences`
-    - L2093 `retrieval.chunk.by_sentence`
-    - L2101 `retrieval.chunk.headings`
-    - L2106 `retrieval.chunk.by_heading`
-    - L2113 `retrieval.chunk.by_element`
-    - L2121 `retrieval.embed.Embedder`
-    - L2126 `retrieval.embed.query_prefix_of`
-    - L2132 `retrieval.embed.LocalEmbedder`
-    - L2139 `retrieval.embed.LocalEmbedder.embed_query`
-    - L2144 `retrieval.embed.LocalEmbedder.count_truncated`
-    - L2149 `retrieval.hits.Hit`
-    - L2154 `retrieval.dense.DenseIndex`
-    - L2159 `retrieval.dense.DenseIndex.build`
-    - L2167 `retrieval.dense.DenseIndex.search`
-    - L2172 `retrieval.dense.DenseIndex.build_cached`
-    - L2179 `retrieval.dense.store_file`
-    - L2186 `retrieval.hits.rank_ids`
-    - L2190 `retrieval.corpus.read_pages`
-    - L2199 `retrieval.corpus.normalise`
-    - L2204 `retrieval.corpus._skeleton`
-    - L2209 `retrieval.corpus.strip_furniture`
-    - L2217 `retrieval.corpus.to_document`
-    - L2223 `retrieval.corpus.load_pdf`
-    - L2228 `retrieval.questions.Question`
-    - L2233 `retrieval.questions.eligible`
-    - L2238 `retrieval.questions.sample_passages`
-    - L2243 `retrieval.questions.verify`
-    - L2251 `retrieval.questions.generate`
-    - L2256 `retrieval.corpus.cache_file`
-    - L2262 `retrieval.corpus.load_pdf_cached`
-    - L2270 `retrieval.corpus.load_corpus`
-    - L2277 `retrieval.evaluate.STRATEGIES`
-    - L2284 `retrieval.evaluate.graders`
-    - L2289 `retrieval.evaluate.load_cases`
-    - L2296 `retrieval.evaluate.label_of`
-    - L2303 `retrieval.evaluate.report_of`
-    - L2310 `retrieval.evaluate.resolve`
-    - L2316 `retrieval.evaluate.retrieval_task`
-    - L2323 `retrieval.evaluate.main`
-    - L2330 `retrieval.langchain_rag.prepare`
-    - L2336 `retrieval.langchain_rag.langchain_task`
-    - L2341 `retrieval.sparse.tokenise`
-    - L2346 `retrieval.sparse.SparseIndex`
-    - L2351 `retrieval.fuse.reciprocal_rank_fusion`
-    - L2357 `retrieval.rerank.Reranker`
-    - L2362 `retrieval.rerank.LocalReranker`
-    - L2369 `retrieval.keys.build_keys`
-    - L2374 `retrieval.keys.table_context`
-    - L2378 `retrieval.keys.ParentRanker`
-    - L2383 `retrieval.keys.keyed_search`
-    - L2388 `retrieval.rerank.rerank`
-    - L2394 `retrieval.rank.METHODS`
-    - L2401 `retrieval.rank.Ranker`
-    - L2406 `retrieval.rank.Indexes`
-    - L2414 `retrieval.rank.DenseRanker`
-    - L2419 `retrieval.rank.HybridRanker`
-    - L2423 `retrieval.rank.Reranked`
-    - L2428 `retrieval.rank.scoped`
-    - L2435 `retrieval.rank.build_ranker`
-    - L2440 `retrieval.chunk.context_block`
-    - L2447 `retrieval.evaluate.ranker_task`
-    - L2454 `retrieval.evaluate.compare_retrieval`
-    - L2461 `retrieval.answer.ARMS`
-    - L2466 `retrieval.answer.Answer`
-    - L2471 `retrieval.answer.answer_task`
-    - L2478 `retrieval.answer.graders`
-    - L2484 `retrieval.answer.main`
-  - L2491 2.9 The workflow patterns (`workflows`)
-    - L2499 `workflows.reports.DocId`
-    - L2504 `workflows.reports.Search`
-    - L2509 `workflows.reports.build_search`
-    - L2516 `workflows.chaining`
-    - L2522 `workflows.routing`
-    - L2527 `workflows.parallelization`
-    - L2532 `workflows.orchestrator_workers`
-    - L2537 `workflows.evaluator_optimizer`
-    - L2542 `workflows.orchestrator_workers_graph.build`
-  - L2548 2.10 The first agent (`agent`)
-    - L2565 `agent.TOOLS`
-    - L2570 `agent.cited`
-    - L2575 `agent.WebSources`
-    - L2582 `agent.run`
-    - L2587 `agent.FINISH`
-  - L2591 2.11 The eval harness (`evals`)
-    - L2596 `evals.dataset.Case`
-    - L2601 `evals.dataset.load_jsonl`
-    - L2606 `evals.dataset.digest`
-    - L2611 `evals.grade.Outcome`
-    - L2616 `evals.grade.Score`
-    - L2621 `evals.grade.Grader`
-    - L2626 `evals.grade.BatchGrader`
-    - L2631 `evals.grade.exact_match`
-    - L2636 `evals.grade.regex`
-    - L2642 `evals.grade.pydantic_valid`
-    - L2646 `evals.grade.field_match`
-    - L2651 `evals.grade.flag`
-    - L2658 `evals.grade.right_tools`
-    - L2665 `evals.grade.resolvable`
-    - L2671 `evals.grade.recall_at_k`
-    - L2677 `evals.grade.hit_at_k`
-    - L2684 `evals.grade.reciprocal_rank`
-    - L2689 `evals.judge.LlmJudge`
-    - L2696 `evals.judge.Verdict`
-    - L2701 `evals.runner.Task`
-    - L2706 `evals.runner.RowResult`
-    - L2711 `evals.runner.EvalRun`
-    - L2716 `evals.runner.run_eval`
-    - L2724 `evals.runner.combine`
-    - L2730 `evals.report.to_markdown`
-    - L2735 `evals.report._metrics_table`
-    - L2740 `evals.report._grading_models`
-    - L2744 `evals.report.write_report`
-  - L2751 2.12 Tests
-    - L2753 `tests.llm.test_pricing`
-    - L2760 `tests.test_tools`
-    - L2767 `tests.llm.test_core`
-    - L2774 `tests.conftest.FakeAnthropic`
-    - L2780 `tests.workflows.test_<pattern>`
-    - L2786 `tests.test_agent`
-    - L2791 `tests.test_agent_graph`
-    - L2798 `tests.test_agent_adk`
-    - L2805 `tests.test_agent_tasks`
-    - L2812 `tests.llm.test_batch`
-    - L2819 `tests.test_report_tools`
-    - L2824 `tests.workflows.test_patterns`
-    - L2829 `tests.workflows.test_reports`
-    - L2836 `tests.conftest.make_judge`
-    - L2841 `tests.conftest.CAPPED`
-    - L2848 `tests.test_api_smoke`
-    - L2852 `tests.evals.test_dataset`
-    - L2857 `tests.evals.test_graders`
-    - L2864 `tests.conftest.KeywordReranker`
-    - L2869 `tests.conftest.BagOfWordsEmbedder`
-    - L2874 `tests.retrieval.test_chunk`
-    - L2879 `tests.retrieval.test_corpus`
-    - L2886 `tests.retrieval.test_questions`
-    - L2892 `tests.retrieval.test_answer`
-    - L2897 `tests.retrieval.test_langchain_rag`
-    - L2903 `tests.retrieval.test_sparse`
-    - L2908 `tests.retrieval.test_fuse`
-    - L2914 `tests.retrieval.test_rerank`
-    - L2919 `tests.retrieval.test_evaluate`
-    - L2926 `tests.retrieval.test_keys`
-    - L2933 `tests.retrieval.test_embed`
-    - L2940 `tests.retrieval.test_rank`
-    - L2945 `tests.retrieval.test_dense`
-    - L2953 `tests.evals.test_runner`
-    - L2960 `tests.extraction.test_synthetic`
-    - L2967 `tests.extraction.test_baseline`
-    - L2974 `tests.extraction.test_headlines`
-    - L2981 `tests.test_underhood`
-    - L2988 `tests.test_mcp_server`
-    - L2996 `tests.test_mcp_client`
-    - L3004 `tests.analyst.test_specialists`
-    - L3011 `tests.analyst.test_router`
-    - L3018 `tests.analyst.test_served`
-    - L3025 `tests.analyst.test_toolbox`
-    - L3032 `tests.analyst.test_fundamentals`
-    - L3039 `tests.analyst.test_teach`
-    - L3046 `tests.analyst.test_graph`
-    - L3053 `tests.analyst.test_desk`
-    - L3060 `tests.analyst.test_metric_tools`
-    - L3067 `tests.test_reference_data`
-    - L3075 `tests.evals.test_report`
-    - L3080 `tests.test_graph_doc`
-    - L3088 `tests.facts`
-  - L3095 2.13 Non-code nodes
-    - L3097 `sandbox/`
-    - L3102 `evals/`
-    - L3108 `evals/reference/nse-tickers.json`
-    - L3115 `evals/datasets/headlines.jsonl`
-    - L3123 `corpus/`
-    - L3129 `evals/reference/corpus-manifest.json`
-    - L3135 `scripts/fetch-corpus.sh`
-    - L3141 `evals/datasets/retrieval.jsonl`
-    - L3149 `evals/datasets/retrieval-tables.jsonl`
-    - L3157 `evals/datasets/retrieval-paraphrased.jsonl`
-    - L3165 `evals/datasets/tasks.jsonl`
-    - L3172 `docs/framework-comparison.md`
-    - L3177 `docs/tool-runner.md`
-    - L3181 `docs/langgraph.md`
-    - L3186 `docs/agent-frameworks.md`
-    - L3193 `docs/v0.2-agent.md`
-    - L3200 `docs/capstone.md`
-    - L3207 `docs/facts-db.md`
-    - L3213 corpus cache: `corpus/.cache/xbrl/`, `taxonomy/`, `facts.sqlite`
-    - L3218 `evals/reference/fundamentals.json`
-    - L3225 `evals/reference/table-figures.json`
-    - L3232 `docs/context-management.md`
-    - L3237 `LOG.md`
-    - L3243 `docs/development.md`
-    - L3249 `README.md`
-    - L3255 `pyproject.toml`
-    - L3262 `.env.example`
-    - L3266 `CLAUDE.md`
-    - L3273 `.githooks/pre-commit`
-    - L3280 `scripts/check-knowledge-graph.sh`
-    - L3287 `.github/workflows/knowledge-graph.yml`
-    - L3292 `scripts/graph_doc.py`
-    - L3301 `.github/workflows/checks.yml`
-    - L3309 `.github/workflows/main.yml`
-    - L3316 `.github/workflows/release.yml`
-    - L3324 roadmap
-- L3331 3. Edges
-  - L3335 Imports (generated)
-  - L3931 Layering rules (checked)
-  - L3992 Reads and writes
-  - L4006 Enforcement and control flow
-  - L4059 Tested-by
-  - L4095 Environment
-- L4123 4. Invariants
-    - L4127 Invariant 1: Every paid call is preceded by a free count and the per-request check
-    - L4133 Invariant 2: Cost is reported, always
-    - L4137 Invariant 3: The assistant turn is echoed back verbatim
-    - L4140 Invariant 4: All tool results for one turn go back in ONE user message
-    - L4145 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
-    - L4149 Invariant 6: Both loops are capped
-    - L4156 Invariant 7: A file tool resolves before it compares
-    - L4162 Invariant 8: One home each for constants, clients, prices and model calls
-    - L4169 Invariant 9: Paid tests carry `@pytest.mark.live`
-    - L4172 Invariant 10: Types are complete
-    - L4175 Invariant 11: An eval survives its own bad rows
-    - L4179 Invariant 12: Every dollar an eval spends lands in one budget
-    - L4186 Invariant 13: A model is asked to read, never to join
-    - L4191 Invariant 14: The harness imports no capability module
-    - L4195 Invariant 15: An eval is a measurement, so nothing about it may wobble
-    - L4201 Invariant 16: A prompt never quotes its own test set
-    - L4208 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
-    - L4213 Invariant 18: Retrieval is graded before generation, and it is free
-    - L4218 Invariant 19: A page never leaves the page sequence
-    - L4223 Invariant 20: A retrieval label must identify one document, not merely appear in one
-    - L4229 Invariant 21: The ranking that is measured is the ranking that is used
-    - L4235 Invariant 22: A ceiling refuses spending before it happens, not only after
-    - L4242 Invariant 23: Every error the package defines lives in `errors`
-    - L4247 Invariant 24: A call is shaped by the client it goes to
-    - L4253 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
-    - L4259 Invariant 26: Tracing observes and never steers
-    - L4265 Invariant 27: A request is sent again only if it cannot have been billed
-    - L4271 Invariant 28: Text someone else wrote reaches the model fenced
-    - L4277 Invariant 29: A write runs only where a caller opted in, and never overwrites
-    - L4283 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
-    - L4289 Invariant 31: A per-share figure is compared only on one share basis
-    - L4295 Invariant 32: A filed figure is matched only against text, and its stamp names the copy and the reading
-- L4301 5. Where the next work attaches
-  - L4305 5.1 Open seams
-    - L4307 Seam: Facts database — step 2
-    - L4313 Seam: Week 6 — LangGraph agent
-    - L4317 Seam: Week 5 — async and batch evals
-    - L4324 Seam: Week 4 — compaction, when a task outgrows a turn
-    - L4330 Seam: Week 3 — measure a pattern
-    - L4335 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
-    - L4340 Seam: Week 3 — anything that searches the reports
-    - L4347 Seam: adding a tool
-    - L4351 Seam: adding a grader
-  - L4355 5.2 Consumed and superseded seams
-    - L4357 Seam: Week 1 — Project 1a
-    - L4362 Seam: Week 1 — prompt caching
-    - L4368 Seam: superseded — caching as two variants of one eval
-    - L4373 Seam: Week 1 — measure the un-saturated eval
-    - L4379 Seam: Week 1 — label the backlog
-    - L4384 Seam: Week 1 — break things on purpose
-    - L4390 Seam: Week 2 — retrieval metrics
-    - L4396 Seam: Week 2 — the four modules
-    - L4402 Seam: Week 2 — the corpus
-    - L4408 Seam: Week 2 — the retrieval dataset
-    - L4413 Seam: Week 2 — the measured run
-    - L4419 Seam: superseded — questions labelled with a quote
-    - L4424 Seam: Week 2 — hybrid and rerank
-    - L4430 Seam: Week 2 — answer-level eval
-    - L4438 Seam: Week 2 — RAG milestone `v0.1-rag`
-    - L4444 Seam: Week 3 — every model call through `llm`
-    - L4451 Seam: Week 3 — the five workflow patterns
-    - L4457 Seam: Week 3 — orchestrator-workers as a graph
-    - L4464 Seam: Week 4 — the toy fine-tune
-    - L4470 Seam: Week 3 — answer locally, judge on Anthropic
-    - L4476 Seam: Week 3 — context management
-    - L4481 Seam: Week 3 — server-side web search
-    - L4488 Seam: Week 5 — SDK tool runner
-    - L4494 Seam: Week 5 — tracing
-    - L4501 Seam: Week 5 — explicit retries
-    - L4507 Seam: Week 5 — guardrails
-    - L4514 Seam: Week 6 — MCP client
-- L4522 Maintenance
+- L540 0. Orientation
+- L626 1. Shape of the system
+- L696 2. Nodes
+  - L700 2.1 Modules
+    - L702 `config`
+    - L707 `llm.pricing`
+    - L714 `llm`
+    - L721 `llm.messages`
+    - L728 `llm.adapters`
+    - L737 `llm.adapters.openai.function_tool`
+    - L744 `llm.adapters.cfg_hostllm`
+    - L751 `llm.adapters.retry`
+    - L760 `llm.core`
+    - L769 `guardrails`
+    - L777 `errors`
+    - L785 `tracing`
+    - L792 `transcript`
+    - L799 `tools`
+    - L807 `report_tools`
+    - L814 `mcp_server`
+    - L822 `mcp_client`
+    - L830 `analyst.specialists`
+    - L837 `analyst.cfg_analyst`
+    - L844 `analyst.router`
+    - L852 `analyst.served`
+    - L860 `analyst.toolbox`
+    - L867 `analyst.experts`
+    - L874 `analyst.memo`
+    - L881 `analyst.graph`
+    - L889 `analyst.run`
+    - L896 `analyst.desk`
+    - L904 `analyst.metric_tools`
+    - L912 `analyst.teach`
+    - L919 `tools_config`
+    - L926 `analyst`
+    - L932 `analyst.filings`
+    - L939 `analyst.fundamentals`
+    - L947 `facts`
+    - L954 `facts.cfg_facts`
+    - L960 `facts.xbrl`
+    - L968 `facts.nse`
+    - L973 `facts.store`
+    - L981 `facts.check`
+    - L986 `facts.build`
+    - L993 `facts.taxonomy`
+    - L1001 `facts.lookup`
+    - L1009 `facts.reference`
+    - L1017 `facts.formulas`
+    - L1024 `facts.derived_concepts`
+    - L1031 `facts.share_events`
+    - L1040 `facts.coverage`
+    - L1048 `facts.documents`
+    - L1056 `facts.crosscheck`
+    - L1064 `facts.review`
+    - L1072 `facts.trace`
+    - L1080 `facts.review_page`
+    - L1088 `extraction.figures`
+    - L1097 `extraction.research`
+    - L1104 `extraction.figure_training`
+    - L1112 `extraction.figure_eval`
+    - L1119 `extraction.headline_eval`
+    - L1126 `extraction.synthetic`
+    - L1133 `extraction.baseline`
+    - L1141 `extraction.headlines`
+    - L1146 `evals.dataset`
+    - L1150 `evals.grade`
+    - L1157 `evals.judge`
+    - L1161 `evals.runner`
+    - L1165 `evals.report`
+    - L1169 `retrieval.chunk`
+    - L1177 `retrieval.embed`
+    - L1184 `retrieval.dense`
+    - L1191 `retrieval.corpus`
+    - L1199 `retrieval.questions`
+    - L1203 `retrieval.evaluate`
+    - L1210 `retrieval.langchain_rag`
+    - L1215 `retrieval.sparse`
+    - L1219 `retrieval.fuse`
+    - L1223 `retrieval.rerank`
+    - L1228 `retrieval.hits`
+    - L1233 `retrieval.rank`
+    - L1239 `retrieval.keys`
+    - L1246 `workflows.reports`
+    - L1250 `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}`
+    - L1253 `workflows.orchestrator_workers_graph`
+    - L1260 `agent`
+    - L1267 `agent_graph`
+    - L1274 `agent_adk`
+    - L1282 `agent_tasks`
+    - L1291 `retrieval.answer`
+  - L1296 2.2 Settings (`config`)
+    - L1300 `config.MODEL`
+    - L1305 `config.JUDGE_MODEL`
+    - L1311 `config.SMALL_MODEL`
+    - L1318 `config.MAX_USD_PER_REQUEST`
+    - L1323 `config.MAX_USD_PER_TURN`
+    - L1330 `config.MAX_USD_PER_RUN`
+    - L1334 `config.WEB_SEARCH_RESULT_TOKENS`
+    - L1341 `config.MAX_USD_PER_EVAL`
+    - L1345 `config.MAX_USD_PER_TASK`
+    - L1352 `config.DEFAULT_MAX_TOKENS`
+    - L1360 `config.MAX_AGENT_TURNS`
+    - L1367 `config.MIN_TOKENS_FINAL_ANSWER`
+    - L1371 `config.MAX_PARALLEL_CALLS`
+    - L1376 `config.EVAL_WORKERS`
+    - L1383 `config.BATCH_POLL_SECONDS`
+    - L1389 `config.THINKING_WORKFLOW_PARAM`
+    - L1395 `config.MAX_PLAN_TASKS`
+    - L1400 `config.MAX_GRAPH_STEPS`
+    - L1404 `config.MAX_FAILURES_SHOWN`
+    - L1408 `config.TRACING`
+    - L1413 `config.MAX_TASK_CHARS`
+    - L1417 `config.MCP_SERVER_NAME`
+    - L1423 `config.MCP_CALL_TIMEOUT_SECONDS`
+    - L1429 `analyst.cfg_analyst.SPECIALIST_TRIES`
+    - L1435 config.GENERALIST_MODEL and the analyst's other settings (moved)
+    - L1440 `config.EMBED_MODEL`
+    - L1446 `config.EMBED_LOG_EVERY`
+    - L1450 `config.EMBED_SAVE_EVERY`
+    - L1456 `config.EMBED_QUERY_PREFIXES`
+    - L1463 `config.LOCAL_MODEL_DTYPE`
+    - L1470 `config.CHUNK_*`
+    - L1475 `config.ELEMENT_*`
+    - L1481 `config.HEADING_*`
+    - L1484 `config.PASSAGE_MIN_CHARS`
+    - L1490 `config.TOP_K`
+    - L1494 `config.BM25_K1`
+    - L1499 `config.FUSE_DEPTH`
+    - L1504 `config.RRF_K`
+    - L1510 `config.RERANK_*`
+    - L1515 `config.KEY_DEPTH`
+    - L1519 `config.SEARCH_METHOD`
+    - L1527 `config.FURNITURE_*`
+    - L1532 `config.THINKING_EVAL_PARAM`
+    - L1540 `config.CACHE_TTL`
+    - L1547 `config.FIGURE_LABEL_*`
+    - L1553 `config.RESEARCH_*`
+    - L1558 `config.SYNTHETIC_*`
+    - L1563 `config.BASELINE_*`
+    - L1569 `config.PAGE_SEPARATOR`
+    - L1573 `config.DOCLING_OCR`
+    - L1581 `llm.adapters.anthropic.has_credentials`
+    - L1588 `llm.adapters.anthropic.get_client`
+    - L1595 `llm.adapters.anthropic.batch_params`
+  - L1600 2.3 Cost and budget (`pricing`)
+    - L1609 `llm.pricing.Price`
+    - L1616 `llm.pricing.PRICES`
+    - L1623 `llm.pricing.PRICE_PER_WEB_SEARCH`
+    - L1628 `llm.pricing.BATCH_DISCOUNT`
+    - L1636 `llm.pricing.cost_usd`
+    - L1642 `llm.messages.Usage`
+    - L1649 `llm.messages.Failed`
+    - L1654 `llm.pricing.usage_cost`
+    - L1658 `llm.pricing.describe_usage`
+    - L1662 `errors.BudgetExceeded`
+    - L1667 `errors.BatchUnfinished`
+    - L1675 `llm.pricing.worst_case_usd`
+    - L1683 `llm.pricing.affordable_output_tokens`
+    - L1688 `llm.pricing.estimate_eval_usd`
+    - L1694 `llm.pricing.assert_request_within_budget`
+    - L1702 `llm.pricing.Budget`
+    - L1710 `llm.pricing.Budget.admit`
+    - L1718 `llm.pricing.Budget.held_usd`
+    - L1725 `llm.pricing.Budget.tripped`
+  - L1730 2.4 The model door (`llm`)
+    - L1739 `llm.core.Request`
+    - L1746 `llm.core.Llm`
+    - L1751 `llm.core.Llm.for_eval`
+    - L1757 `llm.core.Llm._traced`
+    - L1764 `llm.core.Llm.count`
+    - L1769 `llm.core.Llm.create`
+    - L1774 `llm.core.Llm.parse`
+    - L1781 `llm.core.Llm.stream`
+    - L1785 `llm.core.Llm.gather_text`
+    - L1790 `llm.core.Llm.batch_records`
+    - L1798 `llm.core.Llm._admit`
+    - L1805 `llm.core.Rehearsed`
+    - L1810 `errors.SpecialistUnreachable`
+    - L1817 `errors.StepFailed`
+    - L1822 `llm.core.describe`
+    - L1827 `llm.messages.is_client_tool`
+    - L1832 `llm.core._writes_cache`
+    - L1837 `llm.core.Llm.run_tools`
+    - L1844 `llm.core.Llm.price`
+    - L1851 `llm.core.Llm.turn`
+    - L1858 `llm.core.ToolRun`
+    - L1863 `llm.core.Llm._last_answer`
+    - L1869 `llm.core.Llm._admit_turn`
+    - L1873 `llm.core.Llm._held`
+    - L1878 `errors.TurnsExhausted`
+    - L1883 `llm.core.Dispatch`
+    - L1888 `llm.adapters.anthropic._runnable`
+  - L1893 2.5 Tools (`tools`, `report_tools`)
+    - L1900 `tools.calculate`
+    - L1904 `tools.current_time`
+    - L1908 `tools.read_file`
+    - L1913 `tools.write_file`
+    - L1921 `tools_config.SANDBOX`
+    - L1926 `tools_config.MAX_WEB_SEARCHES`
+    - L1932 `tools.CALCULATOR_TOOL`
+    - L1937 `tools.ALL_TOOLS`
+    - L1944 `tools.WEB_SEARCH_TOOL`
+    - L1951 `tools.execute_tool`
+    - L1958 `tools.WRITE_TOOLS`
+    - L1964 `report_tools.SEARCH_TOOL`
+    - L1969 `report_tools.ReportSearch`
+    - L1974 `report_tools.Searched`
+  - L1978 2.7 Project 1a (`extraction`)
+    - L1980 `extraction.headlines.Extraction`
+    - L1986 `extraction.headlines.METRICS`
+    - L1993 `extraction.headlines.QUARTERS`
+    - L1999 `extraction.headlines.Resolver`
+    - L2006 `extraction.headlines.report_unresolved`
+    - L2011 `extraction.headlines.load_directory`
+    - L2015 `extraction.headlines.Variant`
+    - L2020 `extraction.headlines.CACHE_VARIANTS`
+    - L2028 `extraction.headlines.THINKING`
+    - L2035 `extraction.headlines.measure`
+    - L2042 `extraction.headlines.VARIANTS`
+    - L2048 `extraction.headlines.extraction_task`
+    - L2055 `extraction.headlines.main`
+  - L2063 2.8 Retrieval (`retrieval`)
+    - L2069 `retrieval.chunk.Document`
+    - L2074 `retrieval.chunk.Chunk`
+    - L2079 `retrieval.chunk.Inventory`
+    - L2085 `retrieval.chunk.squeeze`
+    - L2092 `retrieval.chunk.Inventory.containing`
+    - L2098 `retrieval.chunk.fixed`
+    - L2104 `retrieval.chunk.sentences`
+    - L2111 `retrieval.chunk.by_sentence`
+    - L2119 `retrieval.chunk.headings`
+    - L2124 `retrieval.chunk.by_heading`
+    - L2131 `retrieval.chunk.by_element`
+    - L2139 `retrieval.embed.Embedder`
+    - L2144 `retrieval.embed.query_prefix_of`
+    - L2150 `retrieval.embed.LocalEmbedder`
+    - L2157 `retrieval.embed.LocalEmbedder.embed_query`
+    - L2162 `retrieval.embed.LocalEmbedder.count_truncated`
+    - L2167 `retrieval.hits.Hit`
+    - L2172 `retrieval.dense.DenseIndex`
+    - L2177 `retrieval.dense.DenseIndex.build`
+    - L2185 `retrieval.dense.DenseIndex.search`
+    - L2190 `retrieval.dense.DenseIndex.build_cached`
+    - L2197 `retrieval.dense.store_file`
+    - L2204 `retrieval.hits.rank_ids`
+    - L2208 `retrieval.corpus.read_pages`
+    - L2217 `retrieval.corpus.normalise`
+    - L2222 `retrieval.corpus._skeleton`
+    - L2227 `retrieval.corpus.strip_furniture`
+    - L2235 `retrieval.corpus.to_document`
+    - L2241 `retrieval.corpus.load_pdf`
+    - L2246 `retrieval.questions.Question`
+    - L2251 `retrieval.questions.eligible`
+    - L2256 `retrieval.questions.sample_passages`
+    - L2261 `retrieval.questions.verify`
+    - L2269 `retrieval.questions.generate`
+    - L2274 `retrieval.corpus.cache_file`
+    - L2280 `retrieval.corpus.load_pdf_cached`
+    - L2288 `retrieval.corpus.load_corpus`
+    - L2295 `retrieval.evaluate.STRATEGIES`
+    - L2302 `retrieval.evaluate.graders`
+    - L2307 `retrieval.evaluate.load_cases`
+    - L2314 `retrieval.evaluate.label_of`
+    - L2321 `retrieval.evaluate.report_of`
+    - L2328 `retrieval.evaluate.resolve`
+    - L2334 `retrieval.evaluate.retrieval_task`
+    - L2341 `retrieval.evaluate.main`
+    - L2348 `retrieval.langchain_rag.prepare`
+    - L2354 `retrieval.langchain_rag.langchain_task`
+    - L2359 `retrieval.sparse.tokenise`
+    - L2364 `retrieval.sparse.SparseIndex`
+    - L2369 `retrieval.fuse.reciprocal_rank_fusion`
+    - L2375 `retrieval.rerank.Reranker`
+    - L2380 `retrieval.rerank.LocalReranker`
+    - L2387 `retrieval.keys.build_keys`
+    - L2392 `retrieval.keys.table_context`
+    - L2396 `retrieval.keys.ParentRanker`
+    - L2401 `retrieval.keys.keyed_search`
+    - L2406 `retrieval.rerank.rerank`
+    - L2412 `retrieval.rank.METHODS`
+    - L2419 `retrieval.rank.Ranker`
+    - L2424 `retrieval.rank.Indexes`
+    - L2432 `retrieval.rank.DenseRanker`
+    - L2437 `retrieval.rank.HybridRanker`
+    - L2441 `retrieval.rank.Reranked`
+    - L2446 `retrieval.rank.scoped`
+    - L2453 `retrieval.rank.build_ranker`
+    - L2458 `retrieval.chunk.context_block`
+    - L2465 `retrieval.evaluate.ranker_task`
+    - L2472 `retrieval.evaluate.compare_retrieval`
+    - L2479 `retrieval.answer.ARMS`
+    - L2484 `retrieval.answer.Answer`
+    - L2489 `retrieval.answer.answer_task`
+    - L2496 `retrieval.answer.graders`
+    - L2502 `retrieval.answer.main`
+  - L2509 2.9 The workflow patterns (`workflows`)
+    - L2517 `workflows.reports.DocId`
+    - L2522 `workflows.reports.Search`
+    - L2527 `workflows.reports.build_search`
+    - L2534 `workflows.chaining`
+    - L2540 `workflows.routing`
+    - L2545 `workflows.parallelization`
+    - L2550 `workflows.orchestrator_workers`
+    - L2555 `workflows.evaluator_optimizer`
+    - L2560 `workflows.orchestrator_workers_graph.build`
+  - L2566 2.10 The first agent (`agent`)
+    - L2583 `agent.TOOLS`
+    - L2588 `agent.cited`
+    - L2593 `agent.WebSources`
+    - L2600 `agent.run`
+    - L2605 `agent.FINISH`
+  - L2609 2.11 The eval harness (`evals`)
+    - L2614 `evals.dataset.Case`
+    - L2619 `evals.dataset.load_jsonl`
+    - L2624 `evals.dataset.digest`
+    - L2629 `evals.grade.Outcome`
+    - L2634 `evals.grade.Score`
+    - L2639 `evals.grade.Grader`
+    - L2644 `evals.grade.BatchGrader`
+    - L2649 `evals.grade.exact_match`
+    - L2654 `evals.grade.regex`
+    - L2660 `evals.grade.pydantic_valid`
+    - L2664 `evals.grade.field_match`
+    - L2669 `evals.grade.flag`
+    - L2676 `evals.grade.right_tools`
+    - L2683 `evals.grade.resolvable`
+    - L2689 `evals.grade.recall_at_k`
+    - L2695 `evals.grade.hit_at_k`
+    - L2702 `evals.grade.reciprocal_rank`
+    - L2707 `evals.judge.LlmJudge`
+    - L2714 `evals.judge.Verdict`
+    - L2719 `evals.runner.Task`
+    - L2724 `evals.runner.RowResult`
+    - L2729 `evals.runner.EvalRun`
+    - L2734 `evals.runner.run_eval`
+    - L2742 `evals.runner.combine`
+    - L2748 `evals.report.to_markdown`
+    - L2753 `evals.report._metrics_table`
+    - L2758 `evals.report._grading_models`
+    - L2762 `evals.report.write_report`
+  - L2769 2.12 Tests
+    - L2771 `tests.llm.test_pricing`
+    - L2778 `tests.test_tools`
+    - L2785 `tests.llm.test_core`
+    - L2792 `tests.conftest.FakeAnthropic`
+    - L2798 `tests.workflows.test_<pattern>`
+    - L2804 `tests.test_agent`
+    - L2809 `tests.test_agent_graph`
+    - L2816 `tests.test_agent_adk`
+    - L2823 `tests.test_agent_tasks`
+    - L2830 `tests.llm.test_batch`
+    - L2837 `tests.test_report_tools`
+    - L2842 `tests.workflows.test_patterns`
+    - L2847 `tests.workflows.test_reports`
+    - L2854 `tests.conftest.make_judge`
+    - L2859 `tests.conftest.CAPPED`
+    - L2866 `tests.test_api_smoke`
+    - L2870 `tests.evals.test_dataset`
+    - L2875 `tests.evals.test_graders`
+    - L2882 `tests.conftest.KeywordReranker`
+    - L2887 `tests.conftest.BagOfWordsEmbedder`
+    - L2892 `tests.retrieval.test_chunk`
+    - L2897 `tests.retrieval.test_corpus`
+    - L2904 `tests.retrieval.test_questions`
+    - L2910 `tests.retrieval.test_answer`
+    - L2915 `tests.retrieval.test_langchain_rag`
+    - L2921 `tests.retrieval.test_sparse`
+    - L2926 `tests.retrieval.test_fuse`
+    - L2932 `tests.retrieval.test_rerank`
+    - L2937 `tests.retrieval.test_evaluate`
+    - L2944 `tests.retrieval.test_keys`
+    - L2951 `tests.retrieval.test_embed`
+    - L2958 `tests.retrieval.test_rank`
+    - L2963 `tests.retrieval.test_dense`
+    - L2971 `tests.evals.test_runner`
+    - L2978 `tests.extraction.test_synthetic`
+    - L2985 `tests.extraction.test_baseline`
+    - L2992 `tests.extraction.test_headlines`
+    - L2999 `tests.test_underhood`
+    - L3006 `tests.test_mcp_server`
+    - L3014 `tests.test_mcp_client`
+    - L3022 `tests.analyst.test_specialists`
+    - L3029 `tests.analyst.test_router`
+    - L3036 `tests.analyst.test_served`
+    - L3043 `tests.analyst.test_toolbox`
+    - L3050 `tests.analyst.test_fundamentals`
+    - L3057 `tests.analyst.test_teach`
+    - L3064 `tests.analyst.test_graph`
+    - L3071 `tests.analyst.test_desk`
+    - L3078 `tests.analyst.test_metric_tools`
+    - L3085 `tests.test_reference_data`
+    - L3093 `tests.evals.test_report`
+    - L3098 `tests.test_graph_doc`
+    - L3106 `tests.facts`
+  - L3113 2.13 Non-code nodes
+    - L3115 `sandbox/`
+    - L3120 `evals/`
+    - L3126 `evals/reference/nse-tickers.json`
+    - L3133 `evals/datasets/headlines.jsonl`
+    - L3141 `corpus/`
+    - L3147 `evals/reference/corpus-manifest.json`
+    - L3153 `scripts/fetch-corpus.sh`
+    - L3159 `evals/datasets/retrieval.jsonl`
+    - L3167 `evals/datasets/retrieval-tables.jsonl`
+    - L3175 `evals/datasets/retrieval-paraphrased.jsonl`
+    - L3183 `evals/datasets/tasks.jsonl`
+    - L3190 `docs/framework-comparison.md`
+    - L3195 `docs/tool-runner.md`
+    - L3199 `docs/langgraph.md`
+    - L3204 `docs/agent-frameworks.md`
+    - L3211 `docs/v0.2-agent.md`
+    - L3218 `docs/capstone.md`
+    - L3225 `docs/facts-db.md`
+    - L3231 corpus cache: `corpus/.cache/xbrl/`, `taxonomy/`, `facts.sqlite`
+    - L3236 `evals/reference/fundamentals.json`
+    - L3243 `evals/reference/table-figures.json`
+    - L3250 `docs/context-management.md`
+    - L3255 `LOG.md`
+    - L3261 `docs/development.md`
+    - L3267 `README.md`
+    - L3273 `pyproject.toml`
+    - L3280 `.env.example`
+    - L3284 `CLAUDE.md`
+    - L3291 `.githooks/pre-commit`
+    - L3298 `scripts/check-knowledge-graph.sh`
+    - L3305 `.github/workflows/knowledge-graph.yml`
+    - L3310 `scripts/graph_doc.py`
+    - L3319 `.github/workflows/checks.yml`
+    - L3327 `.github/workflows/main.yml`
+    - L3334 `.github/workflows/release.yml`
+    - L3342 roadmap
+- L3349 3. Edges
+  - L3353 Imports (generated)
+  - L3960 Layering rules (checked)
+  - L4021 Reads and writes
+  - L4035 Enforcement and control flow
+  - L4088 Tested-by
+  - L4124 Environment
+- L4152 4. Invariants
+    - L4156 Invariant 1: Every paid call is preceded by a free count and the per-request check
+    - L4162 Invariant 2: Cost is reported, always
+    - L4166 Invariant 3: The assistant turn is echoed back verbatim
+    - L4169 Invariant 4: All tool results for one turn go back in ONE user message
+    - L4174 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
+    - L4178 Invariant 6: Both loops are capped
+    - L4185 Invariant 7: A file tool resolves before it compares
+    - L4191 Invariant 8: One home each for constants, clients, prices and model calls
+    - L4198 Invariant 9: Paid tests carry `@pytest.mark.live`
+    - L4201 Invariant 10: Types are complete
+    - L4204 Invariant 11: An eval survives its own bad rows
+    - L4208 Invariant 12: Every dollar an eval spends lands in one budget
+    - L4215 Invariant 13: A model is asked to read, never to join
+    - L4220 Invariant 14: The harness imports no capability module
+    - L4224 Invariant 15: An eval is a measurement, so nothing about it may wobble
+    - L4230 Invariant 16: A prompt never quotes its own test set
+    - L4237 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
+    - L4242 Invariant 18: Retrieval is graded before generation, and it is free
+    - L4247 Invariant 19: A page never leaves the page sequence
+    - L4252 Invariant 20: A retrieval label must identify one document, not merely appear in one
+    - L4258 Invariant 21: The ranking that is measured is the ranking that is used
+    - L4264 Invariant 22: A ceiling refuses spending before it happens, not only after
+    - L4271 Invariant 23: Every error the package defines lives in `errors`
+    - L4276 Invariant 24: A call is shaped by the client it goes to
+    - L4282 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
+    - L4288 Invariant 26: Tracing observes and never steers
+    - L4294 Invariant 27: A request is sent again only if it cannot have been billed
+    - L4300 Invariant 28: Text someone else wrote reaches the model fenced
+    - L4306 Invariant 29: A write runs only where a caller opted in, and never overwrites
+    - L4312 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
+    - L4318 Invariant 31: A per-share figure is compared only on one share basis
+    - L4324 Invariant 32: A filed figure is matched only against text, and its stamp names the copy and the reading
+- L4330 5. Where the next work attaches
+  - L4334 5.1 Open seams
+    - L4336 Seam: Facts database — step 2
+    - L4342 Seam: Week 6 — LangGraph agent
+    - L4346 Seam: Week 5 — async and batch evals
+    - L4353 Seam: Week 4 — compaction, when a task outgrows a turn
+    - L4359 Seam: Week 3 — measure a pattern
+    - L4364 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
+    - L4369 Seam: Week 3 — anything that searches the reports
+    - L4376 Seam: adding a tool
+    - L4380 Seam: adding a grader
+  - L4384 5.2 Consumed and superseded seams
+    - L4386 Seam: Week 1 — Project 1a
+    - L4391 Seam: Week 1 — prompt caching
+    - L4397 Seam: superseded — caching as two variants of one eval
+    - L4402 Seam: Week 1 — measure the un-saturated eval
+    - L4408 Seam: Week 1 — label the backlog
+    - L4413 Seam: Week 1 — break things on purpose
+    - L4419 Seam: Week 2 — retrieval metrics
+    - L4425 Seam: Week 2 — the four modules
+    - L4431 Seam: Week 2 — the corpus
+    - L4437 Seam: Week 2 — the retrieval dataset
+    - L4442 Seam: Week 2 — the measured run
+    - L4448 Seam: superseded — questions labelled with a quote
+    - L4453 Seam: Week 2 — hybrid and rerank
+    - L4459 Seam: Week 2 — answer-level eval
+    - L4467 Seam: Week 2 — RAG milestone `v0.1-rag`
+    - L4473 Seam: Week 3 — every model call through `llm`
+    - L4480 Seam: Week 3 — the five workflow patterns
+    - L4486 Seam: Week 3 — orchestrator-workers as a graph
+    - L4493 Seam: Week 4 — the toy fine-tune
+    - L4499 Seam: Week 3 — answer locally, judge on Anthropic
+    - L4505 Seam: Week 3 — context management
+    - L4510 Seam: Week 3 — server-side web search
+    - L4517 Seam: Week 5 — SDK tool runner
+    - L4523 Seam: Week 5 — tracing
+    - L4530 Seam: Week 5 — explicit retries
+    - L4536 Seam: Week 5 — guardrails
+    - L4543 Seam: Week 6 — MCP client
+- L4551 Maintenance
 <!-- /generated:toc -->
 
 ## 0. Orientation
@@ -944,16 +946,16 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 
 #### `facts`
 - **At:** `src/aigent/facts/__init__.py`
-- **Is:** package. **The facts database**: every reported number stored once in SQLite with its source and tier, looked up by `analyst.fundamentals`. So far the XBRL half: `python -m aigent.facts build [--offline]` fetches, loads, labels and checks, `python -m aigent.facts coverage` scores what it holds, and `python -m aigent.facts reocr [--documents P ...] [--tickers T ...]` OCRs scanned results afresh, one process each, stopped past `VERIFY_REOCR_MAX_GB` of resident memory (the process tree, by `psutil`); free, no model calls.
+- **Is:** package. **The facts database**: every reported number stored once in SQLite with its source and tier, looked up by `analyst.fundamentals`. So far the XBRL half: `python -m aigent.facts build [--offline]` fetches, loads, labels and checks, `python -m aigent.facts coverage` scores what it holds, and `python -m aigent.facts reocr [--documents P ...] [--tickers T ...]` OCRs scanned results afresh, one process each, stopped past `VERIFY_REOCR_MAX_GB` of resident memory (the process tree, by `psutil`); free, no model calls. `python -m aigent.facts trace --rows P --facts N ...` traces a run's cells (`facts.trace`) and `python -m aigent.facts review-page --name N ...` builds a review page (`facts.review_page`).
 - **Contract:** Imports nothing from `analyst` (checked: §3 rules); `analyst.fundamentals` and `mcp_server` import it.
 - **History:** 2026-10-22, step 1 of `docs/facts-db.md`: created, importing `analyst.fundamentals` for the check's reference table. 2026-10-23, step 2: labels from NSE's taxonomy, the lookup, and the reference table moved in as `facts.reference`.
 - **Decided in:** LOG.md 10-22, 10-23 · `docs/facts-db.md`
 
 #### `facts.cfg_facts`
 - **At:** `src/aigent/facts/cfg_facts.py`
-- **Is:** module. The facts database's settings, split from `config` by concern: `FACTS_TICKERS` (the eight in both corpora, and ICICI Bank since 2026-10-31), `FACTS_YEARS` (2024-2026), `NSE_SYMBOLS` (`TATAMOTORS` files as `TMPV`), `VERIFY_TICKERS` (the cross-check's companies, all nine since 2026-11-07; a test holds them inside `FACTS_TICKERS`), `VERIFY_OCR_TICKERS` (the seven ind-as companies, whose results are scans read through their OCR text), `VERIFY_REOCR` (`rapidocr`, the engine that re-reads their scans), `VERIFY_REOCR_MAX_GB` (10) and `VERIFY_REOCR_POLL_S` (3), the two listing URLs, `NSE_PAGE_SIZE`, the browser `NSE_USER_AGENT`, `NSE_REQUEST_INTERVAL_S` (1 s), `XBRL_SKIP_CONTEXTS` (related-party transactions), `FUNDAMENTALS_CONCEPTS` (revenue, profit, eps; dividend per share is not filed), `FILING_SUMS` (total, needed terms, terms counted as 0 when not filed), `TAXONOMY_PACKAGES` and the lookup's `FACTS_MATCH_METHOD` (`hybrid`), `FACTS_MATCH_DEPTH` (20), `FACTS_LOOKUP_K` (5) and `COMPARE_AGREE_SHARE` (0.5%); the coverage eval's `COVERAGE_DEFINITIONS` (each frozen metric's fuller words), `COVERAGE_RESULTS_METRICS`, `COVERAGE_FOUND_AT` (1 and k), `COVERAGE_MAX_ROUNDING` (1%) and `COVERAGE_TEACHER_UNITS`; the cross-check documents' `VERIFY_MIN_TEXT_CHARS` (200) and `VERIFY_MAX_TEXT_LESS_SHARE` (10%); the cross-check's `CROSSCHECK_LABEL_MIN` and `CROSSCHECK_DIFFER_LABEL_MIN` (0.6), `CROSSCHECK_DISTINCT_DIGITS` (5), `CROSSCHECK_SAMPLE` (30) and `CROSSCHECK_SEED`, `CROSSCHECK_GROUP_EXAMPLES` (3 distinct values a review group lists), `CROSSCHECK_SPOT_CHECKS` (3 facts a person checks before a group's `right` verdict applies), `CROSSCHECK_SCALES`, `CROSSCHECK_SYNONYMS` and `CROSSCHECK_EXCLUSIVE`. `SHARE_JUMP_MIN` (5%), the share-count move between two filings that is held as an unknown share event.
+- **Is:** module. The facts database's settings, split from `config` by concern: `FACTS_TICKERS` (the eight in both corpora, and ICICI Bank since 2026-10-31), `FACTS_YEARS` (2024-2026), `NSE_SYMBOLS` (`TATAMOTORS` files as `TMPV`), `VERIFY_TICKERS` (the cross-check's companies, all nine since 2026-11-07; a test holds them inside `FACTS_TICKERS`), `VERIFY_OCR_TICKERS` (the seven ind-as companies, whose results are scans read through their OCR text), `VERIFY_REOCR` (`rapidocr`, the engine that re-reads their scans), `VERIFY_REOCR_MAX_GB` (10) and `VERIFY_REOCR_POLL_S` (3), the two listing URLs, `NSE_PAGE_SIZE`, the browser `NSE_USER_AGENT`, `NSE_REQUEST_INTERVAL_S` (1 s), `XBRL_SKIP_CONTEXTS` (related-party transactions), `FUNDAMENTALS_CONCEPTS` (revenue, profit, eps; dividend per share is not filed), `FILING_SUMS` (total, needed terms, terms counted as 0 when not filed), `TAXONOMY_PACKAGES` and the lookup's `FACTS_MATCH_METHOD` (`hybrid`), `FACTS_MATCH_DEPTH` (20), `FACTS_LOOKUP_K` (5) and `COMPARE_AGREE_SHARE` (0.5%); the coverage eval's `COVERAGE_DEFINITIONS` (each frozen metric's fuller words), `COVERAGE_RESULTS_METRICS`, `COVERAGE_FOUND_AT` (1 and k), `COVERAGE_MAX_ROUNDING` (1%) and `COVERAGE_TEACHER_UNITS`; the cross-check documents' `VERIFY_MIN_TEXT_CHARS` (200) and `VERIFY_MAX_TEXT_LESS_SHARE` (10%); the cross-check's `CROSSCHECK_LABEL_MIN` and `CROSSCHECK_DIFFER_LABEL_MIN` (0.6), `CROSSCHECK_DISTINCT_DIGITS` (5), `CROSSCHECK_SAMPLE` (30) and `CROSSCHECK_SEED`, `CROSSCHECK_GROUP_EXAMPLES` (3 distinct values a review group lists), `CROSSCHECK_SPOT_CHECKS` (3 facts a person checks before a group's `right` verdict applies), `CROSSCHECK_SCALES`, `CROSSCHECK_SYNONYMS` and `CROSSCHECK_EXCLUSIVE`. `SHARE_JUMP_MIN` (5%), the share-count move between two filings that is held as an unknown share event. `CROSSCHECK_TRACE_WINDOW` (8 rows either side of a traced cell); the review pages' `REVIEW_PAGE_KINDS` (the order a batch is spread over), `REVIEW_PAGE_BATCH` (30), `REVIEW_PAGE_SEED`, `REVIEW_PAGE_IMAGE_WIDTH` (1000 px), `REVIEW_PAGE_JPEG_QUALITY` (62) and `REVIEW_PAGE_MAX_MB` (16, the artifact's page limit).
 - **Invariants:** `TAXONOMY_PACKAGES` is a sequence, not sorted: where packages label a concept differently the earliest wins (SEBI Ind AS 2025, SEBI banking 2025, BSE Ind AS 2020, BSE banking 2019).
-- **History:** Taxonomy and lookup settings (2026-10-23); coverage settings (2026-10-25); cross-check document settings (2026-10-31); `CROSSCHECK_GROUP_EXAMPLES` and `CROSSCHECK_SPOT_CHECKS` (2026-11-01); all nine companies cross-checked and `VERIFY_OCR_TICKERS` (2026-11-07).
+- **History:** Taxonomy and lookup settings (2026-10-23); coverage settings (2026-10-25); cross-check document settings (2026-10-31); `CROSSCHECK_GROUP_EXAMPLES` and `CROSSCHECK_SPOT_CHECKS` (2026-11-01); all nine companies cross-checked and `VERIFY_OCR_TICKERS` (2026-11-07). Trace and review-page settings (2026-11-21).
 
 #### `facts.xbrl`
 - **At:** `src/aigent/facts/xbrl.py`
@@ -1054,9 +1056,9 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 #### `facts.crosscheck`
 - **At:** `src/aigent/facts/crosscheck.py`
 - **Is:** module. **The XBRL cross-check**: each XBRL fact of `VERIFY_TICKERS` against the documents it is printed in (`facts.documents`): its year's annual report, then its quarter's results, `python -m aigent.facts crosscheck [--write]`, free. `documents_for(fact, filed)` → the stems tried, an annual report first for a year's figure or 31 March balance in a March filing; `facts_to_check` yields a fact once per readable document (`documents.refusal`), then once per re-OCR'd reading built (`documents.reocr_built`), an image-only scan by its reading alone; `crosscheck(conn, tickers)` → a `Checked` per fact, its best outcome (`agree`, `differ`, `unmatched`) across its documents, stopping at the first agreement, a tie kept by the first; `apply` makes each agreeing `xbrl-ai` fact `xbrl-filed`, stamped with its document's origin. What is not agreed goes to `facts.review`.
-- **Contract:** `sheets(document)` reads each table with figures: **basis** the last "standalone"/"consolidated" in the text since the table before (else the one before's), **scale** the last "in crore"/"in lac"/"in million" there or in its header lines (else the one before's, else `document_scale`, the document's most stated), each **column's period** from its header (`column_periods`: a date in its own cells or under a group heading, as `30.06.2024`, `June 30, 2024`, `31st March, 2025` or `30 Jun'24` (an ordinal allowed: `30th Sep'25`, `31 st Mar'25`), an OCR'd month read by its first two letters only when no other month shares them (`Sen'23` is September, `Jnu` stays unread), else a financial year (`2024-25`, `FY25`) as 31 March of its second year, 12 months unless said otherwise, else a year alone in a cell of a row with other headers (`2025` beside `31 March 2024`) taking the day the other dated columns share, when they share one; its length from its own cells first, "Q2-2026", "H1", "FY", then the heading's (a line below the last line of dates is a title, carried over no column), "Quarter ended", "Nine months", "As at" for 0); **a table with no dated column takes the columns of the table before it** when as wide and on the same or the next page, a statement continued past a page break; and each number (`number`: Indian grouping, a decimal comma, points misread for separators, a bracket alone negative, `..` and dashes a zero; text, dates and two numbers in a cell none). A row with one number per dated column is read by order, since rows sit a column off their header; else by its own column; a first-cell serial is no figure. Each cell carries its **heading**, the last row above it with no figures, a table's body starting from its header's last line. The first unlabelled row under a heading, the subtotal closing its block, reads as that heading (`EQUITY` over share capital and other equity; Power Grid's tax subtotal before the next result line); a later unlabelled row keeps no label. A numbered main line with figures (`IX`, `XI`, `D.`, upper case only, as `a)` is a sub-row) heads its own block, so a heading names nothing past the next main line and an EPS row reads with the numbered EPS line above it. **`check_fact` agrees only** on a cell of the fact's basis (or none stated) and period (an instant: any column ending that day; a duration: the same length, or the only column ending that day when no length is stated), equal **to the last printed digit** at the table's scale (per share and pure unscaled, a percentage /100; a percentage never for rupees; no scale, no agreement), and its row carrying the label (`label_share` ≥ `CROSSCHECK_LABEL_MIN`, abbreviations in `CROSSCHECK_SYNONYMS` read in full, a row naming only the other of a `CROSSCHECK_EXCLUSIVE` pair scored 0) or the figure distinctive alone (`CROSSCHECK_DISTINCT_DIGITS` significant digits), or, for a per-share fact, `per_share_row` on its heading and row; a label whose words are of discontinued operations alone matches only a row that is too, and the reverse. Else `differ` on the best-labelled cell there at `CROSSCHECK_DIFFER_LABEL_MIN`, else `unmatched`. `apply` never touches a fact a person checked or one already `xbrl-filed`, and records `<origin>:<document>` (from the manifest; a document with no origin raises and writes nothing), printed figure and page. Each document is read once.
+- **Contract:** `sheets(document)` reads each table with figures: **basis** the last "standalone"/"consolidated" in the text since the table before (else the one before's), **scale** the last "in crore"/"in lac"/"in million" there or in its header lines (else the one before's, else `document_scale`, the document's most stated), each **column's period** from its header (`column_periods`: a date in its own cells or under a group heading, as `30.06.2024`, `June 30, 2024`, `31st March, 2025` or `30 Jun'24` (an ordinal allowed: `30th Sep'25`, `31 st Mar'25`), an OCR'd month read by its first two letters only when no other month shares them (`Sen'23` is September, `Jnu` stays unread), else a financial year (`2024-25`, `FY25`) as 31 March of its second year, 12 months unless said otherwise, else a year alone in a cell of a row with other headers (`2025` beside `31 March 2024`) taking the day the other dated columns share, when they share one; its length from its own cells first, "Q2-2026", "H1", "FY", then the heading's (a line below the last line of dates is a title, carried over no column), "Quarter ended", "Nine months", "As at" for 0); **a table with no dated column takes the columns of the table before it** when as wide and on the same or the next page, a statement continued past a page break; and each number (`number`: Indian grouping, a decimal comma, points misread for separators, a bracket alone negative, `..` and dashes a zero; text, dates and two numbers in a cell none). A row with one number per dated column is read by order, since rows sit a column off their header; else by its own column; a first-cell serial is no figure. Each cell carries its **heading**, the last row above it with no figures, a table's body starting from its header's last line. The first unlabelled row under a heading, the subtotal closing its block, reads as that heading (`EQUITY` over share capital and other equity; Power Grid's tax subtotal before the next result line); a later unlabelled row keeps no label. A numbered main line with figures (`IX`, `XI`, `D.`, upper case only, as `a)` is a sub-row) heads its own block, so a heading names nothing past the next main line and an EPS row reads with the numbered EPS line above it. **`check_fact` agrees only** on a cell of the fact's basis (or none stated) and period (an instant: any column ending that day; a duration: the same length, or the only column ending that day when no length is stated), equal **to the last printed digit** at the table's scale (per share and pure unscaled, a percentage /100; a percentage never for rupees; no scale, no agreement), and its row carrying the label (`label_share` ≥ `CROSSCHECK_LABEL_MIN`, abbreviations in `CROSSCHECK_SYNONYMS` read in full, a row naming only the other of a `CROSSCHECK_EXCLUSIVE` pair scored 0) or the figure distinctive alone (`CROSSCHECK_DISTINCT_DIGITS` significant digits), or, for a per-share fact, `per_share_row` on its heading and row; a label whose words are of discontinued operations alone matches only a row that is too, and the reverse. Else `differ` on the best-labelled cell there at `CROSSCHECK_DIFFER_LABEL_MIN`, else `unmatched`. `apply` never touches a fact a person checked or one already `xbrl-filed`, and records `<origin>:<document>` (from the manifest; a document with no origin raises and writes nothing), printed figure and page. Each document is read once. **Each `Checked` names its cell** for a person: `sheet` (the table's index in the document), `row`, `column`, the cell's `heading`, the label `share`, and for an agreement the `rule` it agreed by (`label`, `distinct` or `per-share`, tried in that order by `_rule`); each `Sheet` keeps its `header` row count and a `RowRead` per body row (kind `heading`, `main line` or `figures`, its own words, the label its figures carry, its heading and block), which `facts.trace` shows.
 - **Gotchas:** XBRL's own `decimals` is not a tolerance: ICICI Bank files `-7` (a crore) for figures exact to a lakh, and taking it would let a zero agree with anything under half a crore. "lac" occurs inside words ("place"), hence the "in …" form. ICICI Bank's scale line prints after its first table, hence the document fallback. ICICI Bank's results PDFs carry a text layer that was itself OCR'd ("11.GG5.G9", "Bonkinq"), so they are read from SEC copies since 2026-11-02.
-- **History:** 2026-11-01: created (Vedant: policy (b); `xbrl-ai` agreeing becomes `xbrl-pdf`, now `xbrl-filed`, the rest go to a person with a sample of agreements). First run 3,523 of 6,784 agreeing; a sample of 50 agreements audited by hand found one false (a 4-digit figure matched by value alone) and the diluted-EPS-on-basic-row case, hence 5 digits, 0.6, the exclusive pairs and printed precision only; final 4,144. The review queue moved to `facts.review` the same day. 2026-11-02: on SEC copies of the 14 OCR'd results, 4,739 agree. 2026-11-07: annual reports read (Vedant's option: annual reports for the year, OCR'd results for the rest) and all nine companies checked. 2026-11-08: ind-as headers read: day-first and apostrophe dates, financial-year labels, a bare year beside dated columns, continued statements; 1,986 more facts agree, none fewer (12,657 to 14,643 of 38,083), the annual reports of Bajaj Auto, ITC, Power Grid and Reliance from 0% to 25-49%. Tata Motors' wrapped title year (`2024` on a line of its own) is why a bare year must stand among other headers. The same day, EPS: a per-share fact also agrees on a row whose words, with the last figureless row above it (its heading, carried into a continued table), name its kind (basic or diluted; `Basic & Diluted` both), earnings per share, and discontinued operations on both sides or neither, OCR'd words one letter off (`per_share_row`); and every label match refuses a row or fact of discontinued operations alone against one that is not. 560 more EPS facts agree, 10 others fewer (6 of them false: zeros on discontinued-operations dashes), 15,193 of 38,083. Then Reliance: ordinal days in its dates, its EPS heading printed above the first figures, and a title line below the dates no longer carried into the columns' lengths; 245 more agree, 12 fewer (one OCR-garbled cash-flow header read right by luck before), 15,426. 2026-11-09: re-OCR'd readings tried after their scans (Vedant: an explicit command, rebuilt, the engine's version in the stamp). The same day, a heading's first unlabelled row reads as it (Vedant): 16 more agree, none fewer; any unlabelled row gained 17, one for the wrong reason, and first-or-last-row only 9, missing Power Grid's subtotals. Then numbered main lines heading their own blocks (Vedant's pick over a distance guard): 32 more, 9 fewer, all 9 EPS rows where OCR put a main line's numeral on the Basic row; 17,724.
+- **History:** 2026-11-01: created (Vedant: policy (b); `xbrl-ai` agreeing becomes `xbrl-pdf`, now `xbrl-filed`, the rest go to a person with a sample of agreements). First run 3,523 of 6,784 agreeing; a sample of 50 agreements audited by hand found one false (a 4-digit figure matched by value alone) and the diluted-EPS-on-basic-row case, hence 5 digits, 0.6, the exclusive pairs and printed precision only; final 4,144. The review queue moved to `facts.review` the same day. 2026-11-02: on SEC copies of the 14 OCR'd results, 4,739 agree. 2026-11-07: annual reports read (Vedant's option: annual reports for the year, OCR'd results for the rest) and all nine companies checked. 2026-11-08: ind-as headers read: day-first and apostrophe dates, financial-year labels, a bare year beside dated columns, continued statements; 1,986 more facts agree, none fewer (12,657 to 14,643 of 38,083), the annual reports of Bajaj Auto, ITC, Power Grid and Reliance from 0% to 25-49%. Tata Motors' wrapped title year (`2024` on a line of its own) is why a bare year must stand among other headers. The same day, EPS: a per-share fact also agrees on a row whose words, with the last figureless row above it (its heading, carried into a continued table), name its kind (basic or diluted; `Basic & Diluted` both), earnings per share, and discontinued operations on both sides or neither, OCR'd words one letter off (`per_share_row`); and every label match refuses a row or fact of discontinued operations alone against one that is not. 560 more EPS facts agree, 10 others fewer (6 of them false: zeros on discontinued-operations dashes), 15,193 of 38,083. Then Reliance: ordinal days in its dates, its EPS heading printed above the first figures, and a title line below the dates no longer carried into the columns' lengths; 245 more agree, 12 fewer (one OCR-garbled cash-flow header read right by luck before), 15,426. 2026-11-09: re-OCR'd readings tried after their scans (Vedant: an explicit command, rebuilt, the engine's version in the stamp). The same day, a heading's first unlabelled row reads as it (Vedant): 16 more agree, none fewer; any unlabelled row gained 17, one for the wrong reason, and first-or-last-row only 9, missing Power Grid's subtotals. Then numbered main lines heading their own blocks (Vedant's pick over a distance guard): 32 more, 9 fewer, all 9 EPS rows where OCR put a main line's numeral on the Basic row; 17,724. 2026-11-21: cells, rules and row readings recorded for the traces; outcomes unchanged (17,724 of 38,510).
 - **Decided in:** LOG.md 11-01 · `docs/facts-db.md`
 
 #### `facts.review`
@@ -1066,6 +1068,22 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 - **Invariants:** A `right` decision never confirms a fact no person's check covers at its present value: new filings and revised values reopen as `extend`, not `xbrl`.
 - **History:** 2026-11-01: the queue grouped (Vedant: group it, then work through it largest first), 396 groups; decisions (Vedant: a `right` verdict needs a spot check of a few of a group's facts; a `wrong` fact stays `xbrl-ai` and leaves the queue); `printed x100` split from `differs` after HDFC Bank's return on assets showed 12 right facts and one wrong in a single group. The same day, split from `facts.crosscheck` and made to carry decisions forward (Vedant: new facts in a `right` group always get a spot check of their own; any verdict may cover every company with `*`).
 - **Decided in:** LOG.md 11-01 · `docs/facts-db.md`
+
+#### `facts.trace`
+- **At:** `src/aigent/facts/trace.py`
+- **Is:** module. **A cross-checked cell traced back through its reading**: `trace(checked, document, sheets)` → a `Trace` of the cell's table (basis, scale, each dated column's period as `period_text` writes it, the header row count, the rule and share) and its rows, the header rows then `CROSSCHECK_TRACE_WINDOW` either side of the cell's, each a `TracedRow` of its cells as Docling parsed them, Docling's header (captions included) and section marks, and the cross-check's `RowRead`, none for a header row. `python -m aigent.facts trace --rows P --facts N ...` prints the traces of a run's facts as JSON (`facts.__main__.trace_facts`), free, from the parse caches.
+- **Contract:** Refuses (ValueError) a fact resting on no cell, a table not read as a sheet, and a cell no longer printing what the run recorded (the reading changed since; re-run the cross-check). `trace_facts` keeps the order asked, reads each document once, and returns a fact not in the run or not traceable as its id and the error.
+- **Gotchas:** A re-OCR'd reading keeps no Docling document, only its rows, so the "Docling" view is the rows as Docling parsed them, the same for every kind of copy; spans and cell boxes are not kept.
+- **History:** 2026-11-21: created for the spot-check cards (Vedant: see the parsed and processed versions when suggesting improvements).
+- **Decided in:** LOG.md 11-21
+
+#### `facts.review_page`
+- **At:** `src/aigent/facts/review_page.py`
+- **Is:** module. **Review pages**: cross-checked facts drawn as cards for a person to mark, built into one HTML file Claude publishes as an artifact, `python -m aigent.facts review-page --name N [--outcome agree|differ] [--add K] [--rows P] [--url U]` (`facts.__main__.review_page`), free. A page's card list is `evals/reference/review-pages/<name>.json` (`REVIEW_PAGES`, tracked: outcome, URL and one `Kept` card a line, sorted by id, checked by `tests/test_reference_data.py`); the built page is `evals/review-pages/<name>/index.html`, gitignored. The template is `review_page.html` beside it: the cards, a "How it was read" panel per card (Docling's table and the cross-check's reading, from `facts.trace`), filters for unmarked, flagged and the latest batch, and marks saved in the artifact's `marks` collection, one document per card id.
+- **Contract:** `draw` adds a batch of facts of the page's outcome, `xbrl-ai`, not on the page, split evenly over `REVIEW_PAGE_KINDS` by `shares` (a kind short of its share gives the rest to the others), seeded by `REVIEW_PAGE_SEED` and the batch number, numbered on from the last id (`s` for agreements, `d` for differences). Kept cards keep their ids, so marks stay with them; a kept fact gone from the run or now of another outcome is shown with a note. `card` carries what the printed figure reads as (`printed_as`) for a difference. `page_image` renders a PDF page grey at `REVIEW_PAGE_IMAGE_WIDTH`, refusing a page the PDF lacks; an HTML filing has none. `build_page` refuses a template missing a marker and a page over `REVIEW_PAGE_MAX_MB`, and escapes `</` in the inlined data.
+- **Gotchas:** The script cannot publish: Claude publishes the built file to the page's URL with the Artifact tool and reads marks back with ArtifactData. The page's JavaScript is not under test; it was rendered in jsdom by hand (a DOM shim had hidden a bug a real DOM threw on).
+- **History:** 2026-11-21: created (Vedant: formalise the builder so pages are not rebuilt by hand each session); `spot-check` holds the 30 cards marked 11-09 and 11-21 and the batch s31-s60.
+- **Decided in:** LOG.md 11-21
 
 #### `extraction.figures`
 - **At:** `src/aigent/extraction/figures.py`
@@ -3088,8 +3106,8 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 #### `tests.facts`
 - **At:** `tests/facts/__init__.py`
 - **Is:** test package `tests/facts/`, free and offline. **The facts database**, 245 tests.
-- **Contract:** `conftest`: an XBRL builder (`duration`, `instant`, `num`, `nil`, `text`, `stated`, `filing`, `DECEMBER`), `FakeNse` scripted by URL with `listings(symbol, legacy, integrated pages)`, `fundamental`, the cross-check's `crosscheck_db` (two ICICI Bank filings, one HDFC Bank, a quarter with no document) and `checked_row`, and two real ITC filings trimmed to a dozen concepts in `fixtures/` (FY24's March quarter in the 2020 taxonomy, FY26's December in the integrated one). `test_xbrl`: each fact of the saved samples with its period (the stated year, opening and closing cash, a segment, a `D_` context), what becomes an issue, what is left out quietly, a first quarter, a name filed with a unit. `test_nse`: the chosen filings (latest broadcast, years, governance dropped), paging, the symbol, the financial year, the cache, revisions, the sorted manifest, the polite getter. `test_store`: sync's add, keep, change and remove, the schema's refusals and acceptances, an unversioned and a version-3 database migrated row by row, tier and stamp, `write_formula_proposal` writing and reusing, the proposals table's four refusals, and `write_derived` linking its inputs once, an instant, and its three refusals, `write_derived_concept` holding the first by name, the derived concepts table's four refusals, older `metrics` and `formulas` tables moved across with their tiers, `verify_derived_concept` once and its two refusals, a figure written with a concept check, and a check promoting figures whose inputs are checked but not one whose input is not, nor another concept's, and a rebuild dropping a derived fact whose input was revised, re-filed or removed (once an integrity failure) and keeping it otherwise. `test_formulas`: each formula's arithmetic, a zero base refused, variables as parameters, the library in name order. `test_derived_concepts`: offsets, plans, ranking (an exact name first where words tie), name and binding refusals, the stored shape, seeding once and reporting the refused, every seeded metric well formed, the shipped ind-as seeds resting on what every ind-as company files (`fixtures/ind-as-filed-concepts.txt`, a sorted snapshot of the live database) and a table of them computing from their filed inputs (EBITDA margin without finance costs and depreciation, debt to assets over both borrowings), the verify command. `test_documents`: text-less and OCR'd pages, the scan share, the manifest's fields and order, `origin`, `percent_joined` and `statement_starts` tables, an HTML table of two statements read as two, and the refusals. `test_check`: the fundamentals' four outcomes, sums with optional terms, tolerance. `test_build`: end to end, cached, offline, and each failure as data. `test_crosscheck`: numbers, column periods, sheets, agreement, matching and `apply` (stamped by origin; none for a document raises and writes nothing). `test_review`: issues, groups, spot samples, the decisions file and its refusals, an eleven-row `rule` table (proposed, `wrong`/`elsewhere`, a `right` with no check, all ticked, a tick missing or outside, a new filing's facts, both checked, a changed value, a check made on another group), `*` decisions and a company's own winning, what `apply_rulings` writes, the report's queue and the command's `--write`. `test_share_events`: detection (a steady count, drift under 5%, a doubling with and without an event held, events on either period end, an issue, a fall, only the pair that moved), once only, standalone only; the shipped events seeded once unchecked; a refused seed row raising; sync; twelve schema refusals; a person's check (five ways) and fourteen refusals changing nothing; restatement over checked events (eleven rows), refused across unchecked ones or with no broadcast, and an unknown change refusing what it may fall inside; the two commands. `test_store` and `test_build` gain the broadcast column and the build's share events. `test_formulas` gains `average`; `test_derived_concepts` gains an opening per period, a flow at its opening refused by `plan`, `bindings_refusal` and `seed`, growth of a return reading each year's own opening, `reads_opening`, an average of balances `mixed`, `opening_balances` (a balance read at one time, through its inputs) and the shipped ROE over FY26 and H1.
-- **History:** 2026-10-22: created. **Every guard mutation-checked in a scratch copy, 49 of 49.** 2026-10-23, step 2: `test_taxonomy` (labels read by concept and role, a hyphenated prefix, a five-row merge table, fetched once and again on a new URL, the sorted manifest, priority order, a package not cached or whose digest moved refused), `test_lookup` (a seven-row period table, matching by label and alias, exact fetch by period and basis in tables, a balance at the period's end, segments named and refused in tables, what to cite, the earliest filing, another run's unchecked read, `k`, every call logged, the closest labels, a database not built, the index built once), `test_reference` (the frozen table, moved), the build's labelling (labelled, offline from the cache, offline with nothing cached, a fetch or zip failure relabelling nothing), `apply_labels`, and a column's descriptions being no segment; `facts_db` and `facts_lookup` in the root `conftest` for the tool, toolbox and server tests. Every new guard mutation-checked in a scratch copy, 43 of 44; the one left, `toolbox._lookup`'s list check, only narrows a type and cannot change what it returns. 2026-10-25: `test_coverage` (each source's figures and its reasons to leave one out in tables, a twelve-row precision table, every table figure printed in its quote, held by concept and by value in a fourteen-row table, found and exact in a table, the earliest filing, the lookups deleted on success and on failure, the summary, the report and the CLI's wiring) over its own database fixture; 29 of 30 mutants killed, the one left a found fact's basis in its key, which a lookup asked for one basis cannot exercise. 2026-11-02: OCR'd pages, HTML statements split and `%` joined, the version-4 migration and origin stamps; 25 of 25 mutants killed.
+- **Contract:** `conftest`: an XBRL builder (`duration`, `instant`, `num`, `nil`, `text`, `stated`, `filing`, `DECEMBER`), `FakeNse` scripted by URL with `listings(symbol, legacy, integrated pages)`, `fundamental`, the cross-check's `crosscheck_db` (two ICICI Bank filings, one HDFC Bank, a quarter with no document) and `checked_row`, and two real ITC filings trimmed to a dozen concepts in `fixtures/` (FY24's March quarter in the 2020 taxonomy, FY26's December in the integrated one). `test_xbrl`: each fact of the saved samples with its period (the stated year, opening and closing cash, a segment, a `D_` context), what becomes an issue, what is left out quietly, a first quarter, a name filed with a unit. `test_nse`: the chosen filings (latest broadcast, years, governance dropped), paging, the symbol, the financial year, the cache, revisions, the sorted manifest, the polite getter. `test_store`: sync's add, keep, change and remove, the schema's refusals and acceptances, an unversioned and a version-3 database migrated row by row, tier and stamp, `write_formula_proposal` writing and reusing, the proposals table's four refusals, and `write_derived` linking its inputs once, an instant, and its three refusals, `write_derived_concept` holding the first by name, the derived concepts table's four refusals, older `metrics` and `formulas` tables moved across with their tiers, `verify_derived_concept` once and its two refusals, a figure written with a concept check, and a check promoting figures whose inputs are checked but not one whose input is not, nor another concept's, and a rebuild dropping a derived fact whose input was revised, re-filed or removed (once an integrity failure) and keeping it otherwise. `test_formulas`: each formula's arithmetic, a zero base refused, variables as parameters, the library in name order. `test_derived_concepts`: offsets, plans, ranking (an exact name first where words tie), name and binding refusals, the stored shape, seeding once and reporting the refused, every seeded metric well formed, the shipped ind-as seeds resting on what every ind-as company files (`fixtures/ind-as-filed-concepts.txt`, a sorted snapshot of the live database) and a table of them computing from their filed inputs (EBITDA margin without finance costs and depreciation, debt to assets over both borrowings), the verify command. `test_documents`: text-less and OCR'd pages, the scan share, the manifest's fields and order, `origin`, `percent_joined` and `statement_starts` tables, an HTML table of two statements read as two, and the refusals. `test_check`: the fundamentals' four outcomes, sums with optional terms, tolerance. `test_build`: end to end, cached, offline, and each failure as data. `test_crosscheck`: numbers, column periods, sheets, agreement, matching and `apply` (stamped by origin; none for a document raises and writes nothing). `test_review`: issues, groups, spot samples, the decisions file and its refusals, an eleven-row `rule` table (proposed, `wrong`/`elsewhere`, a `right` with no check, all ticked, a tick missing or outside, a new filing's facts, both checked, a changed value, a check made on another group), `*` decisions and a company's own winning, what `apply_rulings` writes, the report's queue and the command's `--write`. `test_share_events`: detection (a steady count, drift under 5%, a doubling with and without an event held, events on either period end, an issue, a fall, only the pair that moved), once only, standalone only; the shipped events seeded once unchecked; a refused seed row raising; sync; twelve schema refusals; a person's check (five ways) and fourteen refusals changing nothing; restatement over checked events (eleven rows), refused across unchecked ones or with no broadcast, and an unknown change refusing what it may fall inside; the two commands. `test_store` and `test_build` gain the broadcast column and the build's share events. `test_formulas` gains `average`; `test_derived_concepts` gains an opening per period, a flow at its opening refused by `plan`, `bindings_refusal` and `seed`, growth of a return reading each year's own opening, `reads_opening`, an average of balances `mixed`, `opening_balances` (a balance read at one time, through its inputs) and the shipped ROE over FY26 and H1. `conftest` also holds the cross-check's sample results table (`CROSSCHECK_HEADER`, `CROSSCHECK_RESULTS`) and `crosscheck_document`, shared by `test_crosscheck` and `test_trace`. `test_trace`: the window (three rows), each row paired with its reading, Docling's header and section flags, four refusals, `period_text`, the CLI's order, errors as data and one read per document. `test_review_page`: kinds, a five-row `shares` table, drawing (evenly, of the page's outcome, open and new only, numbered on in batches, seeded), the card list's sort and refusals, `printed_as`, a page image's size and grey mode and the page range, card notes, PDF-only images, the template's markers, escaping, the size limit, and the CLI (a batch, the URL, refusals, the newest run).
+- **History:** 2026-10-22: created. **Every guard mutation-checked in a scratch copy, 49 of 49.** 2026-10-23, step 2: `test_taxonomy` (labels read by concept and role, a hyphenated prefix, a five-row merge table, fetched once and again on a new URL, the sorted manifest, priority order, a package not cached or whose digest moved refused), `test_lookup` (a seven-row period table, matching by label and alias, exact fetch by period and basis in tables, a balance at the period's end, segments named and refused in tables, what to cite, the earliest filing, another run's unchecked read, `k`, every call logged, the closest labels, a database not built, the index built once), `test_reference` (the frozen table, moved), the build's labelling (labelled, offline from the cache, offline with nothing cached, a fetch or zip failure relabelling nothing), `apply_labels`, and a column's descriptions being no segment; `facts_db` and `facts_lookup` in the root `conftest` for the tool, toolbox and server tests. Every new guard mutation-checked in a scratch copy, 43 of 44; the one left, `toolbox._lookup`'s list check, only narrows a type and cannot change what it returns. 2026-10-25: `test_coverage` (each source's figures and its reasons to leave one out in tables, a twelve-row precision table, every table figure printed in its quote, held by concept and by value in a fourteen-row table, found and exact in a table, the earliest filing, the lookups deleted on success and on failure, the summary, the report and the CLI's wiring) over its own database fixture; 29 of 30 mutants killed, the one left a found fact's basis in its key, which a lookup asked for one basis cannot exercise. 2026-11-02: OCR'd pages, HTML statements split and `%` joined, the version-4 migration and origin stamps; 25 of 25 mutants killed. 2026-11-21: `test_trace` and `test_review_page`; the new guards mutation-checked in a scratch copy, 20 of 20 and 28 of 28.
 - **Decided in:** LOG.md 10-22
 
 ### 2.13 Non-code nodes
@@ -3615,18 +3633,21 @@ extraction.synthetic —imports→ extraction.headlines.{DATASET, Extraction, ME
 extraction.synthetic —imports→ llm.adapters.{build, spec}
 extraction.synthetic —imports→ llm.adapters.openai.OpenAI
 facts.__main__ —imports→ facts.build.build
-facts.__main__ —imports→ facts.cfg_facts.{CROSSCHECK_SAMPLE, CROSSCHECK_SEED, FACTS_MATCH_METHOD, FACTS_TICKERS, FACTS_YEARS, TAXONOMY_PACKAGES, VERIFY_REOCR_MAX_GB, VERIFY_REOCR_POLL_S, VERIFY_TICKERS}
+facts.__main__ —imports→ facts.cfg_facts.{CROSSCHECK_SAMPLE, CROSSCHECK_SEED, FACTS_MATCH_METHOD, FACTS_TICKERS, FACTS_YEARS, REVIEW_PAGE_SEED, TAXONOMY_PACKAGES, VERIFY_REOCR_MAX_GB, VERIFY_REOCR_POLL_S, VERIFY_TICKERS}
 facts.__main__ —imports→ facts.coverage.{evaluate, fundamentals_figures, table_figures, teacher_figures, write_report}
-facts.__main__ —imports→ facts.crosscheck.{apply, crosscheck}
-facts.__main__ —imports→ facts.documents.{Entry, build_reocr, filed_of, is_reading, origin_of, read_manifest, readings_of, reocr_built, ticker_of}
+facts.__main__ —imports→ facts.crosscheck.{Checked, Sheet, apply, crosscheck, sheets}
+facts.__main__ —imports→ facts.documents.{Entry, build_reocr, filed_of, is_reading, load_verify_document, origin_of, read_manifest, readings_of, reocr_built, ticker_of}
 facts.__main__ —imports→ facts.lookup.{Lookup, concept_index}
 facts.__main__ —imports→ facts.nse.{XBRL_DIR, polite_get}
 facts.__main__ —imports→ facts.reference.load_fundamentals
 facts.__main__ —imports→ facts.review.{DECISIONS, apply_rulings, read_decisions, review_groups, review_sample, rule, write_report}
+facts.__main__ —imports→ facts.review_page.{PageList, PageOutcome, REVIEW_PAGES, TEMPLATE, build_page, draw, kinds_of, page_cards, page_image, read_page_list, write_page_list}
 facts.__main__ —imports→ facts.share_events.{load_share_events, verify_share_event}
 facts.__main__ —imports→ facts.store.{FACTS_DB, Writer, connect, verify_derived_concept}
 facts.__main__ —imports→ facts.taxonomy.TAXONOMY_DIR
+facts.__main__ —imports→ facts.trace.{trace, trace_json}
 facts.__main__ —imports→ psutil
+facts.__main__ —imports→ retrieval.chunk.Document
 facts.build —imports→ facts.check.{Checked, check_fundamentals, check_sums}
 facts.build —imports→ facts.nse.{Get, fetch, list_filings, read_manifest, write_manifest}
 facts.build —imports→ facts.reference.Fundamental
@@ -3673,12 +3694,20 @@ facts.lookup —imports→ retrieval.rank.{Indexes, Ranker, build_ranker}
 facts.nse —imports→ facts.cfg_facts.{NSE_INTEGRATED_LISTING, NSE_LEGACY_LISTING, NSE_PAGE_SIZE, NSE_REQUEST_INTERVAL_S, NSE_SYMBOLS, NSE_TIMEOUT_S, NSE_USER_AGENT}
 facts.review —imports→ facts.cfg_facts.{CROSSCHECK_GROUP_EXAMPLES, CROSSCHECK_SEED, CROSSCHECK_SPOT_CHECKS}
 facts.review —imports→ facts.crosscheck.{Checked, number}
+facts.review_page —imports→ facts.cfg_facts.{REVIEW_PAGE_IMAGE_WIDTH, REVIEW_PAGE_JPEG_QUALITY, REVIEW_PAGE_KINDS, REVIEW_PAGE_MAX_MB}
+facts.review_page —imports→ facts.crosscheck.{Checked, number}
+facts.review_page —imports→ facts.documents.{Entry, VERIFY_DIR, filed_of, origin_of}
+facts.review_page —imports→ facts.share_events.PER_SHARE
+facts.review_page —imports→ pypdfium2
 facts.share_events —imports→ facts.cfg_facts.SHARE_JUMP_MIN
 facts.share_events —imports→ facts.store.{RESTATING_KINDS, Writer, XBRL_TIERS}
 facts.store —imports→ facts.cfg_facts.{COMPANY_SCOPES, SCOPES}
 facts.store —imports→ facts.taxonomy.Labels
 facts.store —imports→ facts.xbrl.{Fact, label_of}
 facts.taxonomy —imports→ facts.nse.Get
+facts.trace —imports→ facts.cfg_facts.CROSSCHECK_TRACE_WINDOW
+facts.trace —imports→ facts.crosscheck.{Checked, Column, RowRead, Rule, Sheet}
+facts.trace —imports→ retrieval.chunk.Document
 facts.xbrl —imports→ facts.cfg_facts.XBRL_SKIP_CONTEXTS
 guardrails —imports→ config.{MAX_ANSWER_CHARS, MAX_TASK_CHARS}
 guardrails —imports→ errors.GuardrailTripped

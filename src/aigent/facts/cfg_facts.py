@@ -88,6 +88,20 @@ CROSSCHECK_SAMPLE = 30
 CROSSCHECK_SEED = 20261101
 CROSSCHECK_GROUP_EXAMPLES = 3  # distinct values a review group lists before "…"
 CROSSCHECK_SPOT_CHECKS = 3  # facts of a group a person checks before a `right` verdict applies
+CROSSCHECK_TRACE_WINDOW = 8  # rows either side of a traced cell's row, after the header rows
+# Review pages: the kinds of copy a batch is spread over, in order, its default size and seed, and
+# the page image's width and quality under the artifact's size limit.
+REVIEW_PAGE_KINDS: tuple[str, ...] = (
+    "born-digital PDF",
+    "filed OCR layer",
+    "RapidOCR reading",
+    "SEC copy",
+)
+REVIEW_PAGE_BATCH = 30
+REVIEW_PAGE_SEED = 20261121
+REVIEW_PAGE_IMAGE_WIDTH = 1000
+REVIEW_PAGE_JPEG_QUALITY = 62
+REVIEW_PAGE_MAX_MB = 16.0
 CROSSCHECK_SCALES: dict[str, float] = {"crore": 1e7, "lac": 1e5, "lakh": 1e5, "million": 1e6}
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.

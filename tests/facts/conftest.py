@@ -18,6 +18,7 @@ from aigent.facts.crosscheck import Checked
 from aigent.facts.reference import Fundamental
 from aigent.facts.store import FilingRow, Writer, connect, sync_xbrl_facts, upsert_filing
 from aigent.facts.xbrl import Fact as XbrlFact
+from aigent.retrieval.chunk import Document, Table
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LEGACY_Q4 = FIXTURES / "ITC-2024-03-31-C.xml"  # 2020 BSE taxonomy, FY24's March quarter
@@ -274,3 +275,30 @@ def checked_row(fact_id: int, outcome: str, tier: str = "xbrl-ai") -> Checked:
         "38,995.78",
         "Interest earned",
     )
+
+
+CROSSCHECK_HEADER = (
+    ("", "", "Quarter ended", "", "", "Year ended"),
+    ("Sr", "Particulars", "30.06.2024", "31.03.2024", "30.06.2023", "31.03.2024"),
+)
+CROSSCHECK_RESULTS = (
+    *CROSSCHECK_HEADER,
+    ("1", "Interest earned", "38,995.78", "37,948.36", "33,327.61", "142,890.94"),
+    ("2", "Other income", "7,001.92", "5,648.78", "5,435.25", "22,957.77"),
+    ("3", "Exceptional items", "..", "..", "..", ".."),
+    ("4", "Basic EPS", "15.73", "15.26", "13.80", "58.38"),
+    ("5", "Gross NPA ratio", "2.15%", "2.16%", "2.76%", "2.16%"),
+)
+
+
+def crosscheck_document(*parts: str | tuple[tuple[str, ...], ...]) -> Document:
+    """A document of text and tables in order, each table printed one row a line."""
+    text, tables = "", []
+    for part in parts:
+        if isinstance(part, str):
+            text += part + "\n"
+            continue
+        start = len(text)
+        text += "\n".join(" ".join(c for c in row if c) for row in part) + "\n"
+        tables.append(Table(start, len(text), part))
+    return Document("D", text, page_starts=(0,), tables=tuple(tables))
