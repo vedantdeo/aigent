@@ -2694,3 +2694,12 @@
   OCR layer and RapidOCR; no SEC copy left unverified). The first republish showed no cards:
   `append` chained on a real DOM returns nothing, which a Node shim had hidden; now checked in
   jsdom. `pypdfium2` and `pillow` made direct dependencies. 28/28 mutants. $0.00.
+- 11-21: first cross-check write for the seven ind-as companies (Vedant: write on the s01-s30
+  sample; s31-s60 later). `crosscheck --write` at `814effd`: 12,979 agreements made `xbrl-filed`,
+  0 made `xbrl` (the 3 applied decisions are `wrong`/`elsewhere`). Tiers 33,694 `xbrl-ai` and 4,740
+  `xbrl-filed` before, 20,715 and 17,719 after; by origin 6,811 `nse-pdf-ocr`, 6,158 `nse-pdf`,
+  2,494 `sec-6k-html`, 2,256 RapidOCR. The database was copied first to
+  `corpus/.cache/facts.sqlite.before-write-20261121`. `fundamentals` serves them (Wipro FY25 profit,
+  Sun Pharma FY25 basic EPS, `xbrl-filed`). Basic EPS checked per company: Bajaj Auto 70 of 126,
+  ITC 29/126, Power Grid 91/126, Reliance 48/126, Sun Pharma 68/126, Tata Motors 38/126, Wipro
+  78/126. $0.00.
