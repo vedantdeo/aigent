@@ -2643,3 +2643,54 @@
   its scan, an image-only scan by its reading alone, and stamps `nse-pdf-rapidocr-3.10.0`; it
   never builds one, and names the command when some are missing. `psutil` and `rapidocr` are now
   declared. 16/16 mutants killed; 2,846 tests.
+- 11-09: **spot check, first 10 of 30, and subtotals read by their heading, $0.00.** Vedant marked
+  9 right and 1 unsure (Wipro's `DividendsPaidClassifiedAsFinancingActivities`: Ind AS names a
+  cash flow by its classification; every company files dividends paid as financing and received
+  as investing, and no derived concept uses dividends yet; kept as is). On s10 (Tata Motors'
+  equity on an unlabelled subtotal row) he proposed naming such rows by their heading. Measured
+  against `fb25fef` in a scratch copy: "Total" plus the heading, or the heading alone, both 17 more
+  agreeing and none fewer, 2 of them for the wrong reason (Sun Pharma's loans under "(1)
+  Non-current assets", a zero on a dash). His refinement, only the first or last row with figures
+  under a heading: 9 more, but Power Grid's OCI tax subtotals lost, because a labelled result line
+  with figures follows them and a block ends only at a line without figures. Final: the first
+  unlabelled row under a heading, the subtotal that closes its block: 16 more, none fewer, the
+  loans one still out (the zero on a dash, the existing zero rule, back). 17,701 of 38,510 agree.
+  3/3 mutants killed (a fourth equivalent: only unlabelled rows qualify); 2,850 tests (the free
+  token-count smoke test had failed on an expired API key until Vedant renewed it).
+- 11-09: **spot check, cards 11-20, and numbered main lines, $0.00.** Vedant: 7 right, 1 wrong, 2
+  unsure; none a false agreement on review. s18 (Bajaj Auto segment liabilities): the fact is the
+  Automotive segment's own (`...01Member`, 6,406.08); the sub-total he expected is the separate
+  `NetSegmentLiabilities` (6,577.84). s13: Reliance files profit before its share of associates as
+  `ProfitLossForPeriodFromContinuingOperations` (36,549 against a 36,768 total, discontinued 0).
+  s20: `EarningsLoss` concepts carry a loss as a negative value (Tata Motors FY26, -17.50); there
+  is no `BasicEarningsPerShare...` concept in Ind AS. s14 (Tata Motors' segment table): Docling
+  puts each figure one row below its label in both the filed OCR layer and the RapidOCR reading, so
+  OCR cannot fix it; an agreement there rests on the right figure under the wrong row (noted, not
+  fixed). s17 (Power Grid's profit, its label pushed into line XI by OCR) read as "VIII Tax
+  expense", six rows up, under `6482662`'s heading rule. Vedant turned down a distance guard; a
+  numbered main line with figures now heads its own block (upper case only: case-insensitive took
+  Reliance's `a) Basic` for a main line and lost 34 EPS facts). Against `6482662`: 32 more, 9
+  fewer, all EPS where OCR put a main line's numeral on the Basic row (Sun Pharma Dec-2024, Tata
+  Motors Jun-2023); 17,724 of 38,510. s17 now reads "XI ... Profit for the period". 2/2 mutants.
+- 11-21: spot-check cards s21-s30 marked by Vedant, all right. Four notes are label quality on
+  RapidOCR readings, the figure agreeing on the right row: s23 Sun Pharma depreciation printed
+  `2,855.3` read as `2.855.3`; s26 Bajaj Auto's `(b) Other current liabilities` read as `(t) Other
+  cument liabies`; s27 Bajaj Auto's `Face value of ₹10` lost its ₹ (a reading strips the text
+  layer, so the rupee-font fix never reaches it); s29 Tata Motors' Passenger Vehicle revenue on the
+  Commercial Vehicle row. Of the 30, 26 right, s18 wrong, s06/s13/s20 unsure, all four dealt with
+  11-09. Known limits, not fixed.
+- 11-21: traces (Vedant: show the parsed and processed versions on the cards). `Checked` records
+  its cell (table, row, column, heading, label share) and the rule it agreed by; each `Sheet` a
+  reading of each row; `facts.trace` and `python -m aigent.facts trace` show both. Cross-check at
+  the new code, without `--write`: 17,724 of 38,510, unchanged, 85 s; 12,979 agreements unverified.
+  s29's trace showed the cause: Docling copied the spanning cell `A 1. II. B.` into column 0 of
+  every row of Tata Motors' segment table, so every row reads as a numbered main line, and two
+  OCR'd rows merged (`-Total Others 103,546 1,436`) read as a heading; the figure agreed as
+  distinctive alone. Not fixed. 20/20 mutants.
+- 11-21: review pages formalised (Vedant: the scratchpad builder was lost and rebuilt this
+  session): `python -m aigent.facts review-page`, card lists in `evals/reference/review-pages/`,
+  the template `facts/review_page.html`, agreements or differences, batches drawn evenly over the
+  kinds of copy. `spot-check` holds s01-s30 and a fresh batch s31-s60 (10 each of born-digital,
+  OCR layer and RapidOCR; no SEC copy left unverified). The first republish showed no cards:
+  `append` chained on a real DOM returns nothing, which a Node shim had hidden; now checked in
+  jsdom. `pypdfium2` and `pillow` made direct dependencies. 28/28 mutants. $0.00.

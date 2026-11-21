@@ -36,3 +36,6 @@ scratch/
 
 # Per-fact cross-check rows: reproducible from the code and database, too large to keep.
 evals/reports/*.rows.jsonl
+
+# built review pages (images inlined); rebuilt by python -m aigent.facts review-page
+evals/review-pages/

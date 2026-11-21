@@ -38,6 +38,8 @@ from aigent.facts.store import XBRL_TIERS
 from aigent.retrieval.chunk import Document
 
 Outcome = Literal["agree", "differ", "unmatched"]
+Rule = Literal["label", "distinct", "per-share"]  # what let an equal figure count as the fact
+RowKind = Literal["heading", "main line", "figures"]
 _RANK: dict[Outcome, int] = {"unmatched": 0, "differ": 1, "agree": 2}
 
 _ZERO = {"..", "-", "–", "—", "nil", "0"}
@@ -71,6 +73,7 @@ _APOSTROPHE_DATE = re.compile(  # 30 Jun'24, 30th Sep'25
 _FY_SPAN = re.compile(r"(20\d{2})\s*[-–]\s*(\d{2})\b")  # 2024-25
 _FY_SHORT = re.compile(r"\bfy\s*'?(\d{2}|20\d{2})\b")  # FY25, FY 2025
 _BARE_YEAR = re.compile(r"(20\d{2})")
+_MAIN_LINE = re.compile(r"\s*(?:[IVX]{1,5}|[A-H])[.)]?\s")  # IX, XI, D., II. open a main line
 _SCALE = re.compile(r"\bin\s*(crore|lac|lakh|million)s?\b")
 _EPS_WORDS = ("basic", "diluted", "earnings", "share", "continuing", "discontinued")
 _STOP = {"of", "and", "the", "in", "on", "or", "to", "for", "from", "by", "a", "an", "with", "at"}
@@ -102,9 +105,23 @@ class Cell:
 
 
 @dataclass(frozen=True)
+class RowRead:
+    """How one body row was read: its own words, the label its figures carry (its heading's for a
+    block's subtotal), the heading it sits under and its block."""
+
+    row: int
+    kind: RowKind
+    label: str
+    named: str
+    heading: str
+    block: int
+
+
+@dataclass(frozen=True)
 class Sheet:
     """A results table read for matching: its basis and scale from the text around it, its page,
-    each column's period, and its numbers."""
+    each column's period, its numbers, how many leading rows were header, and each body row's
+    reading."""
 
     index: int
     basis: str | None
@@ -112,6 +129,8 @@ class Sheet:
     page: int
     columns: Mapping[int, Column]
     cells: tuple[Cell, ...]
+    header: int = 0
+    rows: tuple[RowRead, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -135,7 +154,8 @@ class Fact:
 
 @dataclass(frozen=True)
 class Checked:
-    """A fact's outcome, and for an agreement or a difference, the cell it rests on."""
+    """A fact's outcome, and for an agreement or a difference, the cell it rests on: its table's
+    index in the document, row and column, the label share, and for an agreement, the rule."""
 
     fact_id: int
     ticker: str
@@ -152,6 +172,12 @@ class Checked:
     page: int | None = None
     printed: str | None = None
     row_label: str | None = None
+    sheet: int | None = None
+    row: int | None = None
+    column: int | None = None
+    heading: str | None = None
+    share: float | None = None
+    rule: Rule | None = None
 
 
 def number(text: str) -> tuple[float, int, bool] | None:
@@ -358,7 +384,9 @@ def sheets(document: Document) -> list[Sheet]:
         heading = (
             before_heading if continued else " ".join(c for c in header[-1] if c) if header else ""
         )
-        cells: list[Cell] = []
+        body: list[tuple[int, list[tuple[int, tuple[float, int, bool]]], str, str, int]] = []
+        read: list[RowRead] = []
+        block = 0
         for r in range(first, len(table.rows)):
             row = table.rows[r]
             numbers = [
@@ -371,11 +399,30 @@ def sheets(document: Document) -> list[Sheet]:
                 c for j, c in enumerate(row) if c and j not in taken and not _serial(j, c)
             )
             if not numbers:
-                heading = label or heading
+                heading, block = label or heading, block + 1
+                read.append(RowRead(r, "heading", label, "", heading, block))
                 continue
+            kind: RowKind = "figures"
+            # a numbered main line (IX, XI, D.) heads its own block
+            if _MAIN_LINE.match(" ".join(c for c in row if c)):
+                heading, block, kind = label, block + 1, "main line"
+            body.append((r, numbers, label, heading, block))
+            read.append(RowRead(r, kind, label, label, heading, block))
+        closes = {
+            block: i for i, (_, _, label, _, block) in reversed(list(enumerate(body))) if not label
+        }
+        cells: list[Cell] = []
+        named_as: dict[int, str] = {}
+        for i, (r, numbers, label, under, block) in enumerate(body):
+            subtotal = i == closes.get(block)  # its heading's first unlabelled row
+            named = label or (under if subtotal else "")
+            named_as[r] = named
             for j, parsed, period in _aligned(numbers, columns):
-                cells.append(Cell(r, j, period, label, row[j].strip(), *parsed, heading=heading))
-        out.append(Sheet(index, basis, scale, page, columns, tuple(cells)))
+                cells.append(
+                    Cell(r, j, period, named, table.rows[r][j].strip(), *parsed, heading=under)
+                )
+        rows = tuple(replace(x, named=named_as[x.row]) if x.row in named_as else x for x in read)
+        out.append(Sheet(index, basis, scale, page, columns, tuple(cells), first, rows))
         before_columns, before_width, before_page, before_heading = columns, width, page, heading
     return out
 
@@ -514,25 +561,43 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
             if not _in_period(fact, cell.period, sheet.columns):
                 continue
             share = label_share(fact.labels, fact.segment, cell.label)
-            if agrees(fact, cell, sheet.scale) and (
-                share >= CROSSCHECK_LABEL_MIN
-                or _distinct(cell.printed)
-                or (
-                    fact.unit.endswith(PER_SHARE)
-                    and per_share_row(fact.labels, f"{cell.heading} {cell.label}")
-                )
-            ):
-                return _with(base, "agree", sheet, cell)
+            if agrees(fact, cell, sheet.scale):
+                rule = _rule(fact, cell, share)
+                if rule is not None:
+                    return _with(base, "agree", sheet, cell, share, rule)
             if share >= CROSSCHECK_DIFFER_LABEL_MIN and (best is None or share > best[0]):
                 best = (share, sheet, cell)
     if best is not None:
-        return _with(base, "differ", best[1], best[2])
+        return _with(base, "differ", best[1], best[2], best[0], None)
     return base
 
 
-def _with(base: Checked, outcome: Outcome, sheet: Sheet, cell: Cell) -> Checked:
+def _rule(fact: Fact, cell: Cell, share: float) -> Rule | None:
+    """What lets an equal figure count as the fact, tried in this order; None for nothing."""
+    if share >= CROSSCHECK_LABEL_MIN:
+        return "label"
+    if _distinct(cell.printed):
+        return "distinct"
+    if fact.unit.endswith(PER_SHARE) and per_share_row(fact.labels, f"{cell.heading} {cell.label}"):
+        return "per-share"
+    return None
+
+
+def _with(
+    base: Checked, outcome: Outcome, sheet: Sheet, cell: Cell, share: float, rule: Rule | None
+) -> Checked:
     return replace(
-        base, outcome=outcome, page=sheet.page, printed=cell.printed, row_label=cell.label
+        base,
+        outcome=outcome,
+        page=sheet.page,
+        printed=cell.printed,
+        row_label=cell.label,
+        sheet=sheet.index,
+        row=cell.row,
+        column=cell.column,
+        heading=cell.heading,
+        share=round(share, 3),
+        rule=rule,
     )
 
 
