@@ -567,6 +567,46 @@ def test_a_numbered_main_line_heads_its_own_block(
 
 
 @pytest.mark.parametrize(
+    ("rows", "read"),
+    [
+        pytest.param(
+            (
+                ("A 1. II. B.", "Segment Revenue", "", "", "", ""),
+                ("A 1. II. B.", "(a) Commercial Vehicle", "1", "1", "1", "1"),
+                ("A 1. II. B.", "(b) Passenger Vehicle", "1", "1", "1", "1"),
+            ),
+            (("heading", 1), ("figures", 1), ("figures", 1)),
+            id="a spanning cell copied down a segment table makes no main lines",
+        ),
+        pytest.param(
+            (
+                ("B.", "Cash flow from investing activities", "1", "1", "1", "1"),
+                ("B.", "Purchase of property", "1", "1", "1", "1"),
+                ("B.", "Dividend received", "1", "1", "1", "1"),
+            ),
+            (("main line", 1), ("figures", 1), ("figures", 1)),
+            id="a copied main line heads the block its copies sit in",
+        ),
+        pytest.param(
+            (
+                ("B.", "Cash flow from investing activities", "1", "1", "1", "1"),
+                ("B.", "Cash flow from financing activities", "1", "1", "1", "1"),
+            ),
+            (("main line", 1), ("main line", 2)),
+            id="the same numeral on two rows is two main lines",
+        ),
+    ],
+)
+def test_a_spanning_cells_copies_read_as_its_rows(
+    rows: tuple[tuple[str, ...], ...], read: tuple[tuple[str, int], ...]
+) -> None:
+    body = (("", "Revenue", "1", "2", "3", "4"), *rows)
+    [sheet] = sheets(_document("STANDALONE (₹ in crore)", (*_HEADER, *body)))
+    got = tuple((x.kind, x.block) for x in sheet.rows[1:])
+    assert got == read, sheet.rows
+
+
+@pytest.mark.parametrize(
     ("rows", "agreed"),
     [
         pytest.param(

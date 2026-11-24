@@ -89,6 +89,7 @@ CROSSCHECK_SEED = 20261101
 CROSSCHECK_GROUP_EXAMPLES = 3  # distinct values a review group lists before "…"
 CROSSCHECK_SPOT_CHECKS = 3  # facts of a group a person checks before a `right` verdict applies
 CROSSCHECK_TRACE_WINDOW = 8  # rows either side of a traced cell's row, after the header rows
+CROSSCHECK_SPAN_ROWS = 3  # rows a column repeats one text down to be a spanning cell's copies
 # Review pages: the kinds of copy a batch is spread over, in order, its default size and seed, and
 # the page image's width and quality under the artifact's size limit.
 REVIEW_PAGE_KINDS: tuple[str, ...] = (

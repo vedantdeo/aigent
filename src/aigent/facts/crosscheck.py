@@ -20,6 +20,7 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_EXCLUSIVE,
     CROSSCHECK_LABEL_MIN,
     CROSSCHECK_SCALES,
+    CROSSCHECK_SPAN_ROWS,
     CROSSCHECK_SYNONYMS,
     VERIFY_OCR_TICKERS,
 )
@@ -384,6 +385,7 @@ def sheets(document: Document) -> list[Sheet]:
         heading = (
             before_heading if continued else " ".join(c for c in header[-1] if c) if header else ""
         )
+        copies = _spanning(table.rows)
         body: list[tuple[int, list[tuple[int, tuple[float, int, bool]]], str, str, int]] = []
         read: list[RowRead] = []
         block = 0
@@ -404,7 +406,8 @@ def sheets(document: Document) -> list[Sheet]:
                 continue
             kind: RowKind = "figures"
             # a numbered main line (IX, XI, D.) heads its own block
-            if _MAIN_LINE.match(" ".join(c for c in row if c)):
+            printed = (c for j, c in enumerate(row) if c and (r, j) not in copies)
+            if _MAIN_LINE.match(" ".join(printed)):
                 heading, block, kind = label, block + 1, "main line"
             body.append((r, numbers, label, heading, block))
             read.append(RowRead(r, kind, label, label, heading, block))
@@ -425,6 +428,23 @@ def sheets(document: Document) -> list[Sheet]:
         out.append(Sheet(index, basis, scale, page, columns, tuple(cells), first, rows))
         before_columns, before_width, before_page, before_heading = columns, width, page, heading
     return out
+
+
+def _spanning(rows: Sequence[Sequence[str]]) -> set[tuple[int, int]]:
+    """The (row, column) cells copying a spanning cell's text: a run of `CROSSCHECK_SPAN_ROWS` or
+    more rows printing the same text in one column; the run's first row keeps it."""
+    copies: set[tuple[int, int]] = set()
+    for j in range(max((len(row) for row in rows), default=0)):
+        texts = [row[j].strip() if j < len(row) else "" for row in rows]
+        start = 0
+        while start < len(texts):
+            end = start + 1
+            while end < len(texts) and texts[end] == texts[start]:
+                end += 1
+            if end - start >= CROSSCHECK_SPAN_ROWS:
+                copies.update((r, j) for r in range(start + 1, end))
+            start = end
+    return copies
 
 
 def _serial(column: int, text: str) -> bool:

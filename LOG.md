@@ -2703,3 +2703,13 @@
   Sun Pharma FY25 basic EPS, `xbrl-filed`). Basic EPS checked per company: Bajaj Auto 70 of 126,
   ITC 29/126, Power Grid 91/126, Reliance 48/126, Sun Pharma 68/126, Tata Motors 38/126, Wipro
   78/126. $0.00.
+- 11-21: a spanning cell's copies make no main lines (Vedant: if the table reads more correctly).
+  Docling copies a spanning cell's text into every row it spans: Tata Motors' `A 1. II. B.` beside
+  each segment row, Power Grid's `B.` down its investing section, so each row read as a numbered
+  main line. Text repeated down 3 or more rows of a column (`CROSSCHECK_SPAN_ROWS`) now reads as a
+  main line on the run's first row only. 98 rows of 154,644 read differently (Tata Motors Jun-2025
+  and Sep-2024, Power Grid Sep-2024 and FY26); outcomes unchanged, 17,724 of 38,510. Tried and
+  dropped: leaving the copies out of every row lost Power Grid's `B. CASH FLOW FROM INVESTING
+  ACTIVITIES` main line; leaving them out of labels too lost 2 Reliance agreements. Correction to
+  s29 above: the copies were not why it sat on the Commercial Vehicle row; the OCR put each row's
+  figures one row above their label, which this does not touch. 5/5 mutants. $0.00.
