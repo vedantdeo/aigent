@@ -34,6 +34,7 @@ from aigent.facts.documents import (
     refusal,
     reocr_built,
 )
+from aigent.facts.printed import NUMERIC_DATE, WORDED_DATE, number
 from aigent.facts.share_events import PER_SHARE
 from aigent.facts.store import XBRL_TIERS
 from aigent.retrieval.chunk import Document
@@ -43,7 +44,6 @@ Rule = Literal["label", "distinct", "per-share"]  # what let an equal figure cou
 RowKind = Literal["heading", "main line", "figures"]
 _RANK: dict[Outcome, int] = {"unmatched": 0, "differ": 1, "agree": 2}
 
-_ZERO = {"..", "-", "–", "—", "nil", "0"}
 _MONTHS = {
     m: i
     for i, names in enumerate(
@@ -65,8 +65,6 @@ _MONTHS = {
     )
     for m in names
 }
-_NUMERIC_DATE = re.compile(r"(\d{1,2})[.,/-](\d{1,2})[.,/-](\d{4})")
-_WORDED_DATE = re.compile(r"([a-z]{3,9})\.?\s*(\d{1,2})\s*,?\s*(\d{4})")
 _DAY_FIRST_DATE = re.compile(r"\b(\d{1,2})\s*(?:st|nd|rd|th)?\s*([a-z]{3,9})\.?\s*,?\s*(\d{4})")
 _APOSTROPHE_DATE = re.compile(  # 30 Jun'24, 30th Sep'25
     r"(\d[\do]?)\s*(?:st|nd|rd|th)?\s*([a-z]{3})[a-z]*\s*['’‘`]\s*(\d{2})\b"
@@ -181,36 +179,6 @@ class Checked:
     rule: Rule | None = None
 
 
-def number(text: str) -> tuple[float, int, bool] | None:
-    """A cell as a printed number: its value, decimal places and whether it is a percentage; None
-    for text, a date, or two numbers in one cell. Dashes and `..` print a zero."""
-    t = text.strip().replace("−", "-")
-    if t.lower() in _ZERO:
-        return 0.0, 0, False
-    if _NUMERIC_DATE.search(t) or _WORDED_DATE.search(t.lower()):
-        return None
-    t = re.sub(r"^[.\s~]+(?=[\d(])", "", t)  # a leader of dots before the figure
-    if re.fullmatch(r"[\d,]+\.\s+\d+", t):  # a stray space after the point
-        t = re.sub(r"\s+", "", t)
-    match = re.fullmatch(r"(\()?(-)?([\d,.]+)(\))?\s*(%)?", t)
-    if not match or not re.search(r"\d", match.group(3)):
-        return None
-    digits = match.group(3)
-    if digits.count(".") == 0 and re.search(r",\d{2}$", digits):  # a decimal comma
-        digits = digits[: digits.rfind(",")] + "." + digits[digits.rfind(",") + 1 :]
-    if digits.count(".") > 1:  # points misread for separators
-        head, _, tail = digits.rpartition(".")
-        digits = head.replace(".", "") + "." + tail
-    digits = digits.replace(",", "")
-    if not re.fullmatch(r"\d+(\.\d+)?", digits):
-        return None
-    places = len(digits.partition(".")[2])
-    value = float(digits)
-    if match.group(1) or match.group(2):  # a closing bracket can fall in the next cell
-        value = -value
-    return value, places, bool(match.group(5))
-
-
 def _month_of(word: str) -> int | None:
     """A month by its name, or for an OCR'd one by its first two letters when no other month
     starts so: `sen` is September, `jul` must be spelled out."""
@@ -222,12 +190,12 @@ def _month_of(word: str) -> int | None:
 
 def _date_in(text: str) -> date | None:
     found: list[date] = []
-    for d, m, y in _NUMERIC_DATE.findall(text):
+    for d, m, y in NUMERIC_DATE.findall(text):
         try:
             found.append(date(int(y), int(m), int(d)))
         except ValueError:
             continue
-    for name, d, y in _WORDED_DATE.findall(text.lower()):
+    for name, d, y in WORDED_DATE.findall(text.lower()):
         month = _MONTHS.get(name)
         if month is None:
             continue

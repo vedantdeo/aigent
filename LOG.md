@@ -2713,3 +2713,25 @@
   ACTIVITIES` main line; leaving them out of labels too lost 2 Reliance agreements. Correction to
   s29 above: the copies were not why it sat on the Commercial Vehicle row; the OCR put each row's
   figures one row above their label, which this does not touch. 5/5 mutants. $0.00.
+- 11-24: **filed PDFs re-rowed by their printed lines, three cache layers, $0.00** (Vedant: improve
+  the parsing; every table, for one reading; cache only what is expensive and stable, nothing
+  twice). Docling reads a results section printed as one ruled box with a label per line as too
+  few rows: two lines merge (`103,546 1,436`) and labels slide off their figures (s29, s14);
+  merged figure cells are 3-4% in OCR copies and 2% born-digital, in 169 of 185 PDFs. Docling's
+  settings do not help (TableFormer already accurate; cell matching off empties the cells). Now
+  Docling keeps each table's box, columns and header rows, and each body row is one printed line
+  of the PDF's text layer (`facts.line_rows`). Measured in scratch, every step checked by two
+  audits over every table (figures kept, totals footing) and the cross-check: rotated pages,
+  OCR-layer fragments, runs crossing columns (split at their spaces), split header dates (header
+  kept from Docling) and rupee fonts each fixed in turn; re-rowing only tables Docling merged
+  scored 18,166, every table 18,115, chosen for one reading. Character-level words merged far
+  more cells; the page's stated rotation held on all 7,862 pages with tables, so its check went.
+  Result: 17,724 to 18,115 of 38,510 agree (+675, -285, 3,513 on another cell, not yet
+  spot-checked); OCR layers' merged figure cells 5,850 to 3,232, totals footing 47% to 56%;
+  born-digital still drops about 5,600 figures Docling had. Caches: `.docling` (as was), the
+  words of pages with tables (`-words-`, gzipped, 171 s to build) and the cross-check document
+  (`-lines-`, rendered and re-rowed in one); a re-rowing change rebuilds only the last, 50 s for
+  the 108 filed PDFs; cross-check 79 s cached. The 108 rendered verify `.json` (60 MB) were
+  orphaned and deleted. `number` moved to `facts.printed` (an import cycle); `build_pdf` to the
+  retrieval conftest; "Docling's table" panel renamed "As parsed". 31/31 mutants; 2,951 tests.
+  Nothing written to the database.

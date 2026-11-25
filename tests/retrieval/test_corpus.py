@@ -7,7 +7,6 @@ are read by a fake Docling (`conftest.fake_docling`), so no test downloads its m
 
 from __future__ import annotations
 
-import re
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -41,137 +40,21 @@ from aigent.retrieval.corpus import (
     to_document,
 )
 
-from .conftest import Footer, Grid, Heading, Picture, Piece, Running, docling, lines_of
+from .conftest import (
+    Footer,
+    Grid,
+    Heading,
+    Picture,
+    Piece,
+    Running,
+    build_pdf,
+    docling,
+    lines_of,
+)
 
 pytestmark = pytest.mark.usefixtures("fake_docling")
 
 HEADER = "RELIANCE INDUSTRIES LIMITED | INTEGRATED ANNUAL REPORT 2024-25"
-
-
-def build_pdf(
-    pages: list[list[str]],
-    second_font: str = "Courier",
-    encoding: bytes = b"/WinAnsiEncoding",
-    to_unicode: dict[str, str] | None = None,
-    boxed: str | None = None,
-    loops: bool = False,
-) -> bytes:
-    """An uncompressed PDF with these lines on these pages, so a test can read one back. A part of
-    a line in braces is drawn in `second_font`, with this encoding and, given one, a ToUnicode map
-    from each character drawn to the text it reads as. `boxed` is a line every page draws from a
-    form XObject, its braced part in a font object of its own of `second_font`'s family; with
-    `loops`, the form lists itself among its own XObjects."""
-    objects: list[bytes] = []
-
-    def add(body: bytes) -> int:
-        objects.append(body)
-        return len(objects)
-
-    catalog, pages_obj = add(b""), add(b"")
-    font = add(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-    extra = b""
-    if to_unicode is not None:
-        pairs = "\n".join(f"<{ord(a):04X}> <{ord(b):04X}>" for a, b in to_unicode.items())
-        cmap = (
-            "begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
-            f"{len(to_unicode)} beginbfchar\n{pairs}\nendbfchar\nendcmap\n"
-        ).encode()
-        mapped = add(
-            b"<< /Length " + str(len(cmap)).encode() + b" >>\nstream\n" + cmap + b"\nendstream"
-        )
-        extra = b" /ToUnicode " + str(mapped).encode() + b" 0 R"
-    font2 = add(
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /"
-        + second_font.encode()
-        + b" /Encoding "
-        + encoding
-        + extra
-        + b" >>"
-    )
-
-    def drawn(lines: list[str]) -> bytes:
-        text = b"BT /F1 12 Tf 72 720 Td 14 TL\n"
-        for line in lines:
-            for number, part in enumerate(re.split(r"[{}]", line)):
-                escaped = part.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
-                text += b"/F2 12 Tf " if number % 2 else b"/F1 12 Tf "
-                text += b"(" + escaped.encode("cp1252") + b") Tj\n"
-            text += b"T*\n"
-        return text + b"ET"
-
-    xobject = b""
-    if boxed is not None:
-        font3 = add(
-            b"<< /Type /Font /Subtype /Type1 /BaseFont /"
-            + second_font.encode()
-            + b" /Encoding "
-            + encoding
-            + b" >>"
-        )
-        form = drawn([boxed])
-        box = len(objects) + 1
-        itself = b" /XObject << /X1 " + str(box).encode() + b" 0 R >>" if loops else b""
-        add(
-            b"<< /Type /XObject /Subtype /Form /BBox [0 0 612 792] /Resources << /Font << /F1 "
-            + str(font).encode()
-            + b" 0 R /F2 "
-            + str(font3).encode()
-            + b" 0 R >>"
-            + itself
-            + b" >> /Length "
-            + str(len(form)).encode()
-            + b" >>\nstream\n"
-            + form
-            + b"\nendstream"
-        )
-        xobject = b" /XObject << /X1 " + str(box).encode() + b" 0 R >>"
-
-    kids: list[int] = []
-    for lines in pages:
-        text = drawn(lines) + (b"\nq 1 0 0 1 0 -400 cm /X1 Do Q" if boxed is not None else b"")
-        content = add(
-            b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"\nendstream"
-        )
-        kids.append(
-            add(
-                b"<< /Type /Page /Parent " + str(pages_obj).encode() + b" 0 R "
-                b"/MediaBox [0 0 612 792] /Contents " + str(content).encode() + b" 0 R "
-                b"/Resources << /Font << /F1 "
-                + str(font).encode()
-                + b" 0 R /F2 "
-                + str(font2).encode()
-                + b" 0 R >>"
-                + xobject
-                + b" >> >>"
-            )
-        )
-
-    objects[catalog - 1] = b"<< /Type /Catalog /Pages " + str(pages_obj).encode() + b" 0 R >>"
-    objects[pages_obj - 1] = (
-        b"<< /Type /Pages /Kids [" + b" ".join(f"{kid} 0 R".encode() for kid in kids) + b"] "
-        b"/Count " + str(len(kids)).encode() + b" >>"
-    )
-
-    out = bytearray(b"%PDF-1.4\n")
-    offsets: list[int] = []
-    for number, body in enumerate(objects, start=1):
-        offsets.append(len(out))
-        out += str(number).encode() + b" 0 obj\n" + body + b"\nendobj\n"
-
-    xref_at = len(out)
-    out += b"xref\n0 " + str(len(objects) + 1).encode() + b"\n0000000000 65535 f \n"
-    for offset in offsets:
-        out += f"{offset:010d} 00000 n \n".encode()
-    out += (
-        b"trailer\n<< /Size "
-        + str(len(objects) + 1).encode()
-        + b" /Root "
-        + str(catalog).encode()
-        + b" 0 R >>\nstartxref\n"
-        + str(xref_at).encode()
-        + b"\n%%EOF\n"
-    )
-    return bytes(out)
 
 
 def annual_report(directory: Path, stem: str = "RELIANCE-FY25") -> Path:

@@ -10,7 +10,7 @@ concept. `python -m aigent.facts share-events` lists the share events held, and
 `verify-share-event --id N --by P [--kind K --effective D --ratio A:B]` records a person's check
 of one, naming an unknown one's kind, date and ratio.
 `python -m aigent.facts trace --rows PATH --facts N ...`: each fact's cell from a cross-check run's
-`.rows.jsonl`, traced through its table as Docling parsed it and the cross-check read it, as JSON
+`.rows.jsonl`, traced through its table as parsed and as the cross-check read it, as JSON
 on stdout; free, from the parse caches.
 `python -m aigent.facts review-page --name N [--outcome agree|differ] [--add K] [--rows PATH]
 [--url U]`: build review page N's HTML from a run's rows (the newest by default), first drawing K

@@ -30,10 +30,10 @@ from aigent.facts.crosscheck import (
     documents_for,
     facts_to_check,
     label_share,
-    number,
     sheets,
 )
 from aigent.facts.documents import Entry
+from aigent.facts.printed import number
 from aigent.facts.store import FilingRow, sync_xbrl_facts, upsert_filing
 from aigent.facts.xbrl import Fact as XbrlFact
 from aigent.retrieval.chunk import Document, Table
