@@ -18,6 +18,7 @@ from aigent.facts.store import (
     apply_labels,
     connect,
     covers,
+    demote_derived,
     derived_held,
     normal_scope,
     scope_refusal,
@@ -338,6 +339,10 @@ def test_an_older_database_keeps_its_rows_links_and_indexes(old_db: Path) -> Non
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
     assert {"facts_xbrl_once", "facts_lookup"} <= names
+    assert (
+        conn.execute("SELECT count(*) FROM facts WHERE verified_with IS NOT NULL").fetchone()[0]
+        == 0
+    )
     with pytest.raises(sqlite3.IntegrityError):  # the new constraints hold
         conn.execute("UPDATE facts SET verified_by = NULL, verified_at = NULL WHERE id = 8")
     conn.close()
@@ -363,11 +368,11 @@ def test_a_rebuild_keeps_a_check_only_while_the_value_holds(
     sync_xbrl_facts(conn, fid, "ITC", "consolidated", [REVENUE], WRITER)
     conn.execute(
         """UPDATE facts SET tier = 'xbrl-filed', verified_by = 'nse-pdf:results/ITC-2025-03-31.pdf',
-                  verified_at = 't'"""
+                  verified_at = 't', verified_with = 'r1'"""
     )
     sync_xbrl_facts(conn, fid, "ITC", "consolidated", [replace(REVENUE, value=value)], WRITER)
-    row = conn.execute("SELECT tier, verified_by, verified_at FROM facts").fetchone()
-    assert row == kept, row
+    row = conn.execute("SELECT tier, verified_by, verified_at, verified_with FROM facts").fetchone()
+    assert row == (*kept, "r1" if kept[0] == "xbrl-filed" else None), row
 
 
 @pytest.mark.parametrize(
@@ -415,6 +420,80 @@ def _checked(conn: sqlite3.Connection, tier: str) -> list[int]:
     by = None if tier.endswith("-ai") else "nse-pdf:x"
     conn.execute("UPDATE facts SET tier = ?, verified_by = ?, verified_at = ?", (tier, by, by))
     return [r[0] for r in conn.execute("SELECT id FROM facts ORDER BY id")]
+
+
+def test_a_version_4_database_gains_an_unstamped_reading(tmp_path: Path) -> None:
+    path = tmp_path / "v4.sqlite"
+    old = sqlite3.connect(path)
+    old.executescript(_OLD_FACTS)
+    old.execute("PRAGMA user_version = 4")
+    old.execute(
+        "INSERT INTO filings VALUES (1, 'ITC', 2025, '2025-03-31', 'c', 'xbrl', 'u', 's', 't')"
+    )
+    old.execute(
+        """INSERT INTO facts (id, filing_id, ticker, basis, concept, label, period_kind,
+                  period_end, value, unit, tier, written_by, written_at, run_id, verified_by,
+                  verified_at, printed, page)
+           VALUES (5, 1, 'ITC', 'consolidated', 'C', 'C', 'instant', '2025-03-31', 1.0, 'INR',
+                   'xbrl-filed', 'w', 't', 'r', 'nse-pdf:results/X.pdf', 't', '1.0', 2)"""
+    )
+    old.commit()
+    old.close()
+    conn = connect(path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    assert conn.execute(
+        "SELECT tier, verified_by, printed, page, verified_with FROM facts"
+    ).fetchall() == [("xbrl-filed", "nse-pdf:results/X.pdf", "1.0", 2, None)]
+
+
+@pytest.mark.parametrize(
+    ("tier", "by"),
+    [
+        pytest.param("xbrl-ai", None, id="an unchecked fact"),
+        pytest.param("xbrl", "vedant", id="a person's check"),
+        pytest.param("derived", "vedant", id="a derived fact"),
+    ],
+)
+def test_only_a_filed_documents_check_names_a_reading(
+    conn: sqlite3.Connection, tier: str, by: str | None
+) -> None:
+    sync_xbrl_facts(conn, _filing(conn), "ITC", "consolidated", [REVENUE], WRITER)
+    conn.execute(
+        "UPDATE facts SET tier = 'xbrl-filed', verified_by = 'nse-pdf:x', verified_at = 't', "
+        "verified_with = 'r1'"
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+        conn.execute("UPDATE facts SET tier = ?, verified_by = ?, verified_at = ?", (tier, by, by))
+
+
+@pytest.mark.parametrize(
+    ("inputs", "tier", "demoted"),
+    [
+        pytest.param(("xbrl-filed", "xbrl"), "derived", 0, id="every input checked keeps it"),
+        pytest.param(("xbrl-filed", "xbrl-ai"), "derived-ai", 1, id="an input unchecked demotes"),
+    ],
+)
+def test_demote_derived_follows_its_inputs_checks(
+    conn: sqlite3.Connection, inputs: tuple[str, str], tier: str, demoted: int
+) -> None:
+    ids = _checked(conn, "xbrl-filed")
+    derived = write_derived(conn, GROWTH, ids, WRITER, checked_by="vedant")
+    unchecked = write_derived(conn, replace(GROWTH, formula='{"formula_id": 2}'), ids, WRITER)
+    for fid, input_tier in zip(ids, inputs, strict=True):
+        by = None if input_tier == "xbrl-ai" else "x"
+        conn.execute(
+            "UPDATE facts SET tier = ?, verified_by = ?, verified_at = ? WHERE id = ?",
+            (input_tier, by, by, fid),
+        )
+    assert demote_derived(conn) == demoted
+    rows = conn.execute(
+        "SELECT id, tier, verified_by FROM facts WHERE id IN (?, ?) ORDER BY id",
+        (derived, unchecked),
+    ).fetchall()
+    assert rows == [
+        (derived, tier, "vedant" if demoted == 0 else None),
+        (unchecked, "derived-ai", None),
+    ], rows
 
 
 def test_write_formula_writes_a_new_formula_and_reuses_a_held_one(

@@ -1,0 +1,22 @@
+{"url": "https://claude.ai/artifact/XRTwQsNqv4H45zrKX2C4WS", "cards": [
+  {"id": "d01", "document": "results/TATAMOTORS-2024-09-30.pdf#rapidocr", "sheet": 16, "batch": 1, "pool": "differs"},
+  {"id": "d02", "document": "results/TATAMOTORS-2025-09-30.pdf", "sheet": 1, "batch": 1, "pool": "differs"},
+  {"id": "d03", "document": "results/SUNPHARMA-2023-12-31.pdf", "sheet": 4, "batch": 1, "pool": "differs"},
+  {"id": "d04", "document": "results/TATAMOTORS-2024-12-31.pdf", "sheet": 11, "batch": 1, "pool": "differs"},
+  {"id": "d05", "document": "results/RELIANCE-2025-12-31.pdf#rapidocr", "sheet": 0, "batch": 1, "pool": "differs"},
+  {"id": "d06", "document": "results/RELIANCE-2025-12-31.pdf#rapidocr", "sheet": 5, "batch": 1, "pool": "differs"},
+  {"id": "d07", "document": "results/RELIANCE-2024-12-31.pdf#rapidocr", "sheet": 0, "batch": 1, "pool": "differs"},
+  {"id": "d08", "document": "results/ITC-2023-09-30.pdf", "sheet": 5, "batch": 1, "pool": "differs"},
+  {"id": "d09", "document": "results/ITC-2024-09-30.pdf", "sheet": 6, "batch": 1, "pool": "differs"},
+  {"id": "d10", "document": "results/TATAMOTORS-2024-06-30.pdf#rapidocr", "sheet": 10, "batch": 1, "pool": "differs"},
+  {"id": "d11", "document": "results/RELIANCE-2024-12-31.pdf#rapidocr", "sheet": 5, "batch": 1, "pool": "differs"},
+  {"id": "d12", "document": "annual/TATAMOTORS-FY26.pdf", "sheet": 428, "batch": 1, "pool": "differs"},
+  {"id": "d13", "document": "results/ITC-2025-09-30.pdf", "sheet": 4, "batch": 1, "pool": "differs"},
+  {"id": "d14", "document": "results/RELIANCE-2024-12-31.pdf#rapidocr", "sheet": 3, "batch": 1, "pool": "differs"},
+  {"id": "d15", "document": "results/TATAMOTORS-2024-09-30.pdf", "sheet": 3, "batch": 1, "pool": "differs"},
+  {"id": "d16", "document": "results/WIPRO-2025-09-30.pdf", "sheet": 2, "batch": 1, "pool": "differs"},
+  {"id": "d17", "document": "results/ITC-2024-09-30.pdf", "sheet": 2, "batch": 1, "pool": "differs"},
+  {"id": "d18", "document": "annual/POWERGRID-FY24.pdf", "sheet": 24, "batch": 1, "pool": "differs"},
+  {"id": "d19", "document": "results/SUNPHARMA-2025-09-30.pdf", "sheet": 9, "batch": 1, "pool": "differs"},
+  {"id": "d20", "document": "results/TATAMOTORS-2024-03-31.pdf#rapidocr", "sheet": 14, "batch": 1, "pool": "differs"}
+]}

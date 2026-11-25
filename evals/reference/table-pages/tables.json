@@ -1,0 +1,22 @@
+{"url": "https://claude.ai/artifact/8EBCRkLBUYkUSPUbjE64Cp", "cards": [
+  {"id": "t01", "document": "results/BAJAJ-AUTO-2025-03-31.pdf", "sheet": 5, "batch": 1, "pool": "flagged"},
+  {"id": "t02", "document": "results/HDFCBANK-2024-12-31.htm", "sheet": 28, "batch": 1, "pool": "any"},
+  {"id": "t03", "document": "results/BAJAJ-AUTO-2023-09-30.pdf", "sheet": 10, "batch": 1, "pool": "any"},
+  {"id": "t04", "document": "annual/TATAMOTORS-FY25.pdf", "sheet": 626, "batch": 1, "pool": "flagged"},
+  {"id": "t05", "document": "annual/TATAMOTORS-FY25.pdf", "sheet": 39, "batch": 1, "pool": "flagged"},
+  {"id": "t06", "document": "results/TATAMOTORS-2024-09-30.pdf#rapidocr", "sheet": 12, "batch": 1, "pool": "any"},
+  {"id": "t07", "document": "annual/TATAMOTORS-FY26.pdf", "sheet": 556, "batch": 1, "pool": "any"},
+  {"id": "t08", "document": "results/HDFCBANK-2023-06-30.htm", "sheet": 2, "batch": 1, "pool": "flagged"},
+  {"id": "t09", "document": "annual/TATAMOTORS-FY26.pdf", "sheet": 430, "batch": 1, "pool": "any"},
+  {"id": "t10", "document": "results/RELIANCE-2024-09-30.pdf#rapidocr", "sheet": 3, "batch": 1, "pool": "flagged"},
+  {"id": "t11", "document": "results/BAJAJ-AUTO-2025-06-30.pdf", "sheet": 0, "batch": 1, "pool": "flagged"},
+  {"id": "t12", "document": "results/WIPRO-2025-03-31.pdf#rapidocr", "sheet": 32, "batch": 1, "pool": "any"},
+  {"id": "t13", "document": "results/ITC-2025-09-30.pdf#rapidocr", "sheet": 7, "batch": 1, "pool": "flagged"},
+  {"id": "t14", "document": "annual/RELIANCE-FY25.pdf", "sheet": 229, "batch": 1, "pool": "flagged"},
+  {"id": "t15", "document": "annual/ICICIBANK-FY26.pdf", "sheet": 138, "batch": 1, "pool": "any"},
+  {"id": "t16", "document": "results/HDFCBANK-2026-03-31.htm", "sheet": 15, "batch": 1, "pool": "flagged"},
+  {"id": "t17", "document": "results/HDFCBANK-2025-06-30.htm", "sheet": 28, "batch": 1, "pool": "any"},
+  {"id": "t18", "document": "results/POWERGRID-2026-03-31.pdf", "sheet": 31, "batch": 1, "pool": "flagged"},
+  {"id": "t19", "document": "results/ITC-2023-12-31.pdf", "sheet": 2, "batch": 1, "pool": "any"},
+  {"id": "t20", "document": "results/TATAMOTORS-2025-09-30.pdf", "sheet": 16, "batch": 1, "pool": "any"}
+]}

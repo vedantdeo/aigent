@@ -18,7 +18,8 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_SEED,
     CROSSCHECK_SPOT_CHECKS,
 )
-from aigent.facts.crosscheck import Checked, number
+from aigent.facts.crosscheck import Checked
+from aigent.facts.printed import number
 
 Issue = Literal["xbrl zero", "printed x100", "differs", "not printed"]
 Verdict = Literal["right", "wrong", "elsewhere"]

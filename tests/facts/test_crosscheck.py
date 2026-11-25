@@ -17,24 +17,24 @@ import psutil
 import pytest
 
 from aigent.facts import __main__ as cli
+from aigent.facts import crosscheck as crosscheck_module
 from aigent.facts.crosscheck import (
+    CROSSCHECK_FINGERPRINT,
     Column,
     Fact,
     RowRead,
     agrees,
     apply,
     check_fact,
-    column_periods,
     crosscheck,
-    document_scale,
     documents_for,
     facts_to_check,
-    label_share,
-    number,
+    fingerprint,
+    recheck,
     sheets,
 )
 from aigent.facts.documents import Entry
-from aigent.facts.store import FilingRow, sync_xbrl_facts, upsert_filing
+from aigent.facts.store import DerivedRow, FilingRow, sync_xbrl_facts, upsert_filing, write_derived
 from aigent.facts.xbrl import Fact as XbrlFact
 from aigent.retrieval.chunk import Document, Table
 
@@ -85,227 +85,6 @@ def _fact(
 STANDALONE = _document("STANDALONE FINANCIAL RESULTS (₹ in crore)", _RESULTS)
 
 
-@pytest.mark.parametrize(
-    ("printed", "read"),
-    [
-        ("38,995.78", (38995.78, 2, False)),
-        ("1,07,000", (107000.0, 0, False)),
-        ("59923,95", (59923.95, 2, False)),
-        ("1.407.45", (1407.45, 2, False)),
-        ("2652. 72", (2652.72, 2, False)),
-        (".. 14,692.66", (14692.66, 2, False)),
-        ("(1,937.10)", (-1937.10, 2, False)),
-        ("(29642.01", (-29642.01, 2, False)),
-        ("-12.5", (-12.5, 1, False)),
-        ("2.15%", (2.15, 2, True)),
-        ("..", (0.0, 0, False)),
-        ("-", (0.0, 0, False)),
-        ("—", (0.0, 0, False)),
-        pytest.param("15.73 15.46", None, id="two numbers in a cell"),
-        pytest.param("31.03.2025", None, id="a date"),
-        pytest.param("June 30, 2024", None, id="a worded date"),
-        pytest.param("Interest earned", None, id="text"),
-        pytest.param("", None, id="an empty cell"),
-    ],
-)
-def test_number(printed: str, read: tuple[float, int, bool] | None) -> None:
-    assert number(printed) == read
-
-
-@pytest.mark.parametrize(
-    ("header", "expected"),
-    [
-        pytest.param(
-            _HEADER,
-            {
-                2: Column(date(2024, 6, 30), 3),
-                3: Column(date(2024, 3, 31), 3),
-                4: Column(date(2023, 6, 30), 3),
-                5: Column(date(2024, 3, 31), 12),
-            },
-            id="a group heading over dated columns",
-        ),
-        pytest.param(
-            (
-                ("Six months ended",),
-                ("", "Three months ended", "", "Six months ended", "Year ended"),
-                (
-                    "Particulars",
-                    "September 30, 2025 (Q2-2026)",
-                    "June 30, 2025 (Q1-2026)",
-                    "September 30, 2025 (H1-2026)",
-                    "March 31, 2025 (FY2025)",
-                ),
-            ),
-            {
-                1: Column(date(2025, 9, 30), 3),
-                2: Column(date(2025, 6, 30), 3),
-                3: Column(date(2025, 9, 30), 6),
-                4: Column(date(2025, 3, 31), 12),
-            },
-            id="a column's own cells over a stray heading",
-        ),
-        pytest.param(
-            (("Particulars", "As at 31.03.2025", "Asat 31.03.2024"),),
-            {1: Column(date(2025, 3, 31), 0), 2: Column(date(2024, 3, 31), 0)},
-            id="balances as at a day",
-        ),
-        pytest.param(
-            (("", "Nine months ended", ""), ("Particulars", "31.12.2024", "31.12.2023")),
-            {1: Column(date(2024, 12, 31), 9), 2: Column(date(2023, 12, 31), 9)},
-            id="nine months",
-        ),
-        pytest.param(
-            (("Particulars", "31.12.2024"),),
-            {1: Column(date(2024, 12, 31), None)},
-            id="a date with no length",
-        ),
-        pytest.param(
-            (
-                ("Particulars", "Quarter Ended", "", "", "Half Year Ended"),
-                ("", "30 Sep'24", "30 Jun'24", "30 Sep'23", "30 Sep'24"),
-            ),
-            {
-                1: Column(date(2024, 9, 30), 3),
-                2: Column(date(2024, 6, 30), 3),
-                3: Column(date(2023, 9, 30), 3),
-                4: Column(date(2024, 9, 30), 6),
-            },
-            id="Reliance's day, month and two-digit year",
-        ),
-        pytest.param(
-            (("", "Quarter Ended", "", ""), ("", "3osea'24", "30 Sen'23", "30 Seo'24")),
-            {
-                1: Column(date(2024, 9, 30), 3),
-                2: Column(date(2023, 9, 30), 3),
-                3: Column(date(2024, 9, 30), 3),
-            },
-            id="an OCR'd month read by the two letters only September starts with",
-        ),
-        pytest.param(
-            (("", "Quarter Ended", ""), ("", "30 Jnu'24", "31 Mav'24")),
-            {},
-            id="an OCR'd month two months start like is left undated",
-        ),
-        pytest.param(
-            (
-                ("Particulars", "Quarter Ended", "", "", "Half Year Ended", "", "Year Ended"),
-                (
-                    "",
-                    "30thSeo'25",
-                    "30 th Jun'25",
-                    "30 th Sep'24",
-                    "30th Sep'25",
-                    "30th Seo'24",
-                    "31 st Mar'25",
-                ),
-            ),
-            {
-                1: Column(date(2025, 9, 30), 3),
-                2: Column(date(2025, 6, 30), 3),
-                3: Column(date(2024, 9, 30), 3),
-                4: Column(date(2025, 9, 30), 6),
-                5: Column(date(2024, 9, 30), 6),
-                6: Column(date(2025, 3, 31), 12),
-            },
-            id="Reliance's ordinal days",
-        ),
-        pytest.param(
-            (
-                ("", "Quarter Ended", "", "Half Year Ended"),
-                ("Particulars", "30.09.2025", "30.06.2025", "30.09.2025"),
-                (
-                    "Earnings per equity share (Not Annualised for the quarter/half year)",
-                    "",
-                    "",
-                    "",
-                ),
-            ),
-            {
-                1: Column(date(2025, 9, 30), 3),
-                2: Column(date(2025, 6, 30), 3),
-                3: Column(date(2025, 9, 30), 6),
-            },
-            id="a title in the label column carries over no column",
-        ),
-        pytest.param(
-            (("", "", "(₹ in crores)", ""), ("", "PROFITS", "2024 - 25", "2023 - 24")),
-            {2: Column(date(2025, 3, 31), 12), 3: Column(date(2024, 3, 31), 12)},
-            id="ITC's financial years",
-        ),
-        pytest.param(
-            (("Particulars", "FY25", "FY 2024"),),
-            {1: Column(date(2025, 3, 31), 12), 2: Column(date(2024, 3, 31), 12)},
-            id="FY short forms",
-        ),
-        pytest.param(
-            (("Particulars", "2019-24"),),
-            {},
-            id="a span of years is no financial year",
-        ),
-        pytest.param(
-            (
-                ("", "", "For the year ended", ""),
-                ("Particulars", "Note No.", "2025", "(₹ In Crore) 31 March 2024"),
-            ),
-            {2: Column(date(2025, 3, 31), 12), 3: Column(date(2024, 3, 31), 12)},
-            id="Bajaj Auto's bare year takes its neighbour's day",
-        ),
-        pytest.param(
-            (("Particulars", "2025", "2024"),),
-            {},
-            id="bare years with no dated neighbour stay undated",
-        ),
-        pytest.param(
-            (("", "Year ended", "", ""), ("Particulars", "2025", "31 March 2024", "31.12.2023")),
-            {2: Column(date(2024, 3, 31), 12), 3: Column(date(2023, 12, 31), 12)},
-            id="a bare year among neighbours of different days stays undated",
-        ),
-        pytest.param(
-            (("Particulars", "Year ended 31st March, 2025", "As at 31 st March 2024"),),
-            {1: Column(date(2025, 3, 31), 12), 2: Column(date(2024, 3, 31), 0)},
-            id="the day first, as annual reports print it",
-        ),
-        pytest.param(
-            (("Particulars", "December 2023", "31.03.2024"),),
-            {2: Column(date(2024, 3, 31), None)},
-            id="a month and year with no day takes no neighbour's day",
-        ),
-        pytest.param(
-            (
-                ("(₹ in crores)",),
-                ("2024",),
-                ("", "", "As at March 31, 2025", "As at March 31,"),
-                ("", "", "2024", ""),
-            ),
-            {2: Column(date(2025, 3, 31), 0)},
-            id="Tata Motors' year on a line of its own is a wrapped title, not a column",
-        ),
-        pytest.param(
-            (("Particulars", "31.03.2025", "31.03.2024"), ("Restated", "2024", "")),
-            {1: Column(date(2025, 3, 31), None), 2: Column(date(2024, 3, 31), None)},
-            id="a dated column keeps its date over a stray year",
-        ),
-    ],
-)
-def test_column_periods(header: tuple[tuple[str, ...], ...], expected: dict[int, Column]) -> None:
-    assert column_periods(header) == expected
-
-
-@pytest.mark.parametrize(
-    ("text", "scale"),
-    [
-        ("(₹ in crore) ... (₹ in crore) ... in lac", 1e7),
-        ("(₹ in lac) figures in lakhs", 1e5),
-        ("USD in million", 1e6),
-        pytest.param("the place where it was replaced", None, id="lac inside a word"),
-        ("no scale here", None),
-    ],
-)
-def test_document_scale(text: str, scale: float | None) -> None:
-    assert document_scale(text) == scale
-
-
 def test_a_sheet_takes_its_basis_and_scale_from_the_text_before_it() -> None:
     document = _document(
         "STANDALONE FINANCIAL RESULTS (₹ in crore)",
@@ -321,6 +100,52 @@ def test_a_sheet_takes_its_basis_and_scale_from_the_text_before_it() -> None:
         ("standalone", 1e7),
         ("consolidated", 1e5),
     ]
+
+
+@pytest.mark.parametrize(
+    ("heading", "basis"),
+    [
+        pytest.param("STATEMENT OF CONSOUDATED RESULTS", "consolidated", id="OCR's CONSOUDATED"),
+        pytest.param("STANDALQNE RESULTS", "standalone", id="OCR's STANDALQNE"),
+        pytest.param("Basis of consolidation", "standalone", id="consolidation is no basis"),
+    ],
+)
+def test_a_basis_is_read_through_ocr_misspellings(heading: str, basis: str) -> None:
+    document = _document("STANDALONE RESULTS (₹ in crore)", _RESULTS, heading, _RESULTS)
+    assert sheets(document)[1].basis == basis
+
+
+_QUARTER_AND_NINE = {1: Column(date(2024, 12, 31), None), 2: Column(date(2024, 12, 31), 9)}
+
+
+@pytest.mark.parametrize(
+    ("columns", "period", "within"),
+    [
+        pytest.param(
+            _QUARTER_AND_NINE,
+            (date(2024, 10, 1), date(2024, 12, 31)),
+            True,
+            id="the one column of no length a quarter could be",
+        ),
+        pytest.param(
+            {**_QUARTER_AND_NINE, 2: Column(date(2024, 12, 31), 3)},
+            (date(2024, 10, 1), date(2024, 12, 31)),
+            False,
+            id="not when another column ending that day states the quarter",
+        ),
+        pytest.param(
+            {**_QUARTER_AND_NINE, 3: Column(date(2024, 12, 31), None)},
+            (date(2024, 10, 1), date(2024, 12, 31)),
+            False,
+            id="nor when two of no length end that day",
+        ),
+    ],
+)
+def test_a_column_of_no_length_is_a_periods_when_no_other_could_be(
+    columns: dict[int, Column], period: tuple[date, date], within: bool
+) -> None:
+    fact = _fact(period=period)
+    assert crosscheck_module._in_period(fact, columns[1], columns) is within
 
 
 def test_a_sheet_with_no_scale_near_it_takes_the_documents() -> None:
@@ -567,6 +392,46 @@ def test_a_numbered_main_line_heads_its_own_block(
 
 
 @pytest.mark.parametrize(
+    ("rows", "read"),
+    [
+        pytest.param(
+            (
+                ("A 1. II. B.", "Segment Revenue", "", "", "", ""),
+                ("A 1. II. B.", "(a) Commercial Vehicle", "1", "1", "1", "1"),
+                ("A 1. II. B.", "(b) Passenger Vehicle", "1", "1", "1", "1"),
+            ),
+            (("heading", 1), ("figures", 1), ("figures", 1)),
+            id="a spanning cell copied down a segment table makes no main lines",
+        ),
+        pytest.param(
+            (
+                ("B.", "Cash flow from investing activities", "1", "1", "1", "1"),
+                ("B.", "Purchase of property", "1", "1", "1", "1"),
+                ("B.", "Dividend received", "1", "1", "1", "1"),
+            ),
+            (("main line", 1), ("figures", 1), ("figures", 1)),
+            id="a copied main line heads the block its copies sit in",
+        ),
+        pytest.param(
+            (
+                ("B.", "Cash flow from investing activities", "1", "1", "1", "1"),
+                ("B.", "Cash flow from financing activities", "1", "1", "1", "1"),
+            ),
+            (("main line", 1), ("main line", 2)),
+            id="the same numeral on two rows is two main lines",
+        ),
+    ],
+)
+def test_a_spanning_cells_copies_read_as_its_rows(
+    rows: tuple[tuple[str, ...], ...], read: tuple[tuple[str, int], ...]
+) -> None:
+    body = (("", "Revenue", "1", "2", "3", "4"), *rows)
+    [sheet] = sheets(_document("STANDALONE (₹ in crore)", (*_HEADER, *body)))
+    got = tuple((x.kind, x.block) for x in sheet.rows[1:])
+    assert got == read, sheet.rows
+
+
+@pytest.mark.parametrize(
     ("rows", "agreed"),
     [
         pytest.param(
@@ -609,6 +474,31 @@ def test_a_rows_serial_number_is_not_a_figure() -> None:
     assert sheet.cells[0].label == "Interest earned"
 
 
+@pytest.mark.parametrize(
+    ("note", "heading"),
+    [
+        pytest.param("14", "EARNINGS PER SHARE", id="a note number heads no figures"),
+        pytest.param("4.1", "EARNINGS PER SHARE", id="a numbered sub-note too"),
+        pytest.param(
+            "15.15",
+            "Particulars Note 30.06.2024 31.03.2024",
+            id="a figure of two places left of the dates stays one",
+        ),
+    ],
+)
+def test_a_note_reference_left_of_the_dates_is_not_a_figure(note: str, heading: str) -> None:
+    rows = (
+        ("", "Particulars", "Note", "30.06.2024", "31.03.2024"),
+        ("", "Revenue", "", "100", "90"),
+        ("", "EARNINGS PER SHARE", note, "", ""),
+        ("(a)", "Basic", "", "4.47", "4.06"),
+    )
+    [sheet] = sheets(_document("STANDALONE (₹ in crore)", rows))
+    basic = next(c for c in sheet.cells if c.printed == "4.47")
+    assert basic.heading == heading, sheet.cells
+    assert any(c.column == 2 for c in sheet.cells) is (note == "15.15"), sheet.cells
+
+
 def test_a_row_sitting_a_column_off_its_header_is_read_by_order() -> None:
     shifted = (*_HEADER, ("Interest earned", "38,995.78", "37,948.36", "33,327.61", "142,890.94"))
     [sheet] = sheets(_document("STANDALONE (₹ in crore)", shifted))
@@ -637,6 +527,34 @@ def test_a_row_short_of_figures_is_read_by_its_own_columns() -> None:
         pytest.param(_fact(unit="pure", value=0.0002), "2.15%", 1e7, False, id="filed /100"),
         pytest.param(_fact(unit="pure", value=0.41), "0.41", 1e7, True, id="a plain ratio"),
         pytest.param(_fact(value=21500000.0), "2.15%", 1e7, False, id="a percentage for rupees"),
+        pytest.param(
+            _fact(concept="InterestPaidClassifiedAsFinancingActivities", value=462500000.0),
+            "(46.25)",
+            1e7,
+            True,
+            id="a payment filed positive, printed in brackets",
+        ),
+        pytest.param(
+            _fact(concept="AdjustmentsForInterestIncome", value=8743300000.0),
+            "(874.33)",
+            1e7,
+            True,
+            id="interest income deducted in the cash flow",
+        ),
+        pytest.param(
+            _fact(concept="ProfitLossForPeriod", value=462500000.0),
+            "(46.25)",
+            1e7,
+            False,
+            id="a loss is no profit",
+        ),
+        pytest.param(
+            _fact(concept="InterestPaidClassifiedAsFinancingActivities", value=462500000.0),
+            "(46.26)",
+            1e7,
+            False,
+            id="a payment still to the last digit",
+        ),
     ],
 )
 def test_agrees(fact: Fact, printed: str, scale: float | None, agreed: bool) -> None:
@@ -707,6 +625,79 @@ def test_check_fact(fact: Fact, outcome: str, printed: str | None) -> None:
     assert (checked.outcome, checked.printed) == (outcome, printed), checked
 
 
+_TCI = ("Total comprehensive income for the period",)
+_TCI_FIGURE = ("1,000.00", "1", "1", "1")
+
+
+def _row(n: str, label: str, figures: tuple[str, ...] = _TCI_FIGURE) -> tuple[str, ...]:
+    return (n, label, *figures)
+
+
+@pytest.mark.parametrize(
+    ("tables", "agreed"),
+    [
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Total comprehensive income from continuing operations"))),
+                (1, (*_HEADER, _row("2", "Total comprehensive income for the period"))),
+            ],
+            (1, "Total comprehensive income for the period", 1.0),
+            id="a full label later beats a partial one first",
+        ),
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Total comprehensive income for the period"))),
+                (1, (*_HEADER, _row("2", "Total comprehensive income for the period (net)"))),
+            ],
+            (0, "Total comprehensive income for the period", 1.0),
+            id="on a tie the first is kept",
+        ),
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Statement line", ("1,000.00", "", "", "")))),
+                (1, (*_HEADER, _row("2", "Total comprehensive income for the period"))),
+            ],
+            (1, "Total comprehensive income for the period", 1.0),
+            id="a labelled row beats a figure agreeing only as distinctive",
+        ),
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Total comprehensive income from continuing operations"))),
+                (2, (*_HEADER, _row("2", "Total comprehensive income for the period"))),
+            ],
+            (1, "Total comprehensive income for the period", 1.0),
+            id="a better row on a later page of the document",
+        ),
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Total comprehensive income from continuing operations"))),
+                (
+                    1,
+                    (
+                        *_HEADER,
+                        _row(
+                            "2",
+                            "Total comprehensive income for the period",
+                            ("2,000.00", "1", "1", "1"),
+                        ),
+                    ),
+                ),
+            ],
+            (0, "Total comprehensive income from continuing operations", 0.75),
+            id="a better label printing another figure does not agree",
+        ),
+    ],
+)
+def test_the_best_labelled_agreeing_cell_is_taken(
+    tables: list[tuple[int, tuple[tuple[str, ...], ...]]], agreed: tuple[int, str, float]
+) -> None:
+    fact = _fact("ComprehensiveIncomeForThePeriod", 10000000000.0, _TCI)
+    read = [replace(sheet, scale=1e7) for sheet in sheets(_pages(*tables))]
+    checked = check_fact(fact, read)
+    assert checked.outcome == "agree", checked
+    assert (checked.sheet, checked.row_label, checked.share) == agreed, checked
+
+
 def test_a_fact_records_where_it_agreed() -> None:
     checked = check_fact(_fact(), sheets(STANDALONE))
     where = (checked.page, checked.row_label, checked.sheet, checked.row, checked.column)
@@ -715,6 +706,21 @@ def test_a_fact_records_where_it_agreed() -> None:
 
 
 _EPS_UNDER_HEADING = _pages((1, (*_HEADER, _EPS_HEADING, _eps_row("a) Basic (in ₹)"))))
+
+
+def test_a_fact_not_agreed_names_the_veto_that_refused_an_equal_figure() -> None:
+    rows = (*_HEADER, ("1", "Profit before exceptional items", "12.50", "", "", ""))
+    fact = _fact(concept="ExceptionalItems", labels=("Exceptional items",), value=125000000.0)
+    checked = check_fact(fact, sheets(_document("STANDALONE (₹ in crore)", rows)))
+    assert (checked.outcome, checked.veto) == (
+        "unmatched",
+        "row turns: Profit before exceptional items",
+    ), checked
+
+
+def test_an_agreed_fact_names_no_veto() -> None:
+    checked = check_fact(_fact(), sheets(STANDALONE))
+    assert (checked.outcome, checked.veto) == ("agree", None), checked
 
 
 @pytest.mark.parametrize(
@@ -958,7 +964,7 @@ def test_apply_makes_only_agreements_xbrl_filed(crosscheck_db: sqlite3.Connectio
     checked = [checked_row(ids[0], "agree"), checked_row(ids[1], "differ")]
     moved = apply(crosscheck_db, checked, NOW, ORIGINS)
     rows = crosscheck_db.execute(
-        "SELECT tier, verified_by, verified_at, printed, page FROM facts ORDER BY id"
+        "SELECT tier, verified_by, verified_at, printed, page, verified_with FROM facts ORDER BY id"
     ).fetchall()
     assert moved == 1
     assert rows[0] == (
@@ -967,8 +973,9 @@ def test_apply_makes_only_agreements_xbrl_filed(crosscheck_db: sqlite3.Connectio
         "2026-11-01T09:00:00",
         "38,995.78",
         3,
+        CROSSCHECK_FINGERPRINT,
     )
-    assert rows[1] == ("xbrl-ai", None, None, None, None)
+    assert rows[1] == ("xbrl-ai", None, None, None, None, None)
 
 
 def test_apply_leaves_a_persons_check_and_counts_nothing_twice(
@@ -1029,6 +1036,198 @@ def test_apply_writes_nothing_for_a_document_with_no_origin(
     assert set(tiers) == {"xbrl-ai"}, tiers
 
 
+FILED_BY = "nse-pdf:results/ICICIBANK-2024-06-30.pdf"
+RECHECK_ORIGINS = {**ORIGINS, "results/X.htm": "sec-6k-html"}
+STAMPED = (FILED_BY, "t0", "38,995.78", 3)
+AFRESH = ("xbrl-filed", FILED_BY, "2026-11-01T09:00:00", "38,995.78", 3, "now")
+DEMOTED = ("xbrl-ai", None, None, None, None, None)
+
+
+def _filed(db: sqlite3.Connection, fid: int, reading: str | None) -> None:
+    db.execute(
+        """UPDATE facts SET tier = 'xbrl-filed', verified_by = ?, verified_at = ?, printed = ?,
+                  page = ?, verified_with = ? WHERE id = ?""",
+        (*STAMPED, reading, fid),
+    )
+
+
+def _stamp(db: sqlite3.Connection, fid: int) -> tuple[object, ...]:
+    return db.execute(
+        """SELECT tier, verified_by, verified_at, printed, page, verified_with FROM facts
+           WHERE id = ?""",
+        (fid,),
+    ).fetchone()
+
+
+@pytest.mark.parametrize(
+    ("reading", "outcome", "moved", "after", "counts"),
+    [
+        pytest.param("old", "agree", {}, AFRESH, (1, 0), id="a stale stamp still agreeing"),
+        pytest.param(None, "agree", {}, AFRESH, (1, 0), id="a check from before stamps"),
+        pytest.param(
+            "old",
+            "agree",
+            {"document": "results/X.htm", "page": 7, "printed": "1.0"},
+            ("xbrl-filed", "sec-6k-html:results/X.htm", "2026-11-01T09:00:00", "1.0", 7, "now"),
+            (1, 0),
+            id="an agreement moved to another copy and page",
+        ),
+        pytest.param("old", "differ", {}, DEMOTED, (0, 1), id="a stale stamp now differing"),
+        pytest.param("old", "unmatched", {}, DEMOTED, (0, 1), id="a stale stamp now unmatched"),
+        pytest.param("old", None, {}, DEMOTED, (0, 1), id="a stale stamp no longer checked"),
+        pytest.param(
+            "now",
+            "differ",
+            {},
+            ("xbrl-filed", *STAMPED, "now"),
+            (0, 0),
+            id="a current stamp is left alone",
+        ),
+    ],
+)
+def test_recheck_stamps_afresh_or_demotes_a_stale_check(
+    crosscheck_db: sqlite3.Connection,
+    reading: str | None,
+    outcome: str | None,
+    moved: dict[str, object],
+    after: tuple[object, ...],
+    counts: tuple[int, int],
+) -> None:
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    _filed(crosscheck_db, first, reading)
+    checked = [] if outcome is None else [replace(checked_row(first, outcome), **moved)]
+    done = recheck(crosscheck_db, checked, NOW, RECHECK_ORIGINS, ("ICICIBANK",), "now")
+    assert (done.restamped, done.demoted) == counts, done
+    assert _stamp(crosscheck_db, first) == after
+
+
+def test_recheck_leaves_a_persons_check_and_another_company_alone(
+    crosscheck_db: sqlite3.Connection,
+) -> None:
+    ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
+    crosscheck_db.execute(
+        "UPDATE facts SET tier = 'xbrl', verified_by = 'vedant', verified_at = 't' WHERE id = ?",
+        (ids[1],),
+    )
+    _filed(crosscheck_db, ids[-1], "old")  # HDFC Bank's
+    before = [_stamp(crosscheck_db, i) for i in (ids[1], ids[-1])]
+    checked = [checked_row(i, "differ") for i in (ids[1], ids[-1])]
+    done = recheck(crosscheck_db, checked, NOW, RECHECK_ORIGINS, ("ICICIBANK",), "now")
+    assert (done.restamped, done.demoted) == (0, 0), done
+    assert [_stamp(crosscheck_db, i) for i in (ids[1], ids[-1])] == before
+
+
+def test_recheck_writes_nothing_for_a_document_with_no_origin(
+    crosscheck_db: sqlite3.Connection,
+) -> None:
+    ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
+    for fid in ids[:2]:
+        _filed(crosscheck_db, fid, "old")
+    crosscheck_db.commit()
+    checked = [
+        checked_row(ids[0], "differ"),
+        replace(checked_row(ids[1], "agree"), document="results/NOPE.htm"),
+    ]
+    with pytest.raises(KeyError, match="NOPE"):
+        recheck(crosscheck_db, checked, NOW, RECHECK_ORIGINS, ("ICICIBANK",), "now")
+    assert [_stamp(crosscheck_db, i)[0] for i in ids[:2]] == ["xbrl-filed", "xbrl-filed"]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "tier", "derived_demoted"),
+    [
+        pytest.param("agree", "derived", 0, id="an input still agreeing keeps it checked"),
+        pytest.param("differ", "derived-ai", 1, id="an input demoted unchecks it"),
+    ],
+)
+def test_recheck_takes_a_derived_facts_check_with_its_inputs(
+    crosscheck_db: sqlite3.Connection, outcome: str, tier: str, derived_demoted: int
+) -> None:
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    _filed(crosscheck_db, first, "old")
+    row = DerivedRow(
+        "ICICIBANK", "standalone", "Half", "Half", None, "2024-06-30", None, 1.0, "INR", "{}"
+    )
+    derived = write_derived(crosscheck_db, row, [first], CROSSCHECK_WRITER, checked_by="vedant")
+    done = recheck(
+        crosscheck_db, [checked_row(first, outcome)], NOW, ORIGINS, ("ICICIBANK",), "now"
+    )
+    assert done.derived_demoted == derived_demoted, done
+    held = crosscheck_db.execute("SELECT tier FROM facts WHERE id = ?", (derived,)).fetchone()
+    assert held == (tier,)
+
+
+@pytest.mark.parametrize(
+    ("parts", "other"),
+    [
+        pytest.param(("a", "b"), ("a", "c"), id="a changed part"),
+        pytest.param(("a", "b"), ("b", "a"), id="parts reordered"),
+        pytest.param(("a", "b"), ("a", "b", ""), id="a part added"),
+        pytest.param(("a|b",), ("a", "b"), id="parts split differently"),
+    ],
+)
+def test_a_fingerprint_moves_with_any_change_to_its_parts(
+    parts: tuple[str, ...], other: tuple[str, ...]
+) -> None:
+    assert fingerprint(parts) == fingerprint(parts)
+    assert fingerprint(parts) != fingerprint(other)
+
+
+@pytest.mark.parametrize(
+    ("stale", "after"),
+    [
+        pytest.param(False, ("xbrl-filed", "old"), id="without --recheck a stale check stands"),
+        pytest.param(True, ("xbrl-ai", None), id="--recheck demotes it"),
+    ],
+)
+def test_the_command_rechecks_stale_checks_only_when_told(
+    crosscheck_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stale: bool,
+    after: tuple[str, str | None],
+) -> None:
+    db = Path(crosscheck_db.execute("PRAGMA database_list").fetchone()[2])
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    _filed(crosscheck_db, first, "old")
+    crosscheck_db.commit()
+    crosscheck_db.close()
+    monkeypatch.setattr(cli, "FACTS_DB", db)
+    monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
+    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [checked_row(first, "differ")])
+    manifest = {"results/ICICIBANK-2024-06-30.pdf": {"source": "nse", "format": "pdf"}}
+    monkeypatch.setattr(cli, "read_manifest", lambda: manifest)
+    cli.cross_check(NOW, write=False, decisions=tmp_path / "none.jsonl", stale=stale)
+    row = (
+        sqlite3.connect(db)
+        .execute("SELECT tier, verified_with FROM facts WHERE id = ?", (first,))
+        .fetchone()
+    )
+    assert row == after, row
+    report = next((tmp_path / "reports").glob("crosscheck-*.md")).read_text(encoding="utf-8")
+    assert ("1 made xbrl-ai" in report) is stale
+
+
+@pytest.mark.parametrize(
+    ("argv", "flags"),
+    [
+        pytest.param([], (False, False), id="a plain run records nothing"),
+        pytest.param(["--recheck"], (False, True), id="--recheck"),
+        pytest.param(["--write"], (True, False), id="--write"),
+        pytest.param(["--recheck", "--write"], (True, True), id="both"),
+    ],
+)
+def test_the_crosscheck_flags_reach_the_command(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], flags: tuple[bool, bool]
+) -> None:
+    seen: list[tuple[bool, bool]] = []
+    monkeypatch.setattr(
+        cli, "cross_check", lambda now, write, stale=False: seen.append((write, stale))
+    )
+    cli.main(["crosscheck", *argv])
+    assert seen == [flags]
+
+
 @pytest.mark.parametrize(("write", "tier"), [(False, "xbrl-ai"), (True, "xbrl-filed")])
 def test_the_command_records_agreements_only_when_told(
     crosscheck_db: sqlite3.Connection,
@@ -1053,65 +1252,6 @@ def test_the_command_records_agreements_only_when_told(
     )
     assert after == (tier, "nse-pdf:results/ICICIBANK-2024-06-30.pdf" if write else None), after
     assert list((tmp_path / "reports").glob("crosscheck-*.md"))
-
-
-@pytest.mark.parametrize(
-    ("label", "row", "share"),
-    [
-        pytest.param("Interest earned", "1. Interest earned (a)+(b)", 1.0, id="the same words"),
-        pytest.param(
-            "Earnings per share", "Basic EPS", 1.0, id="a label naming neither takes either"
-        ),
-        pytest.param("Basic earnings per share", "a) Basic EPS", 1.0, id="EPS read in full"),
-        pytest.param("Diluted EPS", "a) Basic EPS", 0.0, id="diluted never takes basic"),
-        pytest.param("Basic EPS", "b) Diluted EPS", 0.0, id="basic never takes diluted"),
-        pytest.param("Basic EPS", "Basic and diluted EPS", 1.0, id="a row naming both"),
-        pytest.param("Gross NPA", "Net NPAs", 0.0, id="gross never takes net"),
-        pytest.param("Gross NPA", "(a) Gross NPAs", 1.0, id="NPA read in full"),
-        pytest.param("Interest earned", "Other income", 0.0, id="nothing shared"),
-        pytest.param("Interest earned", "Interest expended", 0.5, id="half shared"),
-        pytest.param(
-            "Current tax",
-            "Current tax on profits for the year discontinued operations",
-            0.0,
-            id="a row of discontinued operations alone takes no other fact",
-        ),
-        pytest.param(
-            "Profit from discontinued operations",
-            "Profit for the period",
-            0.0,
-            id="a fact of discontinued operations alone takes no other row",
-        ),
-        pytest.param(
-            "Profit before tax",
-            "Profit before tax from continuing operations",
-            1.0,
-            id="a total takes a continuing-operations row",
-        ),
-        pytest.param(
-            "Profit from continuing and discontinued operations",
-            "Profit from continuing and discontinued operations",
-            1.0,
-            id="both kinds on both sides",
-        ),
-    ],
-)
-def test_label_share(label: str, row: str, share: float) -> None:
-    assert label_share([label], None, row) == pytest.approx(share), (label, row)
-
-
-def test_a_segment_counts_as_part_of_the_label() -> None:
-    assert label_share(["Segment revenue"], "Retail", "a Retail Banking") == pytest.approx(1 / 3)
-    assert label_share(["Revenue"], "Retail", "a Retail Banking") == pytest.approx(1 / 2)
-
-
-def test_the_best_of_a_facts_labels_counts() -> None:
-    assert (
-        label_share(
-            ["Revenue on investments", "Income on investments"], None, "b) Income on investments"
-        )
-        == 1.0
-    )
 
 
 _OCR_ENTRY: Entry = {

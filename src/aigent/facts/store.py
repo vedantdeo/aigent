@@ -37,7 +37,7 @@ _TIER_LIST = ", ".join(f"'{t}'" for t in TIERS)
 _CHECKED_LIST = ", ".join(f"'{t}'" for t in CHECKED_TIERS)
 _XBRL_LIST = ", ".join(f"'{t}'" for t in XBRL_TIERS)
 
-SCHEMA_VERSION = 4  # 2: xbrl may carry verified_by; 3: xbrl-ai, xbrl-pdf; 4: filed, not pdf
+SCHEMA_VERSION = 5  # 2: xbrl may carry verified_by; 3: xbrl-ai, xbrl-pdf; 4: filed; 5: stamps
 _FACTS = f"""
 CREATE TABLE IF NOT EXISTS facts (
     id INTEGER PRIMARY KEY,
@@ -65,9 +65,11 @@ CREATE TABLE IF NOT EXISTS facts (
     run_id TEXT NOT NULL,
     verified_by TEXT,
     verified_at TEXT,
+    verified_with TEXT,
     CHECK ((period_kind = 'instant') = (period_start IS NULL)),
     CHECK ((verified_by IS NULL) = (verified_at IS NULL)),
-    CHECK ((tier IN ({_CHECKED_LIST})) = (verified_by IS NOT NULL))
+    CHECK ((tier IN ({_CHECKED_LIST})) = (verified_by IS NOT NULL)),
+    CHECK (verified_with IS NULL OR tier = 'xbrl-filed')
 );
 """
 
@@ -472,6 +474,20 @@ def _drop_derived_from(conn: sqlite3.Connection, fact_id: int) -> int:
     return len(derived)
 
 
+def demote_derived(conn: sqlite3.Connection) -> int:
+    """Makes each checked derived fact with an input no longer checked `derived-ai` again; how
+    many."""
+    marks = ", ".join("?" for _ in CHECKED_TIERS)
+    cursor = conn.execute(
+        f"""UPDATE facts SET tier = 'derived-ai', verified_by = NULL, verified_at = NULL
+            WHERE tier = 'derived' AND EXISTS (
+              SELECT 1 FROM derived_from d JOIN facts i ON i.id = d.input_fact_id
+              WHERE d.fact_id = facts.id AND i.tier NOT IN ({marks}))""",
+        CHECKED_TIERS,
+    )
+    return cursor.rowcount
+
+
 def sync_xbrl_facts(
     conn: sqlite3.Connection,
     filing_id: int,
@@ -505,7 +521,8 @@ def sync_xbrl_facts(
             out.derived_dropped += _drop_derived_from(conn, prior[0])
             conn.execute(  # a revised value was never checked, so it is xbrl-ai again
                 """UPDATE facts SET value = ?, decimals = ?, written_by = ?, written_at = ?,
-                          run_id = ?, tier = 'xbrl-ai', verified_by = NULL, verified_at = NULL
+                          run_id = ?, tier = 'xbrl-ai', verified_by = NULL, verified_at = NULL,
+                          verified_with = NULL
                    WHERE id = ?""",
                 (
                     fact.value,

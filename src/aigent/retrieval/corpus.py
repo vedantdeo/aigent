@@ -603,6 +603,11 @@ _INGEST_FINGERPRINT = hashlib.sha256(
 ).hexdigest()[:12]
 
 
+def parse_fingerprint() -> str:
+    """The hash of everything that decides what Docling reads a PDF as; part of a cache's key."""
+    return _PARSE_FINGERPRINT
+
+
 def ingest_fingerprint() -> str:
     """The hash of everything that decides what a PDF renders as; part of a derived cache's key."""
     return _INGEST_FINGERPRINT

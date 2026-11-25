@@ -1,0 +1,243 @@
+<title>{{TITLE}}</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,650&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one card per parsed table, the printed page beside the table as read, tags below. */
+:root {
+  --bg: #f5f6f3; --surface: #ffffff; --ink: #1d2422; --muted: #5d6965; --rule: #d8ddd8;
+  --accent: #19645c; --accent-soft: #e2efec;
+  --bad: #b3261e; --bad-soft: #fae5e3; --warn: #9a6a00; --warn-soft: #fbf0d6; --ok: #1f7a3d; --ok-soft: #e3f2e7;
+  --display: "Literata", Georgia, "Times New Roman", serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121615; --surface: #1a201e; --ink: #e5eae7; --muted: #9aa7a2; --rule: #2e3734;
+  --accent: #5fc2b4; --accent-soft: #1d3330;
+  --bad: #f08a82; --bad-soft: #3a1f1d; --warn: #e6b84d; --warn-soft: #382d14; --ok: #6fcf8c; --ok-soft: #1b3324; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121615; --surface: #1a201e; --ink: #e5eae7; --muted: #9aa7a2; --rule: #2e3734;
+  --accent: #5fc2b4; --accent-soft: #1d3330;
+  --bad: #f08a82; --bad-soft: #3a1f1d; --warn: #e6b84d; --warn-soft: #382d14; --ok: #6fcf8c; --ok-soft: #1b3324; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1400px; margin: 0 auto; padding-block: 28px 64px; display: grid; gap: 22px; }
+header { display: grid; gap: 10px; }
+h1 { font: 650 clamp(1.6rem, 3.2vw, 2.2rem)/1.15 var(--display); margin: 0; }
+.lede { color: var(--muted); max-width: 72ch; margin: 0; }
+.tally { display: flex; flex-wrap: wrap; gap: 8px; font-variant-numeric: tabular-nums; }
+.chip { font: 600 12px/1 var(--body); letter-spacing: .04em; text-transform: uppercase; padding: 6px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); } .chip.warn { background: var(--warn-soft); color: var(--warn); } .chip.ok { background: var(--ok-soft); color: var(--ok); }
+.status, .hint, .legend { color: var(--muted); font-size: 13px; }
+.filters, .tags, .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: 500 14px var(--body); border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+button[aria-pressed="true"], .tabs button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.tags button[data-tag="OK"][aria-pressed="true"] { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+.tags button[aria-pressed="true"]:not([data-tag="OK"]) { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); }
+button:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; display: grid; }
+.card.tagged { box-shadow: inset 4px 0 0 var(--accent); }
+.top { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; padding: 14px 18px; border-bottom: 1px solid var(--rule); }
+.top .id { font: 600 12px var(--mono); color: var(--muted); }
+.top .co { font: 650 1.1rem/1.2 var(--display); }
+.top .where { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.top a { color: var(--accent); font-size: 13px; }
+.kind { font: 600 11px/1 var(--body); letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
+.flags { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.body { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); min-width: 0; }
+.body.stacked { grid-template-columns: minmax(0, 1fr); }
+.body.stacked .page { border-right: 0; border-bottom: 1px solid var(--rule); }
+.body.stacked .page .scroll { max-height: 560px; }
+@media (max-width: 900px) { .body { grid-template-columns: minmax(0, 1fr); } }
+.page { min-width: 0; background: var(--bg); border-right: 1px solid var(--rule); }
+.page .scroll { max-height: 760px; overflow: auto; }
+.page img { display: block; width: 100%; height: auto; background: #fff; }
+.page .noimg { padding: 18px; color: var(--muted); }
+.read { min-width: 0; padding: 12px 14px; display: grid; gap: 10px; align-content: start; }
+.facts-line { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.facts-line b { color: var(--ink); font-weight: 600; }
+.grid-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; }
+table.t { border-collapse: collapse; font: 12px/1.4 var(--mono); width: 100%; }
+table.t th, table.t td { border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); padding: 3px 6px; vertical-align: top; text-align: left; min-width: 3.5em; overflow-wrap: anywhere; }
+table.t th { background: var(--bg); color: var(--muted); font-weight: 600; }
+table.t th.shared { color: var(--warn); } table.t th.unread { color: var(--bad); }
+table.t td.n { color: var(--muted); text-align: right; }
+table.t td.empty::after { content: "·"; color: var(--rule); }
+table.t tr.hdr td { background: var(--bg); }
+table.t td.merged { outline: 2px solid var(--bad); outline-offset: -2px; background: var(--bad-soft); }
+table.t td.spilled { outline: 2px solid var(--warn); outline-offset: -2px; background: var(--warn-soft); }
+table.t td.unfooted { outline: 2px dashed var(--warn); outline-offset: -2px; }
+.tag { display: inline-block; font: 600 10px/1 var(--body); letter-spacing: .04em; text-transform: uppercase; padding: 3px 5px; border-radius: 4px; background: var(--bg); color: var(--muted); border: 1px solid var(--rule); }
+.tag.on { color: var(--accent); border-color: var(--accent); }
+.lost { font: 12px/1.5 var(--mono); color: var(--bad); overflow-wrap: anywhere; }
+.mark { padding: 14px 18px; border-top: 1px solid var(--rule); display: grid; gap: 8px; }
+textarea { width: 100%; box-sizing: border-box; min-height: 58px; font: 14px/1.4 var(--body); padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--bg); color: var(--ink); resize: vertical; }
+.saved { font-size: 12px; color: var(--muted); min-height: 1em; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Table check</h1>
+    <p class="lede">{{LEDE}}</p>
+    <div class="tally" id="tally"></div>
+    <div class="status" id="status">Connecting to the tags store…</div>
+    <div class="filters" role="group" aria-label="Show">
+      <button id="f-all" aria-pressed="true">All</button>
+      <button id="f-open" aria-pressed="false">Not yet tagged</button>
+      <button id="f-new" aria-pressed="false">Latest batch</button>
+      <button id="f-flagged" aria-pressed="false">Drawn as flagged</button>
+      <button id="f-any" aria-pressed="false">Drawn at random</button>
+    </div>
+  </header>
+  <main id="cards" class="wrap" style="padding:0"></main>
+</div>
+
+<script type="application/json" id="tags">{{TAGS}}</script>
+<script type="application/json" id="data">{{DATA}}</script>
+<script>
+const TAGS = JSON.parse(document.getElementById("tags").textContent);
+const DATA = JSON.parse(document.getElementById("data").textContent);
+const LATEST = Math.max(0, ...DATA.map(r => r.batch));
+const marks = {};
+let db = null, filter = "all";
+const $ = (s, r = document) => r.querySelector(s);
+const SCALES = { 10000000: "₹ crore", 100000: "₹ lakh", 1000000: "million" };
+const FLAG_CLASS = { "merged figures": "bad", "text in a figure column": "warn", "columns share a period": "warn", "no period read": "bad", "total not footing": "warn" };
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function tag(text, on) { return el("span", "tag" + (on ? " on" : ""), text); }
+
+function grid(r, rows, withRead) {
+  const width = Math.max(1, ...rows.map(x => x.cells.length));
+  const wrap = el("div", "grid-wrap"), table = el("table", "t");
+  const head = el("tr"); head.append(el("th", null, "row"));
+  if (withRead) head.append(el("th", null, "read as"));
+  for (let j = 0; j < width; j++) {
+    const p = r.columns[j];
+    const th = el("th", null, p ? `col ${j} · ${p}` : `col ${j}`);
+    if (withRead && r.shared.includes(j)) { th.classList.add("shared"); th.title = "three or more figure columns share this period"; }
+    if (withRead && r.unread.includes(j)) { th.classList.add("unread"); th.title = "a figure column with no period read"; }
+    head.append(th);
+  }
+  const thead = el("thead"); thead.append(head); table.append(thead);
+  const body = el("tbody");
+  rows.forEach((x, i) => {
+    const n = x.row ?? i;
+    const tr = el("tr", withRead && n < r.header ? "hdr" : "");
+    tr.append(el("td", "n", String(n)));
+    if (withRead) {
+      const k = el("td");
+      if (n < r.header) k.append(tag("header", true));
+      else if (x.read) k.append(tag(x.read.kind, x.read.kind !== "figures"));
+      if (x.docling_header) k.append(" ", tag("docling header", false));
+      tr.append(k);
+    }
+    for (let j = 0; j < width; j++) {
+      const v = x.cells[j] ?? "";
+      const td = el("td", v ? "" : "empty", v || null);
+      if (withRead && x.marks) for (const [name, cols] of Object.entries(x.marks)) if (cols.includes(j)) td.classList.add(name);
+      tr.append(td);
+    }
+    body.append(tr);
+  });
+  table.append(body); wrap.append(table); return wrap;
+}
+
+function card(r) {
+  const c = el("article", "card"); c.id = r.id;
+  const top = el("div", "top");
+  top.append(el("span", "id", r.id), el("span", "kind", r.kind), el("span", "co", r.ticker));
+  top.append(el("span", "where", `${r.document}${r.page ? ", page " + r.page : ""} · table ${r.sheet} · drawn ${r.pool === "flagged" ? "as flagged" : "at random"}, batch ${r.batch}`));
+  if (r.url) { const a = el("a", null, "Filed document ↗"); a.href = r.url; a.target = "_blank"; a.rel = "noopener"; top.append(a); }
+  const stack = el("button", null, "Page above table"); stack.setAttribute("aria-pressed", "false");
+  top.append(stack);
+  const flags = el("div", "flags");
+  for (const [name, n] of Object.entries(r.flags)) if (n) flags.append(el("span", "chip " + (FLAG_CLASS[name] || ""), `${name}: ${n}`));
+  if (r.lost_count) flags.append(el("span", "chip bad", `figures Docling had, lost: ${r.lost_count}`));
+  if (!flags.children.length) flags.append(el("span", "chip ok", "no audit flags"));
+  top.append(flags);
+
+  const page = el("div", "page");
+  if (r.image) { const box = el("div", "scroll"); const img = new Image(); img.src = r.image; img.alt = `${r.document} page ${r.page} as filed`; img.loading = "lazy"; box.append(img); page.append(box); }
+  else page.append(el("p", "noimg", "An HTML filing with no pages: open the filed document to compare."));
+
+  const read = el("div", "read");
+  const line = el("div", "facts-line");
+  for (const [k, v] of [["Basis", r.basis ?? "not read"], ["Scale", r.scale ? (SCALES[r.scale] ?? r.scale) : "not read"], ["Header rows", String(r.header)], ["Rows", String(r.rows.length + r.more_rows)]]) {
+    const s = el("span", null, k + " "); s.append(el("b", null, v)); line.append(s);
+  }
+  read.append(line);
+  const views = [["As the cross-check reads it", () => grid(r, r.rows, true), "One row per printed line below Docling's header rows (filed PDFs). Shaded rows were taken as header. Red: two figures in one cell; amber: words in a figure cell; dashed: a total that does not foot. Column heads show the period read; amber heads share one period, red have none."]];
+  if (r.docling) views.push(["As Docling parsed it", () => grid(r, r.docling.map((cells, i) => ({ row: i, cells })), false), "Docling's own rows, before re-rowing by printed lines."]);
+  const tabs = el("div", "tabs"); tabs.setAttribute("role", "tablist");
+  const holder = el("div"), legend = el("p", "legend");
+  views.forEach(([name, make, text]) => {
+    const b = el("button", null, name); b.setAttribute("role", "tab");
+    let made = null;
+    b.addEventListener("click", () => { for (const x of tabs.children) x.setAttribute("aria-selected", String(x === b)); made = made || make(); holder.replaceChildren(made); legend.textContent = text; });
+    tabs.append(b);
+  });
+  read.append(tabs, legend, holder);
+  if (r.more_rows) read.append(el("p", "hint", `${r.more_rows} more rows not shown.`));
+  if (r.lost_count) read.append(el("p", "lost", `Figures Docling had that this reading lost (${r.lost_count}): ${r.lost.join("  ")}${r.lost_count > r.lost.length ? " …" : ""}`));
+  tabs.children[0].click();
+
+  const body = el("div", "body"); body.append(page, read);
+  stack.addEventListener("click", () => { const on = body.classList.toggle("stacked"); stack.setAttribute("aria-pressed", String(on)); });
+  const mark = el("div", "mark");
+  const tags = el("div", "tags"); tags.setAttribute("role", "group"); tags.setAttribute("aria-label", "What is wrong");
+  for (const t of TAGS) { const b = el("button", null, t); b.dataset.tag = t; b.setAttribute("aria-pressed", "false"); b.addEventListener("click", () => toggle(r.id, t)); tags.append(b); }
+  const label = el("label", "hint", "Note: what is wrong and where (row numbers help)"); label.htmlFor = "note-" + r.id;
+  const note = el("textarea"); note.id = "note-" + r.id;
+  note.addEventListener("change", () => save(r.id, marks[r.id]?.tags ?? [], note.value));
+  mark.append(tags, label, note, el("div", "saved"));
+  c.append(top, body, mark);
+  return c;
+}
+
+function toggle(id, t) {
+  let now = new Set(marks[id]?.tags ?? []);
+  if (now.has(t)) now.delete(t);
+  else if (t === "OK") now = new Set(["OK"]);  // OK clears every fault, and a fault clears OK
+  else { now.delete("OK"); now.add(t); }
+  save(id, [...now], $(`#note-${id}`).value);
+}
+async function save(id, tags, note) {
+  const next = { tags, note: note ?? "", at: new Date().toISOString() };
+  marks[id] = next; paint();
+  const saved = $(`#${id} .saved`);
+  if (!db) { saved.textContent = "Not saved: the tags store is not available in this view."; return; }
+  try { await db.doc("marks/" + id).set(next); saved.textContent = "Saved"; }
+  catch (e) { saved.textContent = "Not saved: " + (e?.message || "the store refused it") + ". Try again."; }
+}
+function paint() {
+  const counts = {}; let done = 0;
+  for (const r of DATA) {
+    const c = document.getElementById(r.id), m = marks[r.id], tags = m?.tags ?? [];
+    if (tags.length) done++;
+    for (const t of tags) counts[t] = (counts[t] || 0) + 1;
+    c.classList.toggle("tagged", tags.length > 0);
+    for (const b of c.querySelectorAll(".tags button")) b.setAttribute("aria-pressed", String(tags.includes(b.dataset.tag)));
+    const note = $(`#note-${r.id}`); if (document.activeElement !== note) note.value = m?.note ?? "";
+    c.hidden = !(filter === "all" || (filter === "open" && !tags.length) || (filter === "new" && r.batch === LATEST) || (filter === r.pool));
+  }
+  const t = $("#tally"); t.replaceChildren(el("span", "chip", `${done} of ${DATA.length} tagged`));
+  for (const name of TAGS) if (counts[name]) t.append(el("span", "chip " + (name === "OK" ? "ok" : "bad"), `${name}: ${counts[name]}`));
+}
+for (const [id, f] of [["f-all", "all"], ["f-open", "open"], ["f-new", "new"], ["f-flagged", "flagged"], ["f-any", "any"]]) $("#" + id).addEventListener("click", () => {
+  filter = f; for (const b of document.querySelectorAll(".filters button")) b.setAttribute("aria-pressed", String(b.id === id)); paint();
+});
+$("#cards").append(...DATA.map(card));
+paint();
+(async () => {
+  const status = $("#status");
+  const timer = setTimeout(() => { status.textContent = "The tags store did not answer. Tags will not be saved; reload to try again."; }, 10000);
+  db = window.claude?.use ? await window.claude.use("db") : null;
+  if (!db) { clearTimeout(timer); status.textContent = "Tags cannot be saved here: open this page on claude.ai while signed in."; return; }
+  db.collection("marks").onSnapshot(snap => {
+    clearTimeout(timer);
+    for (const d of snap.docs) marks[d.id] = d.data();
+    status.textContent = "Tags save as you go and are read back by Claude.";
+    paint();
+  }, e => { clearTimeout(timer); status.textContent = "Could not load saved tags: " + (e?.message || "unknown error"); });
+})();
+</script>

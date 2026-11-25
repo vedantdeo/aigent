@@ -6,6 +6,9 @@ period, in a table for its basis. An agreement makes the fact `xbrl-filed`; anyt
 from __future__ import annotations
 
 import bisect
+import hashlib
+import inspect
+import json
 import re
 import sqlite3
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -14,27 +17,42 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
+from aigent.facts import headers, labels, printed, vocab
 from aigent.facts.cfg_facts import (
     CROSSCHECK_DIFFER_LABEL_MIN,
     CROSSCHECK_DISTINCT_DIGITS,
     CROSSCHECK_EXCLUSIVE,
+    CROSSCHECK_FACT_ACTIONS,
     CROSSCHECK_LABEL_MIN,
+    CROSSCHECK_ROW_TURNS,
     CROSSCHECK_SCALES,
+    CROSSCHECK_SIGN_FREE,
+    CROSSCHECK_SPAN_ROWS,
     CROSSCHECK_SYNONYMS,
     VERIFY_OCR_TICKERS,
 )
 from aigent.facts.documents import (
     VERIFY_DIR,
     Entry,
-    is_reading,
+    filed_of,
     load_verify_document,
     read_manifest,
-    readings_of,
-    refusal,
+    reading_fingerprint,
     reocr_built,
+    usable_readings,
 )
+from aigent.facts.headers import (
+    Column,
+    basis_in,
+    column_periods,
+    document_scale,
+    months_of,
+    scale_in,
+)
+from aigent.facts.labels import label_match, note, per_share_row, serial
+from aigent.facts.printed import MAIN_LINE, figure_row, number
 from aigent.facts.share_events import PER_SHARE
-from aigent.facts.store import XBRL_TIERS
+from aigent.facts.store import XBRL_TIERS, demote_derived
 from aigent.retrieval.chunk import Document
 
 Outcome = Literal["agree", "differ", "unmatched"]
@@ -42,50 +60,37 @@ Rule = Literal["label", "distinct", "per-share"]  # what let an equal figure cou
 RowKind = Literal["heading", "main line", "figures"]
 _RANK: dict[Outcome, int] = {"unmatched": 0, "differ": 1, "agree": 2}
 
-_ZERO = {"..", "-", "–", "—", "nil", "0"}
-_MONTHS = {
-    m: i
-    for i, names in enumerate(
-        [
-            ("jan", "january"),
-            ("feb", "february"),
-            ("mar", "march"),
-            ("apr", "april"),
-            ("may",),
-            ("jun", "june"),
-            ("jul", "july"),
-            ("aug", "august"),
-            ("sep", "sept", "september"),
-            ("oct", "october"),
-            ("nov", "november"),
-            ("dec", "december"),
-        ],
-        1,
+
+def fingerprint(parts: Iterable[str]) -> str:
+    """A short hash of `parts` in order."""
+    return hashlib.sha256(json.dumps(list(parts)).encode()).hexdigest()[:12]
+
+
+# Everything that decides an outcome: this module, the header, label, figure and word readers, their
+# settings, and the readings.
+CROSSCHECK_FINGERPRINT = fingerprint(
+    (
+        Path(__file__).read_text(encoding="utf-8"),
+        *(inspect.getsource(m) for m in (headers, labels, printed, vocab)),
+        repr(
+            (
+                CROSSCHECK_DIFFER_LABEL_MIN,
+                CROSSCHECK_DISTINCT_DIGITS,
+                CROSSCHECK_EXCLUSIVE,
+                CROSSCHECK_FACT_ACTIONS,
+                CROSSCHECK_LABEL_MIN,
+                CROSSCHECK_ROW_TURNS,
+                CROSSCHECK_SCALES,
+                CROSSCHECK_SIGN_FREE.pattern,
+                CROSSCHECK_SPAN_ROWS,
+                CROSSCHECK_SYNONYMS,
+                VERIFY_OCR_TICKERS,
+                PER_SHARE,
+            )
+        ),
+        reading_fingerprint(),
     )
-    for m in names
-}
-_NUMERIC_DATE = re.compile(r"(\d{1,2})[.,/-](\d{1,2})[.,/-](\d{4})")
-_WORDED_DATE = re.compile(r"([a-z]{3,9})\.?\s*(\d{1,2})\s*,?\s*(\d{4})")
-_DAY_FIRST_DATE = re.compile(r"\b(\d{1,2})\s*(?:st|nd|rd|th)?\s*([a-z]{3,9})\.?\s*,?\s*(\d{4})")
-_APOSTROPHE_DATE = re.compile(  # 30 Jun'24, 30th Sep'25
-    r"(\d[\do]?)\s*(?:st|nd|rd|th)?\s*([a-z]{3})[a-z]*\s*['’‘`]\s*(\d{2})\b"
 )
-_FY_SPAN = re.compile(r"(20\d{2})\s*[-–]\s*(\d{2})\b")  # 2024-25
-_FY_SHORT = re.compile(r"\bfy\s*'?(\d{2}|20\d{2})\b")  # FY25, FY 2025
-_BARE_YEAR = re.compile(r"(20\d{2})")
-_MAIN_LINE = re.compile(r"\s*(?:[IVX]{1,5}|[A-H])[.)]?\s")  # IX, XI, D., II. open a main line
-_SCALE = re.compile(r"\bin\s*(crore|lac|lakh|million)s?\b")
-_EPS_WORDS = ("basic", "diluted", "earnings", "share", "continuing", "discontinued")
-_STOP = {"of", "and", "the", "in", "on", "or", "to", "for", "from", "by", "a", "an", "with", "at"}
-
-
-@dataclass(frozen=True)
-class Column:
-    """A table column's period as its header states it: the day it ends, and its length in months,
-    0 for a balance at that day, None when the header does not say."""
-
-    end: date | None
-    months: int | None
 
 
 @dataclass(frozen=True)
@@ -178,174 +183,7 @@ class Checked:
     heading: str | None = None
     share: float | None = None
     rule: Rule | None = None
-
-
-def number(text: str) -> tuple[float, int, bool] | None:
-    """A cell as a printed number: its value, decimal places and whether it is a percentage; None
-    for text, a date, or two numbers in one cell. Dashes and `..` print a zero."""
-    t = text.strip().replace("−", "-")
-    if t.lower() in _ZERO:
-        return 0.0, 0, False
-    if _NUMERIC_DATE.search(t) or _WORDED_DATE.search(t.lower()):
-        return None
-    t = re.sub(r"^[.\s~]+(?=[\d(])", "", t)  # a leader of dots before the figure
-    if re.fullmatch(r"[\d,]+\.\s+\d+", t):  # a stray space after the point
-        t = re.sub(r"\s+", "", t)
-    match = re.fullmatch(r"(\()?(-)?([\d,.]+)(\))?\s*(%)?", t)
-    if not match or not re.search(r"\d", match.group(3)):
-        return None
-    digits = match.group(3)
-    if digits.count(".") == 0 and re.search(r",\d{2}$", digits):  # a decimal comma
-        digits = digits[: digits.rfind(",")] + "." + digits[digits.rfind(",") + 1 :]
-    if digits.count(".") > 1:  # points misread for separators
-        head, _, tail = digits.rpartition(".")
-        digits = head.replace(".", "") + "." + tail
-    digits = digits.replace(",", "")
-    if not re.fullmatch(r"\d+(\.\d+)?", digits):
-        return None
-    places = len(digits.partition(".")[2])
-    value = float(digits)
-    if match.group(1) or match.group(2):  # a closing bracket can fall in the next cell
-        value = -value
-    return value, places, bool(match.group(5))
-
-
-def _month_of(word: str) -> int | None:
-    """A month by its name, or for an OCR'd one by its first two letters when no other month
-    starts so: `sen` is September, `jul` must be spelled out."""
-    if word in _MONTHS:
-        return _MONTHS[word]
-    starting = {m for name, m in _MONTHS.items() if name[:2] == word[:2]}
-    return starting.pop() if len(starting) == 1 else None
-
-
-def _date_in(text: str) -> date | None:
-    found: list[date] = []
-    for d, m, y in _NUMERIC_DATE.findall(text):
-        try:
-            found.append(date(int(y), int(m), int(d)))
-        except ValueError:
-            continue
-    for name, d, y in _WORDED_DATE.findall(text.lower()):
-        month = _MONTHS.get(name)
-        if month is None:
-            continue
-        try:
-            found.append(date(int(y), month, int(d)))
-        except ValueError:
-            continue
-    for d, name, y in _DAY_FIRST_DATE.findall(text.lower()):
-        month = _MONTHS.get(name)
-        if month is None:
-            continue
-        try:
-            found.append(date(int(y), month, int(d)))
-        except ValueError:
-            continue
-    for d, name, y in _APOSTROPHE_DATE.findall(text.lower()):
-        month = _month_of(name)
-        if month is None:
-            continue
-        try:
-            found.append(date(2000 + int(y), month, int(d.replace("o", "0"))))
-        except ValueError:
-            continue
-    return found[-1] if found else None
-
-
-def _fy_end_in(text: str) -> date | None:
-    """The day a financial year stated as `2024-25`, `FY25` or `FY 2025` ends: 31 March 2025."""
-    t = text.lower()
-    for first, second in _FY_SPAN.findall(t):
-        if (int(first) + 1) % 100 == int(second):
-            return date(int(first) + 1, 3, 31)
-    for year in _FY_SHORT.findall(t):
-        return date(int(year) if len(year) == 4 else 2000 + int(year), 3, 31)
-    return None
-
-
-def _months_in(text: str) -> int | None:
-    t = text.lower()
-    if re.search(r"nine months|\b9m\b|9 months", t):
-        return 9
-    if re.search(r"six months|half[ -]?year|\bh1\b|6 months", t):
-        return 6
-    if re.search(r"three months|quarter|\bq[1-4l]\b|\bq[1-4l]-", t):
-        return 3
-    if re.search(r"\byear\b|\bfy", t):
-        return 12
-    if re.search(r"\bas\s*at\b|\basat\b|^\s*at\b", t):
-        return 0
-    return None
-
-
-def column_periods(header: Sequence[Sequence[str]]) -> dict[int, Column]:
-    """Each column's period from the header rows. A group heading covers the empty cells to its
-    right ("Quarter ended" over three dated columns), but a column's own cells ("Q2-2026") say
-    its length first; a line below the last line of dates is a title, carried nowhere."""
-    width = max((len(row) for row in header), default=0)
-    dated = [
-        i
-        for i, row in enumerate(header)
-        if any(_date_in(c) or _fy_end_in(c) or _BARE_YEAR.fullmatch(c.strip()) for c in row)
-    ]
-    last_dated = max(dated, default=len(header) - 1)
-    own: dict[int, list[str]] = {j: [] for j in range(width)}
-    carried: dict[int, list[str]] = {j: [] for j in range(width)}
-    years: dict[int, int] = {}
-    for i, row in enumerate(header):
-        carry = ""
-        filled = sum(bool(c.strip()) for c in row)
-        for j in range(width):
-            cell = row[j].strip() if j < len(row) else ""
-            if cell:
-                carry = cell if i <= last_dated else ""
-                own[j].append(cell)
-                if filled >= 2 and (year := _BARE_YEAR.fullmatch(cell)):
-                    years[j] = int(year.group(1))  # a year alone, among the row's other headers
-            elif carry:
-                carried[j].append(carry)
-    columns: dict[int, Column] = {}
-    for j in range(width):
-        mine, theirs = " ".join(own[j]), " ".join(carried[j])
-        months = _months_in(mine)
-        months = _months_in(theirs) if months is None else months
-        end = _date_in(mine) or _date_in(theirs)
-        if end is None and (end := _fy_end_in(mine) or _fy_end_in(theirs)) is not None:
-            months = 12 if months is None else months
-        if end is not None:
-            columns[j] = Column(end, months)
-    days = {(c.end.month, c.end.day) for c in columns.values() if c.end is not None}
-    if len(days) == 1:
-        month, day = days.pop()
-        for j, year in years.items():
-            if j in columns:
-                continue
-            mine, theirs = " ".join(own[j]), " ".join(carried[j])
-            months = _months_in(mine)
-            columns[j] = Column(
-                date(year, month, day), _months_in(theirs) if months is None else months
-            )
-    return columns
-
-
-def _scale_in(text: str) -> float | None:
-    """The last scale the text states as "in crore", "in lac" and the like."""
-    found = _SCALE.findall(text.lower())
-    return CROSSCHECK_SCALES[found[-1]] if found else None
-
-
-def document_scale(text: str) -> float | None:
-    """The scale a document states most often as "in crore", "in lac" and the like."""
-    found = _SCALE.findall(text.lower())
-    if not found:
-        return None
-    return CROSSCHECK_SCALES[max(set(found), key=found.count)]
-
-
-def _basis_in(text: str) -> str | None:
-    found = [(m.start(), m.group(0)) for m in re.finditer(r"standalone|consolidated", text)]
-    return max(found)[1] if found else None
+    veto: str | None = None  # not agreed: the veto that refused an equal cell, and its row
 
 
 def sheets(document: Document) -> list[Sheet]:
@@ -363,16 +201,13 @@ def sheets(document: Document) -> list[Sheet]:
         before = document.text[previous_end : table.start].lower()
         previous_end = table.end
         cells_by_row = [[number(c) for c in row] for row in table.rows]
-        first = next(
-            (i for i, parsed in enumerate(cells_by_row) if sum(p is not None for p in parsed) >= 2),
-            None,
-        )
+        first = next((i for i, row in enumerate(table.rows) if figure_row(row)), None)
         if first is None:
             continue
         header = table.rows[:first]
         own = " ".join(" ".join(row) for row in header).lower()
-        basis = _basis_in(before + " " + own) or basis
-        scale = _scale_in(before[-300:] + " " + own) or scale
+        basis = basis_in(before + " " + own) or basis
+        scale = scale_in(before[-300:] + " " + own) or scale
         columns: Mapping[int, Column] = column_periods(header)
         width = max(len(row) for row in table.rows)
         page = bisect.bisect_right(document.page_starts, table.start) or 1
@@ -384,6 +219,8 @@ def sheets(document: Document) -> list[Sheet]:
         heading = (
             before_heading if continued else " ".join(c for c in header[-1] if c) if header else ""
         )
+        copies = _spanning(table.rows)
+        first_dated = min(columns, default=None)
         body: list[tuple[int, list[tuple[int, tuple[float, int, bool]]], str, str, int]] = []
         read: list[RowRead] = []
         block = 0
@@ -392,11 +229,16 @@ def sheets(document: Document) -> list[Sheet]:
             numbers = [
                 (j, parsed)
                 for j, parsed in enumerate(cells_by_row[r])
-                if parsed is not None and row[j].strip() and not _serial(j, row[j])
+                if parsed is not None
+                and row[j].strip()
+                and not serial(j, row[j])
+                and not note(j, row[j], first_dated)
             ]
             taken = {j for j, _ in numbers}
             label = " ".join(
-                c for j, c in enumerate(row) if c and j not in taken and not _serial(j, c)
+                c
+                for j, c in enumerate(row)
+                if c and j not in taken and not serial(j, c) and not note(j, c, first_dated)
             )
             if not numbers:
                 heading, block = label or heading, block + 1
@@ -404,7 +246,8 @@ def sheets(document: Document) -> list[Sheet]:
                 continue
             kind: RowKind = "figures"
             # a numbered main line (IX, XI, D.) heads its own block
-            if _MAIN_LINE.match(" ".join(c for c in row if c)):
+            printed = (c for j, c in enumerate(row) if c and (r, j) not in copies)
+            if MAIN_LINE.match(" ".join(printed)):
                 heading, block, kind = label, block + 1, "main line"
             body.append((r, numbers, label, heading, block))
             read.append(RowRead(r, kind, label, label, heading, block))
@@ -427,9 +270,21 @@ def sheets(document: Document) -> list[Sheet]:
     return out
 
 
-def _serial(column: int, text: str) -> bool:
-    """A row's serial number in its first cell ("1", "12"), not a figure."""
-    return column == 0 and re.fullmatch(r"\d{1,2}", text.strip()) is not None
+def _spanning(rows: Sequence[Sequence[str]]) -> set[tuple[int, int]]:
+    """The (row, column) cells copying a spanning cell's text: a run of `CROSSCHECK_SPAN_ROWS` or
+    more rows printing the same text in one column; the run's first row keeps it."""
+    copies: set[tuple[int, int]] = set()
+    for j in range(max((len(row) for row in rows), default=0)):
+        texts = [row[j].strip() if j < len(row) else "" for row in rows]
+        start = 0
+        while start < len(texts):
+            end = start + 1
+            while end < len(texts) and texts[end] == texts[start]:
+                end += 1
+            if end - start >= CROSSCHECK_SPAN_ROWS:
+                copies.update((r, j) for r in range(start + 1, end))
+            start = end
+    return copies
 
 
 def _aligned(
@@ -443,71 +298,10 @@ def _aligned(
     return [(j, parsed, columns.get(j)) for j, parsed in numbers]
 
 
-def months_of(start: date | None, end: date) -> int:
-    if start is None:
-        return 0
-    return round(((end - start).days + 1) / 30.44)
-
-
-def _words(text: str) -> set[str]:
-    """A label's words, abbreviations read in full, little words dropped."""
-    found: list[str] = re.findall(r"[a-z]+", text.lower())
-    spelled = " ".join(CROSSCHECK_SYNONYMS.get(word, word) for word in found)
-    return set(spelled.split()) - _STOP
-
-
-def _discontinued_alone(words: set[str]) -> bool:
-    """Words about discontinued operations without continuing ones."""
-    return "discontinued" in words and "continuing" not in words
-
-
-def label_share(labels: Iterable[str], segment: str | None, row_label: str) -> float:
-    """The largest share of any of a fact's labels' words, its segment's added, found in the row;
-    0 for a row naming only the other of an exclusive pair the label names ("basic", "diluted"), or
-    for discontinued operations alone where the label is not."""
-    row = _words(row_label)
-    best = 0.0
-    for label in labels:
-        words = _words(f"{label} {segment or ''}")
-        if (
-            not words
-            or _discontinued_alone(words) != _discontinued_alone(row)
-            or any(
-                mine in words and other in row and mine not in row
-                for pair in CROSSCHECK_EXCLUSIVE
-                for mine, other in (pair, pair[::-1])
-            )
-        ):
-            continue
-        best = max(best, len(words & row) / len(words))
-    return best
-
-
-def _one_off(word: str, target: str) -> bool:
-    """`word` is `target` or one letter off it: changed, missing or added."""
-    if word == target:
-        return True
-    if len(word) == len(target):
-        return sum(a != b for a, b in zip(word, target, strict=True)) == 1
-    short, long = sorted((word, target), key=len)
-    return any(long[:i] + long[i + 1 :] == short for i in range(len(long)))
-
-
-def per_share_row(labels: Iterable[str], text: str) -> bool:
-    """A row, with its heading, printing a per-share fact: its kind (basic or diluted), earnings per
-    share, and discontinued operations on both or neither; OCR'd words one letter off."""
-    words = _words(text)
-    row = words | {t for w in words for t in _EPS_WORDS if _one_off(w, t)}
-    named = set().union(*(_words(label) for label in labels))
-    if not {"basic", "diluted"} & named & row:
-        return False
-    if _discontinued_alone(row) != _discontinued_alone(named):
-        return False
-    return bool({"earnings", "eps"} & row) or {"per", "share"} <= row
-
-
 def agrees(fact: Fact, cell: Cell, scale: float | None) -> bool:
-    """The printed figure, at the table's scale, equal to the fact to the last printed digit."""
+    """The printed figure, at the table's scale, equal to the fact to the last printed digit; in
+    size only for a concept naming its direction (`CROSSCHECK_SIGN_FREE`: a payment filed positive,
+    printed in brackets)."""
     if fact.unit == "pure":
         held = cell.value / 100 if cell.percent else cell.value
         allowed = 0.5 * 10**-cell.places / (100 if cell.percent else 1)
@@ -518,6 +312,8 @@ def agrees(fact: Fact, cell: Cell, scale: float | None) -> bool:
     if factor is None:
         return False
     allowed = 0.5 * 10**-cell.places * factor  # to the printed digit; XBRL's decimals can be coarse
+    if CROSSCHECK_SIGN_FREE.search(fact.concept):
+        return abs(abs(cell.value * factor) - abs(fact.value)) <= allowed + 1e-9
     return abs(cell.value * factor - fact.value) <= allowed + 1e-9
 
 
@@ -531,14 +327,17 @@ def _in_period(fact: Fact, column: Column | None, columns: Mapping[int, Column])
         return False
     if fact.period_start is None:
         return True
+    want = months_of(fact.period_start, fact.period_end)
     if column.months is not None:
-        return column.months == months_of(fact.period_start, fact.period_end)
-    return sum(c.end == fact.period_end for c in columns.values()) == 1
+        return column.months == want
+    return sum(c.end == fact.period_end and c.months in (None, want) for c in columns.values()) == 1
 
 
 def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
-    """`agree` on a cell of the fact's basis and period equal to it, its row carrying its label
-    or the figure distinctive alone; else `differ` on the best-labelled cell; else `unmatched`."""
+    """`agree` on the best-labelled cell of the fact's basis and period equal to it, its row
+    carrying its label or the figure distinctive alone, the first on a tie; else `differ` on the
+    best-labelled cell; else `unmatched`. Not agreed, it names the veto that refused the
+    best-labelled cell equal to it (`labels.VETOES`), as "rule: row label"."""
     base = Checked(
         fact.fact_id,
         fact.ticker,
@@ -553,20 +352,30 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
         fact.document,
         "unmatched",
     )
+    agreed: tuple[float, Sheet, Cell, Rule] | None = None
     best: tuple[float, Sheet, Cell] | None = None
+    vetoed: tuple[float, str, Cell] | None = None
     for sheet in read:
         if sheet.basis not in (None, fact.basis):
             continue
         for cell in sheet.cells:
             if not _in_period(fact, cell.period, sheet.columns):
                 continue
-            share = label_share(fact.labels, fact.segment, cell.label)
+            match = label_match(fact.labels, fact.segment, cell.label)
+            share = match.share
             if agrees(fact, cell, sheet.scale):
                 rule = _rule(fact, cell, share)
-                if rule is not None:
-                    return _with(base, "agree", sheet, cell, share, rule)
+                if rule is not None and (agreed is None or share > agreed[0]):
+                    agreed = (share, sheet, cell, rule)
+                if match.veto and match.raw >= CROSSCHECK_LABEL_MIN:
+                    if vetoed is None or match.raw > vetoed[0]:
+                        vetoed = (match.raw, match.veto, cell)
             if share >= CROSSCHECK_DIFFER_LABEL_MIN and (best is None or share > best[0]):
                 best = (share, sheet, cell)
+    if agreed is not None:
+        return _with(base, "agree", agreed[1], agreed[2], agreed[0], agreed[3])
+    if vetoed is not None:
+        base = replace(base, veto=f"{vetoed[1]}: {vetoed[2].label}")
     if best is not None:
         return _with(base, "differ", best[1], best[2], best[0], None)
     return base
@@ -626,15 +435,8 @@ def facts_to_check(
     for concept, label in conn.execute("SELECT concept, label FROM concept_labels"):
         aliases.setdefault(concept, []).append(label)
     documents: dict[str, list[str]] = {}
-    for name, entry in manifest.items():
-        if not name.startswith(("results/", "annual/")):
-            continue
-        for reading in readings_of(name, entry, ocr_tickers):
-            usable = (
-                built(reading) if is_reading(reading) else not refusal(name, entry, ocr_tickers)
-            )
-            if usable:
-                documents.setdefault(Path(name).stem, []).append(reading)
+    for reading in usable_readings(manifest, ocr_tickers, built):
+        documents.setdefault(Path(filed_of(reading)).stem, []).append(reading)
     marks = ", ".join("?" for _ in tickers)
     tiers = ", ".join("?" for _ in XBRL_TIERS)
     rows = conn.execute(
@@ -711,10 +513,12 @@ def apply(
     checked: Iterable[Checked],
     now: datetime,
     origins: Mapping[str, str],
+    reading: str = CROSSCHECK_FINGERPRINT,
 ) -> int:
-    """Makes each agreeing `xbrl-ai` fact `xbrl-filed`, naming its document as `<origin>:<path>`
-    and keeping the printed figure and page; a fact a person checked, or already agreed, is left
-    alone. Returns how many; a document with no origin raises KeyError and writes nothing."""
+    """Makes each agreeing `xbrl-ai` fact `xbrl-filed`, naming its document as `<origin>:<path>`,
+    keeping the printed figure and page, and stamping the `reading` it agreed by; a fact a person
+    checked, or already agreed, is left alone. Returns how many; a document with no origin raises
+    KeyError and writes nothing."""
     stamp = now.isoformat(timespec="seconds")
     moved = 0
     with conn:
@@ -723,9 +527,72 @@ def apply(
                 continue
             cursor = conn.execute(
                 """UPDATE facts SET tier = 'xbrl-filed', verified_by = ?, verified_at = ?,
-                          printed = ?, page = ?
+                          printed = ?, page = ?, verified_with = ?
                    WHERE id = ? AND tier = 'xbrl-ai'""",
-                (f"{origins[c.document]}:{c.document}", stamp, c.printed, c.page, c.fact_id),
+                (
+                    f"{origins[c.document]}:{c.document}",
+                    stamp,
+                    c.printed,
+                    c.page,
+                    reading,
+                    c.fact_id,
+                ),
             )
             moved += cursor.rowcount
     return moved
+
+
+@dataclass(frozen=True)
+class Rechecked:
+    """What re-checking stale stamps did: agreements stamped afresh, facts made `xbrl-ai` again,
+    and derived facts made `derived-ai` for losing a checked input."""
+
+    restamped: int
+    demoted: int
+    derived_demoted: int
+
+
+def recheck(
+    conn: sqlite3.Connection,
+    checked: Iterable[Checked],
+    now: datetime,
+    origins: Mapping[str, str],
+    tickers: Sequence[str],
+    reading: str = CROSSCHECK_FINGERPRINT,
+) -> Rechecked:
+    """Each `xbrl-filed` fact of `tickers` stamped by another reading than `reading`: stamped
+    afresh when it agrees in `checked`, else made `xbrl-ai` again, with every derived fact that
+    loses a checked input. A document with no origin raises KeyError and writes nothing."""
+    by_id = {c.fact_id: c for c in checked}
+    marks = ", ".join("?" for _ in tickers)
+    stale = [
+        int(r[0])
+        for r in conn.execute(
+            f"""SELECT id FROM facts WHERE tier = 'xbrl-filed' AND ticker IN ({marks})
+                  AND verified_with IS NOT ?""",
+            (*tickers, reading),
+        )
+    ]
+    stamp = now.isoformat(timespec="seconds")
+    restamped = demoted = 0
+    with conn:
+        for fid in stale:
+            c = by_id.get(fid)
+            if c is not None and c.outcome == "agree":
+                conn.execute(
+                    """UPDATE facts SET verified_by = ?, verified_at = ?, printed = ?, page = ?,
+                              verified_with = ?
+                       WHERE id = ?""",
+                    (f"{origins[c.document]}:{c.document}", stamp, c.printed, c.page, reading, fid),
+                )
+                restamped += 1
+            else:
+                conn.execute(
+                    """UPDATE facts SET tier = 'xbrl-ai', verified_by = NULL, verified_at = NULL,
+                              printed = NULL, page = NULL, verified_with = NULL
+                       WHERE id = ?""",
+                    (fid,),
+                )
+                demoted += 1
+        derived = demote_derived(conn)
+    return Rechecked(restamped, demoted, derived)

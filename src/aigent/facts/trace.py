@@ -1,5 +1,6 @@
-"""A cross-checked cell traced back through its reading: its table's rows as Docling parsed them
-beside how the cross-check read each one, for a person judging where a figure came from."""
+"""A cross-checked cell traced back through its reading: its table's rows as parsed (a filed
+PDF's body re-rowed by its printed lines) beside how the cross-check read each one, for a person
+judging where a figure came from."""
 
 from __future__ import annotations
 
@@ -7,13 +8,14 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 
 from aigent.facts.cfg_facts import CROSSCHECK_TRACE_WINDOW
-from aigent.facts.crosscheck import Checked, Column, RowRead, Rule, Sheet
+from aigent.facts.crosscheck import Checked, RowRead, Rule, Sheet
+from aigent.facts.headers import Column
 from aigent.retrieval.chunk import Document
 
 
 @dataclass(frozen=True)
 class TracedRow:
-    """One table row: its cells as Docling parsed them, whether Docling marked it a header row
+    """One table row: its cells as parsed, whether Docling marked it a header row
     (captions count) or a section's start, and the cross-check's reading; None for its header."""
 
     row: int

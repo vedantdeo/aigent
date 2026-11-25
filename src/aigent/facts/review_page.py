@@ -21,8 +21,9 @@ from aigent.facts.cfg_facts import (
     REVIEW_PAGE_KINDS,
     REVIEW_PAGE_MAX_MB,
 )
-from aigent.facts.crosscheck import Checked, number
+from aigent.facts.crosscheck import Checked
 from aigent.facts.documents import VERIFY_DIR, Entry, filed_of, origin_of
+from aigent.facts.printed import number
 from aigent.facts.share_events import PER_SHARE
 
 PageOutcome = Literal["agree", "differ"]

@@ -172,10 +172,10 @@ function tracePanel(r) {
     const span = el("span", null, k + " "); span.append(el("b", null, v)); line.append(span);
   }
   const tabs = el("div", "tabs"); tabs.setAttribute("role", "tablist");
-  const views = [["Docling's table", doclingView(t)], ["Cross-check's reading", readView(t)]];
+  const views = [["As parsed", doclingView(t)], ["Cross-check's reading", readView(t)]];
   const holder = el("div");
   const legend = el("p", "legend");
-  const legends = ["Cells exactly as Docling parsed them (an empty cell shows ·). Shaded rows were taken as header by the cross-check; the outlined cell is the figure matched. Flags are Docling's own marks.",
+  const legends = ["Cells as parsed: Docling's header rows, then for a filed PDF one row per printed line (an empty cell shows ·). Shaded rows were taken as header by the cross-check; the outlined cell is the figure matched. Flags are Docling's own marks.",
                    "How the cross-check read each row below the header: its kind (a heading has no figures; a main line, as IX or D., opens a block), the label its figures carry (a block's first unlabelled row takes its heading), and its block."];
   views.forEach(([name, view], i) => {
     const b = el("button", null, name); b.setAttribute("role", "tab");

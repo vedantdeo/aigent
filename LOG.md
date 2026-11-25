@@ -2694,3 +2694,153 @@
   OCR layer and RapidOCR; no SEC copy left unverified). The first republish showed no cards:
   `append` chained on a real DOM returns nothing, which a Node shim had hidden; now checked in
   jsdom. `pypdfium2` and `pillow` made direct dependencies. 28/28 mutants. $0.00.
+- 11-21: first cross-check write for the seven ind-as companies (Vedant: write on the s01-s30
+  sample; s31-s60 later). `crosscheck --write` at `814effd`: 12,979 agreements made `xbrl-filed`,
+  0 made `xbrl` (the 3 applied decisions are `wrong`/`elsewhere`). Tiers 33,694 `xbrl-ai` and 4,740
+  `xbrl-filed` before, 20,715 and 17,719 after; by origin 6,811 `nse-pdf-ocr`, 6,158 `nse-pdf`,
+  2,494 `sec-6k-html`, 2,256 RapidOCR. The database was copied first to
+  `corpus/.cache/facts.sqlite.before-write-20261121`. `fundamentals` serves them (Wipro FY25 profit,
+  Sun Pharma FY25 basic EPS, `xbrl-filed`). Basic EPS checked per company: Bajaj Auto 70 of 126,
+  ITC 29/126, Power Grid 91/126, Reliance 48/126, Sun Pharma 68/126, Tata Motors 38/126, Wipro
+  78/126. $0.00.
+- 11-21: a spanning cell's copies make no main lines (Vedant: if the table reads more correctly).
+  Docling copies a spanning cell's text into every row it spans: Tata Motors' `A 1. II. B.` beside
+  each segment row, Power Grid's `B.` down its investing section, so each row read as a numbered
+  main line. Text repeated down 3 or more rows of a column (`CROSSCHECK_SPAN_ROWS`) now reads as a
+  main line on the run's first row only. 98 rows of 154,644 read differently (Tata Motors Jun-2025
+  and Sep-2024, Power Grid Sep-2024 and FY26); outcomes unchanged, 17,724 of 38,510. Tried and
+  dropped: leaving the copies out of every row lost Power Grid's `B. CASH FLOW FROM INVESTING
+  ACTIVITIES` main line; leaving them out of labels too lost 2 Reliance agreements. Correction to
+  s29 above: the copies were not why it sat on the Commercial Vehicle row; the OCR put each row's
+  figures one row above their label, which this does not touch. 5/5 mutants. $0.00.
+- 11-24: **filed PDFs re-rowed by their printed lines, three cache layers, $0.00** (Vedant: improve
+  the parsing; every table, for one reading; cache only what is expensive and stable, nothing
+  twice). Docling reads a results section printed as one ruled box with a label per line as too
+  few rows: two lines merge (`103,546 1,436`) and labels slide off their figures (s29, s14);
+  merged figure cells are 3-4% in OCR copies and 2% born-digital, in 169 of 185 PDFs. Docling's
+  settings do not help (TableFormer already accurate; cell matching off empties the cells). Now
+  Docling keeps each table's box, columns and header rows, and each body row is one printed line
+  of the PDF's text layer (`facts.line_rows`). Measured in scratch, every step checked by two
+  audits over every table (figures kept, totals footing) and the cross-check: rotated pages,
+  OCR-layer fragments, runs crossing columns (split at their spaces), split header dates (header
+  kept from Docling) and rupee fonts each fixed in turn; re-rowing only tables Docling merged
+  scored 18,166, every table 18,115, chosen for one reading. Character-level words merged far
+  more cells; the page's stated rotation held on all 7,862 pages with tables, so its check went.
+  Result: 17,724 to 18,115 of 38,510 agree (+675, -285, 3,513 on another cell, not yet
+  spot-checked); OCR layers' merged figure cells 5,850 to 3,232, totals footing 47% to 56%;
+  born-digital still drops about 5,600 figures Docling had. Caches: `.docling` (as was), the
+  words of pages with tables (`-words-`, gzipped, 171 s to build) and the cross-check document
+  (`-lines-`, rendered and re-rowed in one); a re-rowing change rebuilds only the last, 50 s for
+  the 108 filed PDFs; cross-check 79 s cached. The 108 rendered verify `.json` (60 MB) were
+  orphaned and deleted. `number` moved to `facts.printed` (an import cycle); `build_pdf` to the
+  retrieval conftest; "Docling's table" panel renamed "As parsed". 31/31 mutants; 2,951 tests.
+  Nothing written to the database.
+- 11-25: a machine check now names the reading it agreed by, and `crosscheck --recheck` re-checks
+  the stale ones (Vedant: re-parsing invalidates checks made from the old parse; option (a),
+  re-checking kept apart from `--write`). `facts.verified_with` (schema 5) holds
+  `CROSSCHECK_FINGERPRINT`: this module, `facts.printed`, the cross-check settings and every
+  reading's fingerprint. A stale `xbrl-filed` fact still agreeing is stamped afresh with its new
+  copy, figure and page; any other becomes `xbrl-ai`, and a `derived` fact losing a checked input
+  `derived-ai`. Person checks are never re-checked. The 17,719 existing checks migrate unstamped,
+  so all are stale: against today's run, 17,433 would be stamped afresh and 286 demoted, no
+  derived fact affected. A test caught `|`-joined fingerprint parts colliding; they hash as a
+  JSON list. 17/17 mutants; $0.00.
+- 11-25: the cross-check takes the best-labelled agreeing cell in a document, not the first, the
+  first on a tie (Vedant, after m10: Power Grid's total comprehensive income took "from Continuing
+  Operations" at 0.75 before "for the period" at 1.0). Same 18,115 agreements; 675 move to another
+  cell, 382 of them from a distinctive figure to a labelled row, 59 to another figure, 410 to
+  another page; m10 now takes the total row. m08 (ITC investment property, a deferred-tax table)
+  stays put: no better row competes; its column carrying a period is the next fix. Batch 2 of
+  cell-moves (m31-m60) drawn from the 675. 3/3 mutants; cross-check 86 s to 145 s; $0.00.
+- 11-25: table pages, `python -m aigent.facts table-page` (Vedant: look at whole parsed tables
+  across the documents, not single facts; 20 a batch, half drawn from tables an audit flags, half
+  at random). Each card: the printed page, the table as the cross-check reads it (row kinds,
+  header rows, column periods, flagged cells) and Docling's own rows for a re-rowed PDF, with
+  tags and a note saved per table. Audits: two figures in a cell, words in a figure cell, three
+  or more columns given one period, columns with no date, totals not footing, figures Docling had
+  that the reading lost. Batch 1 (`tables`, t01-t20) drawn in 55 s; most tables carry some flag,
+  footing the noisiest (a subtotal between rows reads as not footing). Publishing refused OCR's
+  U+FFFD, now written as a JSON escape. Page rendered in jsdom: no errors. 23/23 mutants; $0.00.
+- 11-25: filed PDFs' tables laid out by their printed words (Vedant: recreate the original table
+  as closely as possible; fix the top issues from table batch 1). Figure columns found from the
+  figures' right edges, not Docling's cells, so two printed columns Docling merged come apart (ITC
+  segment results, t19) and a long label's last word stays in its label (t01, t11, t19); Docling's
+  header laid over them, a merged header cell split into its phrases, a heading over several lines
+  read whole, and group headings given equal blocks (ITC's balance sheet prints each year over the
+  last two of three columns); a row of bare years is header (t20, Wipro); wrapped labels joined by
+  their words (a joining word, a lower-case continuation, figures printed between two label lines);
+  a run of several figures cut apart; rotated tables left on Docling's columns. The cross-check
+  reads `3 Months`/`Twelve Months`, a year under a heading naming the day, OCR's `[555)` and
+  `1;331`, and a note reference left of the dates as no figure. **18,115 to 19,624 of 38,510
+  agree: 1,529 gained (966 by label, 414 distinct, 149 per share; 923 ITC, 377 Tata Motors) and
+  20 lost** (OCR-layer edge cases, listed in the run diff). Audit census, before to after: born-
+  digital PDFs merged figure cells 2,489 to 2,093, words in figure cells 6,188 to 2,731, columns
+  with no date 16,468 to 15,601, cells read 330,541 to 334,945; filed OCR layers merged 937 to
+  756, words in figure cells 1,294 to 229, no date 1,114 to 919; totals not footing barely moved
+  (9,314 to 9,373; 3,114 to 3,275), still noisy. A first census in one process ran the PC out of
+  RAM; now one document a process, 0.5-1.0 GB peak, 17 min. 31/31 mutants; $0.00.
+- 11-25: table check round 2, the 20 tables the most cross-checked facts differ in (5,777 differ
+  in 1,175 tables; page `differs` published, then Vedant: analyse and propose, no page). About
+  half the differences are parsing: wrong period lengths (a title's "QUARTER AND NINE MONTHS"
+  carried over every column; "Quarter ended" over the middle of three), "As at current half year
+  end" read as 6 months, and OCR in headers (`31 .12.2022`, `Six.months`, `CONSOUDATED`). The rest
+  is matching (formula text in Tata's ratio labels, a fact label inside a longer row, flows
+  matched to positions), RapidOCR layout, and real XBRL differences. Header fixes (Vedant: ok to
+  1-3): a first-column title lends only its date, completed by a column's own month, day or
+  year, to columns naming a length, part of a date or an audit status; lengths from the
+  immediate neighbours, left first; "As at" first; OCR'd dates, lengths and basis words; a column
+  of no length matched when no other ending that day could be. **19,624 to 20,047 of 38,510
+  agree, 465 gained (Bajaj 160, Sun Pharma 127, Tata 112), 42 lost** (ITC Sep-2023's segment
+  table, its dates jammed into one cell, had agreed through its title by luck), differ 5,777 to
+  5,574. A first cut (no carry from the first column; the nearest pure heading lending its
+  length) lost 281 (Sun Pharma prints "Quarter ended" in its first column; Bajaj's and Reliance's
+  quarter columns took "Year ended" from three columns away). 18/18 mutants; $0.00.
+- 11-25: table check rounds 1-5 (Vedant: five more rounds of the same; fix the top issues, and
+  keep known issues and fix summaries on a page: https://claude.ai/artifact/5jjP6z1yD9mbaFcGS2HHoH).
+  Each round ranks tables by facts that differ, filed copies only after round 2 (RapidOCR
+  readings are a known issue: Reliance's first column loses its last digit in OCR itself).
+  Round 1, label gates: a row led by profit, loss, changes, purchase, proceeds, payment,
+  increase or decrease names something else unless the fact does; a fact led by a flow needs it
+  (or its printed synonym) in the row; bracketed formulas ignored. 20,047 to 19,883: 160 of 164
+  lost were zero-valued cash-flow facts agreeing on unrelated dashes. A first cut gating every
+  head word lost 801 real agreements. Round 2: 362 facts differed in sign only; concepts naming
+  their direction agree on size: +775, none lost (20,658). Round 3: current/non-current
+  exclusive, "will not be" (and OCR's "not he") against "will be", Other rows: +27 net. Round 4:
+  labels of three words or fewer take only rows led by their words: 46 lost, 41 zeros (Interest
+  received agreeing on "Number of complaints received ... Nil"). Round 5: the top 20 are now mostly
+  real XBRL-vs-print differences (Tata files right-of-use assets inside PPE, 11,711 = 10,869 +
+  842; XBRL OtherExpenses filed as another total; Bajaj's PBT with associates) and zero fillers
+  differing on unrelated rows; OCR's doubled lead group (5,5,947) read: +4. **20,643 of 38,510
+  agree, differ 5,777 to 4,217 since this morning.** 13/13 mutants; $0.00.
+- 11-25: the cross-check's fixes restructured, behaviour unchanged (Vedant: combine the fixes so
+  they are not ad hoc; token-for-token match, and know why if anything differs). Header reading
+  is `facts.headers` (`column_periods`: what is said of each column, each column dated, then the
+  table-wide steps in an explicit order), label matching `facts.labels` (the vetoes a named,
+  ordered table; `label_match` returns the share, the share before vetoes and the veto), word
+  reading `facts.vocab`; `facts.printed` holds the label prefixes `facts.line_rows` and the
+  cross-check share. A fact not agreed now names the veto that refused an equal cell: 178 on the
+  first run (short label 70, flow unprinted 65, row turns 25, will not be 14, opposites 2,
+  discontinued 2). The round's scripts became commands (`facts.rounds`): `crosscheck-diff`,
+  `table-rank`, `table-audit`. The cross-check fingerprint now hashes every module and setting
+  that decides an outcome (today's label and sign settings were missing). **Proved identical:**
+  all 38,510 cross-check rows field for field and the report text against the run before (the
+  veto field aside), and all 11,329 tables' rows, cells, periods and flags against the committed
+  code, run in a separate worktree with its own lines cache. 14/14 mutants of the new guards
+  (with step 2); $0.00.
+- 11-25: one figure definition and one OCR word repair (Vedant: step 2 of the restructure, a
+  behaviour change measured on its own). `printed.is_figure` is the re-rowing's own pattern, now
+  used by the audit and, with nil marks, the HTML reader. `vocab.repair` reads a word OCR
+  misread from `VOCAB_LEXICON` (the words the header and label rules key on) as the uniquely
+  nearest lexicon word, one letter off for 4-7 letters, two from 8; it replaced the basis edit
+  distance and the per-share one-letter match, and reached dates, lengths and labels. **20,643
+  to 20,730 agree: 91 gained, 4 lost**, each traced: ITC Sep-2025's balance sheet dated through
+  `Seotember` (27), Wipro's `Six Month ended` (19), Tata Sep-2023's `Six month ended` (12; its 3
+  lost had agreed on that column while it was mislabelled a quarter), Tata Sep-2025's cash flow
+  `Septamber` (4). It exposed an ordering bug: a column's carried headings were read top-down,
+  so Wipro's stray `Six Month ended Year ended` line made its quarter columns six months; the
+  heading nearest the dates now wins. 354 facts changed label share only (plural and OCR'd words
+  now matching). Tables: no row changed but ICICI Bank Mar-2024's HTML notes, split from the
+  table after them because the shared pattern counts note numbers `1.` as figures (better
+  result, wrong reason; on the known issues). Taking braces as brackets (`{99)`) gained none and
+  lost 9 (Tata's header fell over the wrong column), so they stay out until the header is fixed
+  with them. $0.00.

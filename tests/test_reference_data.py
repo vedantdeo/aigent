@@ -25,6 +25,7 @@ from aigent.facts.reference import FUNDAMENTALS
 from aigent.facts.review import DECISIONS
 from aigent.facts.review_page import REVIEW_PAGES
 from aigent.facts.share_events import SHARE_EVENTS
+from aigent.facts.table_page import TABLE_PAGES
 from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 
@@ -89,7 +90,7 @@ def class_names(path: Path) -> list[str]:
 
 
 def card_ids(path: Path) -> list[str]:
-    """A review page's card ids, in file order."""
+    """A review or table page's card ids, in file order."""
     return [str(c["id"]) for c in json.loads(path.read_text(encoding="utf-8"))["cards"]]
 
 
@@ -130,6 +131,7 @@ ORDERED_FILES = [
     Ordered(ADJUDICATIONS, key="id", load=jsonl_ids("id")),
     Ordered(ERRORS, key="class name", load=class_names),
     *(Ordered(p, key="id", load=card_ids) for p in sorted(REVIEW_PAGES.glob("*.json"))),
+    *(Ordered(p, key="id", load=card_ids) for p in sorted(TABLE_PAGES.glob("*.json"))),
 ]
 
 

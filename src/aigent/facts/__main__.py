@@ -1,8 +1,9 @@
 """`python -m aigent.facts build [--offline]`: build the facts database and write its report.
 `python -m aigent.facts coverage`: score what it holds against the labelled figures; free.
-`python -m aigent.facts crosscheck [--write]`: check the cross-checked companies' XBRL facts against
-their results documents, rule on the review decisions and write the review queue; `--write` makes
-agreements `xbrl-filed` and the groups decided `right` `xbrl`.
+`python -m aigent.facts crosscheck [--recheck] [--write]`: check the cross-checked companies' XBRL
+facts against their results documents, rule on the review decisions and write the review queue;
+`--recheck` stamps afresh or demotes each `xbrl-filed` fact checked by an older reading, and
+`--write` makes agreements `xbrl-filed` and the groups decided `right` `xbrl`.
 `python -m aigent.facts reocr [--documents PATH ...] [--tickers T ...]`: OCR scanned results afresh,
 each in its own process, into the readings the cross-check tries after them; free, minutes each.
 `python -m aigent.facts verify-concept --name N --scope S --by P`: a person's check of a derived
@@ -10,11 +11,14 @@ concept. `python -m aigent.facts share-events` lists the share events held, and
 `verify-share-event --id N --by P [--kind K --effective D --ratio A:B]` records a person's check
 of one, naming an unknown one's kind, date and ratio.
 `python -m aigent.facts trace --rows PATH --facts N ...`: each fact's cell from a cross-check run's
-`.rows.jsonl`, traced through its table as Docling parsed it and the cross-check read it, as JSON
+`.rows.jsonl`, traced through its table as parsed and as the cross-check read it, as JSON
 on stdout; free, from the parse caches.
 `python -m aigent.facts review-page --name N [--outcome agree|differ] [--add K] [--rows PATH]
 [--url U]`: build review page N's HTML from a run's rows (the newest by default), first drawing K
-more cards when asked, into `evals/review-pages/N/index.html` for Claude to publish; free."""
+more cards when asked, into `evals/review-pages/N/index.html` for Claude to publish; free.
+`python -m aigent.facts table-page --name N [--add K] [--kind C] [--tickers T ...] [--url U]`: build
+table page N, first drawing K more tables (half flagged by an audit, half at random) of that kind of
+copy and those companies; free, from the caches."""
 
 from __future__ import annotations
 
@@ -40,6 +44,7 @@ from aigent.facts.cfg_facts import (
     FACTS_TICKERS,
     FACTS_YEARS,
     REVIEW_PAGE_SEED,
+    TABLE_PAGE_SEED,
     TAXONOMY_PACKAGES,
     VERIFY_REOCR_MAX_GB,
     VERIFY_REOCR_POLL_S,
@@ -52,10 +57,12 @@ from aigent.facts.coverage import (
     teacher_figures,
     write_report,
 )
-from aigent.facts.crosscheck import Checked, Sheet, apply, crosscheck, sheets
+from aigent.facts.crosscheck import Checked, Sheet, apply, crosscheck, recheck, sheets
 from aigent.facts.documents import (
+    VERIFY_DIR,
     Entry,
     build_reocr,
+    doc_id_of,
     filed_of,
     is_reading,
     load_verify_document,
@@ -64,6 +71,7 @@ from aigent.facts.documents import (
     readings_of,
     reocr_built,
     ticker_of,
+    usable_readings,
 )
 from aigent.facts.lookup import Lookup, concept_index
 from aigent.facts.nse import XBRL_DIR, polite_get
@@ -90,11 +98,24 @@ from aigent.facts.review_page import (
     read_page_list,
     write_page_list,
 )
+from aigent.facts.rounds import audit_tables, diff_report, diff_runs, rank_tables, read_rows
 from aigent.facts.share_events import load_share_events, verify_share_event
 from aigent.facts.store import FACTS_DB, Writer, connect, verify_derived_concept
+from aigent.facts.table_page import (
+    TABLE_PAGES,
+    CardSource,
+    build_table_page,
+    draw_tables,
+    found_tables,
+    read_table_list,
+    table_card,
+    write_table_list,
+)
+from aigent.facts.table_page import TEMPLATE as TABLE_TEMPLATE
 from aigent.facts.taxonomy import TAXONOMY_DIR
 from aigent.facts.trace import trace, trace_json
-from aigent.retrieval.chunk import Document
+from aigent.retrieval.chunk import Document, Table
+from aigent.retrieval.corpus import assembled, elements_of, parse_cached
 
 REPORT = FACTS_DB.with_name("facts-build-report.json")
 CROSSCHECK_DIR = Path(__file__).resolve().parents[3] / "evals" / "reports"
@@ -126,13 +147,20 @@ def main(argv: list[str] | None = None) -> None:
             "verify-share-event",
             "trace",
             "review-page",
+            "table-page",
+            "crosscheck-diff",
+            "table-rank",
+            "table-audit",
         ],
     )
     parser.add_argument("--name", help="verify-concept: the derived concept checked")
     parser.add_argument("--scope", help="verify-concept: its scope, banking or ind-as")
     parser.add_argument("--by", help="verify-concept, verify-share-event: who checked it")
     parser.add_argument("--id", type=int, help="verify-share-event: the event, from share-events")
-    parser.add_argument("--kind", help="verify-share-event: bonus, split or issue (for value)")
+    parser.add_argument(
+        "--kind",
+        help="verify-share-event: bonus, split or issue (for value); table-page: a kind of copy",
+    )
     parser.add_argument("--effective", help="verify-share-event: when the shares changed, ISO")
     parser.add_argument(
         "--ratio", help="verify-share-event: shares after:before, 2:1 for a 1:1 bonus"
@@ -142,10 +170,28 @@ def main(argv: list[str] | None = None) -> None:
         "--write", action="store_true", help="crosscheck: record agreements and decisions"
     )
     parser.add_argument(
+        "--recheck",
+        action="store_true",
+        help="crosscheck: stamp afresh or demote facts an older reading made xbrl-filed",
+    )
+    parser.add_argument(
         "--documents", nargs="*", default=[], help="reocr: scans by manifest path, as results/X.pdf"
     )
     parser.add_argument("--tickers", nargs="*", default=[], help="reocr: every scan of these")
-    parser.add_argument("--rows", type=Path, help="trace: a cross-check run's .rows.jsonl")
+    parser.add_argument(
+        "--rows",
+        type=Path,
+        help="trace, crosscheck-diff, table-rank: a cross-check run's .rows.jsonl",
+    )
+    parser.add_argument(
+        "--against",
+        type=Path,
+        help="crosscheck-diff: the earlier run's .rows.jsonl to compare with",
+    )
+    parser.add_argument("--top", type=int, default=20, help="table-rank: how many tables")
+    parser.add_argument(
+        "--filed-only", action="store_true", help="table-rank: leave out re-OCR'd readings"
+    )
     parser.add_argument("--facts", nargs="*", type=int, default=[], help="trace: fact ids")
     parser.add_argument("--outcome", choices=["agree", "differ"], help="review-page: a new page's")
     parser.add_argument("--add", type=int, default=0, help="review-page: cards to draw anew")
@@ -157,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
         coverage(now)
         return
     if args.command == "crosscheck":
-        cross_check(now, write=args.write)
+        cross_check(now, write=args.write, stale=args.recheck)
         return
     if args.command == "reocr":
         if args.one:
@@ -175,6 +221,27 @@ def main(argv: list[str] | None = None) -> None:
         if args.rows is None or not args.facts:
             raise SystemExit("give a run's --rows file and the --facts to trace")
         print(json.dumps(trace_facts(args.rows, list(args.facts)), indent=1))
+        return
+    if args.command == "crosscheck-diff":
+        if args.rows is None or args.against is None:
+            raise SystemExit("give the run to read as --rows and the earlier one as --against")
+        before, after = read_rows(args.against), read_rows(args.rows)
+        print(diff_report(diff_runs(before, after), before, after))
+        return
+    if args.command == "table-rank":
+        if args.rows is None:
+            raise SystemExit("give a run's --rows file")
+        rows = read_rows(args.rows).values()
+        for k, t in enumerate(rank_tables(rows, int(args.top), not args.filed_only), start=1):
+            print(f"{k:3} {t.differ:4} differ {t.agree:4} agree  {t.document} #{t.sheet}")
+        return
+    if args.command == "table-audit":
+        print(table_audit(now))
+        return
+    if args.command == "table-page":
+        if not args.name:
+            raise SystemExit("give the page's --name, as tables")
+        table_page(str(args.name), int(args.add), args.kind, list(args.tickers), args.url)
         return
     if args.command == "review-page":
         if not args.name:
@@ -271,15 +338,19 @@ def verify_event(
     print(f"now {event.described()}" if changed else "already checked as given; unchanged")
 
 
-def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None:
+def cross_check(
+    now: datetime, write: bool, decisions: Path = DECISIONS, stale: bool = False
+) -> None:
     """Check every cross-checked company's XBRL facts, rule on the decisions, write the report and
-    review queue, and with `write`, make the agreements `xbrl-filed` and `right` groups `xbrl`."""
+    review queue; with `stale`, re-check the `xbrl-filed` facts an older reading stamped, and with
+    `write`, make the agreements `xbrl-filed` and `right` groups `xbrl`."""
     conn = connect(FACTS_DB)
     try:
         checked = crosscheck(conn, VERIFY_TICKERS)
         rulings = rule(review_groups(checked), read_decisions(decisions))
         manifest = read_manifest()
         origins = {r: origin_of(r, e) for n, e in manifest.items() for r in readings_of(n, e)}
+        rechecked = recheck(conn, checked, now, origins, VERIFY_TICKERS) if stale else None
         moved = apply(conn, checked, now, origins) if write else 0
         checked_by_person = apply_rulings(conn, rulings, now) if write else 0
     finally:
@@ -298,6 +369,12 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
             if write
             else "no (run with --write to record)"
         ),
+        "rechecked": (
+            f"{rechecked.restamped:,} stamped afresh, {rechecked.demoted:,} made xbrl-ai, "
+            f"{rechecked.derived_demoted:,} derived made derived-ai"
+            if rechecked
+            else "no (run with --recheck to re-check stale stamps)"
+        ),
         "commit": _commit(),
         "run": f"{now:%Y-%m-%d %H:%M}",
         "cost": "$0.00 (local parsing only)",
@@ -308,11 +385,42 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
     )
     print(
         f"{len(checked)} facts, {agreed} agree, {moved} written xbrl-filed, "
-        f"{checked_by_person} written xbrl; decisions: {header['decisions']}; report: {path}"
+        f"{checked_by_person} written xbrl; rechecked: {header['rechecked']}; "
+        f"decisions: {header['decisions']}; report: {path}"
     )
     missing = [r for r in origins if is_reading(r) and not reocr_built(r)]
     if missing:
         print(f"{len(missing)} scans have no re-OCR'd reading yet: python -m aigent.facts reocr")
+
+
+def table_audit(
+    now: datetime,
+    out_dir: Path = REVIEW_PAGES_OUT,
+    audit: Callable[[Sequence[str]], dict[str, dict[str, object]]] = audit_tables,
+    manifest: Mapping[str, Entry] | None = None,
+    readings: Sequence[str] | None = None,
+) -> str:
+    """Audits every table of every usable reading, or of `readings` (`rounds.audit_tables`),
+    writes them to `out_dir/table-audit-<time>.json` and returns the flags' totals by kind."""
+    manifest = read_manifest() if manifest is None else manifest
+    tables = audit(usable_readings(manifest) if readings is None else readings)
+    kinds = kinds_of({key.rsplit("#", 1)[0] for key in tables}, manifest)
+    totals: dict[str, Counter[str]] = {}
+    for key, table in tables.items():
+        counted = totals.setdefault(kinds[key.rsplit("#", 1)[0]], Counter())
+        flags = cast(dict[str, int], table["flags"])
+        counted["tables"] += 1
+        counted["cells"] += cast(int, table["cells"])
+        counted["flagged"] += any(flags.values())
+        counted.update(flags)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"table-audit-{now:%Y%m%d-%H%M}.json"
+    path.write_text(json.dumps(tables), encoding="utf-8")
+    lines = [
+        f"{kind}: " + ", ".join(f"{k} {n}" for k, n in c.items())
+        for kind, c in sorted(totals.items())
+    ]
+    return "\n".join([*lines, f"tables: {path}"])
 
 
 def trace_facts(
@@ -396,6 +504,86 @@ def review_page(
     print(
         f"{len(cards)} cards ({add} new in batch {batch}) from {rows_path.name}, "
         f"{len(html.encode()) / 1e6:.1f} MB: {target}; publish it to {page.url or 'a new artifact'}"
+    )
+    return target
+
+
+def docling_tables(name: str, verify_dir: Path = VERIFY_DIR) -> tuple[Table, ...] | None:
+    """A filed PDF's tables as Docling parsed them, before re-rowing; None for any other reading."""
+    entry = read_manifest(verify_dir)[filed_of(name)]
+    if is_reading(name) or entry["format"] != "pdf":
+        return None
+    path = verify_dir / name
+    parsed = parse_cached(path, doc_id_of(name))
+    return assembled(doc_id_of(name), elements_of(parsed), source=str(path)).tables
+
+
+def table_page(
+    name: str,
+    add: int,
+    kind: str | None,
+    tickers: Sequence[str],
+    url: str | None,
+    lists: Path = TABLE_PAGES,
+    out_dir: Path = REVIEW_PAGES_OUT,
+    load: Callable[[str], Document] = load_verify_document,
+    docling: Callable[[str], tuple[Table, ...] | None] = docling_tables,
+    image: Callable[[Path, int], str] = page_image,
+    manifest: Mapping[str, Entry] | None = None,
+) -> Path:
+    """Builds table page `name`, first drawing `add` new tables of kind of copy `kind` and of
+    `tickers` (any when not given) and recording `url`; its table list is kept in `lists`, the
+    page written under `out_dir`. Returns the page's path."""
+    manifest = read_manifest() if manifest is None else manifest
+    list_path = lists / f"{name}.json"
+    page = read_table_list(list_path)
+    if add:
+        readings = [
+            r for r in usable_readings(manifest) if not tickers or ticker_of(filed_of(r)) in tickers
+        ]
+        kinds = kinds_of(readings, manifest)
+        readings = [r for r in readings if kind is None or kinds[r] == kind]
+        if not readings:
+            raise SystemExit(f"no readable document of kind {kind!r} for {list(tickers) or 'any'}")
+
+        def read(reading: str) -> tuple[tuple[Table, ...], list[Sheet]]:
+            document = load(reading)
+            return document.tables, sheets(document)
+
+        found = found_tables(readings, read, kinds.__getitem__)
+        page = draw_tables(found, page, add, TABLE_PAGE_SEED)
+    if url:
+        page = replace(page, url=url)
+    write_table_list(list_path, page)
+    kinds = kinds_of((c.document for c in page.cards), manifest)
+    cards: list[dict[str, object]] = []
+    held: dict[str, tuple[Document, list[Sheet], tuple[Table, ...] | None]] = {}
+    for kept in sorted(page.cards, key=lambda c: c.id):
+        if kept.document not in held:
+            document = load(kept.document)
+            held[kept.document] = (document, sheets(document), docling(kept.document))
+        document, read_sheets, original = held[kept.document]
+        sheet = next(s for s in read_sheets if s.index == kept.sheet)
+        entry = manifest[filed_of(kept.document)]
+        shown = None
+        if entry["format"] == "pdf":
+            shown = image(VERIFY_DIR / filed_of(kept.document), sheet.page)
+        link = entry.get("url")
+        source = CardSource(
+            kinds[kept.document],
+            ticker_of(filed_of(kept.document)),
+            None if original is None else original[kept.sheet].rows,
+            link if isinstance(link, str) else None,
+            shown,
+        )
+        cards.append(table_card(kept, document.tables[kept.sheet], sheet, source))
+    html = build_table_page(cards, TABLE_TEMPLATE.read_text(encoding="utf-8"))
+    target = out_dir / name / "index.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(html, encoding="utf-8")
+    print(
+        f"{len(cards)} tables ({add} drawn anew), {len(html.encode()) / 1e6:.1f} MB: {target}; "
+        f"publish it to {page.url or 'a new artifact'}"
     )
     return target
 
