@@ -15,6 +15,20 @@ from .conftest import CROSSCHECK_HEADER as _HEADER
     ("header", "expected"),
     [
         pytest.param(
+            (
+                ("Six Month ended Year ended",),
+                ("", "Three months ended", "", "Six Month ended", "Year ended"),
+                ("", "Sep 30, 2025", "Jun 30, 2025", "Sep 30, 2025", "Mar 31, 2025"),
+            ),
+            {
+                1: Column(date(2025, 9, 30), 3),
+                2: Column(date(2025, 6, 30), 3),
+                3: Column(date(2025, 9, 30), 6),
+                4: Column(date(2025, 3, 31), 12),
+            },
+            id="Wipro's stray heading line, the nearest heading over the dates winning",
+        ),
+        pytest.param(
             _HEADER,
             {
                 2: Column(date(2024, 6, 30), 3),

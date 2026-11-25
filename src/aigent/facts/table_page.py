@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TypedDict, cast
 
+from aigent.facts import printed
 from aigent.facts.cfg_facts import (
     REVIEW_PAGE_KINDS,
     REVIEW_PAGE_MAX_MB,
@@ -38,14 +39,13 @@ FLAGS: tuple[str, ...] = (
     "total not footing",
 )
 _MARKERS = ("{{TITLE}}", "{{LEDE}}", "{{TAGS}}", "{{DATA}}")
-_FIGURE = re.compile(r"[(\[{]?-?[\d,]+(?:\.\d+)?[)\]}]?\.?")  # one printed figure, as a word
 _WORD = re.compile(r"[A-Za-z]{3,}")
 _FOOT_SPAN = 15  # rows above a total its figures may sum
 
 
 def is_figure(word: str) -> bool:
     """A word printing a figure of two or more digits, as `1,234.5` or `(12)`."""
-    return bool(_FIGURE.fullmatch(word)) and len(re.sub(r"\D", "", word)) >= 2
+    return printed.is_figure(word) and len(re.sub(r"\D", "", word)) >= 2
 
 
 def figures_in(rows: Iterable[Sequence[str]]) -> Counter[str]:

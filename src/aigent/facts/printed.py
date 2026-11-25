@@ -12,6 +12,8 @@ WORDED_DATE = re.compile(r"([a-z]{3,9})\.?\s*(\d{1,2})\s*,?\s*(\d{4})")
 YEAR = re.compile(r"((?:19|20)\d{2})\s*\*?")  # a header's year alone, as `2025` or `2024*`
 MAIN_LINE = re.compile(r"\s*(?:[IVX]{1,5}|[A-H])[.)]?\s")  # IX, XI, D., II. open a main line
 ENUMERATOR = re.compile(r"\(?(?:[a-z]|[ivx]+)[.)]")  # a), (ii) open a sub-row
+FIGURE = re.compile(r"[(\[]?[-+]?[\d,.]*\d[\d,.]*%?[)\]]?%?")  # 1,234.5 (12) [555) (9.8%)
+NIL = r"\.\.|[-–—]"  # what prints a nil figure
 
 
 def number(text: str) -> tuple[float, int, bool] | None:
@@ -51,3 +53,14 @@ def figure_row(row: Sequence[str]) -> bool:
     """A row printing two or more figures, not only years as a header's `2025 | 2024*` does."""
     figures = [c for c in row if number(c) is not None]
     return len(figures) >= 2 and not all(YEAR.fullmatch(c.strip()) for c in figures)
+
+
+def is_figure(text: str) -> bool:
+    """A word printing one figure, as `1,234.5`, `(12)`, OCR's `[555)` or `(9.8%)`."""
+    return bool(FIGURE.fullmatch(text.strip()))
+
+
+def figures_only(text: str) -> bool:
+    """A cell printing figures, or a dash for none, only."""
+    found = text.split()
+    return bool(found) and all(is_figure(t) or number(t) is not None for t in found)

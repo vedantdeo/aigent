@@ -2827,3 +2827,20 @@
   veto field aside), and all 11,329 tables' rows, cells, periods and flags against the committed
   code, run in a separate worktree with its own lines cache. 14/14 mutants of the new guards
   (with step 2); $0.00.
+- 11-25: one figure definition and one OCR word repair (Vedant: step 2 of the restructure, a
+  behaviour change measured on its own). `printed.is_figure` is the re-rowing's own pattern, now
+  used by the audit and, with nil marks, the HTML reader. `vocab.repair` reads a word OCR
+  misread from `VOCAB_LEXICON` (the words the header and label rules key on) as the uniquely
+  nearest lexicon word, one letter off for 4-7 letters, two from 8; it replaced the basis edit
+  distance and the per-share one-letter match, and reached dates, lengths and labels. **20,643
+  to 20,730 agree: 91 gained, 4 lost**, each traced: ITC Sep-2025's balance sheet dated through
+  `Seotember` (27), Wipro's `Six Month ended` (19), Tata Sep-2023's `Six month ended` (12; its 3
+  lost had agreed on that column while it was mislabelled a quarter), Tata Sep-2025's cash flow
+  `Septamber` (4). It exposed an ordering bug: a column's carried headings were read top-down,
+  so Wipro's stray `Six Month ended Year ended` line made its quarter columns six months; the
+  heading nearest the dates now wins. 354 facts changed label share only (plural and OCR'd words
+  now matching). Tables: no row changed but ICICI Bank Mar-2024's HTML notes, split from the
+  table after them because the shared pattern counts note numbers `1.` as figures (better
+  result, wrong reason; on the known issues). Taking braces as brackets (`{99)`) gained none and
+  lost 9 (Tata's header fell over the wrong column), so they stay out until the header is fixed
+  with them. $0.00.

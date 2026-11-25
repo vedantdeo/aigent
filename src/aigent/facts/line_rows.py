@@ -13,7 +13,7 @@ import pypdfium2.raw as pdfium_c
 from docling_core.types.doc.items.table.table import TableItem
 
 from aigent.facts.cfg_facts import VERIFY_BAND_MIN_SHARE, VERIFY_LINE_GAP, VERIFY_WRAP_GAP
-from aigent.facts.printed import ENUMERATOR, figure_row, number
+from aigent.facts.printed import ENUMERATOR, figure_row, figures_only, is_figure
 
 Box = tuple[float, float, float, float]  # left, top, right, bottom on the page as displayed
 PdfBox = tuple[float, float, float, float]  # left, bottom, right, top in the page's own space
@@ -177,7 +177,7 @@ def layout(item: TableItem, rows: Rows, height: float) -> Layout | None:
         for j, c in enumerate(row):
             if c:
                 filled.setdefault(j, []).append(c)
-    text = frozenset(j for j, cs in filled.items() if sum(map(_printed, cs)) * 2 < len(cs))
+    text = frozenset(j for j, cs in filled.items() if sum(map(figures_only, cs)) * 2 < len(cs))
     return Layout(
         box, first, min(tops) - 1, columns, item.data.num_cols, tuple(sorted(cells)), text
     )
@@ -208,24 +208,11 @@ def _middle_of(word: Word) -> float:
     return _middle(word[1])
 
 
-_FIGURE = re.compile(r"[(\[]?[-+]?[\d,.]*\d[\d,.]*%?[)\]]?%?")  # 1,234.5  (12)  (9.8%)
-
-
 def _upright(words: Sequence[Word]) -> bool:
     """Whether most words of three or more characters are taller than wide: text run up or down
     the page as displayed."""
     long = [box for text, box, _ in words if len(text) >= 3]
     return sum(b[3] - b[1] > b[2] - b[0] for b in long) * 2 > len(long)
-
-
-def _is_figure(text: str) -> bool:
-    return bool(_FIGURE.fullmatch(text))
-
-
-def _printed(text: str) -> bool:
-    """A cell printing figures, or a dash for none, only."""
-    tokens = text.split()
-    return bool(tokens) and all(_is_figure(t) or number(t) is not None for t in tokens)
 
 
 def bands(
@@ -239,7 +226,7 @@ def bands(
     figures dropped, as is one centred in a `text` column or on fewer lines of two that overlap;
     each spans its figures."""
     figures = sorted(
-        ((i, box) for i, line in enumerate(lines) for word, box in line if _printed(word)),
+        ((i, box) for i, line in enumerate(lines) for word, box in line if figures_only(word)),
         key=lambda f: f[1][2],
     )
     clusters: list[list[tuple[int, Box]]] = []
@@ -300,7 +287,7 @@ class Grid:
         nearest column."""
         middle = (box[0] + box[2]) / 2
         bands = [(_apart(box, self.spans[k]), k) for k in self.figures]
-        if _is_figure(text) and (best := min(bands))[0] < 0:
+        if is_figure(text) and (best := min(bands))[0] < 0:
             return best[1]
         inside = [k for k in self.figures if self.spans[k][0] <= middle <= self.spans[k][1]]
         if inside:
@@ -573,7 +560,7 @@ def split_figures(line: Sequence[tuple[str, Box]]) -> list[tuple[str, Box]]:
     out: list[tuple[str, Box]] = []
     for text, box in line:
         tokens = text.split()
-        if len(tokens) < 2 or not all(_printed(t) for t in tokens):
+        if len(tokens) < 2 or not all(figures_only(t) for t in tokens):
             out.append((text, box))
             continue
         step = (box[2] - box[0]) / len(text)

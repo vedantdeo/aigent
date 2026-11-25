@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from aigent.facts.printed import figure_row, number
+from aigent.facts.printed import figure_row, figures_only, is_figure, number
 
 
 @pytest.mark.parametrize(
@@ -50,3 +50,30 @@ def test_number(printed: str, read: tuple[float, int, bool] | None) -> None:
 )
 def test_figure_row(row: tuple[str, ...], figures: bool) -> None:
     assert figure_row(row) is figures
+
+
+@pytest.mark.parametrize(
+    ("word", "figure"),
+    [
+        ("1,234.5", True),
+        ("(12)", True),
+        ("[555)", True),
+        ("(9.8%)", True),
+        ("+4.2", True),
+        ("{12}", False),
+        ("2.341.", True),
+        ("Revenue", False),
+        ("-", False),
+        ("12 34", False),
+    ],
+)
+def test_is_figure(word: str, figure: bool) -> None:
+    assert is_figure(word) is figure
+
+
+@pytest.mark.parametrize(
+    ("cell", "only"),
+    [("12 (34)", True), ("-", True), ("12 Revenue", False), ("", False)],
+)
+def test_figures_only(cell: str, only: bool) -> None:
+    assert figures_only(cell) is only

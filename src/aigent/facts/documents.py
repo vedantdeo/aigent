@@ -68,7 +68,7 @@ _FLAGGED = {"format", "pages", "text_less_pages", "ocr_pages"}
 Entry = dict[str, object]
 Rows = tuple[tuple[str, ...], ...]
 
-_FIGURE = re.compile(r"\(?-?\d[\d,]*(?:\.\d+)?\)?%?|\.\.|[-–—]")  # a nil prints ".." or a dash
+_FIGURE = re.compile(f"{printed.FIGURE.pattern}|{printed.NIL}")  # a figure, or a nil
 _MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?"
 _DATE = re.compile(
     rf"\b{_MONTH}\s+\d{{1,2}},?\s+\d{{4}}|\b\d{{1,2}}\s+{_MONTH},?\s+\d{{4}}"

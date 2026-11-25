@@ -11,7 +11,7 @@ from datetime import date
 
 from aigent.facts.cfg_facts import CROSSCHECK_SCALES
 from aigent.facts.printed import NUMERIC_DATE, WORDED_DATE, YEAR
-from aigent.facts.vocab import edits
+from aigent.facts.vocab import repair
 
 MONTHS = {
     m: i
@@ -66,6 +66,7 @@ def date_in(text: str) -> date | None:
     """The last whole date a text states, numeric (`31.03.2025`, OCR's `31 .03.2025`), worded
     either way round (`March 31, 2025`, `31st March, 2025`) or with an apostrophe (`30 Jun'24`)."""
     found: list[date] = []
+    text = repair(text)
     closed = re.sub(r"(?<=\d)\s*([./-])\s*(?=\d)", r"\1", text)  # OCR's `31 .12.2022`
     for d, m, y in NUMERIC_DATE.findall(closed):
         try:
@@ -112,7 +113,7 @@ def fy_end_in(text: str) -> date | None:
 
 def months_in(text: str) -> int | None:
     """A header's length in months, 0 for a balance "as at" a day even at a half year's end."""
-    t = text.lower()
+    t = repair(text).lower()
     if re.search(r"\bas\s*at\b|\basat\b|^\s*at\b", t):
         return 0
     if re.search(r"nine\W*months|\bni\S{1,3}\s+months|\b9m\b|\b9\s*month", t):
@@ -138,7 +139,7 @@ def _completed(text: str, title: date | None) -> date | None:
     from the title's date."""
     if title is None:
         return None
-    t = text.lower()
+    t = repair(text).lower()
     years = re.findall(r"\b((?:19|20)\d{2})(?!\d)", t)
     month, day = title.month, title.day
     for name, d in re.findall(r"([a-z]{3,9})\.?\s*(\d{1,2})\b", t):
@@ -152,7 +153,7 @@ def _completed(text: str, title: date | None) -> date | None:
 
 def _partly_dated(text: str) -> bool:
     """Whether a header names a month, a year or an audit status, though no whole date."""
-    found = re.findall(r"[a-z]+", text.lower())
+    found = re.findall(r"[a-z]+", repair(text).lower())
     return (
         any(w in MONTHS or w in ("audited", "unaudited") for w in found)
         or re.search(r"\b(?:19|20)\d{2}\b", text) is not None
@@ -175,6 +176,12 @@ class _Said:
 
     def theirs(self, j: int) -> str:
         return " ".join(self.carried.get(j, []))
+
+    def carried_months(self, j: int) -> int | None:
+        """The length named by the heading carried over a column nearest its dates, the lowest."""
+        return next(
+            (m for h in reversed(self.carried.get(j, [])) if (m := months_in(h)) is not None), None
+        )
 
 
 def _said(header: Sequence[Sequence[str]]) -> _Said:
@@ -211,10 +218,10 @@ def _dated(said: _Said, j: int) -> Column | None:
     cells, in the heading over it, or the two read together (`March 31,` over `2024`); the
     title's date completed by its own parts, for a column naming a length or part of a date; a
     financial year, 12 months unless said otherwise. Its length from its own cells, else the
-    heading's."""
+    nearest heading over it that names one."""
     mine, theirs = said.mine(j), said.theirs(j)
     months = months_in(mine)
-    months = months_in(theirs) if months is None else months
+    months = said.carried_months(j) if months is None else months
     end = date_in(mine) or date_in(theirs) or date_in(f"{theirs} {mine}")
     if end is None and (_partly_dated(mine) or months_in(mine) is not None):
         end = _completed(mine, date_in(" ".join(said.titled.get(j, []))))
@@ -234,7 +241,7 @@ def _shared_day(said: _Said, columns: dict[int, Column]) -> dict[int, Column]:
     for j, year in said.years.items():
         if j not in out:
             months = months_in(said.mine(j))
-            months = months_in(said.theirs(j)) if months is None else months
+            months = said.carried_months(j) if months is None else months
             out[j] = Column(date(year, month, day), months)
     return out
 
@@ -286,12 +293,7 @@ def document_scale(text: str) -> float | None:
 
 
 def basis_in(text: str) -> str | None:
-    """The last basis the text names, a word within two letters of "standalone" or
-    "consolidated" counted, as OCR's "CONSOUDATED"."""
-    found = [
-        (m.start(), basis)
-        for m in re.finditer(r"[a-z]{8,14}", text)
-        for basis in ("standalone", "consolidated")
-        if edits(m.group(0), basis) <= 2
-    ]
-    return max(found)[1] if found else None
+    """The last basis the text names, "standalone" or "consolidated", read through OCR's slips
+    (`repair`: `CONSOUDATED`)."""
+    found = re.findall(r"standalone|consolidated", repair(text).lower())
+    return found[-1] if found else None

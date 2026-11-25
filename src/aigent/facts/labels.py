@@ -17,7 +17,6 @@ from aigent.facts.cfg_facts import (
 )
 from aigent.facts.vocab import STOP, one_off, tokens, words
 
-_EPS_WORDS = ("basic", "diluted", "earnings", "share", "continuing", "discontinued")
 _FORMULA = re.compile(r"^(.*?[A-Za-z]{3}.*?)\s*[\[{].*$", re.S)  # words, then a bracketed formula
 _GENERIC = 3  # a label this short ("Income", "Current assets") takes only a row led by its words
 _LEADS = {"total", "net", "less", "add", "basic", "diluted", "principal"}  # passed over for a head
@@ -161,9 +160,9 @@ def label_share(labels: Iterable[str], segment: str | None, row_label: str) -> f
 
 def per_share_row(labels: Iterable[str], text: str) -> bool:
     """A row, with its heading, printing a per-share fact: its kind (basic or diluted), earnings per
-    share, and discontinued operations on both or neither; OCR'd words one letter off."""
-    found = words(text)
-    row = found | {t for w in found for t in _EPS_WORDS if one_off(w, t)}
+    share, and discontinued operations on both or neither, its words read through OCR's slips
+    (`vocab.repair`)."""
+    row = words(text)
     named = set().union(*(words(label) for label in labels))
     if not {"basic", "diluted"} & named & row:
         return False

@@ -144,6 +144,45 @@ CROSSCHECK_ROW_TURNS = frozenset(
     {"changes", "change", "decrease", "increase", "loss", "payment", "payments", "proceeds"}
     | {"profit", "purchase", "purchases"}
 )
+# The words the header and label rules key on, sorted; an OCR'd word near exactly one is read as it.
+VOCAB_LEXICON: tuple[str, ...] = (
+    "acquisition",
+    "april",
+    "audited",
+    "august",
+    "basic",
+    "changes",
+    "consolidated",
+    "continuing",
+    "december",
+    "decrease",
+    "diluted",
+    "discontinued",
+    "earnings",
+    "february",
+    "increase",
+    "january",
+    "march",
+    "months",
+    "november",
+    "october",
+    "payment",
+    "payments",
+    "proceeds",
+    "profit",
+    "purchase",
+    "purchases",
+    "quarter",
+    "reclassified",
+    "repayment",
+    "repayments",
+    "september",
+    "share",
+    "standalone",
+    "three",
+    "twelve",
+    "unaudited",
+)
 # Concepts naming their own direction, filed positive and printed in brackets as a deduction.
 CROSSCHECK_SIGN_FREE = re.compile(
     r"^(?:Purchase|Purchases|Payment|Payments|Repayments|Acquisition)(?:Of|For)"
