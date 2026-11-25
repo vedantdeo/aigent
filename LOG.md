@@ -2812,3 +2812,18 @@
   842; XBRL OtherExpenses filed as another total; Bajaj's PBT with associates) and zero fillers
   differing on unrelated rows; OCR's doubled lead group (5,5,947) read: +4. **20,643 of 38,510
   agree, differ 5,777 to 4,217 since this morning.** 13/13 mutants; $0.00.
+- 11-25: the cross-check's fixes restructured, behaviour unchanged (Vedant: combine the fixes so
+  they are not ad hoc; token-for-token match, and know why if anything differs). Header reading
+  is `facts.headers` (`column_periods`: what is said of each column, each column dated, then the
+  table-wide steps in an explicit order), label matching `facts.labels` (the vetoes a named,
+  ordered table; `label_match` returns the share, the share before vetoes and the veto), word
+  reading `facts.vocab`; `facts.printed` holds the label prefixes `facts.line_rows` and the
+  cross-check share. A fact not agreed now names the veto that refused an equal cell: 178 on the
+  first run (short label 70, flow unprinted 65, row turns 25, will not be 14, opposites 2,
+  discontinued 2). The round's scripts became commands (`facts.rounds`): `crosscheck-diff`,
+  `table-rank`, `table-audit`. The cross-check fingerprint now hashes every module and setting
+  that decides an outcome (today's label and sign settings were missing). **Proved identical:**
+  all 38,510 cross-check rows field for field and the report text against the run before (the
+  veto field aside), and all 11,329 tables' rows, cells, periods and flags against the committed
+  code, run in a separate worktree with its own lines cache. 14/14 mutants of the new guards
+  (with step 2); $0.00.

@@ -13,7 +13,7 @@ import pypdfium2.raw as pdfium_c
 from docling_core.types.doc.items.table.table import TableItem
 
 from aigent.facts.cfg_facts import VERIFY_BAND_MIN_SHARE, VERIFY_LINE_GAP, VERIFY_WRAP_GAP
-from aigent.facts.printed import figure_row, number
+from aigent.facts.printed import ENUMERATOR, figure_row, number
 
 Box = tuple[float, float, float, float]  # left, top, right, bottom on the page as displayed
 PdfBox = tuple[float, float, float, float]  # left, bottom, right, top in the page's own space
@@ -424,12 +424,11 @@ def grouped(
 
 _JOINS = re.compile(r"(?:\b(?:of|and|the|in|on|or|to|for|from|by|a|an|with|at)|[,/&-])$")
 _OPENS = re.compile(r"(?:less|add|of which)\b")  # a row of its own, though in lower case
-_ENUMERATOR = re.compile(r"\(?(?:[a-z]|[ivx]+)[.)]")
 
 
 def _continues(label: str) -> bool:
     """A label starting in lower case that is not an enumerator, as `receivables considered`."""
-    return label[:1].islower() and not _ENUMERATOR.match(label) and not _OPENS.match(label)
+    return label[:1].islower() and not ENUMERATOR.match(label) and not _OPENS.match(label)
 
 
 def wrapped(

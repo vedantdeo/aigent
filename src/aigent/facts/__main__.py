@@ -98,6 +98,7 @@ from aigent.facts.review_page import (
     read_page_list,
     write_page_list,
 )
+from aigent.facts.rounds import audit_tables, diff_report, diff_runs, rank_tables, read_rows
 from aigent.facts.share_events import load_share_events, verify_share_event
 from aigent.facts.store import FACTS_DB, Writer, connect, verify_derived_concept
 from aigent.facts.table_page import (
@@ -147,6 +148,9 @@ def main(argv: list[str] | None = None) -> None:
             "trace",
             "review-page",
             "table-page",
+            "crosscheck-diff",
+            "table-rank",
+            "table-audit",
         ],
     )
     parser.add_argument("--name", help="verify-concept: the derived concept checked")
@@ -174,7 +178,20 @@ def main(argv: list[str] | None = None) -> None:
         "--documents", nargs="*", default=[], help="reocr: scans by manifest path, as results/X.pdf"
     )
     parser.add_argument("--tickers", nargs="*", default=[], help="reocr: every scan of these")
-    parser.add_argument("--rows", type=Path, help="trace: a cross-check run's .rows.jsonl")
+    parser.add_argument(
+        "--rows",
+        type=Path,
+        help="trace, crosscheck-diff, table-rank: a cross-check run's .rows.jsonl",
+    )
+    parser.add_argument(
+        "--against",
+        type=Path,
+        help="crosscheck-diff: the earlier run's .rows.jsonl to compare with",
+    )
+    parser.add_argument("--top", type=int, default=20, help="table-rank: how many tables")
+    parser.add_argument(
+        "--filed-only", action="store_true", help="table-rank: leave out re-OCR'd readings"
+    )
     parser.add_argument("--facts", nargs="*", type=int, default=[], help="trace: fact ids")
     parser.add_argument("--outcome", choices=["agree", "differ"], help="review-page: a new page's")
     parser.add_argument("--add", type=int, default=0, help="review-page: cards to draw anew")
@@ -204,6 +221,22 @@ def main(argv: list[str] | None = None) -> None:
         if args.rows is None or not args.facts:
             raise SystemExit("give a run's --rows file and the --facts to trace")
         print(json.dumps(trace_facts(args.rows, list(args.facts)), indent=1))
+        return
+    if args.command == "crosscheck-diff":
+        if args.rows is None or args.against is None:
+            raise SystemExit("give the run to read as --rows and the earlier one as --against")
+        before, after = read_rows(args.against), read_rows(args.rows)
+        print(diff_report(diff_runs(before, after), before, after))
+        return
+    if args.command == "table-rank":
+        if args.rows is None:
+            raise SystemExit("give a run's --rows file")
+        rows = read_rows(args.rows).values()
+        for k, t in enumerate(rank_tables(rows, int(args.top), not args.filed_only), start=1):
+            print(f"{k:3} {t.differ:4} differ {t.agree:4} agree  {t.document} #{t.sheet}")
+        return
+    if args.command == "table-audit":
+        print(table_audit(now))
         return
     if args.command == "table-page":
         if not args.name:
@@ -358,6 +391,36 @@ def cross_check(
     missing = [r for r in origins if is_reading(r) and not reocr_built(r)]
     if missing:
         print(f"{len(missing)} scans have no re-OCR'd reading yet: python -m aigent.facts reocr")
+
+
+def table_audit(
+    now: datetime,
+    out_dir: Path = REVIEW_PAGES_OUT,
+    audit: Callable[[Sequence[str]], dict[str, dict[str, object]]] = audit_tables,
+    manifest: Mapping[str, Entry] | None = None,
+    readings: Sequence[str] | None = None,
+) -> str:
+    """Audits every table of every usable reading, or of `readings` (`rounds.audit_tables`),
+    writes them to `out_dir/table-audit-<time>.json` and returns the flags' totals by kind."""
+    manifest = read_manifest() if manifest is None else manifest
+    tables = audit(usable_readings(manifest) if readings is None else readings)
+    kinds = kinds_of({key.rsplit("#", 1)[0] for key in tables}, manifest)
+    totals: dict[str, Counter[str]] = {}
+    for key, table in tables.items():
+        counted = totals.setdefault(kinds[key.rsplit("#", 1)[0]], Counter())
+        flags = cast(dict[str, int], table["flags"])
+        counted["tables"] += 1
+        counted["cells"] += cast(int, table["cells"])
+        counted["flagged"] += any(flags.values())
+        counted.update(flags)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"table-audit-{now:%Y%m%d-%H%M}.json"
+    path.write_text(json.dumps(tables), encoding="utf-8")
+    lines = [
+        f"{kind}: " + ", ".join(f"{k} {n}" for k, n in c.items())
+        for kind, c in sorted(totals.items())
+    ]
+    return "\n".join([*lines, f"tables: {path}"])
 
 
 def trace_facts(

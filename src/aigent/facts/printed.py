@@ -10,6 +10,8 @@ ZERO = {"..", "-", "–", "—", "nil", "0"}
 NUMERIC_DATE = re.compile(r"(\d{1,2})[.,/-](\d{1,2})[.,/-](\d{4})")
 WORDED_DATE = re.compile(r"([a-z]{3,9})\.?\s*(\d{1,2})\s*,?\s*(\d{4})")
 YEAR = re.compile(r"((?:19|20)\d{2})\s*\*?")  # a header's year alone, as `2025` or `2024*`
+MAIN_LINE = re.compile(r"\s*(?:[IVX]{1,5}|[A-H])[.)]?\s")  # IX, XI, D., II. open a main line
+ENUMERATOR = re.compile(r"\(?(?:[a-z]|[ivx]+)[.)]")  # a), (ii) open a sub-row
 
 
 def number(text: str) -> tuple[float, int, bool] | None:

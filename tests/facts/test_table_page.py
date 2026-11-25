@@ -10,8 +10,9 @@ from pathlib import Path
 import pytest
 
 from aigent.facts import __main__ as cli
-from aigent.facts.crosscheck import Column, sheets
+from aigent.facts.crosscheck import sheets
 from aigent.facts.documents import Entry
+from aigent.facts.headers import Column
 from aigent.facts.table_page import (
     FLAGS,
     Audit,

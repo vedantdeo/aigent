@@ -8,7 +8,8 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 
 from aigent.facts.cfg_facts import CROSSCHECK_TRACE_WINDOW
-from aigent.facts.crosscheck import Checked, Column, RowRead, Rule, Sheet
+from aigent.facts.crosscheck import Checked, RowRead, Rule, Sheet
+from aigent.facts.headers import Column
 from aigent.retrieval.chunk import Document
 
 

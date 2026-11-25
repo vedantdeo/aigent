@@ -21,7 +21,8 @@ from aigent.facts.cfg_facts import (
     TABLE_PAGE_MAX_ROWS,
     TABLE_PAGE_TAGS,
 )
-from aigent.facts.crosscheck import Column, Sheet
+from aigent.facts.crosscheck import Sheet
+from aigent.facts.headers import Column
 from aigent.facts.printed import number
 from aigent.facts.review_page import shares
 from aigent.facts.trace import period_text
