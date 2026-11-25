@@ -3,6 +3,8 @@ build checks what it loaded. Split from `config` by concern."""
 
 from __future__ import annotations
 
+import re
+
 # What is fetched: every quarter's results, consolidated and standalone, in these financial years.
 FACTS_TICKERS: tuple[str, ...] = (
     "BAJAJ-AUTO",
@@ -78,6 +80,8 @@ NSE_TIMEOUT_S = 30.0
 VERIFY_MIN_TEXT_CHARS = 200
 VERIFY_MAX_TEXT_LESS_SHARE = 0.10
 VERIFY_LINE_GAP = 0.5  # a word this many line heights below a line's middle starts the next line
+VERIFY_BAND_MIN_SHARE = 0.15  # a figure column prints on at least this share of figure lines
+VERIFY_WRAP_GAP = 2.6  # a label wraps onto a line at most this many line heights below
 
 # Cross-check: a row label shares this share of a fact's label words to count as its row, a
 # printed figure needs this many significant digits to count without one, and agreements are
@@ -104,6 +108,23 @@ REVIEW_PAGE_SEED = 20261121
 REVIEW_PAGE_IMAGE_WIDTH = 1000
 REVIEW_PAGE_JPEG_QUALITY = 62
 REVIEW_PAGE_MAX_MB = 16.0
+# Table pages: tables a batch draws, the share drawn from tables an audit flags, its seed, the most
+# rows a card shows, and the tags a person can give a table.
+TABLE_PAGE_BATCH = 20
+TABLE_PAGE_FLAGGED_SHARE = 0.5
+TABLE_PAGE_SEED = 20261125
+TABLE_PAGE_MAX_ROWS = 160
+TABLE_PAGE_TAGS: tuple[str, ...] = (
+    "OK",
+    "header wrong",
+    "rows split",
+    "rows merged",
+    "label spilled",
+    "figures lost",
+    "wrong periods",
+    "wrong basis or scale",
+    "OCR text wrong",
+)
 CROSSCHECK_SCALES: dict[str, float] = {"crore": 1e7, "lac": 1e5, "lakh": 1e5, "million": 1e6}
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.
@@ -113,7 +134,33 @@ CROSSCHECK_SYNONYMS: dict[str, str] = {
     "npa": "non performing assets",
     "npas": "non performing assets",
 }
-CROSSCHECK_EXCLUSIVE: tuple[tuple[str, str], ...] = (("basic", "diluted"), ("gross", "net"))
+CROSSCHECK_EXCLUSIVE: tuple[tuple[str, str], ...] = (
+    ("basic", "diluted"),
+    ("current", "noncurrent"),
+    ("gross", "net"),
+)
+# A row led by one of these names something else unless the fact's label has it too.
+CROSSCHECK_ROW_TURNS = frozenset(
+    {"changes", "change", "decrease", "increase", "loss", "payment", "payments", "proceeds"}
+    | {"profit", "purchase", "purchases"}
+)
+# Concepts naming their own direction, filed positive and printed in brackets as a deduction.
+CROSSCHECK_SIGN_FREE = re.compile(
+    r"^(?:Purchase|Purchases|Payment|Payments|Repayments|Acquisition)(?:Of|For)"
+    r"|Paid|^AdjustmentsFor\w*Income$|^IncomeTaxRelatingTo|^InterSegmentRevenue$"
+)
+# A fact's label led by one of these names a flow, printed only on a row with a word it lists.
+_BUYING = frozenset({"acquisition", "paid", "payment", "payments", "purchase", "purchases"})
+CROSSCHECK_FACT_ACTIONS: dict[str, frozenset[str]] = {
+    "acquisition": _BUYING,
+    "payment": _BUYING,
+    "payments": _BUYING,
+    "proceeds": frozenset({"disposal", "proceeds", "sale", "sales"}),
+    "purchase": _BUYING,
+    "purchases": _BUYING,
+    "repayment": frozenset({"repayment", "repayments"}),
+    "repayments": frozenset({"repayment", "repayments"}),
+}
 
 # Share events: a filed share count moving by more than this share between two filings, with no
 # event held for it, is held as an unknown event for a person to name.

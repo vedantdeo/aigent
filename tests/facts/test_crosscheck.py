@@ -17,6 +17,7 @@ import psutil
 import pytest
 
 from aigent.facts import __main__ as cli
+from aigent.facts import crosscheck as crosscheck_module
 from aigent.facts.crosscheck import (
     CROSSCHECK_FINGERPRINT,
     Column,
@@ -36,7 +37,7 @@ from aigent.facts.crosscheck import (
     sheets,
 )
 from aigent.facts.documents import Entry
-from aigent.facts.printed import number
+from aigent.facts.printed import figure_row, number
 from aigent.facts.store import DerivedRow, FilingRow, sync_xbrl_facts, upsert_filing, write_derived
 from aigent.facts.xbrl import Fact as XbrlFact
 from aigent.retrieval.chunk import Document, Table
@@ -104,6 +105,10 @@ STANDALONE = _document("STANDALONE FINANCIAL RESULTS (₹ in crore)", _RESULTS)
         ("..", (0.0, 0, False)),
         ("-", (0.0, 0, False)),
         ("—", (0.0, 0, False)),
+        pytest.param("(1;331)", (-1331.0, 0, False), id="OCR's semicolon for a separator"),
+        pytest.param("5,5,959.31", (5959.31, 2, False), id="OCR's doubled lead group"),
+        pytest.param("5,59,593", (559593.0, 0, False), id="an Indian lakh group is not doubled"),
+        pytest.param("[555)", (-555.0, 0, False), id="OCR's square bracket opening a negative"),
         pytest.param("15.73 15.46", None, id="two numbers in a cell"),
         pytest.param("31.03.2025", None, id="a date"),
         pytest.param("June 30, 2024", None, id="a worded date"),
@@ -113,6 +118,20 @@ STANDALONE = _document("STANDALONE FINANCIAL RESULTS (₹ in crore)", _RESULTS)
 )
 def test_number(printed: str, read: tuple[float, int, bool] | None) -> None:
     assert number(printed) == read
+
+
+@pytest.mark.parametrize(
+    ("row", "figures"),
+    [
+        pytest.param(("Revenue", "100", "90"), True, id="a line of figures"),
+        pytest.param(("Revenue", "100", ""), False, id="one figure alone"),
+        pytest.param(("", "2025", "2025*", "2024*"), False, id="a header's years, some restated"),
+        pytest.param(("Particulars", "2025", "2024"), False, id="a header's bare years"),
+        pytest.param(("Employees", "2025", "1,840"), True, id="a year beside another figure"),
+    ],
+)
+def test_figure_row(row: tuple[str, ...], figures: bool) -> None:
+    assert figure_row(row) is figures
 
 
 @pytest.mark.parametrize(
@@ -285,6 +304,141 @@ def test_number(printed: str, read: tuple[float, int, bool] | None) -> None:
             id="Tata Motors' year on a line of its own is a wrapped title, not a column",
         ),
         pytest.param(
+            (
+                ("", "Year ended March 31,", "", "Quarter ended June 30,"),
+                ("Particulars", "2024", "2025", "2025"),
+            ),
+            {
+                1: Column(date(2024, 3, 31), 12),
+                2: Column(date(2025, 3, 31), 12),
+                3: Column(date(2025, 6, 30), 3),
+            },
+            id="Wipro's years under a heading naming the day",
+        ),
+        pytest.param(
+            (("", "September 30,", "March 31,"), ("Particulars", "2025", "2025*")),
+            {1: Column(date(2025, 9, 30), None), 2: Column(date(2025, 3, 31), None)},
+            id="a year marked restated with an asterisk",
+        ),
+        pytest.param(
+            (
+                (
+                    "Particulars",
+                    "3 Months ended 31.12.2023",
+                    "Preceding 3 Month\ufffd ended 30.09.2023",
+                    "9 Month\u2022 ended 31.12.2022",
+                    "Twelve Months ended 31.03.2023",
+                    "12 Months ended 31.03.2024",
+                ),
+            ),
+            {
+                1: Column(date(2023, 12, 31), 3),
+                2: Column(date(2023, 9, 30), 3),
+                3: Column(date(2022, 12, 31), 9),
+                4: Column(date(2023, 3, 31), 12),
+                5: Column(date(2024, 3, 31), 12),
+            },
+            id="ITC's months in figures, one OCR'd with a stray mark",
+        ),
+        pytest.param(
+            (
+                ("STATEMENT FOR THE QUARTER AND NINE MONTHS ENDED DECEMBER 31, 2024",),
+                ("", "", "", "Quarter ended", "", "Nine months", "ended", "Year ended"),
+                ("", "Particulars", "Dec 31, 2024", "Sep 30, 2024", "Dec 31, 2023", "Dec 31, 2024")
+                + ("Dec 31, 2023", "Mar 31, 2024"),
+            ),
+            {
+                2: Column(date(2024, 12, 31), 3),
+                3: Column(date(2024, 9, 30), 3),
+                4: Column(date(2023, 12, 31), 3),
+                5: Column(date(2024, 12, 31), 9),
+                6: Column(date(2023, 12, 31), 9),
+                7: Column(date(2024, 3, 31), 12),
+            },
+            id="Tata's title carried nowhere and its quarter heading over the middle column",
+        ),
+        pytest.param(
+            (
+                (
+                    "",
+                    "Quarter ended 30.06.2024",
+                    "31.03.2024",
+                    "30.06.2023",
+                    "Year ended 31.03.2024",
+                ),
+            ),
+            {
+                1: Column(date(2024, 6, 30), 3),
+                2: Column(date(2024, 3, 31), 3),
+                3: Column(date(2023, 6, 30), 3),
+                4: Column(date(2024, 3, 31), 12),
+            },
+            id="a group's length runs along it, not in from the next group",
+        ),
+        pytest.param(
+            (
+                ("", "", "", "", "", "Year ended"),
+                ("", "Particulars", "30.06.2024", "Quarter ended 31.03.2024", "30.06.2023")
+                + ("31.03.2024",),
+            ),
+            {
+                2: Column(date(2024, 6, 30), 3),
+                3: Column(date(2024, 3, 31), 3),
+                4: Column(date(2023, 6, 30), 3),
+                5: Column(date(2024, 3, 31), 12),
+            },
+            id="Bajaj's quarter heading beside the column it also heads",
+        ),
+        pytest.param(
+            (
+                ("STANDALONE RESULTS FOR THE QUARTER AND SIX MONTHS ENDED SEPTEMBER 30, 2025",),
+                ("", "", "September 30,", "Quarter ended June 30,", "September 30,")
+                + ("Sil< months September 30,", "ended Sectember 30,", "Year ended March 31,"),
+                ("Particulars", "", "2025", "202s•", "2024•", "2025", "2024°", "2025•"),
+                ("", "", "Audited", "# (Audited", "Unaudited", "Audited", "Unaudited", "Audited"),
+            ),
+            {
+                2: Column(date(2025, 9, 30), 3),
+                3: Column(date(2025, 6, 30), 3),
+                4: Column(date(2024, 9, 30), 3),
+                5: Column(date(2025, 9, 30), 6),
+                6: Column(date(2024, 9, 30), 6),
+                7: Column(date(2025, 3, 31), 12),
+            },
+            id="Tata's OCR'd header, each column's missing parts from the title",
+        ),
+        pytest.param(
+            (
+                ("Results for the Quarter and Twelve Months ended 31st March, 2024",),
+                ("Particulars", "#", "3 Months ended 31.12.2023", "Twelve Months ended"),
+                ("", "(Audited", "(Unaudited)", ""),
+            ),
+            {
+                1: Column(date(2024, 3, 31), 3),
+                2: Column(date(2023, 12, 31), 3),
+                3: Column(date(2024, 3, 31), 12),
+            },
+            id="ITC's columns that lost their dates take the title's",
+        ),
+        pytest.param(
+            (("", "As at current half year end", "As at previous year end"),)
+            + (("", "30.09.2024", "31.03.2024"),),
+            {1: Column(date(2024, 9, 30), 0), 2: Column(date(2024, 3, 31), 0)},
+            id="ITC's balance at a half year's end",
+        ),
+        pytest.param(
+            (
+                ("", "Six.months ended", "", "Nine-months ended"),
+                ("", "31 .12.2022", "Year ended 31 .03 .2023", "31.12.2022"),
+            ),
+            {
+                1: Column(date(2022, 12, 31), 6),
+                2: Column(date(2023, 3, 31), 12),
+                3: Column(date(2022, 12, 31), 9),
+            },
+            id="OCR's dotted length and spaced dates",
+        ),
+        pytest.param(
             (("Particulars", "31.03.2025", "31.03.2024"), ("Restated", "2024", "")),
             {1: Column(date(2025, 3, 31), None), 2: Column(date(2024, 3, 31), None)},
             id="a dated column keeps its date over a stray year",
@@ -324,6 +478,52 @@ def test_a_sheet_takes_its_basis_and_scale_from_the_text_before_it() -> None:
         ("standalone", 1e7),
         ("consolidated", 1e5),
     ]
+
+
+@pytest.mark.parametrize(
+    ("heading", "basis"),
+    [
+        pytest.param("STATEMENT OF CONSOUDATED RESULTS", "consolidated", id="OCR's CONSOUDATED"),
+        pytest.param("STANDALQNE RESULTS", "standalone", id="OCR's STANDALQNE"),
+        pytest.param("Basis of consolidation", "standalone", id="consolidation is no basis"),
+    ],
+)
+def test_a_basis_is_read_through_ocr_misspellings(heading: str, basis: str) -> None:
+    document = _document("STANDALONE RESULTS (₹ in crore)", _RESULTS, heading, _RESULTS)
+    assert sheets(document)[1].basis == basis
+
+
+_QUARTER_AND_NINE = {1: Column(date(2024, 12, 31), None), 2: Column(date(2024, 12, 31), 9)}
+
+
+@pytest.mark.parametrize(
+    ("columns", "period", "within"),
+    [
+        pytest.param(
+            _QUARTER_AND_NINE,
+            (date(2024, 10, 1), date(2024, 12, 31)),
+            True,
+            id="the one column of no length a quarter could be",
+        ),
+        pytest.param(
+            {**_QUARTER_AND_NINE, 2: Column(date(2024, 12, 31), 3)},
+            (date(2024, 10, 1), date(2024, 12, 31)),
+            False,
+            id="not when another column ending that day states the quarter",
+        ),
+        pytest.param(
+            {**_QUARTER_AND_NINE, 3: Column(date(2024, 12, 31), None)},
+            (date(2024, 10, 1), date(2024, 12, 31)),
+            False,
+            id="nor when two of no length end that day",
+        ),
+    ],
+)
+def test_a_column_of_no_length_is_a_periods_when_no_other_could_be(
+    columns: dict[int, Column], period: tuple[date, date], within: bool
+) -> None:
+    fact = _fact(period=period)
+    assert crosscheck_module._in_period(fact, columns[1], columns) is within
 
 
 def test_a_sheet_with_no_scale_near_it_takes_the_documents() -> None:
@@ -652,6 +852,31 @@ def test_a_rows_serial_number_is_not_a_figure() -> None:
     assert sheet.cells[0].label == "Interest earned"
 
 
+@pytest.mark.parametrize(
+    ("note", "heading"),
+    [
+        pytest.param("14", "EARNINGS PER SHARE", id="a note number heads no figures"),
+        pytest.param("4.1", "EARNINGS PER SHARE", id="a numbered sub-note too"),
+        pytest.param(
+            "15.15",
+            "Particulars Note 30.06.2024 31.03.2024",
+            id="a figure of two places left of the dates stays one",
+        ),
+    ],
+)
+def test_a_note_reference_left_of_the_dates_is_not_a_figure(note: str, heading: str) -> None:
+    rows = (
+        ("", "Particulars", "Note", "30.06.2024", "31.03.2024"),
+        ("", "Revenue", "", "100", "90"),
+        ("", "EARNINGS PER SHARE", note, "", ""),
+        ("(a)", "Basic", "", "4.47", "4.06"),
+    )
+    [sheet] = sheets(_document("STANDALONE (₹ in crore)", rows))
+    basic = next(c for c in sheet.cells if c.printed == "4.47")
+    assert basic.heading == heading, sheet.cells
+    assert any(c.column == 2 for c in sheet.cells) is (note == "15.15"), sheet.cells
+
+
 def test_a_row_sitting_a_column_off_its_header_is_read_by_order() -> None:
     shifted = (*_HEADER, ("Interest earned", "38,995.78", "37,948.36", "33,327.61", "142,890.94"))
     [sheet] = sheets(_document("STANDALONE (₹ in crore)", shifted))
@@ -680,6 +905,34 @@ def test_a_row_short_of_figures_is_read_by_its_own_columns() -> None:
         pytest.param(_fact(unit="pure", value=0.0002), "2.15%", 1e7, False, id="filed /100"),
         pytest.param(_fact(unit="pure", value=0.41), "0.41", 1e7, True, id="a plain ratio"),
         pytest.param(_fact(value=21500000.0), "2.15%", 1e7, False, id="a percentage for rupees"),
+        pytest.param(
+            _fact(concept="InterestPaidClassifiedAsFinancingActivities", value=462500000.0),
+            "(46.25)",
+            1e7,
+            True,
+            id="a payment filed positive, printed in brackets",
+        ),
+        pytest.param(
+            _fact(concept="AdjustmentsForInterestIncome", value=8743300000.0),
+            "(874.33)",
+            1e7,
+            True,
+            id="interest income deducted in the cash flow",
+        ),
+        pytest.param(
+            _fact(concept="ProfitLossForPeriod", value=462500000.0),
+            "(46.25)",
+            1e7,
+            False,
+            id="a loss is no profit",
+        ),
+        pytest.param(
+            _fact(concept="InterestPaidClassifiedAsFinancingActivities", value=462500000.0),
+            "(46.26)",
+            1e7,
+            False,
+            id="a payment still to the last digit",
+        ),
     ],
 )
 def test_agrees(fact: Fact, printed: str, scale: float | None, agreed: bool) -> None:
@@ -1378,6 +1631,102 @@ def test_the_command_records_agreements_only_when_told(
         pytest.param("Gross NPA", "Net NPAs", 0.0, id="gross never takes net"),
         pytest.param("Gross NPA", "(a) Gross NPAs", 1.0, id="NPA read in full"),
         pytest.param("Interest earned", "Other income", 0.0, id="nothing shared"),
+        pytest.param(
+            "Exceptional items before tax",
+            "Profit before exceptional items and tax",
+            0.0,
+            id="a row led by profit names a profit",
+        ),
+        pytest.param(
+            "Inventories", "b) Changes in inventories of stock-in-trade", 0.0, id="nor by changes"
+        ),
+        pytest.param(
+            "Purchase of property, plant and equipment",
+            "Property, plant and equipment",
+            0.0,
+            id="a purchase is never the asset",
+        ),
+        pytest.param(
+            "Proceeds from sales of property, plant and equipment",
+            "Sale of property, plant and equipment",
+            0.6,
+            id="proceeds printed as a sale",
+        ),
+        pytest.param(
+            "Finance costs",
+            "Operating margin (%) [(Profit before tax + Finance costs) / Revenue]",
+            0.0,
+            id="a formula in brackets is no label",
+        ),
+        pytest.param(
+            "Depreciation and amortisation expense",
+            "[(f) Depreciation and amortisation expense",
+            1.0,
+            id="a label opening on a bracket keeps its words",
+        ),
+        pytest.param(
+            "Revenue from operations", "Total revenue from operations", 1.0, id="total led"
+        ),
+        pytest.param(
+            "Current assets",
+            "Other financial assets - non-current",
+            0.0,
+            id="current never takes non-current",
+        ),
+        pytest.param("Assets", "Other financial assets", 0.0, id="a short label is no other row"),
+        pytest.param("Income", "(ii) Interest Income", 0.0, id="nor a row of a kind of it"),
+        pytest.param(
+            "Profit before exceptional items and tax",
+            "Debt service coverage ratio {(Profit before exceptional items and tax + Interest)}",
+            0.0,
+            id="a long label never takes a formula's words",
+        ),
+        pytest.param(
+            "Other current financial assets",
+            "Other financial assets - non-current",
+            0.0,
+            id="a long current label never takes non-current",
+        ),
+        pytest.param("Total income", "III. Total income", 1.0, id="a roman numeral passed over"),
+        pytest.param(
+            "Current financial assets",
+            "(iv) Other financial assets",
+            0.0,
+            id="three words still short",
+        ),
+        pytest.param(
+            "Borrowings non-current", "Non-current borrowings", 1.0, id="led by its own word"
+        ),
+        pytest.param(
+            "Payments of lease liabilities",
+            "Principal payment of lease liabilities",
+            2 / 3,
+            id="principal passed over",
+        ),
+        pytest.param(
+            "Intangible assets under development",
+            "(f) Other intangible assets under development",
+            1.0,
+            id="a long one may be printed as other",
+        ),
+        pytest.param(
+            "Items that will be reclassified to profit or loss",
+            "Items that will not be reclassified to profit or loss",
+            0.0,
+            id="will be never takes will not be",
+        ),
+        pytest.param(
+            "Items that will not be reclassified to profit or loss",
+            "liems that will not he reclassified to profit or loss",
+            6 / 7,
+            id="will not be through OCR",
+        ),
+        pytest.param(
+            "Basic earnings per share",
+            "Basic EPS (not annualised)",
+            1.0,
+            id="a bare not is no negation",
+        ),
         pytest.param("Interest earned", "Interest expended", 0.5, id="half shared"),
         pytest.param(
             "Current tax",

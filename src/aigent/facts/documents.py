@@ -30,13 +30,15 @@ from docling_core.types.doc.items.table.table import TableItem
 from docling_core.types.doc.items.text import SectionHeaderItem, TextItem, TitleItem
 
 from aigent.config import DOCLING_DEVICE, DOCLING_QUEUE_MAX_SIZE
-from aigent.facts import line_rows
+from aigent.facts import line_rows, printed
 from aigent.facts.cfg_facts import (
+    VERIFY_BAND_MIN_SHARE,
     VERIFY_LINE_GAP,
     VERIFY_MAX_TEXT_LESS_SHARE,
     VERIFY_MIN_TEXT_CHARS,
     VERIFY_OCR_TICKERS,
     VERIFY_REOCR,
+    VERIFY_WRAP_GAP,
 )
 from aigent.retrieval import corpus
 from aigent.retrieval.chunk import Document, Table
@@ -281,6 +283,26 @@ def refusal(name: str, entry: Entry, ocr_tickers: Sequence[str] = VERIFY_OCR_TIC
     )
 
 
+def usable_readings(
+    manifest: Mapping[str, Entry],
+    ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS,
+    built: Callable[[str], bool] = reocr_built,
+) -> list[str]:
+    """Every results or annual report reading that can be read, in manifest order: each filed copy
+    `refusal` allows, and each re-OCR'd reading `built` holds."""
+    out: list[str] = []
+    for name, entry in manifest.items():
+        if not name.startswith(("results/", "annual/")):
+            continue
+        for reading in readings_of(name, entry, ocr_tickers):
+            usable = (
+                built(reading) if is_reading(reading) else not refusal(name, entry, ocr_tickers)
+            )
+            if usable:
+                out.append(reading)
+    return out
+
+
 def read_manifest(verify_dir: Path = VERIFY_DIR) -> dict[str, Entry]:
     path = verify_dir / MANIFEST_NAME
     if not path.exists():
@@ -519,18 +541,9 @@ _WORDS_FINGERPRINT = hashlib.sha256(
 # Everything that decides how a filed PDF's tables are re-rowed, above its words and rendering.
 _LINES_FINGERPRINT = hashlib.sha256(
     (
-        "".join(
-            inspect.getsource(f)
-            for f in (
-                line_rows.layout,
-                line_rows.line_rows,
-                line_rows.joined,
-                line_rows.column,
-                _slice_of,
-                with_line_rows,
-            )
-        )
-        + f"|{line_rows.SEPARATOR.pattern}|{VERIFY_LINE_GAP}"
+        inspect.getsource(line_rows)
+        + "".join(inspect.getsource(f) for f in (_slice_of, with_line_rows, printed))
+        + f"|{VERIFY_LINE_GAP}|{VERIFY_BAND_MIN_SHARE}|{VERIFY_WRAP_GAP}"
         + f"|{_WORDS_FINGERPRINT}|{corpus.ingest_fingerprint()}"
     ).encode()
 ).hexdigest()[:12]

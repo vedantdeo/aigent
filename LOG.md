@@ -2752,3 +2752,63 @@
   another page; m10 now takes the total row. m08 (ITC investment property, a deferred-tax table)
   stays put: no better row competes; its column carrying a period is the next fix. Batch 2 of
   cell-moves (m31-m60) drawn from the 675. 3/3 mutants; cross-check 86 s to 145 s; $0.00.
+- 11-25: table pages, `python -m aigent.facts table-page` (Vedant: look at whole parsed tables
+  across the documents, not single facts; 20 a batch, half drawn from tables an audit flags, half
+  at random). Each card: the printed page, the table as the cross-check reads it (row kinds,
+  header rows, column periods, flagged cells) and Docling's own rows for a re-rowed PDF, with
+  tags and a note saved per table. Audits: two figures in a cell, words in a figure cell, three
+  or more columns given one period, columns with no date, totals not footing, figures Docling had
+  that the reading lost. Batch 1 (`tables`, t01-t20) drawn in 55 s; most tables carry some flag,
+  footing the noisiest (a subtotal between rows reads as not footing). Publishing refused OCR's
+  U+FFFD, now written as a JSON escape. Page rendered in jsdom: no errors. 23/23 mutants; $0.00.
+- 11-25: filed PDFs' tables laid out by their printed words (Vedant: recreate the original table
+  as closely as possible; fix the top issues from table batch 1). Figure columns found from the
+  figures' right edges, not Docling's cells, so two printed columns Docling merged come apart (ITC
+  segment results, t19) and a long label's last word stays in its label (t01, t11, t19); Docling's
+  header laid over them, a merged header cell split into its phrases, a heading over several lines
+  read whole, and group headings given equal blocks (ITC's balance sheet prints each year over the
+  last two of three columns); a row of bare years is header (t20, Wipro); wrapped labels joined by
+  their words (a joining word, a lower-case continuation, figures printed between two label lines);
+  a run of several figures cut apart; rotated tables left on Docling's columns. The cross-check
+  reads `3 Months`/`Twelve Months`, a year under a heading naming the day, OCR's `[555)` and
+  `1;331`, and a note reference left of the dates as no figure. **18,115 to 19,624 of 38,510
+  agree: 1,529 gained (966 by label, 414 distinct, 149 per share; 923 ITC, 377 Tata Motors) and
+  20 lost** (OCR-layer edge cases, listed in the run diff). Audit census, before to after: born-
+  digital PDFs merged figure cells 2,489 to 2,093, words in figure cells 6,188 to 2,731, columns
+  with no date 16,468 to 15,601, cells read 330,541 to 334,945; filed OCR layers merged 937 to
+  756, words in figure cells 1,294 to 229, no date 1,114 to 919; totals not footing barely moved
+  (9,314 to 9,373; 3,114 to 3,275), still noisy. A first census in one process ran the PC out of
+  RAM; now one document a process, 0.5-1.0 GB peak, 17 min. 31/31 mutants; $0.00.
+- 11-25: table check round 2, the 20 tables the most cross-checked facts differ in (5,777 differ
+  in 1,175 tables; page `differs` published, then Vedant: analyse and propose, no page). About
+  half the differences are parsing: wrong period lengths (a title's "QUARTER AND NINE MONTHS"
+  carried over every column; "Quarter ended" over the middle of three), "As at current half year
+  end" read as 6 months, and OCR in headers (`31 .12.2022`, `Six.months`, `CONSOUDATED`). The rest
+  is matching (formula text in Tata's ratio labels, a fact label inside a longer row, flows
+  matched to positions), RapidOCR layout, and real XBRL differences. Header fixes (Vedant: ok to
+  1-3): a first-column title lends only its date, completed by a column's own month, day or
+  year, to columns naming a length, part of a date or an audit status; lengths from the
+  immediate neighbours, left first; "As at" first; OCR'd dates, lengths and basis words; a column
+  of no length matched when no other ending that day could be. **19,624 to 20,047 of 38,510
+  agree, 465 gained (Bajaj 160, Sun Pharma 127, Tata 112), 42 lost** (ITC Sep-2023's segment
+  table, its dates jammed into one cell, had agreed through its title by luck), differ 5,777 to
+  5,574. A first cut (no carry from the first column; the nearest pure heading lending its
+  length) lost 281 (Sun Pharma prints "Quarter ended" in its first column; Bajaj's and Reliance's
+  quarter columns took "Year ended" from three columns away). 18/18 mutants; $0.00.
+- 11-25: table check rounds 1-5 (Vedant: five more rounds of the same; fix the top issues, and
+  keep known issues and fix summaries on a page: https://claude.ai/artifact/5jjP6z1yD9mbaFcGS2HHoH).
+  Each round ranks tables by facts that differ, filed copies only after round 2 (RapidOCR
+  readings are a known issue: Reliance's first column loses its last digit in OCR itself).
+  Round 1, label gates: a row led by profit, loss, changes, purchase, proceeds, payment,
+  increase or decrease names something else unless the fact does; a fact led by a flow needs it
+  (or its printed synonym) in the row; bracketed formulas ignored. 20,047 to 19,883: 160 of 164
+  lost were zero-valued cash-flow facts agreeing on unrelated dashes. A first cut gating every
+  head word lost 801 real agreements. Round 2: 362 facts differed in sign only; concepts naming
+  their direction agree on size: +775, none lost (20,658). Round 3: current/non-current
+  exclusive, "will not be" (and OCR's "not he") against "will be", Other rows: +27 net. Round 4:
+  labels of three words or fewer take only rows led by their words: 46 lost, 41 zeros (Interest
+  received agreeing on "Number of complaints received ... Nil"). Round 5: the top 20 are now mostly
+  real XBRL-vs-print differences (Tata files right-of-use assets inside PPE, 11,711 = 10,869 +
+  842; XBRL OtherExpenses filed as another total; Bajaj's PBT with associates) and zero fillers
+  differing on unrelated rows; OCR's doubled lead group (5,5,947) read: +4. **20,643 of 38,510
+  agree, differ 5,777 to 4,217 since this morning.** 13/13 mutants; $0.00.

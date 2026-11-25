@@ -15,7 +15,10 @@ of one, naming an unknown one's kind, date and ratio.
 on stdout; free, from the parse caches.
 `python -m aigent.facts review-page --name N [--outcome agree|differ] [--add K] [--rows PATH]
 [--url U]`: build review page N's HTML from a run's rows (the newest by default), first drawing K
-more cards when asked, into `evals/review-pages/N/index.html` for Claude to publish; free."""
+more cards when asked, into `evals/review-pages/N/index.html` for Claude to publish; free.
+`python -m aigent.facts table-page --name N [--add K] [--kind C] [--tickers T ...] [--url U]`: build
+table page N, first drawing K more tables (half flagged by an audit, half at random) of that kind of
+copy and those companies; free, from the caches."""
 
 from __future__ import annotations
 
@@ -41,6 +44,7 @@ from aigent.facts.cfg_facts import (
     FACTS_TICKERS,
     FACTS_YEARS,
     REVIEW_PAGE_SEED,
+    TABLE_PAGE_SEED,
     TAXONOMY_PACKAGES,
     VERIFY_REOCR_MAX_GB,
     VERIFY_REOCR_POLL_S,
@@ -55,8 +59,10 @@ from aigent.facts.coverage import (
 )
 from aigent.facts.crosscheck import Checked, Sheet, apply, crosscheck, recheck, sheets
 from aigent.facts.documents import (
+    VERIFY_DIR,
     Entry,
     build_reocr,
+    doc_id_of,
     filed_of,
     is_reading,
     load_verify_document,
@@ -65,6 +71,7 @@ from aigent.facts.documents import (
     readings_of,
     reocr_built,
     ticker_of,
+    usable_readings,
 )
 from aigent.facts.lookup import Lookup, concept_index
 from aigent.facts.nse import XBRL_DIR, polite_get
@@ -93,9 +100,21 @@ from aigent.facts.review_page import (
 )
 from aigent.facts.share_events import load_share_events, verify_share_event
 from aigent.facts.store import FACTS_DB, Writer, connect, verify_derived_concept
+from aigent.facts.table_page import (
+    TABLE_PAGES,
+    CardSource,
+    build_table_page,
+    draw_tables,
+    found_tables,
+    read_table_list,
+    table_card,
+    write_table_list,
+)
+from aigent.facts.table_page import TEMPLATE as TABLE_TEMPLATE
 from aigent.facts.taxonomy import TAXONOMY_DIR
 from aigent.facts.trace import trace, trace_json
-from aigent.retrieval.chunk import Document
+from aigent.retrieval.chunk import Document, Table
+from aigent.retrieval.corpus import assembled, elements_of, parse_cached
 
 REPORT = FACTS_DB.with_name("facts-build-report.json")
 CROSSCHECK_DIR = Path(__file__).resolve().parents[3] / "evals" / "reports"
@@ -127,13 +146,17 @@ def main(argv: list[str] | None = None) -> None:
             "verify-share-event",
             "trace",
             "review-page",
+            "table-page",
         ],
     )
     parser.add_argument("--name", help="verify-concept: the derived concept checked")
     parser.add_argument("--scope", help="verify-concept: its scope, banking or ind-as")
     parser.add_argument("--by", help="verify-concept, verify-share-event: who checked it")
     parser.add_argument("--id", type=int, help="verify-share-event: the event, from share-events")
-    parser.add_argument("--kind", help="verify-share-event: bonus, split or issue (for value)")
+    parser.add_argument(
+        "--kind",
+        help="verify-share-event: bonus, split or issue (for value); table-page: a kind of copy",
+    )
     parser.add_argument("--effective", help="verify-share-event: when the shares changed, ISO")
     parser.add_argument(
         "--ratio", help="verify-share-event: shares after:before, 2:1 for a 1:1 bonus"
@@ -181,6 +204,11 @@ def main(argv: list[str] | None = None) -> None:
         if args.rows is None or not args.facts:
             raise SystemExit("give a run's --rows file and the --facts to trace")
         print(json.dumps(trace_facts(args.rows, list(args.facts)), indent=1))
+        return
+    if args.command == "table-page":
+        if not args.name:
+            raise SystemExit("give the page's --name, as tables")
+        table_page(str(args.name), int(args.add), args.kind, list(args.tickers), args.url)
         return
     if args.command == "review-page":
         if not args.name:
@@ -413,6 +441,86 @@ def review_page(
     print(
         f"{len(cards)} cards ({add} new in batch {batch}) from {rows_path.name}, "
         f"{len(html.encode()) / 1e6:.1f} MB: {target}; publish it to {page.url or 'a new artifact'}"
+    )
+    return target
+
+
+def docling_tables(name: str, verify_dir: Path = VERIFY_DIR) -> tuple[Table, ...] | None:
+    """A filed PDF's tables as Docling parsed them, before re-rowing; None for any other reading."""
+    entry = read_manifest(verify_dir)[filed_of(name)]
+    if is_reading(name) or entry["format"] != "pdf":
+        return None
+    path = verify_dir / name
+    parsed = parse_cached(path, doc_id_of(name))
+    return assembled(doc_id_of(name), elements_of(parsed), source=str(path)).tables
+
+
+def table_page(
+    name: str,
+    add: int,
+    kind: str | None,
+    tickers: Sequence[str],
+    url: str | None,
+    lists: Path = TABLE_PAGES,
+    out_dir: Path = REVIEW_PAGES_OUT,
+    load: Callable[[str], Document] = load_verify_document,
+    docling: Callable[[str], tuple[Table, ...] | None] = docling_tables,
+    image: Callable[[Path, int], str] = page_image,
+    manifest: Mapping[str, Entry] | None = None,
+) -> Path:
+    """Builds table page `name`, first drawing `add` new tables of kind of copy `kind` and of
+    `tickers` (any when not given) and recording `url`; its table list is kept in `lists`, the
+    page written under `out_dir`. Returns the page's path."""
+    manifest = read_manifest() if manifest is None else manifest
+    list_path = lists / f"{name}.json"
+    page = read_table_list(list_path)
+    if add:
+        readings = [
+            r for r in usable_readings(manifest) if not tickers or ticker_of(filed_of(r)) in tickers
+        ]
+        kinds = kinds_of(readings, manifest)
+        readings = [r for r in readings if kind is None or kinds[r] == kind]
+        if not readings:
+            raise SystemExit(f"no readable document of kind {kind!r} for {list(tickers) or 'any'}")
+
+        def read(reading: str) -> tuple[tuple[Table, ...], list[Sheet]]:
+            document = load(reading)
+            return document.tables, sheets(document)
+
+        found = found_tables(readings, read, kinds.__getitem__)
+        page = draw_tables(found, page, add, TABLE_PAGE_SEED)
+    if url:
+        page = replace(page, url=url)
+    write_table_list(list_path, page)
+    kinds = kinds_of((c.document for c in page.cards), manifest)
+    cards: list[dict[str, object]] = []
+    held: dict[str, tuple[Document, list[Sheet], tuple[Table, ...] | None]] = {}
+    for kept in sorted(page.cards, key=lambda c: c.id):
+        if kept.document not in held:
+            document = load(kept.document)
+            held[kept.document] = (document, sheets(document), docling(kept.document))
+        document, read_sheets, original = held[kept.document]
+        sheet = next(s for s in read_sheets if s.index == kept.sheet)
+        entry = manifest[filed_of(kept.document)]
+        shown = None
+        if entry["format"] == "pdf":
+            shown = image(VERIFY_DIR / filed_of(kept.document), sheet.page)
+        link = entry.get("url")
+        source = CardSource(
+            kinds[kept.document],
+            ticker_of(filed_of(kept.document)),
+            None if original is None else original[kept.sheet].rows,
+            link if isinstance(link, str) else None,
+            shown,
+        )
+        cards.append(table_card(kept, document.tables[kept.sheet], sheet, source))
+    html = build_table_page(cards, TABLE_TEMPLATE.read_text(encoding="utf-8"))
+    target = out_dir / name / "index.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(html, encoding="utf-8")
+    print(
+        f"{len(cards)} tables ({add} drawn anew), {len(html.encode()) / 1e6:.1f} MB: {target}; "
+        f"publish it to {page.url or 'a new artifact'}"
     )
     return target
 

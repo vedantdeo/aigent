@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import pypdfium2 as pdfium
@@ -19,7 +20,7 @@ from pypdf.generic import (
 )
 
 from aigent.facts import documents, line_rows
-from aigent.facts.line_rows import Layout, PdfBox, Word
+from aigent.facts.line_rows import Box, Layout, PdfBox, Word
 from aigent.retrieval.chunk import Document
 from aigent.retrieval.corpus import assembled, elements_of, table_rows
 
@@ -112,6 +113,7 @@ _TABLE = Layout(
     body_top=50,
     columns={0: (0, 100), 1: (120, 180), 2: (200, 260)},
     width=3,
+    text=frozenset({0}),
 )
 _HEADER = (("Particulars", "Jun", "Mar"),)
 
@@ -179,6 +181,348 @@ def test_line_rows(words: list[Word], rows: tuple[tuple[str, ...], ...]) -> None
 
 def test_a_table_with_no_word_in_its_body_is_not_re_rowed() -> None:
     assert line_rows.line_rows(_HEADER, _TABLE, [_w("Quarter", 0, 30)]) is None
+
+
+def _p(text: str, left: float, right: float) -> tuple[str, Box]:
+    return (text, (left, 0.0, right, 8.0))
+
+
+_TWO = [[_p("100", 140, 170), _p("90", 230, 250)], [_p("1,000", 125, 170), _p("5", 240, 250)]]
+
+
+@pytest.mark.parametrize(
+    ("lines", "text", "found"),
+    [
+        pytest.param(_TWO, [], [(125, 170), (230, 250)], id="two columns of right-aligned figures"),
+        pytest.param(
+            [[_p("100", 140, 170)], [_p("-", 150, 155)]],
+            [],
+            [(140, 170)],
+            id="a centred dash joins the column it never shares a line with",
+        ),
+        pytest.param(
+            [[_p("100", 140, 170)]] * 9 + [[_p("100", 140, 170), _p("7", 290, 295)]],
+            [],
+            [(140, 170)],
+            id="a figure on too few of the lines is no column",
+        ),
+        pytest.param(
+            _TWO + [[_p("2025", 60, 80), _p("100", 140, 170)]] * 2,
+            [(0, 100)],
+            [(125, 170), (230, 250)],
+            id="figures inside a column of words are part of its text",
+        ),
+        pytest.param(
+            [[_p("100", 140, 170), _p("(50)", 160, 185)]] * 2 + [[_p("100", 140, 170)]],
+            [],
+            [(140, 170)],
+            id="of two overlapping columns the one on fewer lines goes",
+        ),
+    ],
+)
+def test_bands(
+    lines: list[list[tuple[str, Box]]],
+    text: list[tuple[float, float]],
+    found: list[tuple[float, float]],
+) -> None:
+    assert line_rows.bands(lines, 8.0, 0.15, text) == found
+
+
+@pytest.mark.parametrize(
+    ("piece", "split"),
+    [
+        pytest.param(
+            _p("8177.27 5577.73", 100, 250),
+            [_p("8177.27", 100, 170), _p("5577.73", 180, 250)],
+            id="a run of two figures cut where its characters fall",
+        ),
+        pytest.param(
+            _p("Total 5577.73", 100, 230), [_p("Total 5577.73", 100, 230)], id="words kept"
+        ),
+        pytest.param(_p("5577.73", 100, 170), [_p("5577.73", 100, 170)], id="one figure kept"),
+    ],
+)
+def test_split_figures(piece: tuple[str, Box], split: list[tuple[str, Box]]) -> None:
+    assert line_rows.split_figures([piece]) == split
+
+
+@pytest.mark.parametrize(
+    ("headings", "placed"),
+    [
+        pytest.param(
+            [("2024", [2, 3]), ("2023", [5, 6])],
+            [("2024", 1), ("2023", 4)],
+            id="each heads an equal block though printed over its last columns",
+        ),
+        pytest.param(
+            [("Quarter ended", [2, 3]), ("Year ended", [5, 6])],
+            [("Quarter ended", 2), ("Year ended", 5)],
+            id="blocks that do not divide evenly leave each over its first",
+        ),
+        pytest.param(
+            [("2024", [1, 2, 3, 4]), ("2023", [5, 6])],
+            [("2024", 1), ("2023", 5)],
+            id="a heading printed past its block leaves each over its first",
+        ),
+    ],
+)
+def test_grouped(headings: list[tuple[str, list[int]]], placed: list[tuple[str, int]]) -> None:
+    figures = [1, 2, 3, 4, 5, 6] if headings[0][0] != "Quarter ended" else [1, 2, 3, 4, 5, 6, 7]
+    assert line_rows.grouped(headings, figures) == placed
+
+
+_GRID = line_rows.Grid(((0, 100), (140, 170), (230, 250)), (1, 2), {0: 0})
+_WIDE = line_rows.Grid(((0, 150), (140, 170), (230, 250)), (1, 2), {0: 0})  # labels run into it
+
+
+@pytest.mark.parametrize(
+    ("grid", "text", "left", "right", "placed"),
+    [
+        pytest.param(_GRID, "services", 110, 136, 0, id="a label's last word short of the figures"),
+        pytest.param(_GRID, "17482.80", 120, 170, 1, id="a figure in the column it overlaps"),
+        pytest.param(
+            _GRID, "1,23,456.78", 100, 150, 1, id="a wide figure reaching into its column"
+        ),
+        pytest.param(_GRID, "(Unaudited)", 225, 260, 2, id="words centred in a figure column"),
+        pytest.param(
+            _WIDE, "(Unaudited)", 120, 165, 1, id="centred in it though a label runs over"
+        ),
+        pytest.param(_GRID, "Nil", 180, 200, 1, id="words between columns to the nearest"),
+        pytest.param(_GRID, "2025", 40, 60, 0, id="a year in a label stays in the label"),
+    ],
+)
+def test_a_piece_is_placed_in_its_printed_column(
+    grid: line_rows.Grid, text: str, left: float, right: float, placed: int
+) -> None:
+    assert grid.place(text, (left, 0, right, 8)) == placed
+
+
+_SPLIT = Layout(
+    box=(0, 0, 300, 200),
+    header=1,
+    body_top=50,
+    columns={0: (0, 100), 1: (130, 260)},
+    width=2,
+    text=frozenset({0}),
+)
+
+
+@pytest.mark.parametrize(
+    ("header", "cells", "words", "rows"),
+    [
+        pytest.param(
+            (("Particulars", "Jun 2025 Mar 2025"),),
+            ((0, 0, 1, (0, 30, 100, 38)), (0, 1, 1, (130, 30, 260, 38))),
+            [
+                _w("Jun", 140, 30, 12),
+                _w("2025", 155, 30, 15),
+                _w("Mar", 225, 30, 12),
+                _w("2025", 240, 30, 10),
+            ],
+            (("Particulars", "Jun 2025", "Mar 2025"),),
+            id="a cell Docling merged over two columns split by its words",
+        ),
+        pytest.param(
+            (("", "As at 31st March, 2024"),),
+            ((0, 1, 1, (130, 30, 260, 38)),),
+            [
+                _w("As", 150, 30, 8),
+                _w("at", 160, 30, 8),
+                _w("31st", 170, 30, 12),
+                _w("March,", 184, 30, 20),
+                _w("2024", 206, 30, 15),
+            ],
+            (("", "As at 31st March, 2024", ""),),
+            id="a phrase over two columns given whole to its first",
+        ),
+        pytest.param(
+            (("", "As at 31st March, 2024"),),
+            ((0, 1, 1, (130, 20, 260, 38)),),
+            [
+                _w("As", 175, 20, 8),
+                _w("at", 185, 20, 8),
+                _w("31st", 150, 30, 15),
+                _w("March,", 167, 30, 20),
+                _w("2024", 189, 30, 15),
+            ],
+            (("", "As at 31st March, 2024", ""),),
+            id="a heading printed over two lines read as one",
+        ),
+        pytest.param(
+            (("", "As at 2024 As at 2023"),),
+            ((0, 1, 1, (130, 30, 260, 38)),),
+            [_w("As at 2024", 145, 30, 40), _w("As at 2023", 215, 30, 40)],
+            (("", "As at 2024", "As at 2023"),),
+            id="headings over their own columns each kept over theirs",
+        ),
+        pytest.param(
+            (("", "Quarter ended"),),
+            ((0, 1, 2, (130, 30, 260, 38)),),
+            [_w("Quarter", 200, 30, 25), _w("ended", 228, 30, 20)],
+            (("", "Quarter ended", ""),),
+            id="a heading spanning columns given to its first",
+        ),
+        pytest.param(
+            (("Particulars", "Jun"),),
+            (),
+            [],
+            (("Particulars", "Jun", ""),),
+            id="a cell with no box placed by its column",
+        ),
+    ],
+)
+def test_header_rows(
+    header: tuple[tuple[str, ...], ...],
+    cells: tuple[tuple[int, int, int, Box], ...],
+    words: list[Word],
+    rows: tuple[tuple[str, ...], ...],
+) -> None:
+    table = replace(_SPLIT, cells=cells)
+    grid = line_rows.grid_of(table, [(140, 170), (230, 250)])
+    assert line_rows.header_rows(header, table, grid, words) == rows
+
+
+def test_group_headings_divide_the_columns_no_heading_of_their_own_names() -> None:
+    table = Layout(
+        box=(0, 0, 300, 200),
+        header=1,
+        body_top=50,
+        columns={0: (0, 90), 1: (98, 112), 2: (125, 235)},
+        width=3,
+        cells=((0, 1, 1, (98, 30, 112, 38)), (0, 2, 1, (125, 30, 235, 38))),
+        text=frozenset({0}),
+    )
+    figures: list[tuple[float, float]] = [
+        (100, 110),
+        (130, 140),
+        (145, 155),
+        (160, 170),
+        (190, 200),
+        (205, 215),
+        (220, 230),
+    ]
+    grid = line_rows.grid_of(table, figures)
+    words = [_w("2024", 145, 30, 25), _w("2023", 205, 30, 25)]
+    header = (("", "Note", "2024 2023"),)
+    assert line_rows.header_rows(header, table, grid, words) == (
+        ("", "Note", "2024", "", "", "2023", "", ""),
+    )
+
+
+def test_a_heading_over_one_column_keeps_doclings_column() -> None:
+    table = replace(_TABLE, cells=((0, 1, 1, (200, 30, 260, 38)),))
+    grid = line_rows.grid_of(table, [(140, 170), (230, 250)])
+    assert line_rows.header_rows((("", "Quarter ended", ""),), table, grid, []) == (
+        ("", "Quarter ended", ""),
+    )
+
+
+@pytest.mark.parametrize(
+    ("lines", "rows"),
+    [
+        pytest.param(
+            [(0, ("Interest on", "", "")), (10, ("Borrowings", "5", "4"))],
+            (("Interest on Borrowings", "5", "4"),),
+            id="a label ending in a joining word runs on",
+        ),
+        pytest.param(
+            [(0, ("Trade receivables", "", "")), (10, ("considered good", "5", "4"))],
+            (("Trade receivables considered good", "5", "4"),),
+            id="a line in lower case continues the label above",
+        ),
+        pytest.param(
+            [(0, ("Trade receivables", "5", "4")), (10, ("considered good", "", ""))],
+            (("Trade receivables considered good", "5", "4"),),
+            id="a label wrapped below its figures",
+        ),
+        pytest.param(
+            [(0, ("Reimagine Strategy at", "-", "(101)")), (10, ("JLR", "", ""))],
+            (("Reimagine Strategy at JLR", "-", "(101)"),),
+            id="a label ending in a joining word runs on below its figures",
+        ),
+        pytest.param(
+            [(0, ("Reversal of cost", "", "")), (15, ("", "-", "(101)")), (30, ("JLR", "", ""))],
+            (("Reversal of cost", "", ""), ("", "-", "(101)"), ("JLR", "", "")),
+            id="but not lines further apart than the pitch",
+        ),
+        pytest.param(
+            [(0, ("Reversal of cost", "", "")), (5, ("", "-", "(101)")), (10, ("JLR", "", ""))],
+            (("Reversal of cost JLR", "-", "(101)"),),
+            id="figures printed between a label's two lines",
+        ),
+        pytest.param(
+            [(0, ("Segment Revenue", "", "")), (10, ("a) Cigarettes", "5", "4"))],
+            (("Segment Revenue", "", ""), ("a) Cigarettes", "5", "4")),
+            id="an enumerator starts a row of its own",
+        ),
+        pytest.param(
+            [(0, ("Total", "5", "4")), (10, ("less: tax", "", ""))],
+            (("Total", "5", "4"), ("less: tax", "", "")),
+            id="less starts a row of its own though in lower case",
+        ),
+        pytest.param(
+            [(0, ("Income", "", "")), (10, ("Revenue", "5", "4"))],
+            (("Income", "", ""), ("Revenue", "5", "4")),
+            id="a heading over a line of figures stays apart",
+        ),
+        pytest.param(
+            [(0, ("Interest on", "", "")), (30, ("borrowings", "5", "4"))],
+            (("Interest on", "", ""), ("borrowings", "5", "4")),
+            id="a line further than the pitch stays apart",
+        ),
+        pytest.param(
+            [(0, ("Name", "", "Son of")), (10, ("", "", "Rajiv"))],
+            (("Name", "", "Son of"), ("", "", "Rajiv")),
+            id="words in a column right of the figures are not a label",
+        ),
+    ],
+)
+def test_wrapped(
+    lines: list[tuple[float, tuple[str, ...]]], rows: tuple[tuple[str, ...], ...]
+) -> None:
+    assert line_rows.wrapped(lines, frozenset({0}), 20.0) == rows
+
+
+def test_a_table_docling_merged_columns_is_laid_out_by_its_printed_columns() -> None:
+    table = replace(  # Docling's column 2 of words finds none printed, so is left out
+        _SPLIT,
+        cells=((0, 0, 1, (0, 30, 100, 38)), (0, 1, 1, (130, 30, 260, 38))),
+        columns={**_SPLIT.columns, 2: (270, 295)},
+        width=3,
+        text=frozenset({0, 2}),
+    )
+    words = [
+        _w("Jun", 145, 30, 12),
+        _w("Mar", 235, 30, 12),
+        _w("Gross revenue from", 0, 60, 90),
+        _w("services", 95, 60, 40),
+        _w("100", 140, 60),
+        _w("90", 220, 60),
+        _w("Other", 0, 80),
+        _w("5", 160, 80, 10),
+        _w("4", 240, 80, 10),
+    ]
+    assert line_rows.line_rows((("Particulars", "Jun Mar"),), table, words) == (
+        ("Particulars", "Jun", "Mar"),
+        ("Gross revenue from services", "100", "90"),
+        ("Other", "5", "4"),
+    )
+
+
+def test_a_table_printed_up_the_page_keeps_doclings_columns() -> None:
+    upright = [
+        ("Revenue", (0, 60, 8, 100), True),
+        ("100", (140, 60, 148, 90), True),
+        ("90", (230, 60, 238, 90), True),
+        ("Other", (0, 110, 8, 140), True),
+        ("5", (150, 110, 158, 118), True),
+        ("4", (230, 110, 238, 118), True),
+    ]
+    assert line_rows._upright(upright)
+    assert line_rows.line_rows(_HEADER, _TABLE, upright) == _HEADER + (
+        ("Revenue", "100", "90"),
+        ("Other", "5", "4"),
+    )
 
 
 # A Docling table laid out between 600 and 700 points up the page, three rows of three columns
@@ -406,6 +750,28 @@ def test_a_columns_edges_are_its_median_cells_so_a_stray_wide_cell_moves_none(
     stray.bbox = stray.bbox.model_copy(update={"l": 60.0})
     shape = line_rows.layout(item, table_rows(item.data), height)
     assert shape is not None and shape.columns[1] == (150.0, 250.0), shape
+
+
+@pytest.mark.parametrize(
+    ("grid", "header", "text"),
+    [
+        pytest.param(_MERGED, 1, {0}, id="the label column holds words"),
+        pytest.param(
+            Grid(
+                rows=(("Particulars", "2025", "2024"), ("Revenue", "100", "90"), ("Tax", "-", "-")),
+                box=_BOX,
+            ),
+            1,
+            {0},
+            id="a row of years is header and dashes are figures",
+        ),
+    ],
+)
+def test_layout_reads_header_and_columns_of_words(grid: Grid, header: int, text: set[int]) -> None:
+    _, parsed = _rendered(grid)
+    item = parsed.tables[0]
+    shape = line_rows.layout(item, table_rows(item.data), parsed.pages[1].size.height)
+    assert shape is not None and (shape.header, set(shape.text)) == (header, text), shape
 
 
 def test_a_pdf_is_read_with_its_rupee_fonts_as_the_rupee_sign(tmp_path: Path) -> None:
