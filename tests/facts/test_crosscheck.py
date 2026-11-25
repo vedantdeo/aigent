@@ -750,6 +750,79 @@ def test_check_fact(fact: Fact, outcome: str, printed: str | None) -> None:
     assert (checked.outcome, checked.printed) == (outcome, printed), checked
 
 
+_TCI = ("Total comprehensive income for the period",)
+_TCI_FIGURE = ("1,000.00", "1", "1", "1")
+
+
+def _row(n: str, label: str, figures: tuple[str, ...] = _TCI_FIGURE) -> tuple[str, ...]:
+    return (n, label, *figures)
+
+
+@pytest.mark.parametrize(
+    ("tables", "agreed"),
+    [
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Total comprehensive income from continuing operations"))),
+                (1, (*_HEADER, _row("2", "Total comprehensive income for the period"))),
+            ],
+            (1, "Total comprehensive income for the period", 1.0),
+            id="a full label later beats a partial one first",
+        ),
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Total comprehensive income for the period"))),
+                (1, (*_HEADER, _row("2", "Total comprehensive income for the period (net)"))),
+            ],
+            (0, "Total comprehensive income for the period", 1.0),
+            id="on a tie the first is kept",
+        ),
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Statement line", ("1,000.00", "", "", "")))),
+                (1, (*_HEADER, _row("2", "Total comprehensive income for the period"))),
+            ],
+            (1, "Total comprehensive income for the period", 1.0),
+            id="a labelled row beats a figure agreeing only as distinctive",
+        ),
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Total comprehensive income from continuing operations"))),
+                (2, (*_HEADER, _row("2", "Total comprehensive income for the period"))),
+            ],
+            (1, "Total comprehensive income for the period", 1.0),
+            id="a better row on a later page of the document",
+        ),
+        pytest.param(
+            [
+                (1, (*_HEADER, _row("1", "Total comprehensive income from continuing operations"))),
+                (
+                    1,
+                    (
+                        *_HEADER,
+                        _row(
+                            "2",
+                            "Total comprehensive income for the period",
+                            ("2,000.00", "1", "1", "1"),
+                        ),
+                    ),
+                ),
+            ],
+            (0, "Total comprehensive income from continuing operations", 0.75),
+            id="a better label printing another figure does not agree",
+        ),
+    ],
+)
+def test_the_best_labelled_agreeing_cell_is_taken(
+    tables: list[tuple[int, tuple[tuple[str, ...], ...]]], agreed: tuple[int, str, float]
+) -> None:
+    fact = _fact("ComprehensiveIncomeForThePeriod", 10000000000.0, _TCI)
+    read = [replace(sheet, scale=1e7) for sheet in sheets(_pages(*tables))]
+    checked = check_fact(fact, read)
+    assert checked.outcome == "agree", checked
+    assert (checked.sheet, checked.row_label, checked.share) == agreed, checked
+
+
 def test_a_fact_records_where_it_agreed() -> None:
     checked = check_fact(_fact(), sheets(STANDALONE))
     where = (checked.page, checked.row_label, checked.sheet, checked.row, checked.column)

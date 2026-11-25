@@ -558,8 +558,9 @@ def _in_period(fact: Fact, column: Column | None, columns: Mapping[int, Column])
 
 
 def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
-    """`agree` on a cell of the fact's basis and period equal to it, its row carrying its label
-    or the figure distinctive alone; else `differ` on the best-labelled cell; else `unmatched`."""
+    """`agree` on the best-labelled cell of the fact's basis and period equal to it, its row
+    carrying its label or the figure distinctive alone, the first on a tie; else `differ` on the
+    best-labelled cell; else `unmatched`."""
     base = Checked(
         fact.fact_id,
         fact.ticker,
@@ -574,6 +575,7 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
         fact.document,
         "unmatched",
     )
+    agreed: tuple[float, Sheet, Cell, Rule] | None = None
     best: tuple[float, Sheet, Cell] | None = None
     for sheet in read:
         if sheet.basis not in (None, fact.basis):
@@ -584,10 +586,12 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
             share = label_share(fact.labels, fact.segment, cell.label)
             if agrees(fact, cell, sheet.scale):
                 rule = _rule(fact, cell, share)
-                if rule is not None:
-                    return _with(base, "agree", sheet, cell, share, rule)
+                if rule is not None and (agreed is None or share > agreed[0]):
+                    agreed = (share, sheet, cell, rule)
             if share >= CROSSCHECK_DIFFER_LABEL_MIN and (best is None or share > best[0]):
                 best = (share, sheet, cell)
+    if agreed is not None:
+        return _with(base, "agree", agreed[1], agreed[2], agreed[0], agreed[3])
     if best is not None:
         return _with(base, "differ", best[1], best[2], best[0], None)
     return base

@@ -2745,3 +2745,10 @@
   so all are stale: against today's run, 17,433 would be stamped afresh and 286 demoted, no
   derived fact affected. A test caught `|`-joined fingerprint parts colliding; they hash as a
   JSON list. 17/17 mutants; $0.00.
+- 11-25: the cross-check takes the best-labelled agreeing cell in a document, not the first, the
+  first on a tie (Vedant, after m10: Power Grid's total comprehensive income took "from Continuing
+  Operations" at 0.75 before "for the period" at 1.0). Same 18,115 agreements; 675 move to another
+  cell, 382 of them from a distinctive figure to a labelled row, 59 to another figure, 410 to
+  another page; m10 now takes the total row. m08 (ITC investment property, a deferred-tax table)
+  stays put: no better row competes; its column carrying a period is the next fix. Batch 2 of
+  cell-moves (m31-m60) drawn from the 675. 3/3 mutants; cross-check 86 s to 145 s; $0.00.
