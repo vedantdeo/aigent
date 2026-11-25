@@ -6,6 +6,9 @@ period, in a table for its basis. An agreement makes the fact `xbrl-filed`; anyt
 from __future__ import annotations
 
 import bisect
+import hashlib
+import inspect
+import json
 import re
 import sqlite3
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -14,6 +17,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
+from aigent.facts import printed
 from aigent.facts.cfg_facts import (
     CROSSCHECK_DIFFER_LABEL_MIN,
     CROSSCHECK_DISTINCT_DIGITS,
@@ -30,19 +34,48 @@ from aigent.facts.documents import (
     is_reading,
     load_verify_document,
     read_manifest,
+    reading_fingerprint,
     readings_of,
     refusal,
     reocr_built,
 )
 from aigent.facts.printed import NUMERIC_DATE, WORDED_DATE, number
 from aigent.facts.share_events import PER_SHARE
-from aigent.facts.store import XBRL_TIERS
+from aigent.facts.store import XBRL_TIERS, demote_derived
 from aigent.retrieval.chunk import Document
 
 Outcome = Literal["agree", "differ", "unmatched"]
 Rule = Literal["label", "distinct", "per-share"]  # what let an equal figure count as the fact
 RowKind = Literal["heading", "main line", "figures"]
 _RANK: dict[Outcome, int] = {"unmatched": 0, "differ": 1, "agree": 2}
+
+
+def fingerprint(parts: Iterable[str]) -> str:
+    """A short hash of `parts` in order."""
+    return hashlib.sha256(json.dumps(list(parts)).encode()).hexdigest()[:12]
+
+
+# Everything that decides an outcome: this module, how a figure is read, its settings, the readings.
+CROSSCHECK_FINGERPRINT = fingerprint(
+    (
+        Path(__file__).read_text(encoding="utf-8"),
+        inspect.getsource(printed),
+        repr(
+            (
+                CROSSCHECK_DIFFER_LABEL_MIN,
+                CROSSCHECK_DISTINCT_DIGITS,
+                CROSSCHECK_EXCLUSIVE,
+                CROSSCHECK_LABEL_MIN,
+                CROSSCHECK_SCALES,
+                CROSSCHECK_SPAN_ROWS,
+                CROSSCHECK_SYNONYMS,
+                VERIFY_OCR_TICKERS,
+                PER_SHARE,
+            )
+        ),
+        reading_fingerprint(),
+    )
+)
 
 _MONTHS = {
     m: i
@@ -699,10 +732,12 @@ def apply(
     checked: Iterable[Checked],
     now: datetime,
     origins: Mapping[str, str],
+    reading: str = CROSSCHECK_FINGERPRINT,
 ) -> int:
-    """Makes each agreeing `xbrl-ai` fact `xbrl-filed`, naming its document as `<origin>:<path>`
-    and keeping the printed figure and page; a fact a person checked, or already agreed, is left
-    alone. Returns how many; a document with no origin raises KeyError and writes nothing."""
+    """Makes each agreeing `xbrl-ai` fact `xbrl-filed`, naming its document as `<origin>:<path>`,
+    keeping the printed figure and page, and stamping the `reading` it agreed by; a fact a person
+    checked, or already agreed, is left alone. Returns how many; a document with no origin raises
+    KeyError and writes nothing."""
     stamp = now.isoformat(timespec="seconds")
     moved = 0
     with conn:
@@ -711,9 +746,72 @@ def apply(
                 continue
             cursor = conn.execute(
                 """UPDATE facts SET tier = 'xbrl-filed', verified_by = ?, verified_at = ?,
-                          printed = ?, page = ?
+                          printed = ?, page = ?, verified_with = ?
                    WHERE id = ? AND tier = 'xbrl-ai'""",
-                (f"{origins[c.document]}:{c.document}", stamp, c.printed, c.page, c.fact_id),
+                (
+                    f"{origins[c.document]}:{c.document}",
+                    stamp,
+                    c.printed,
+                    c.page,
+                    reading,
+                    c.fact_id,
+                ),
             )
             moved += cursor.rowcount
     return moved
+
+
+@dataclass(frozen=True)
+class Rechecked:
+    """What re-checking stale stamps did: agreements stamped afresh, facts made `xbrl-ai` again,
+    and derived facts made `derived-ai` for losing a checked input."""
+
+    restamped: int
+    demoted: int
+    derived_demoted: int
+
+
+def recheck(
+    conn: sqlite3.Connection,
+    checked: Iterable[Checked],
+    now: datetime,
+    origins: Mapping[str, str],
+    tickers: Sequence[str],
+    reading: str = CROSSCHECK_FINGERPRINT,
+) -> Rechecked:
+    """Each `xbrl-filed` fact of `tickers` stamped by another reading than `reading`: stamped
+    afresh when it agrees in `checked`, else made `xbrl-ai` again, with every derived fact that
+    loses a checked input. A document with no origin raises KeyError and writes nothing."""
+    by_id = {c.fact_id: c for c in checked}
+    marks = ", ".join("?" for _ in tickers)
+    stale = [
+        int(r[0])
+        for r in conn.execute(
+            f"""SELECT id FROM facts WHERE tier = 'xbrl-filed' AND ticker IN ({marks})
+                  AND verified_with IS NOT ?""",
+            (*tickers, reading),
+        )
+    ]
+    stamp = now.isoformat(timespec="seconds")
+    restamped = demoted = 0
+    with conn:
+        for fid in stale:
+            c = by_id.get(fid)
+            if c is not None and c.outcome == "agree":
+                conn.execute(
+                    """UPDATE facts SET verified_by = ?, verified_at = ?, printed = ?, page = ?,
+                              verified_with = ?
+                       WHERE id = ?""",
+                    (f"{origins[c.document]}:{c.document}", stamp, c.printed, c.page, reading, fid),
+                )
+                restamped += 1
+            else:
+                conn.execute(
+                    """UPDATE facts SET tier = 'xbrl-ai', verified_by = NULL, verified_at = NULL,
+                              printed = NULL, page = NULL, verified_with = NULL
+                       WHERE id = ?""",
+                    (fid,),
+                )
+                demoted += 1
+        derived = demote_derived(conn)
+    return Rechecked(restamped, demoted, derived)

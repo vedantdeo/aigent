@@ -18,6 +18,7 @@ import pytest
 
 from aigent.facts import __main__ as cli
 from aigent.facts.crosscheck import (
+    CROSSCHECK_FINGERPRINT,
     Column,
     Fact,
     RowRead,
@@ -29,12 +30,14 @@ from aigent.facts.crosscheck import (
     document_scale,
     documents_for,
     facts_to_check,
+    fingerprint,
     label_share,
+    recheck,
     sheets,
 )
 from aigent.facts.documents import Entry
 from aigent.facts.printed import number
-from aigent.facts.store import FilingRow, sync_xbrl_facts, upsert_filing
+from aigent.facts.store import DerivedRow, FilingRow, sync_xbrl_facts, upsert_filing, write_derived
 from aigent.facts.xbrl import Fact as XbrlFact
 from aigent.retrieval.chunk import Document, Table
 
@@ -998,7 +1001,7 @@ def test_apply_makes_only_agreements_xbrl_filed(crosscheck_db: sqlite3.Connectio
     checked = [checked_row(ids[0], "agree"), checked_row(ids[1], "differ")]
     moved = apply(crosscheck_db, checked, NOW, ORIGINS)
     rows = crosscheck_db.execute(
-        "SELECT tier, verified_by, verified_at, printed, page FROM facts ORDER BY id"
+        "SELECT tier, verified_by, verified_at, printed, page, verified_with FROM facts ORDER BY id"
     ).fetchall()
     assert moved == 1
     assert rows[0] == (
@@ -1007,8 +1010,9 @@ def test_apply_makes_only_agreements_xbrl_filed(crosscheck_db: sqlite3.Connectio
         "2026-11-01T09:00:00",
         "38,995.78",
         3,
+        CROSSCHECK_FINGERPRINT,
     )
-    assert rows[1] == ("xbrl-ai", None, None, None, None)
+    assert rows[1] == ("xbrl-ai", None, None, None, None, None)
 
 
 def test_apply_leaves_a_persons_check_and_counts_nothing_twice(
@@ -1067,6 +1071,198 @@ def test_apply_writes_nothing_for_a_document_with_no_origin(
         apply(crosscheck_db, [checked_row(ids[0], "agree"), unknown], NOW, ORIGINS)
     tiers = [r[0] for r in crosscheck_db.execute("SELECT tier FROM facts ORDER BY id")]
     assert set(tiers) == {"xbrl-ai"}, tiers
+
+
+FILED_BY = "nse-pdf:results/ICICIBANK-2024-06-30.pdf"
+RECHECK_ORIGINS = {**ORIGINS, "results/X.htm": "sec-6k-html"}
+STAMPED = (FILED_BY, "t0", "38,995.78", 3)
+AFRESH = ("xbrl-filed", FILED_BY, "2026-11-01T09:00:00", "38,995.78", 3, "now")
+DEMOTED = ("xbrl-ai", None, None, None, None, None)
+
+
+def _filed(db: sqlite3.Connection, fid: int, reading: str | None) -> None:
+    db.execute(
+        """UPDATE facts SET tier = 'xbrl-filed', verified_by = ?, verified_at = ?, printed = ?,
+                  page = ?, verified_with = ? WHERE id = ?""",
+        (*STAMPED, reading, fid),
+    )
+
+
+def _stamp(db: sqlite3.Connection, fid: int) -> tuple[object, ...]:
+    return db.execute(
+        """SELECT tier, verified_by, verified_at, printed, page, verified_with FROM facts
+           WHERE id = ?""",
+        (fid,),
+    ).fetchone()
+
+
+@pytest.mark.parametrize(
+    ("reading", "outcome", "moved", "after", "counts"),
+    [
+        pytest.param("old", "agree", {}, AFRESH, (1, 0), id="a stale stamp still agreeing"),
+        pytest.param(None, "agree", {}, AFRESH, (1, 0), id="a check from before stamps"),
+        pytest.param(
+            "old",
+            "agree",
+            {"document": "results/X.htm", "page": 7, "printed": "1.0"},
+            ("xbrl-filed", "sec-6k-html:results/X.htm", "2026-11-01T09:00:00", "1.0", 7, "now"),
+            (1, 0),
+            id="an agreement moved to another copy and page",
+        ),
+        pytest.param("old", "differ", {}, DEMOTED, (0, 1), id="a stale stamp now differing"),
+        pytest.param("old", "unmatched", {}, DEMOTED, (0, 1), id="a stale stamp now unmatched"),
+        pytest.param("old", None, {}, DEMOTED, (0, 1), id="a stale stamp no longer checked"),
+        pytest.param(
+            "now",
+            "differ",
+            {},
+            ("xbrl-filed", *STAMPED, "now"),
+            (0, 0),
+            id="a current stamp is left alone",
+        ),
+    ],
+)
+def test_recheck_stamps_afresh_or_demotes_a_stale_check(
+    crosscheck_db: sqlite3.Connection,
+    reading: str | None,
+    outcome: str | None,
+    moved: dict[str, object],
+    after: tuple[object, ...],
+    counts: tuple[int, int],
+) -> None:
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    _filed(crosscheck_db, first, reading)
+    checked = [] if outcome is None else [replace(checked_row(first, outcome), **moved)]
+    done = recheck(crosscheck_db, checked, NOW, RECHECK_ORIGINS, ("ICICIBANK",), "now")
+    assert (done.restamped, done.demoted) == counts, done
+    assert _stamp(crosscheck_db, first) == after
+
+
+def test_recheck_leaves_a_persons_check_and_another_company_alone(
+    crosscheck_db: sqlite3.Connection,
+) -> None:
+    ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
+    crosscheck_db.execute(
+        "UPDATE facts SET tier = 'xbrl', verified_by = 'vedant', verified_at = 't' WHERE id = ?",
+        (ids[1],),
+    )
+    _filed(crosscheck_db, ids[-1], "old")  # HDFC Bank's
+    before = [_stamp(crosscheck_db, i) for i in (ids[1], ids[-1])]
+    checked = [checked_row(i, "differ") for i in (ids[1], ids[-1])]
+    done = recheck(crosscheck_db, checked, NOW, RECHECK_ORIGINS, ("ICICIBANK",), "now")
+    assert (done.restamped, done.demoted) == (0, 0), done
+    assert [_stamp(crosscheck_db, i) for i in (ids[1], ids[-1])] == before
+
+
+def test_recheck_writes_nothing_for_a_document_with_no_origin(
+    crosscheck_db: sqlite3.Connection,
+) -> None:
+    ids = [r[0] for r in crosscheck_db.execute("SELECT id FROM facts ORDER BY id")]
+    for fid in ids[:2]:
+        _filed(crosscheck_db, fid, "old")
+    crosscheck_db.commit()
+    checked = [
+        checked_row(ids[0], "differ"),
+        replace(checked_row(ids[1], "agree"), document="results/NOPE.htm"),
+    ]
+    with pytest.raises(KeyError, match="NOPE"):
+        recheck(crosscheck_db, checked, NOW, RECHECK_ORIGINS, ("ICICIBANK",), "now")
+    assert [_stamp(crosscheck_db, i)[0] for i in ids[:2]] == ["xbrl-filed", "xbrl-filed"]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "tier", "derived_demoted"),
+    [
+        pytest.param("agree", "derived", 0, id="an input still agreeing keeps it checked"),
+        pytest.param("differ", "derived-ai", 1, id="an input demoted unchecks it"),
+    ],
+)
+def test_recheck_takes_a_derived_facts_check_with_its_inputs(
+    crosscheck_db: sqlite3.Connection, outcome: str, tier: str, derived_demoted: int
+) -> None:
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    _filed(crosscheck_db, first, "old")
+    row = DerivedRow(
+        "ICICIBANK", "standalone", "Half", "Half", None, "2024-06-30", None, 1.0, "INR", "{}"
+    )
+    derived = write_derived(crosscheck_db, row, [first], CROSSCHECK_WRITER, checked_by="vedant")
+    done = recheck(
+        crosscheck_db, [checked_row(first, outcome)], NOW, ORIGINS, ("ICICIBANK",), "now"
+    )
+    assert done.derived_demoted == derived_demoted, done
+    held = crosscheck_db.execute("SELECT tier FROM facts WHERE id = ?", (derived,)).fetchone()
+    assert held == (tier,)
+
+
+@pytest.mark.parametrize(
+    ("parts", "other"),
+    [
+        pytest.param(("a", "b"), ("a", "c"), id="a changed part"),
+        pytest.param(("a", "b"), ("b", "a"), id="parts reordered"),
+        pytest.param(("a", "b"), ("a", "b", ""), id="a part added"),
+        pytest.param(("a|b",), ("a", "b"), id="parts split differently"),
+    ],
+)
+def test_a_fingerprint_moves_with_any_change_to_its_parts(
+    parts: tuple[str, ...], other: tuple[str, ...]
+) -> None:
+    assert fingerprint(parts) == fingerprint(parts)
+    assert fingerprint(parts) != fingerprint(other)
+
+
+@pytest.mark.parametrize(
+    ("stale", "after"),
+    [
+        pytest.param(False, ("xbrl-filed", "old"), id="without --recheck a stale check stands"),
+        pytest.param(True, ("xbrl-ai", None), id="--recheck demotes it"),
+    ],
+)
+def test_the_command_rechecks_stale_checks_only_when_told(
+    crosscheck_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stale: bool,
+    after: tuple[str, str | None],
+) -> None:
+    db = Path(crosscheck_db.execute("PRAGMA database_list").fetchone()[2])
+    first = crosscheck_db.execute("SELECT min(id) FROM facts").fetchone()[0]
+    _filed(crosscheck_db, first, "old")
+    crosscheck_db.commit()
+    crosscheck_db.close()
+    monkeypatch.setattr(cli, "FACTS_DB", db)
+    monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
+    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [checked_row(first, "differ")])
+    manifest = {"results/ICICIBANK-2024-06-30.pdf": {"source": "nse", "format": "pdf"}}
+    monkeypatch.setattr(cli, "read_manifest", lambda: manifest)
+    cli.cross_check(NOW, write=False, decisions=tmp_path / "none.jsonl", stale=stale)
+    row = (
+        sqlite3.connect(db)
+        .execute("SELECT tier, verified_with FROM facts WHERE id = ?", (first,))
+        .fetchone()
+    )
+    assert row == after, row
+    report = next((tmp_path / "reports").glob("crosscheck-*.md")).read_text(encoding="utf-8")
+    assert ("1 made xbrl-ai" in report) is stale
+
+
+@pytest.mark.parametrize(
+    ("argv", "flags"),
+    [
+        pytest.param([], (False, False), id="a plain run records nothing"),
+        pytest.param(["--recheck"], (False, True), id="--recheck"),
+        pytest.param(["--write"], (True, False), id="--write"),
+        pytest.param(["--recheck", "--write"], (True, True), id="both"),
+    ],
+)
+def test_the_crosscheck_flags_reach_the_command(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], flags: tuple[bool, bool]
+) -> None:
+    seen: list[tuple[bool, bool]] = []
+    monkeypatch.setattr(
+        cli, "cross_check", lambda now, write, stale=False: seen.append((write, stale))
+    )
+    cli.main(["crosscheck", *argv])
+    assert seen == [flags]
 
 
 @pytest.mark.parametrize(("write", "tier"), [(False, "xbrl-ai"), (True, "xbrl-filed")])

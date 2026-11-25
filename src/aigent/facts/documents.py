@@ -630,3 +630,29 @@ def load_verify_document(
     if entry["format"] == "html":
         return html(path, doc_id_of(name))
     return pdf(path, doc_id_of(name))
+
+
+# Everything that decides how an HTML filing reads.
+_HTML_FINGERPRINT = hashlib.sha256(
+    (
+        "".join(
+            inspect.getsource(f)
+            for f in (percent_joined, statement_starts, statements, html_elements, load_html)
+        )
+        + f"|{_FIGURE.pattern}|{_DATE.pattern}|docling {version('docling')}"
+        + f"|{corpus.ingest_fingerprint()}"
+    ).encode()
+).hexdigest()[:12]
+
+# Everything that decides what any filed document reads as, and which reading is used.
+_READING_FINGERPRINT = hashlib.sha256(
+    (
+        "".join(inspect.getsource(f) for f in (readings_of, refusal, load_verify_document))
+        + f"|{_LINES_FINGERPRINT}|{_REOCR_FINGERPRINT}|{_HTML_FINGERPRINT}"
+    ).encode()
+).hexdigest()[:12]
+
+
+def reading_fingerprint() -> str:
+    """The hash of everything that decides what the cross-check reads a filed document as."""
+    return _READING_FINGERPRINT

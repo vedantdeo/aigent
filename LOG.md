@@ -2735,3 +2735,13 @@
   orphaned and deleted. `number` moved to `facts.printed` (an import cycle); `build_pdf` to the
   retrieval conftest; "Docling's table" panel renamed "As parsed". 31/31 mutants; 2,951 tests.
   Nothing written to the database.
+- 11-25: a machine check now names the reading it agreed by, and `crosscheck --recheck` re-checks
+  the stale ones (Vedant: re-parsing invalidates checks made from the old parse; option (a),
+  re-checking kept apart from `--write`). `facts.verified_with` (schema 5) holds
+  `CROSSCHECK_FINGERPRINT`: this module, `facts.printed`, the cross-check settings and every
+  reading's fingerprint. A stale `xbrl-filed` fact still agreeing is stamped afresh with its new
+  copy, figure and page; any other becomes `xbrl-ai`, and a `derived` fact losing a checked input
+  `derived-ai`. Person checks are never re-checked. The 17,719 existing checks migrate unstamped,
+  so all are stale: against today's run, 17,433 would be stamped afresh and 286 demoted, no
+  derived fact affected. A test caught `|`-joined fingerprint parts colliding; they hash as a
+  JSON list. 17/17 mutants; $0.00.

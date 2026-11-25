@@ -1,8 +1,9 @@
 """`python -m aigent.facts build [--offline]`: build the facts database and write its report.
 `python -m aigent.facts coverage`: score what it holds against the labelled figures; free.
-`python -m aigent.facts crosscheck [--write]`: check the cross-checked companies' XBRL facts against
-their results documents, rule on the review decisions and write the review queue; `--write` makes
-agreements `xbrl-filed` and the groups decided `right` `xbrl`.
+`python -m aigent.facts crosscheck [--recheck] [--write]`: check the cross-checked companies' XBRL
+facts against their results documents, rule on the review decisions and write the review queue;
+`--recheck` stamps afresh or demotes each `xbrl-filed` fact checked by an older reading, and
+`--write` makes agreements `xbrl-filed` and the groups decided `right` `xbrl`.
 `python -m aigent.facts reocr [--documents PATH ...] [--tickers T ...]`: OCR scanned results afresh,
 each in its own process, into the readings the cross-check tries after them; free, minutes each.
 `python -m aigent.facts verify-concept --name N --scope S --by P`: a person's check of a derived
@@ -52,7 +53,7 @@ from aigent.facts.coverage import (
     teacher_figures,
     write_report,
 )
-from aigent.facts.crosscheck import Checked, Sheet, apply, crosscheck, sheets
+from aigent.facts.crosscheck import Checked, Sheet, apply, crosscheck, recheck, sheets
 from aigent.facts.documents import (
     Entry,
     build_reocr,
@@ -142,6 +143,11 @@ def main(argv: list[str] | None = None) -> None:
         "--write", action="store_true", help="crosscheck: record agreements and decisions"
     )
     parser.add_argument(
+        "--recheck",
+        action="store_true",
+        help="crosscheck: stamp afresh or demote facts an older reading made xbrl-filed",
+    )
+    parser.add_argument(
         "--documents", nargs="*", default=[], help="reocr: scans by manifest path, as results/X.pdf"
     )
     parser.add_argument("--tickers", nargs="*", default=[], help="reocr: every scan of these")
@@ -157,7 +163,7 @@ def main(argv: list[str] | None = None) -> None:
         coverage(now)
         return
     if args.command == "crosscheck":
-        cross_check(now, write=args.write)
+        cross_check(now, write=args.write, stale=args.recheck)
         return
     if args.command == "reocr":
         if args.one:
@@ -271,15 +277,19 @@ def verify_event(
     print(f"now {event.described()}" if changed else "already checked as given; unchanged")
 
 
-def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None:
+def cross_check(
+    now: datetime, write: bool, decisions: Path = DECISIONS, stale: bool = False
+) -> None:
     """Check every cross-checked company's XBRL facts, rule on the decisions, write the report and
-    review queue, and with `write`, make the agreements `xbrl-filed` and `right` groups `xbrl`."""
+    review queue; with `stale`, re-check the `xbrl-filed` facts an older reading stamped, and with
+    `write`, make the agreements `xbrl-filed` and `right` groups `xbrl`."""
     conn = connect(FACTS_DB)
     try:
         checked = crosscheck(conn, VERIFY_TICKERS)
         rulings = rule(review_groups(checked), read_decisions(decisions))
         manifest = read_manifest()
         origins = {r: origin_of(r, e) for n, e in manifest.items() for r in readings_of(n, e)}
+        rechecked = recheck(conn, checked, now, origins, VERIFY_TICKERS) if stale else None
         moved = apply(conn, checked, now, origins) if write else 0
         checked_by_person = apply_rulings(conn, rulings, now) if write else 0
     finally:
@@ -298,6 +308,12 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
             if write
             else "no (run with --write to record)"
         ),
+        "rechecked": (
+            f"{rechecked.restamped:,} stamped afresh, {rechecked.demoted:,} made xbrl-ai, "
+            f"{rechecked.derived_demoted:,} derived made derived-ai"
+            if rechecked
+            else "no (run with --recheck to re-check stale stamps)"
+        ),
         "commit": _commit(),
         "run": f"{now:%Y-%m-%d %H:%M}",
         "cost": "$0.00 (local parsing only)",
@@ -308,7 +324,8 @@ def cross_check(now: datetime, write: bool, decisions: Path = DECISIONS) -> None
     )
     print(
         f"{len(checked)} facts, {agreed} agree, {moved} written xbrl-filed, "
-        f"{checked_by_person} written xbrl; decisions: {header['decisions']}; report: {path}"
+        f"{checked_by_person} written xbrl; rechecked: {header['rechecked']}; "
+        f"decisions: {header['decisions']}; report: {path}"
     )
     missing = [r for r in origins if is_reading(r) and not reocr_built(r)]
     if missing:
