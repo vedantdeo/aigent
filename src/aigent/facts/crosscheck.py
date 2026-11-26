@@ -23,6 +23,8 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_DISTINCT_DIGITS,
     CROSSCHECK_EXCLUSIVE,
     CROSSCHECK_FACT_ACTIONS,
+    CROSSCHECK_FILED_FRAMEWORK,
+    CROSSCHECK_FRAMEWORKS,
     CROSSCHECK_LABEL_MIN,
     CROSSCHECK_ROW_TURNS,
     CROSSCHECK_SCALES,
@@ -46,6 +48,7 @@ from aigent.facts.headers import (
     basis_in,
     column_periods,
     document_scale,
+    framework_in,
     months_of,
     scale_in,
 )
@@ -78,6 +81,8 @@ CROSSCHECK_FINGERPRINT = fingerprint(
                 CROSSCHECK_DISTINCT_DIGITS,
                 CROSSCHECK_EXCLUSIVE,
                 CROSSCHECK_FACT_ACTIONS,
+                CROSSCHECK_FILED_FRAMEWORK,
+                CROSSCHECK_FRAMEWORKS,
                 CROSSCHECK_LABEL_MIN,
                 CROSSCHECK_ROW_TURNS,
                 CROSSCHECK_SCALES,
@@ -124,9 +129,9 @@ class RowRead:
 
 @dataclass(frozen=True)
 class Sheet:
-    """A results table read for matching: its basis and scale from the text around it, its page,
-    each column's period, its numbers, how many leading rows were header, and each body row's
-    reading."""
+    """A results table read for matching: its basis, scale and accounting framework from the text
+    around it, its page, each column's period, its numbers, how many leading rows were header,
+    and each body row's reading."""
 
     index: int
     basis: str | None
@@ -136,6 +141,7 @@ class Sheet:
     cells: tuple[Cell, ...]
     header: int = 0
     rows: tuple[RowRead, ...] = ()
+    framework: str | None = None
 
 
 @dataclass(frozen=True)
@@ -187,11 +193,12 @@ class Checked:
 
 
 def sheets(document: Document) -> list[Sheet]:
-    """Every table with numbers, read for matching. Basis and scale come from the text since the
-    table before and the table's own header lines, else the table before's, else, for scale, the
-    one the document states most."""
+    """Every table with numbers, read for matching. Basis, scale and accounting framework come from
+    the text since the table before and the table's own header lines, else the table before's,
+    else, for scale, the one the document states most."""
     out: list[Sheet] = []
     basis: str | None = None
+    framework: str | None = None
     scale: float | None = document_scale(document.text)
     previous_end = 0
     before_columns: Mapping[int, Column] = {}
@@ -207,6 +214,7 @@ def sheets(document: Document) -> list[Sheet]:
         header = table.rows[:first]
         own = " ".join(" ".join(row) for row in header).lower()
         basis = basis_in(before + " " + own) or basis
+        framework = framework_in(before + " " + own) or framework
         scale = scale_in(before[-300:] + " " + own) or scale
         columns: Mapping[int, Column] = column_periods(header)
         width = max(len(row) for row in table.rows)
@@ -265,7 +273,7 @@ def sheets(document: Document) -> list[Sheet]:
                     Cell(r, j, period, named, table.rows[r][j].strip(), *parsed, heading=under)
                 )
         rows = tuple(replace(x, named=named_as[x.row]) if x.row in named_as else x for x in read)
-        out.append(Sheet(index, basis, scale, page, columns, tuple(cells), first, rows))
+        out.append(Sheet(index, basis, scale, page, columns, tuple(cells), first, rows, framework))
         before_columns, before_width, before_page, before_heading = columns, width, page, heading
     return out
 
@@ -357,6 +365,8 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
     vetoed: tuple[float, str, Cell] | None = None
     for sheet in read:
         if sheet.basis not in (None, fact.basis):
+            continue
+        if sheet.framework not in (None, CROSSCHECK_FILED_FRAMEWORK):
             continue
         for cell in sheet.cells:
             if not _in_period(fact, cell.period, sheet.columns):

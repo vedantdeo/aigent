@@ -2874,3 +2874,22 @@
   FY26's non-current financial liabilities = borrowings + lease + other, exactly), so XBRL-only
   means the single figure is not printed. A one-digit-off search was dropped: its control matched
   as often.
+- 11-26: a table's accounting framework (Vedant, spot-checking: SEC and NSE copies follow
+  different rules; keep the 6-Ks, go with the plan). The 24 bank 6-Ks name Indian GAAP, the RBI and
+  SEBI's listing rules and no US GAAP or IFRS: they are the India results, re-filed. The mix is
+  Wipro's IFRS statements, printed in its own NSE results and annual reports beside the Ind AS ones;
+  147 Wipro facts had been checked on IFRS-only pages (93 agree, 54 differ), one other (Tata).
+  `sheets` now reads each table's framework as it reads basis, and `check_fact` checks an Ind AS
+  fact on Ind AS tables or tables naming none. Matching any IFRS mention marked Power Grid FY26's
+  tables IFRS through "governed by IFRS Foundation" (and would have through `IFRS S2`, glossaries,
+  the banks' "Ind AS converged with IFRS"); only a declaration counts now ("under IFRS", "in
+  compliance with IFRS"), with OCR's `lndAS` read for Ind AS, so only Wipro's own statements match
+  (and two Tata prose lines, which moved nothing). **20,738 to 20,692 agree, all 46 lost Wipro**:
+  consolidated cash flow and balance-sheet totals Wipro's quarterly results print only under IFRS.
+  138 moved from IFRS to Ind AS tables; 41 differences against IFRS tables now unmatched; 26 of the
+  lost now differ against Wipro's standalone tables (read consolidated: their "Audited Balance
+  Sheet" names no basis, an open issue) or OCR's `11.954` for 11,954. 6/6 mutants; $0.00.
+  Wipro stays Ind AS only (Vedant): no SEC or IFRS XBRL is loaded, and in the retrieval round
+  (after parsing lands, with the Total-row section labels) chunks get labelled with their
+  framework by `framework_in` and IFRS chunks are flagged unsearchable, kept for later use rather
+  than deleted.

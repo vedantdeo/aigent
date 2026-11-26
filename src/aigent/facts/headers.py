@@ -1,6 +1,6 @@
 """A filed table's header read for what it states: each column's period (`column_periods`), and
-the basis and scale the text around a table names. Dates, lengths and bases are read through
-OCR's slips (`31 .12.2022`, `Six.months`, `Sectember`, `CONSOUDATED`)."""
+the basis, scale and accounting framework the text around a table names. Dates, lengths and bases
+are read through OCR's slips (`31 .12.2022`, `Six.months`, `Sectember`, `CONSOUDATED`)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
 
-from aigent.facts.cfg_facts import CROSSCHECK_SCALES
+from aigent.facts.cfg_facts import CROSSCHECK_FRAMEWORKS, CROSSCHECK_SCALES
 from aigent.facts.printed import NUMERIC_DATE, WORDED_DATE, YEAR
 from aigent.facts.vocab import repair
 
@@ -297,3 +297,15 @@ def basis_in(text: str) -> str | None:
     (`repair`: `CONSOUDATED`)."""
     found = re.findall(r"standalone|consolidated", repair(text).lower())
     return found[-1] if found else None
+
+
+def framework_in(text: str) -> str | None:
+    """The last accounting framework the text names (`CROSSCHECK_FRAMEWORKS`): "ind as" or
+    "ifrs"; a standard cited by number (`IFRS 16`) names none."""
+    lowered = text.lower()
+    found = [
+        (m.start(), name)
+        for name, pattern in CROSSCHECK_FRAMEWORKS.items()
+        for m in re.finditer(pattern, lowered)
+    ]
+    return max(found)[1] if found else None

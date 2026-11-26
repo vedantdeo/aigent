@@ -115,6 +115,45 @@ def test_a_basis_is_read_through_ocr_misspellings(heading: str, basis: str) -> N
     assert sheets(document)[1].basis == basis
 
 
+@pytest.mark.parametrize(
+    ("heading", "framework"),
+    [
+        pytest.param("Consolidated results under IFRS", "ifrs", id="IFRS declared"),
+        pytest.param(
+            "Prepared in compliance with International Financial Reporting Standards",
+            "ifrs",
+            id="IFRS declared in full",
+        ),
+        pytest.param("Results under Ind AS", "ind as", id="Ind AS declared"),
+        pytest.param("Segment results", "ind as", id="none named: the table before's"),
+        pytest.param("Ind AS 116, akin to IFRS 16, applied", "ind as", id="a standard cited"),
+        pytest.param(
+            "IFRS S2 climate disclosures; the IFRS Foundation",
+            "ind as",
+            id="IFRS named but not as the statements' framework",
+        ),
+        pytest.param("Under IFRS above; results under lndAS follow", "ind as", id="OCR's lndAS"),
+        pytest.param("Under Ind AS above; results under IFRS follow", "ifrs", id="the last named"),
+    ],
+)
+def test_a_sheet_reads_its_accounting_framework(heading: str, framework: str) -> None:
+    document = _document("STANDALONE RESULTS under Ind AS", _RESULTS, heading, _RESULTS)
+    assert sheets(document)[1].framework == framework
+
+
+@pytest.mark.parametrize(
+    ("heading", "outcome"),
+    [
+        pytest.param("STANDALONE RESULTS under IFRS", "unmatched", id="an IFRS table"),
+        pytest.param("STANDALONE RESULTS under Ind AS", "agree", id="an Ind AS table"),
+        pytest.param("STANDALONE RESULTS", "agree", id="a table naming no framework"),
+    ],
+)
+def test_an_xbrl_fact_is_checked_only_against_its_framework(heading: str, outcome: str) -> None:
+    checked = check_fact(_fact(), sheets(_document(f"{heading} (₹ in crore)", _RESULTS)))
+    assert checked.outcome == outcome, checked
+
+
 _QUARTER_AND_NINE = {1: Column(date(2024, 12, 31), None), 2: Column(date(2024, 12, 31), 9)}
 
 

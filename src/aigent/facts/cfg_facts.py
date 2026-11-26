@@ -126,6 +126,12 @@ TABLE_PAGE_TAGS: tuple[str, ...] = (
     "OCR text wrong",
 )
 CROSSCHECK_SCALES: dict[str, float] = {"crore": 1e7, "lac": 1e5, "lakh": 1e5, "million": 1e6}
+CROSSCHECK_FRAMEWORKS: dict[str, str] = {  # the words naming a table's accounting framework
+    "ind as": r"\b[il]nd[- ]?as\b|indian accounting standards?",  # OCR's `lndAS` too
+    "ifrs": r"\bunder ifrs\b"  # as a statement declares it, not `IFRS S2` or `IFRS Foundation`
+    r"|(?:accordance|compliance|conformity) with (?:ifrs\b|international financial reporting)",
+}
+CROSSCHECK_FILED_FRAMEWORK = "ind as"  # NSE's XBRL; tables under another are not checked
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.
 CROSSCHECK_SYNONYMS: dict[str, str] = {
