@@ -2893,3 +2893,21 @@
   (after parsing lands, with the Total-row section labels) chunks get labelled with their
   framework by `framework_in` and IFRS chunks are flagged unsearchable, kept for later use rather
   than deleted.
+- 11-26: a table's basis is its section's (Vedant: divide the document into standalone and
+  consolidated sections, tables inheriting, not the table before). Basis had been the last
+  "standalone"/"consolidated" anywhere since the table before, so a note's prose ("publishes these
+  standalone financial results along with the consolidated financial results") made Wipro's
+  standalone balance sheet and cash flow consolidated. A section now opens at a heading line naming
+  one basis, capitalised or among its first four words; prose, a line naming both (ITC's cover
+  letter, "both Standalone and Consolidated") and a report's navigation strip (Tata FY26 prints
+  "FINANCIALS CONSOLIDATED" on 73 pages, standalone ones too) open none; the text before every
+  table is read, figures or not. Tried first: headings of at most 15 words (lost ITC's and Sun
+  Pharma's 16-word titles, 798 agreements), capitals only (lost Bajaj's "Statement of standalone
+  audited financial results"), and without the figureless tables (Tata's standalone auditor's
+  report heading dropped). **20,692 to 20,850 agree**: 176 won (Wipro's standalone statements),
+  18 lost, at most 3 a table. Tables with no basis 269 to 28 of 11,320, all annual-report front
+  matter before the first statement heading: corporate governance 15, AGM notice and director
+  details 7, dividend TDS 3, ESG 3. 9/9 mutants; $0.00. Next (Vedant): `both` for tables printing
+  both bases side by side (either basis's queries land; columns by their own basis), `no basis` as
+  a decision (non-statement headings pause a section, statement headings resume it), unlabelled
+  kept apart for review.

@@ -115,6 +115,84 @@ def test_a_basis_is_read_through_ocr_misspellings(heading: str, basis: str) -> N
     assert sheets(document)[1].basis == basis
 
 
+_PROSE = (
+    "The Company has disclosed the segment information in the interim condensed consolidated "
+    "financial statements."
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "basis"),
+    [
+        pytest.param(_PROSE, "standalone", id="a sentence naming the other basis: the section's"),
+        pytest.param("10. Audited Consolidated Balance Sheet", "consolidated", id="a heading"),
+        pytest.param(
+            "Website: www.example.com ; Email: info@example.com ; Tel: +91-80-2844 0011 "
+            "AUDITED CONSOLIDATED FINANCIAL RESULTS FOR THE YEAR ENDED MARCH 31, 2025",
+            "consolidated",
+            id="a long heading in capitals",
+        ),
+        pytest.param(
+            "10. Consolidated Balance Sheet\n" + _PROSE,
+            "consolidated",
+            id="the last heading, not the last word",
+        ),
+        pytest.param(
+            "Statement of consolidated audited financial results for the year ended 31 March 2024",
+            "consolidated",
+            id="a lower-case heading",
+        ),
+        pytest.param(
+            "INTEGRATED REPORT 04 STATUTORY REPORTS 150 FINANCIALS CONSOLIDATED",
+            "standalone",
+            id="a report's navigation strip",
+        ),
+        pytest.param(
+            "Standalone Balance Sheet\nConsolidated Balance Sheet",
+            "consolidated",
+            id="two headings: the last",
+        ),
+        pytest.param(
+            "Statement of Unaudited Consolidated Financial Results for the Quarter and Half year "
+            "ended September 30, 2025",
+            "consolidated",
+            id="a long heading",
+        ),
+        pytest.param(
+            "(v) Limited Review Reports on the Consolidated and Standalone Financial Results",
+            "standalone",
+            id="a line naming both: no section",
+        ),
+    ],
+)
+def test_a_table_takes_the_basis_of_its_section(text: str, basis: str) -> None:
+    document = _document("STANDALONE RESULTS (₹ in crore)", _RESULTS, text, _RESULTS)
+    assert sheets(document)[1].basis == basis
+
+
+def test_a_section_opens_before_a_table_with_no_figures() -> None:
+    words = (("Basis for Opinion",), ("We conducted our audit",))
+    document = _document(
+        "STANDALONE RESULTS (₹ in crore)",
+        _RESULTS,
+        "Report on the Audit of the Consolidated Financial Statements",
+        words,
+        "Under IFRS",
+        words,
+        "Balance Sheet",
+        _RESULTS,
+    )
+    assert [(s.basis, s.framework) for s in sheets(document)] == [
+        ("standalone", None),
+        ("consolidated", "ifrs"),
+    ]
+
+
+def test_a_table_header_naming_a_basis_takes_it() -> None:
+    document = _document("STANDALONE RESULTS (₹ in crore)", (("CONSOLIDATED",), *_RESULTS))
+    assert sheets(document)[0].basis == "consolidated"
+
+
 @pytest.mark.parametrize(
     ("heading", "framework"),
     [

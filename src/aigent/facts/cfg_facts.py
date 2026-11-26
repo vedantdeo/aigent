@@ -94,6 +94,7 @@ CROSSCHECK_SEED = 20261101
 CROSSCHECK_GROUP_EXAMPLES = 3  # distinct values a review group lists before "…"
 CROSSCHECK_SPOT_CHECKS = 3  # facts of a group a person checks before a `right` verdict applies
 CROSSCHECK_TRACE_WINDOW = 8  # rows either side of a traced cell's row, after the header rows
+CROSSCHECK_HEADING_LEAD = 4  # a lower-case basis among a line's first words heads a section
 CROSSCHECK_SPAN_ROWS = 3  # rows a column repeats one text down to be a spanning cell's copies
 # Review pages: the kinds of copy a batch is spread over, in order, its default size and seed, and
 # the page image's width and quality under the artifact's size limit.
@@ -131,6 +132,7 @@ CROSSCHECK_FRAMEWORKS: dict[str, str] = {  # the words naming a table's accounti
     "ifrs": r"\bunder ifrs\b"  # as a statement declares it, not `IFRS S2` or `IFRS Foundation`
     r"|(?:accordance|compliance|conformity) with (?:ifrs\b|international financial reporting)",
 }
+CROSSCHECK_NAVIGATION = r"integrated report|statutory reports"  # a report's side tabs, no heading
 CROSSCHECK_FILED_FRAMEWORK = "ind as"  # NSE's XBRL; tables under another are not checked
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.

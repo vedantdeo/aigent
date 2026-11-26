@@ -25,7 +25,9 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_FACT_ACTIONS,
     CROSSCHECK_FILED_FRAMEWORK,
     CROSSCHECK_FRAMEWORKS,
+    CROSSCHECK_HEADING_LEAD,
     CROSSCHECK_LABEL_MIN,
+    CROSSCHECK_NAVIGATION,
     CROSSCHECK_ROW_TURNS,
     CROSSCHECK_SCALES,
     CROSSCHECK_SIGN_FREE,
@@ -45,12 +47,12 @@ from aigent.facts.documents import (
 )
 from aigent.facts.headers import (
     Column,
-    basis_in,
     column_periods,
     document_scale,
     framework_in,
     months_of,
     scale_in,
+    section_basis,
 )
 from aigent.facts.labels import label_match, note, per_share_row, serial
 from aigent.facts.printed import MAIN_LINE, figure_row, number
@@ -83,7 +85,9 @@ CROSSCHECK_FINGERPRINT = fingerprint(
                 CROSSCHECK_FACT_ACTIONS,
                 CROSSCHECK_FILED_FRAMEWORK,
                 CROSSCHECK_FRAMEWORKS,
+                CROSSCHECK_HEADING_LEAD,
                 CROSSCHECK_LABEL_MIN,
+                CROSSCHECK_NAVIGATION,
                 CROSSCHECK_ROW_TURNS,
                 CROSSCHECK_SCALES,
                 CROSSCHECK_SIGN_FREE.pattern,
@@ -193,8 +197,9 @@ class Checked:
 
 
 def sheets(document: Document) -> list[Sheet]:
-    """Every table with numbers, read for matching. Basis, scale and accounting framework come from
-    the text since the table before and the table's own header lines, else the table before's,
+    """Every table with numbers, read for matching. Its basis is its section's, opened by the last
+    heading naming one (`section_basis`) before it or in its header lines; scale and accounting
+    framework come from the text since the table before and its header, else the table before's,
     else, for scale, the one the document states most."""
     out: list[Sheet] = []
     basis: str | None = None
@@ -205,16 +210,19 @@ def sheets(document: Document) -> list[Sheet]:
     before_heading = ""
     before_width, before_page = 0, 0
     for index, table in enumerate(document.tables):
-        before = document.text[previous_end : table.start].lower()
+        printed_before = document.text[previous_end : table.start]
+        before = printed_before.lower()
         previous_end = table.end
+        basis = section_basis(printed_before) or basis  # a section opens before any table
+        framework = framework_in(before) or framework
         cells_by_row = [[number(c) for c in row] for row in table.rows]
         first = next((i for i, row in enumerate(table.rows) if figure_row(row)), None)
         if first is None:
             continue
         header = table.rows[:first]
         own = " ".join(" ".join(row) for row in header).lower()
-        basis = basis_in(before + " " + own) or basis
-        framework = framework_in(before + " " + own) or framework
+        basis = section_basis("\n".join(" ".join(c for c in row if c) for row in header)) or basis
+        framework = framework_in(own) or framework
         scale = scale_in(before[-300:] + " " + own) or scale
         columns: Mapping[int, Column] = column_periods(header)
         width = max(len(row) for row in table.rows)

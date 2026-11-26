@@ -9,7 +9,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
 
-from aigent.facts.cfg_facts import CROSSCHECK_FRAMEWORKS, CROSSCHECK_SCALES
+from aigent.facts.cfg_facts import (
+    CROSSCHECK_FRAMEWORKS,
+    CROSSCHECK_HEADING_LEAD,
+    CROSSCHECK_NAVIGATION,
+    CROSSCHECK_SCALES,
+)
 from aigent.facts.printed import NUMERIC_DATE, WORDED_DATE, YEAR
 from aigent.facts.vocab import repair
 
@@ -297,6 +302,23 @@ def basis_in(text: str) -> str | None:
     (`repair`: `CONSOUDATED`)."""
     found = re.findall(r"standalone|consolidated", repair(text).lower())
     return found[-1] if found else None
+
+
+def section_basis(text: str) -> str | None:
+    """The basis the text's last heading names, starting a section: a line naming one basis,
+    capitalised (`Standalone`, `CONSOLIDATED`) or in its first words (`Statement of standalone
+    results`); prose, a line naming both and a report's navigation strip name none."""
+    found = None
+    for line in text.splitlines():
+        if re.search(CROSSCHECK_NAVIGATION, line, re.IGNORECASE):
+            continue
+        words = re.findall(r"[A-Za-z]+", line)
+        named = {basis_in(w): (i, w) for i, w in enumerate(words) if basis_in(w)}
+        if len(named) == 1 and all(
+            w[0].isupper() or i < CROSSCHECK_HEADING_LEAD for i, w in named.values()
+        ):
+            found = next(iter(named))
+    return found
 
 
 def framework_in(text: str) -> str | None:
