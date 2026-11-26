@@ -2979,4 +2979,18 @@
   comma and no leading zero (0.412 is a ratio) as thousands. **21,244 to 21,275 agree**, 0 lost;
   all 31 read: 16 commas, 15 deductions; three Wipro "other expenses" land on facility or
   sub-contracting rows by distinctive value, its known tagging. 6/6 mutants; $0.00.
+- 11-26: header dates: split dates completed from the neighbouring column, and period ends read
+  as month ends. The differing facts whose right cell was found under a wrongly dated or
+  undated column (90 facts, 51 tables) were a long tail; two causes were general. Bajaj's
+  consolidated balance sheet continuation prints "As at 31 2026" | "March 2025", its month moved
+  to the next cell: a column naming a year and its day or month takes the other part from a
+  neighbour. OCR misreads days ("1 Mar'26", "11 Sep"): a period's end is its month's last day
+  (a finance call: statement columns end on month ends), except 1 April, a year's opening
+  (Wipro's "As at April 1, 2024"). **21,275 to 21,434 agree**, 160 won, 1 lost: whole Tata and
+  Reliance results tables had been misdated ("June | 2024" split, "Sep~ber 30, I 2025"); the
+  loss is Tata Sep-2025's garbled segment liabilities, which had agreed on a two-column reading
+  by order and moved with the now-dated third column. Left: Reliance's segment table (years in
+  rows), Power Grid's changes in equity (periods in rows), garbled OCR. A guard requiring
+  exactly one of day or month could not be told apart from at least one under mutation and was
+  simplified. 5/5 mutants; $0.00.
   21/21 mutants; $0.00.

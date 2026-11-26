@@ -379,3 +379,28 @@ def test_a_column_takes_the_basis_its_header_names(
 )
 def test_document_scale(text: str, scale: float | None) -> None:
     assert document_scale(text) == scale
+
+
+@pytest.mark.parametrize(
+    ("header", "ends"),
+    [
+        pytest.param(
+            ("Particulars", "Note No.", "As at 31 2026", "(₹ In Crore) March 2025"),
+            {2: date(2026, 3, 31), 3: date(2025, 3, 31)},
+            id="a month moved to the next cell",
+        ),
+        pytest.param(
+            ("Particulars", "Quarter ended 1 Mar'26", "Quarter ended 31 Dec'25"),
+            {1: date(2026, 3, 31), 2: date(2025, 12, 31)},
+            id="a misread day: the month's end",
+        ),
+        pytest.param(
+            ("Particulars", "As at April 1, 2024", "As at March 31, 2025"),
+            {1: date(2024, 4, 1), 2: date(2025, 3, 31)},
+            id="1 April opens a year",
+        ),
+        pytest.param(("Particulars", "2026", "2025"), {}, id="years alone: no parts to complete"),
+    ],
+)
+def test_split_and_misread_dates(header: tuple[str, ...], ends: dict[int, date]) -> None:
+    assert {j: c.end for j, c in column_periods((header,)).items()} == ends
