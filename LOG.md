@@ -2967,4 +2967,16 @@
   agree**, 0 lost; face value 22 to 349 agree, 2 differ, 19 unmatched. Vedant's verdicts on the
   face-value groups now cover facts that agree by themselves; the queue drops them. 12/12
   mutants and 1 for the bracket; $0.00.
+- 11-26: OCR's point for a comma, and taxes and finance costs bracketed as deductions. Of the
+  64 differing facts whose right cell was found with the period fitting, most of the largest
+  clusters were not labels: Reliance's "(i) Current Tax (2,002)" and "(ii) Deferred Tax (461)"
+  below EBIT in its segment reconciliation (PBT less the brackets is PAT, no "Less" printed),
+  Tata's "(Less): Finance costs (3,786)", against XBRL filing the expenses positive (15 facts);
+  and OCR's point for a thousands comma, Reliance's "5.731" and Wipro's "11.954" (29). Current
+  and deferred tax and (segment) finance costs joined `CROSSCHECK_SIGN_FREE` (a sign error in
+  XBRL for them now goes unseen; magnitude, label, period and basis must still hold). A table
+  whose body prints whole figures (0.9 of them) reads a figure of exactly three decimals, no
+  comma and no leading zero (0.412 is a ratio) as thousands. **21,244 to 21,275 agree**, 0 lost;
+  all 31 read: 16 commas, 15 deductions; three Wipro "other expenses" land on facility or
+  sub-contracting rows by distinctive value, its known tagging. 6/6 mutants; $0.00.
   21/21 mutants; $0.00.

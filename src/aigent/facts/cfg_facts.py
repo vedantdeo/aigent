@@ -95,6 +95,7 @@ CROSSCHECK_GROUP_EXAMPLES = 3  # distinct values a review group lists before "â€
 CROSSCHECK_SPOT_CHECKS = 3  # facts of a group a person checks before a `right` verdict applies
 CROSSCHECK_TRACE_WINDOW = 8  # rows either side of a traced cell's row, after the header rows
 CROSSCHECK_HEADING_LEAD = 4  # a lower-case basis among a line's first words heads a section
+CROSSCHECK_WHOLE_SHARE = 0.9  # a table this share whole figures reads OCR's `5.731` as 5,731
 CROSSCHECK_SPAN_ROWS = 3  # rows a column repeats one text down to be a spanning cell's copies
 # Review pages: the kinds of copy a batch is spread over, in order, its default size and seed, and
 # the page image's width and quality under the artifact's size limit.
@@ -252,6 +253,7 @@ VOCAB_LEXICON: tuple[str, ...] = (
 CROSSCHECK_SIGN_FREE = re.compile(
     r"^(?:Purchase|Purchases|Payment|Payments|Repayments|Acquisition)(?:Of|For)"
     r"|Paid|^AdjustmentsFor\w*Income$|^IncomeTaxRelatingTo|^InterSegmentRevenue$"
+    r"|^(?:Current|Deferred)Tax$|^(?:Segment)?FinanceCosts$"  # a reconciliation brackets them
 )
 # A fact's label led by one of these names a flow, printed only on a row with a word it lists.
 _BUYING = frozenset({"acquisition", "paid", "payment", "payments", "purchase", "purchases"})

@@ -34,6 +34,7 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_SIGN_FREE,
     CROSSCHECK_SPAN_ROWS,
     CROSSCHECK_SYNONYMS,
+    CROSSCHECK_WHOLE_SHARE,
     VERIFY_OCR_TICKERS,
 )
 from aigent.facts.documents import (
@@ -99,6 +100,7 @@ CROSSCHECK_FINGERPRINT = fingerprint(
                 CROSSCHECK_SIGN_FREE.pattern,
                 CROSSCHECK_SPAN_ROWS,
                 CROSSCHECK_SYNONYMS,
+                CROSSCHECK_WHOLE_SHARE,
                 VERIFY_OCR_TICKERS,
                 PER_SHARE,
             )
@@ -227,6 +229,7 @@ def sheets(document: Document) -> list[Sheet]:
         first = next((i for i, row in enumerate(table.rows) if figure_row(row)), None)
         if first is None:
             continue
+        cells_by_row = _points_for_commas(table.rows, cells_by_row, first)
         header = table.rows[:first]
         own = " ".join(" ".join(row) for row in header).lower()
         section = section.advance("\n".join(" ".join(c for c in row if c) for row in header))
@@ -292,6 +295,27 @@ def sheets(document: Document) -> list[Sheet]:
         rows = tuple(replace(x, named=named_as[x.row]) if x.row in named_as else x for x in read)
         out.append(Sheet(index, basis, scale, page, columns, tuple(cells), first, rows, framework))
         before_columns, before_width, before_page, before_heading = columns, width, page, heading
+    return out
+
+
+_POINT_FOR_COMMA = re.compile(r"\(?-?[1-9]\d{0,2}\.\d{3}\)?")  # 0.412 is a ratio
+
+
+def _points_for_commas(
+    rows: Sequence[Sequence[str]],
+    parsed: list[list[tuple[float, int, bool] | None]],
+    first: int,
+) -> list[list[tuple[float, int, bool] | None]]:
+    """In a body printing whole figures (`CROSSCHECK_WHOLE_SHARE` of them), a figure of exactly
+    three decimals and no comma read as OCR's point for a thousands comma: `5.731` as 5,731."""
+    body = [p for row in parsed[first:] for p in row if p is not None and not p[2]]
+    if not body or sum(p[1] == 0 for p in body) / len(body) < CROSSCHECK_WHOLE_SHARE:
+        return parsed
+    out = [list(row) for row in parsed]
+    for r in range(first, len(rows)):
+        for j, p in enumerate(out[r]):
+            if p is not None and p[1] == 3 and _POINT_FOR_COMMA.fullmatch(rows[r][j].strip()):
+                out[r][j] = (p[0] * 1000, 0, p[2])
     return out
 
 

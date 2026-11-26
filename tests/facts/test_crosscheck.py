@@ -384,6 +384,54 @@ def test_a_figure_printed_inside_a_label(
     assert (checked.outcome, checked.rule) == (outcome, rule), checked
 
 
+@pytest.mark.parametrize(
+    ("printed", "rows", "value", "outcome"),
+    [
+        pytest.param("5.731", (), 5731e7, "agree", id="a point for a comma in whole figures"),
+        pytest.param("(5.731)", (), -5731e7, "agree", id="bracketed"),
+        pytest.param("0.412", (), 412e7, "differ", id="a leading zero is a ratio"),
+        pytest.param("5,731.250", (), 5731.25e7, "agree", id="a comma: decimals as printed"),
+        pytest.param(
+            "5.731",
+            (("2", "Other income", "7.12", "5.65", "5.44", "22.96"),),
+            5731e7,
+            "differ",
+            id="a table printing decimals",
+        ),
+    ],
+)
+def test_ocrs_point_for_a_comma(
+    printed: str, rows: tuple[tuple[str, ...], ...], value: float, outcome: str
+) -> None:
+    whole = ("1", "Interest earned", printed, "37,948", "33,327", "142,890")
+    others = rows or (
+        ("2", "Other income", "7,001", "5,648", "5,435", "22,957"),
+        ("3", "Fees", "1,234", "1,100", "990", "4,400"),
+        ("4", "Rent", "812", "800", "790", "3,200"),
+        ("5", "Total", "9,047", "7,548", "7,215", "30,557"),
+    )
+    document = _document("STANDALONE RESULTS (₹ in crore)", (*_HEADER, whole, *others))
+    assert check_fact(_fact(value=value), sheets(document)).outcome == outcome
+
+
+@pytest.mark.parametrize(
+    ("concept", "label", "outcome"),
+    [
+        pytest.param("CurrentTax", "(i) Current Tax", "agree", id="current tax as a deduction"),
+        pytest.param("DeferredTax", "(ii) Deferred Tax", "agree", id="deferred tax"),
+        pytest.param("FinanceCosts", "Add/(Less): Finance costs", "agree", id="finance costs"),
+        pytest.param("Revenue", "Revenue", "differ", id="another concept keeps its sign"),
+    ],
+)
+def test_a_tax_or_finance_cost_bracketed_as_a_deduction(
+    concept: str, label: str, outcome: str
+) -> None:
+    row = ("1", label, "(2,002.00)", "(1,947.00)", "(2,113.00)", "(8,100.00)")
+    document = _document("STANDALONE RESULTS (₹ in crore)", (*_HEADER, row))
+    fact = _fact(concept, 2002e7, (label.split(")")[-1].strip(" :"),))
+    assert check_fact(fact, sheets(document)).outcome == outcome
+
+
 def test_a_table_header_naming_a_basis_takes_it() -> None:
     document = _document("STANDALONE RESULTS (₹ in crore)", (("CONSOLIDATED",), *_RESULTS))
     assert sheets(document)[0].basis == "consolidated"
