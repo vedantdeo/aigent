@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import random
 import sqlite3
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -18,7 +19,7 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_SEED,
     CROSSCHECK_SPOT_CHECKS,
 )
-from aigent.facts.crosscheck import Checked
+from aigent.facts.crosscheck import Checked, TableLabel
 from aigent.facts.printed import number
 
 Issue = Literal["xbrl zero", "printed x100", "differs", "not printed"]
@@ -275,10 +276,12 @@ def write_report(
     header: Mapping[str, str],
     path: Path,
     rulings: Sequence[Ruling] = (),
+    labels: Mapping[str, Sequence[TableLabel]] | None = None,
 ) -> Path:
-    """The counts per company, basis and outcome, the rulings, then the review queue: the groups
-    still open, largest first (a group being extended shows only its new facts), each group's
-    facts, and the sampled agreements; every row beside it as JSON lines."""
+    """The counts per company, basis and outcome, the tables by basis label with those no heading
+    placed, the rulings, then the review queue: the groups still open, largest first (a group
+    being extended shows only its new facts), each group's facts, and the sampled agreements;
+    every row beside it as JSON lines."""
     counts: dict[tuple[str, str], dict[str, int]] = {}
     for c in checked:
         counts.setdefault((c.ticker, c.basis), {"agree": 0, "differ": 0, "unmatched": 0})
@@ -296,6 +299,8 @@ def write_report(
     lines += ["", "| company | basis | agree | differ | unmatched |", "|---|---|---|---|---|"]
     for (ticker, basis), n in sorted(counts.items()):
         lines.append(f"| {ticker} | {basis} | {n['agree']} | {n['differ']} | {n['unmatched']} |")
+    if labels is not None:
+        lines += _labels(labels)
     lines += ["", "## Decisions", ""]
     lines += [
         "| decision | group | verdict | status | by | facts | confirmed | note |",
@@ -327,6 +332,21 @@ def write_report(
     rows = path.with_suffix(".rows.jsonl")
     rows.write_text("".join(json.dumps(asdict(c)) + "\n" for c in checked), encoding="utf-8")
     return path
+
+
+def _labels(labels: Mapping[str, Sequence[TableLabel]]) -> list[str]:
+    """Tables by basis label, and each one no heading placed (`unlabelled`), for review."""
+    named = Counter(label or "unlabelled" for tables in labels.values() for _, _, label in tables)
+    out = ["", "## Tables by basis", "", "| label | tables |", "|---|---|"]
+    out += [f"| {k} | {named[k]:,} |" for k in ("standalone", "consolidated", "both", "none")]
+    out += [f"| unlabelled | {named['unlabelled']:,} |", "", "Unlabelled:", ""]
+    out += [
+        f"- {document} #{index} p. {page}"
+        for document, tables in sorted(labels.items())
+        for index, page, label in tables
+        if label is None
+    ]
+    return out
 
 
 def _ruling_row(r: Ruling) -> str:

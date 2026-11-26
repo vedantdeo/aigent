@@ -2911,3 +2911,30 @@
   both bases side by side (either basis's queries land; columns by their own basis), `no basis` as
   a decision (non-statement headings pause a section, statement headings resume it), unlabelled
   kept apart for review.
+- 11-26: basis labels (Vedant: `both` for tables printing both bases side by side, so either
+  basis's queries land; `no basis` a decision, kept apart from unlabelled; a part outside the
+  statements pauses a section, and tables after it inherit the section again). A heading of a part
+  outside the statements pauses (corporate governance, notice, BRSR, directors'/board's report,
+  MD&A, TDS on dividends, annexure, at a line's start); a statement title naming no basis resumes
+  ("Balance Sheet", "Financial Results", "Segment information"); a heading naming a basis sets it
+  and ends a pause. `check_fact` never checks `none`, checks `both` either way but by a column's
+  own basis where its header names one. **20,850 to 20,912 agree**: 71 won (ITC's and Power Grid's
+  side-by-side results, labelled standalone before), 9 lost, all zeros on dashes. Tables: 4,436
+  standalone, 4,876 consolidated, 66 both, 1,955 none, 0 unlabelled; the last 3 unlabelled were
+  HDFC FY25's sustainable finance and emissions, now paused by its "ESG STRATEGY" heading (Vedant),
+  and "financial highlights" resumes HDFC FY26's 10-year summary after it. Every pause heading
+  was read: BRSR about 900,
+  governance and MD&A about 230 each, board's report about 190, annexures, notice; in results, Power
+  Grid's security cover and issue-proceeds certificates and Sun Pharma's press-release snapshots.
+  Tried first: a document starting paused (front matter), which made `none` a fallback for
+  tables under no heading; a heading carried over every column to its right, which read ITC's
+  consolidated quarter as standalone where "Consolidated" sat in a lower cell (Power Grid Sep-2024
+  lost its heading to the parse); a period-repeat switch, broken by half-years misread as quarters.
+  A carried heading now counts only under a header row naming both. Lost too: ITC FY24/FY26's
+  directors' report "PROFITS" (4 facts), restated standalone figures under a paused report.
+  Resume by default (Vedant asked to try it: any heading that is not a pause heading resumes) was
+  run against it: 20,916 agree (+5, four zeros on dashes and the HDFC summary), none 1,968 to 204,
+  as about 1,720 BRSR, MD&A, governance, board's report and notice tables took the basis an
+  integrated report's highlights had named; kept the resume list (Vedant), since a wrong `none`
+  shows in the cross-check and a wrong basis on a BRSR table would not.
+  21/21 mutants; $0.00.

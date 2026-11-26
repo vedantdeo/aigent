@@ -133,6 +133,21 @@ CROSSCHECK_FRAMEWORKS: dict[str, str] = {  # the words naming a table's accounti
     r"|(?:accordance|compliance|conformity) with (?:ifrs\b|international financial reporting)",
 }
 CROSSCHECK_NAVIGATION = r"integrated report|statutory reports"  # a report's side tabs, no heading
+# Headings of a part outside the statements, which pause a section (a line starting so, past an
+# enumerator), and statement titles naming no basis, which resume it (a line of at most
+# `CROSSCHECK_RESUME_WORDS` words naming one).
+CROSSCHECK_PAUSE_HEADINGS = (
+    r"^\W*(?:[a-z\d]{1,3}(?:[.)]\d*)+\s*)*(?:report on corporate governance|corporate governance"
+    r"|notice\b|business responsibility|sustainability report|directors'? report|board'?s'? report"
+    r"|management discussion|tax deduct(?:ed|ible) at source|annexure\b|esg\b)"
+)
+CROSSCHECK_RESUME_HEADINGS = (
+    r"balance sheet|statement of (?:profit and loss|assets and liabilities|changes in equity)"
+    r"|cash ?flows?\b|financial (?:results|highlights)"
+    r"|notes (?:to|forming part of) (?:the )?financial statements"
+    r"|segment(?:-wise)? (?:information|revenue|results|reporting)"
+)
+CROSSCHECK_RESUME_WORDS = 20
 CROSSCHECK_FILED_FRAMEWORK = "ind as"  # NSE's XBRL; tables under another are not checked
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.

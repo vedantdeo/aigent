@@ -23,6 +23,7 @@ from aigent.facts.crosscheck import (
     Column,
     Fact,
     RowRead,
+    TableLabel,
     agrees,
     apply,
     check_fact,
@@ -186,6 +187,117 @@ def test_a_section_opens_before_a_table_with_no_figures() -> None:
         ("standalone", None),
         ("consolidated", "ifrs"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("text", "label"),
+    [
+        pytest.param("Report on Corporate Governance", "none", id="a part outside: paused"),
+        pytest.param("NOTICE", "none", id="the AGM notice"),
+        pytest.param(
+            "ESG STRATEGY ENCOMPASSING SUSTAINABLE FINANCE", "none", id="an integrated report's ESG"
+        ),
+        pytest.param(
+            "A.1 Tax Deductible at Source for Resident members", "none", id="past an enumerator"
+        ),
+        pytest.param(
+            "Report on Corporate Governance\nBalance Sheet", "standalone", id="a statement resumes"
+        ),
+        pytest.param(
+            "NOTICE\nConsolidated Balance Sheet", "consolidated", id="a basis heading ends a pause"
+        ),
+        pytest.param(
+            "Annexure A to the Independent Auditor's Report on the Consolidated Financial "
+            "Statements",
+            "consolidated",
+            id="an annexure naming a basis opens it",
+        ),
+        pytest.param(
+            "Annexure B to the auditor's report on the standalone financial statements of the "
+            "Company",
+            "none",
+            id="an annexure naming it in prose pauses",
+        ),
+        pytest.param(
+            "The Board took notice of the results", "standalone", id="a word mid-line: no heading"
+        ),
+        pytest.param(
+            "NOTICE\nMembers may inspect the balance sheet and the other documents referred to in "
+            "the notice at the registered office of the Company on any working day",
+            "none",
+            id="a long line naming a statement: no resume",
+        ),
+        pytest.param(
+            "ESG STRATEGY\n10 YEAR FINANCIAL HIGHLIGHTS",
+            "standalone",
+            id="financial highlights resume",
+        ),
+        pytest.param(
+            "Report on Corporate Governance\nSegment information",
+            "standalone",
+            id="segment information resumes",
+        ),
+    ],
+)
+def test_a_section_pauses_outside_the_statements(text: str, label: str) -> None:
+    document = _document("STANDALONE RESULTS (₹ in crore)", _RESULTS, text, _RESULTS)
+    assert sheets(document)[1].basis == label
+
+
+def test_a_table_naming_both_bases_is_both() -> None:
+    header = (("", "", "Standalone", "", "Consolidated", ""), *_HEADER)
+    document = _document("STANDALONE RESULTS (₹ in crore)", (*header, *_RESULTS[2:]))
+    assert sheets(document)[0].basis == "both"
+
+
+_BOTH = (
+    ("", "", "Year ended", "", "", ""),
+    ("", "", "Standalone", "", "Consolidated", ""),
+    ("Sr", "Particulars", "31.03.2024", "31.03.2023", "31.03.2024", "31.03.2023"),
+    ("1", "Interest earned", "100.00", "90.00", "120.00", "110.00"),
+)
+_YEAR = (date(2023, 4, 1), date(2024, 3, 31))
+
+
+@pytest.mark.parametrize(
+    ("document", "fact", "outcome"),
+    [
+        pytest.param(
+            _document("(₹ in crore)", _BOTH),
+            _fact(value=1e9, period=_YEAR),
+            "agree",
+            id="side by side: a standalone fact on its column",
+        ),
+        pytest.param(
+            _document("(₹ in crore)", _BOTH),
+            _fact(value=1e9, basis="consolidated", period=_YEAR),
+            "differ",
+            id="side by side: the other basis's equal cell refused",
+        ),
+        pytest.param(
+            _document("(₹ in crore)", _BOTH),
+            _fact(value=1.2e9, basis="consolidated", period=_YEAR),
+            "agree",
+            id="side by side: a consolidated fact on its column",
+        ),
+        pytest.param(
+            _document("Report on Corporate Governance (₹ in crore)", _RESULTS),
+            _fact(),
+            "unmatched",
+            id="no basis: never checked",
+        ),
+        pytest.param(
+            _document("(₹ in crore)", _RESULTS),
+            _fact(basis="consolidated"),
+            "agree",
+            id="unlabelled: either basis",
+        ),
+    ],
+)
+def test_a_tables_basis_label_decides_what_it_is_checked_against(
+    document: Document, fact: Fact, outcome: str
+) -> None:
+    assert check_fact(fact, sheets(document)).outcome == outcome
 
 
 def test_a_table_header_naming_a_basis_takes_it() -> None:
@@ -1064,8 +1176,10 @@ def test_crosscheck_reads_each_document_once(
         loaded.append(name)
         return STANDALONE
 
-    checked = crosscheck(crosscheck_db, ("ICICIBANK",), tmp_path, load)
+    labels: dict[str, list[TableLabel]] = {}
+    checked = crosscheck(crosscheck_db, ("ICICIBANK",), tmp_path, load, labels=labels)
     assert loaded == ["results/ICICIBANK-2024-06-30.pdf"]
+    assert labels == {"results/ICICIBANK-2024-06-30.pdf": [(0, 1, "standalone")]}
     assert [(c.basis, c.concept, c.outcome) for c in checked] == [
         ("consolidated", "InterestEarned", "unmatched"),
         ("standalone", "InterestEarned", "agree"),
@@ -1311,7 +1425,7 @@ def test_the_command_rechecks_stale_checks_only_when_told(
     crosscheck_db.close()
     monkeypatch.setattr(cli, "FACTS_DB", db)
     monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
-    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [checked_row(first, "differ")])
+    monkeypatch.setattr(cli, "crosscheck", lambda c, t, labels=None: [checked_row(first, "differ")])
     manifest = {"results/ICICIBANK-2024-06-30.pdf": {"source": "nse", "format": "pdf"}}
     monkeypatch.setattr(cli, "read_manifest", lambda: manifest)
     cli.cross_check(NOW, write=False, decisions=tmp_path / "none.jsonl", stale=stale)
@@ -1358,7 +1472,7 @@ def test_the_command_records_agreements_only_when_told(
     crosscheck_db.close()
     monkeypatch.setattr(cli, "FACTS_DB", db)
     monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
-    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [checked_row(first, "agree")])
+    monkeypatch.setattr(cli, "crosscheck", lambda c, t, labels=None: [checked_row(first, "agree")])
     manifest = {"results/ICICIBANK-2024-06-30.pdf": {"source": "nse", "format": "pdf"}}
     monkeypatch.setattr(cli, "read_manifest", lambda: manifest)
     cli.cross_check(NOW, write=write, decisions=tmp_path / "none.jsonl")
@@ -1503,7 +1617,7 @@ def test_the_command_names_readings_not_yet_built(
     crosscheck_db.close()
     monkeypatch.setattr(cli, "FACTS_DB", db)
     monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
-    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [])
+    monkeypatch.setattr(cli, "crosscheck", lambda c, t, labels=None: [])
     monkeypatch.setattr(cli, "read_manifest", lambda: {"results/WIPRO-2025-03-31.pdf": _OCR_ENTRY})
     monkeypatch.setattr(cli, "reocr_built", lambda _: False)
     cli.cross_check(NOW, write=False, decisions=tmp_path / "none.jsonl")

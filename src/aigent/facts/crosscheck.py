@@ -46,13 +46,15 @@ from aigent.facts.documents import (
     usable_readings,
 )
 from aigent.facts.headers import (
+    BasisLabel,
     Column,
+    Section,
     column_periods,
     document_scale,
     framework_in,
+    header_bases,
     months_of,
     scale_in,
-    section_basis,
 )
 from aigent.facts.labels import label_match, note, per_share_row, serial
 from aigent.facts.printed import MAIN_LINE, figure_row, number
@@ -64,6 +66,7 @@ Outcome = Literal["agree", "differ", "unmatched"]
 Rule = Literal["label", "distinct", "per-share"]  # what let an equal figure count as the fact
 RowKind = Literal["heading", "main line", "figures"]
 _RANK: dict[Outcome, int] = {"unmatched": 0, "differ": 1, "agree": 2}
+TableLabel = tuple[int, int, "BasisLabel | None"]  # a table's index, page and basis label
 
 
 def fingerprint(parts: Iterable[str]) -> str:
@@ -133,12 +136,13 @@ class RowRead:
 
 @dataclass(frozen=True)
 class Sheet:
-    """A results table read for matching: its basis, scale and accounting framework from the text
-    around it, its page, each column's period, its numbers, how many leading rows were header,
-    and each body row's reading."""
+    """A results table read for matching: its basis label (`standalone`, `consolidated`, `both`
+    side by side, `none` outside the statements, None unplaced), scale and accounting framework
+    from the text around it, its page, each column's period, its numbers, how many leading rows
+    were header, and each body row's reading."""
 
     index: int
-    basis: str | None
+    basis: BasisLabel | None
     scale: float | None
     page: int
     columns: Mapping[int, Column]
@@ -197,12 +201,13 @@ class Checked:
 
 
 def sheets(document: Document) -> list[Sheet]:
-    """Every table with numbers, read for matching. Its basis is its section's, opened by the last
-    heading naming one (`section_basis`) before it or in its header lines; scale and accounting
+    """Every table with numbers, read for matching. Its basis is `both` when its header names
+    both, else its section's (`Section`: `none` in a part outside the statements, None when no
+    heading named one), read through the text before it and its header lines; scale and accounting
     framework come from the text since the table before and its header, else the table before's,
     else, for scale, the one the document states most."""
     out: list[Sheet] = []
-    basis: str | None = None
+    section = Section()
     framework: str | None = None
     scale: float | None = document_scale(document.text)
     previous_end = 0
@@ -213,7 +218,7 @@ def sheets(document: Document) -> list[Sheet]:
         printed_before = document.text[previous_end : table.start]
         before = printed_before.lower()
         previous_end = table.end
-        basis = section_basis(printed_before) or basis  # a section opens before any table
+        section = section.advance(printed_before)  # a section opens before any table
         framework = framework_in(before) or framework
         cells_by_row = [[number(c) for c in row] for row in table.rows]
         first = next((i for i, row in enumerate(table.rows) if figure_row(row)), None)
@@ -221,7 +226,8 @@ def sheets(document: Document) -> list[Sheet]:
             continue
         header = table.rows[:first]
         own = " ".join(" ".join(row) for row in header).lower()
-        basis = section_basis("\n".join(" ".join(c for c in row if c) for row in header)) or basis
+        section = section.advance("\n".join(" ".join(c for c in row if c) for row in header))
+        basis: BasisLabel | None = "both" if len(header_bases(header)) == 2 else section.label
         framework = framework_in(own) or framework
         scale = scale_in(before[-300:] + " " + own) or scale
         columns: Mapping[int, Column] = column_periods(header)
@@ -372,12 +378,14 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
     best: tuple[float, Sheet, Cell] | None = None
     vetoed: tuple[float, str, Cell] | None = None
     for sheet in read:
-        if sheet.basis not in (None, fact.basis):
+        if sheet.basis not in (None, "both", fact.basis):  # `none`: outside the statements
             continue
         if sheet.framework not in (None, CROSSCHECK_FILED_FRAMEWORK):
             continue
         for cell in sheet.cells:
             if not _in_period(fact, cell.period, sheet.columns):
+                continue
+            if cell.period is not None and cell.period.basis not in (None, fact.basis):
                 continue
             match = label_match(fact.labels, fact.segment, cell.label)
             share = match.share
@@ -508,9 +516,11 @@ def crosscheck(
     load: Callable[[str, Path], Document] = load_verify_document,
     built: Callable[[str], bool] = reocr_built,
     ocr_tickers: Sequence[str] = VERIFY_OCR_TICKERS,
+    labels: dict[str, list[TableLabel]] | None = None,
 ) -> list[Checked]:
     """Every fact of `tickers` checked against the documents it is printed in, in order until one
-    agrees, keeping its best outcome; each document read once."""
+    agrees, keeping its best outcome; each document read once, its tables' basis labels put in
+    `labels` when given."""
     facts = facts_to_check(conn, tickers, read_manifest(verify_dir), ocr_tickers, built)
     read: dict[str, list[Sheet]] = {}
     best: dict[int, Checked] = {}
@@ -520,6 +530,8 @@ def crosscheck(
             continue
         if fact.document not in read:
             read[fact.document] = sheets(load(fact.document, verify_dir))
+            if labels is not None:
+                labels[fact.document] = [(s.index, s.page, s.basis) for s in read[fact.document]]
         checked = check_fact(fact, read[fact.document])
         if held is None or _RANK[checked.outcome] > _RANK[held.outcome]:
             best[fact.fact_id] = checked
