@@ -15,7 +15,7 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_ROW_TURNS,
     CROSSCHECK_SYNONYMS,
 )
-from aigent.facts.vocab import STOP, one_off, tokens, words
+from aigent.facts.vocab import STOP, one_off, repair, tokens, words
 
 _FORMULA = re.compile(r"^(.*?[A-Za-z]{3}.*?)\s*[\[{].*$", re.S)  # words, then a bracketed formula
 _GENERIC = 3  # a label this short ("Income", "Current assets") takes only a row led by its words
@@ -151,6 +151,15 @@ def label_match(labels: Iterable[str], segment: str | None, row_label: str) -> L
         if found > raw or (found == raw and refused is None):  # an unrefused label wins a tie
             raw, veto = found, refused
     return LabelMatch(share, raw, veto)
+
+
+def label_figure(phrase: str, text: str) -> tuple[float, str] | None:
+    """The figure a label prints inside a phrase (`CROSSCHECK_LABEL_FIGURES`), read through OCR's
+    slips and rupee glyphs (`vocab.repair`), and the phrase as printed; None when it prints none."""
+    m = re.search(phrase, repair(text), re.IGNORECASE)
+    if m is None:
+        return None
+    return float(next(g for g in m.groups() if g is not None)), m.group(0)
 
 
 def label_share(labels: Iterable[str], segment: str | None, row_label: str) -> float:

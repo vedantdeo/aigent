@@ -95,6 +95,7 @@ CROSSCHECK_GROUP_EXAMPLES = 3  # distinct values a review group lists before "�
 CROSSCHECK_SPOT_CHECKS = 3  # facts of a group a person checks before a `right` verdict applies
 CROSSCHECK_TRACE_WINDOW = 8  # rows either side of a traced cell's row, after the header rows
 CROSSCHECK_HEADING_LEAD = 4  # a lower-case basis among a line's first words heads a section
+CROSSCHECK_WHOLE_SHARE = 0.9  # a table this share whole figures reads OCR's `5.731` as 5,731
 CROSSCHECK_SPAN_ROWS = 3  # rows a column repeats one text down to be a spanning cell's copies
 # Review pages: the kinds of copy a batch is spread over, in order, its default size and seed, and
 # the page image's width and quality under the artifact's size limit.
@@ -148,6 +149,17 @@ CROSSCHECK_RESUME_HEADINGS = (
     r"|segment(?:-wise)? (?:information|revenue|results|reporting)"
 )
 CROSSCHECK_RESUME_WORDS = 20
+# Concepts printed inside a label, not in a cell: the phrase printing the figure (read through
+# `vocab.repair`, so ₹ as `₹`), the words a row or the row above must carry for it to be the
+# company's own, and the words a row must name for a differing cell to count.
+CROSSCHECK_LABEL_FIGURES: dict[str, tuple[str, str, str]] = {
+    "FaceValueOfEquityShareCapital": (
+        r"(?:face|par)\s*value\s*(?:of\s*)?(?:share\s*:?\s*)?₹?\s*(\d+(?:\.\d+)?)\s*(?:/-?\s*)?"
+        r"(?:each|per\b|\))|shares?\s+of\s*₹\s*(\d+(?:\.\d+)?)\s*/-?\s*each",
+        r"share\s*capital|earnings\s*per|\beps\b",
+        r"(?:face|par)\s*value",
+    ),
+}
 CROSSCHECK_FILED_FRAMEWORK = "ind as"  # NSE's XBRL; tables under another are not checked
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.
@@ -167,6 +179,37 @@ CROSSCHECK_ROW_TURNS = frozenset(
     {"changes", "change", "decrease", "increase", "loss", "payment", "payments", "proceeds"}
     | {"profit", "purchase", "purchases"}
 )
+# OCR's misreads of the rupee sign, sorted; read as ₹ only where one must stand (`vocab.rupee`).
+VOCAB_RUPEE_GLYPHS: tuple[str, ...] = (
+    '"',
+    '"!',
+    "'",
+    "'<",
+    "'f",
+    "'t",
+    "'{",
+    ",",
+    "5'",
+    "<",
+    "?",
+    "R",
+    "X",
+    "Z",
+    "f",
+    "i!'",
+    "ii'",
+    "r",
+    "t",
+    "z",
+    "{",
+    "~",
+    "€",
+    "₹.",
+    "₹₹",
+    "ぼ",
+    "天",
+)
+VOCAB_RUPEE_WORDS: tuple[str, ...] = ("Re", "Re.", "Rs", "Rs.")  # ₹ before a figure or a scale
 # The words the header and label rules key on, sorted; an OCR'd word near exactly one is read as it.
 VOCAB_LEXICON: tuple[str, ...] = (
     "acquisition",
@@ -210,6 +253,7 @@ VOCAB_LEXICON: tuple[str, ...] = (
 CROSSCHECK_SIGN_FREE = re.compile(
     r"^(?:Purchase|Purchases|Payment|Payments|Repayments|Acquisition)(?:Of|For)"
     r"|Paid|^AdjustmentsFor\w*Income$|^IncomeTaxRelatingTo|^InterSegmentRevenue$"
+    r"|^(?:Current|Deferred)Tax$|^(?:Segment)?FinanceCosts$"  # a reconciliation brackets them
 )
 # A fact's label led by one of these names a flow, printed only on a row with a word it lists.
 _BUYING = frozenset({"acquisition", "paid", "payment", "payments", "purchase", "purchases"})

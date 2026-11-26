@@ -2937,4 +2937,60 @@
   as about 1,720 BRSR, MD&A, governance, board's report and notice tables took the basis an
   integrated report's highlights had named; kept the resume list (Vedant), since a wrong `none`
   shows in the cross-check and a wrong basis on a BRSR table would not.
+- 11-26: the rupee sign read in the vocab (Vedant: add it to the existing vocab, not a new
+  layer; better text for the face-value rule and later the chunks). Mined first: where a ₹ must
+  stand (a scale bracket before "in crore", an amount after "of"/"value" followed by "/-" or
+  "each"), born-digital reports print ₹ (8,998), OCR layers print `~` `f` `t` `"` `'` `{` and
+  more, RapidOCR `€` `R` `天`, results `Rs.`; 27 glyphs and Rs/Re kept, sorted, in config.
+  `repair` reads them as ₹ only in those contexts, since `t`, `f` and `,` are ordinary
+  characters elsewhere; the scale readers now read through `repair`, so "(fin Million)" has a
+  scale. 4,932 replacements in 172 readings (Rs. before a figure 2,876; scale brackets 977;
+  amounts 1,079), samples of each risky form read ("off 1/- each", "of X 10/-", "of< 5 /-", "(€
+  In Crore)"), none false. **20,912 to 20,917**, 0 lost: Sun Pharma Jun-2023's tables, which
+  had fallen back to the wrong document scale. A rule for glyphs glued to "in" proved redundant
+  under mutation (the bracket rule with no space covers it) and went. 8/8 mutants; $0.00.
+- 11-26: face value read from the label it is printed in (Vedant: recover the differing facts;
+  face value first, the largest block). Re-triaging all 4,237 differing facts on the current
+  code: 3,220 are printed in no table; of the 1,017 whose value a table prints, matching on value
+  alone was mostly coincidence (face value's ₹10 in a BRSR headcount; Reliance's debt-equity
+  0.41 filed 0.0041, a filer error; Wipro's other expenses equal to its "Communication" line), and
+  146 were plausibly the right line, spread thin (labels 64, columns dated wrong 41, undated 31,
+  lengths 10); figures glued to OCR'd labels were mostly real label text ("0.5%", "Face value of
+  10"), so no split rule. Face value (370 facts, 323 differing against the share-capital figure)
+  is printed inside a label: "(Face value of ₹10/- each)", ITC's "(Ordinary Shares of ₹1/- each)",
+  Wipro's "(Par value ₹2 per share)". `CROSSCHECK_LABEL_FIGURES` maps a concept to its phrase,
+  read through `vocab.repair` (the rupee vocab, which also learned a closing bracket after an
+  amount for Bajaj's "(Face value oft 10)"); it counts only on a row naming the company's own
+  capital or EPS, or under one (ITC and Wipro print it a row below), so another company's
+  "(face value ₹10 each)" in an investments note is refused, for a differ too. A face-value
+  fact with no phrase found is unmatched, not a differ against ₹9,300 crore. **20,917 to 21,244
+  agree**, 0 lost; face value 22 to 349 agree, 2 differ, 19 unmatched. Vedant's verdicts on the
+  face-value groups now cover facts that agree by themselves; the queue drops them. 12/12
+  mutants and 1 for the bracket; $0.00.
+- 11-26: OCR's point for a comma, and taxes and finance costs bracketed as deductions. Of the
+  64 differing facts whose right cell was found with the period fitting, most of the largest
+  clusters were not labels: Reliance's "(i) Current Tax (2,002)" and "(ii) Deferred Tax (461)"
+  below EBIT in its segment reconciliation (PBT less the brackets is PAT, no "Less" printed),
+  Tata's "(Less): Finance costs (3,786)", against XBRL filing the expenses positive (15 facts);
+  and OCR's point for a thousands comma, Reliance's "5.731" and Wipro's "11.954" (29). Current
+  and deferred tax and (segment) finance costs joined `CROSSCHECK_SIGN_FREE` (a sign error in
+  XBRL for them now goes unseen; magnitude, label, period and basis must still hold). A table
+  whose body prints whole figures (0.9 of them) reads a figure of exactly three decimals, no
+  comma and no leading zero (0.412 is a ratio) as thousands. **21,244 to 21,275 agree**, 0 lost;
+  all 31 read: 16 commas, 15 deductions; three Wipro "other expenses" land on facility or
+  sub-contracting rows by distinctive value, its known tagging. 6/6 mutants; $0.00.
+- 11-26: header dates: split dates completed from the neighbouring column, and period ends read
+  as month ends. The differing facts whose right cell was found under a wrongly dated or
+  undated column (90 facts, 51 tables) were a long tail; two causes were general. Bajaj's
+  consolidated balance sheet continuation prints "As at 31 2026" | "March 2025", its month moved
+  to the next cell: a column naming a year and its day or month takes the other part from a
+  neighbour. OCR misreads days ("1 Mar'26", "11 Sep"): a period's end is its month's last day
+  (a finance call: statement columns end on month ends), except 1 April, a year's opening
+  (Wipro's "As at April 1, 2024"). **21,275 to 21,434 agree**, 160 won, 1 lost: whole Tata and
+  Reliance results tables had been misdated ("June | 2024" split, "Sep~ber 30, I 2025"); the
+  loss is Tata Sep-2025's garbled segment liabilities, which had agreed on a two-column reading
+  by order and moved with the now-dated third column. Left: Reliance's segment table (years in
+  rows), Power Grid's changes in equity (periods in rows), garbled OCR. A guard requiring
+  exactly one of day or month could not be told apart from at least one under mutation and was
+  simplified. 5/5 mutants; $0.00.
   21/21 mutants; $0.00.

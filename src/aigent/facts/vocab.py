@@ -7,7 +7,12 @@ from __future__ import annotations
 import re
 from functools import cache
 
-from aigent.facts.cfg_facts import CROSSCHECK_SYNONYMS, VOCAB_LEXICON
+from aigent.facts.cfg_facts import (
+    CROSSCHECK_SYNONYMS,
+    VOCAB_LEXICON,
+    VOCAB_RUPEE_GLYPHS,
+    VOCAB_RUPEE_WORDS,
+)
 
 STOP = {"of", "and", "the", "in", "on", "or", "to", "for", "from", "by", "a", "an", "with", "at"}
 
@@ -64,11 +69,41 @@ def snap(word: str) -> str:
 
 def repair(text: str) -> str:
     """A text with each word OCR misread from a lexicon word read as it (`snap`), lower case
-    where repaired, everything else as printed: `CONSOUDATED` reads `consolidated`."""
+    where repaired, and the rupee sign read where one must stand (`rupee`), everything else as
+    printed: `CONSOUDATED` reads `consolidated`, `(f in crore)` reads `(₹ in crore)`."""
 
     def fixed(m: re.Match[str]) -> str:
         word = m.group(0)
         found = snap(word.lower())
         return word if found == word.lower() else found
 
-    return re.sub(r"[A-Za-z]+", fixed, text)
+    return rupee(re.sub(r"[A-Za-z]+", fixed, text))
+
+
+_GLYPH = "|".join(re.escape(g) for g in sorted(VOCAB_RUPEE_GLYPHS, key=len, reverse=True))
+_WORD = "|".join(re.escape(w) for w in sorted(VOCAB_RUPEE_WORDS, key=len, reverse=True))
+_SCALE_WORD = r"in\s*(?:crore|lakh|lac|million)s?\b"
+_RUPEE: tuple[tuple[re.Pattern[str], str], ...] = (
+    # a scale bracket: (f in crore), (fin Million), (Rs. in lakh)
+    (re.compile(rf"([(\[{{|]\s*)(?:{_GLYPH}|{_WORD})\s*(?={_SCALE_WORD})", re.I), r"\1₹ "),
+    # an amount: of t 1/- each, oft 1/-, par value ~2 per share, Rs. 10 each
+    (
+        re.compile(
+            rf"\b(of|value|@|price|at)\s*(?:{_GLYPH}|{_WORD})\s?(?=\d[\d,]*(?:\.\d+)?\s*(?:/|each|per\b|\)|crore|lakh|million))",
+            re.I,
+        ),
+        r"\1 ₹",
+    ),
+    (re.compile(rf"(?<![A-Za-z])(?:{_WORD})(?=\s*\d)"), "₹"),
+)
+
+
+def rupee(text: str) -> str:
+    """The text with the rupee sign read where one must stand: OCR's glyphs (`VOCAB_RUPEE_GLYPHS`)
+    and `Rs.` (`VOCAB_RUPEE_WORDS`) in a scale bracket before "in crore" and the like, or between
+    "of", "value", "@", "price" or "at" and an amount followed by "/-", "each", "per", ")" or a
+    scale;
+    `Rs.` before any figure."""
+    for pattern, sign in _RUPEE:
+        text = pattern.sub(sign, text)
+    return text

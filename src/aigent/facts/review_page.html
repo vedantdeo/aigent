@@ -119,7 +119,7 @@ function xbrl(r) {
 function period(r) { return r.period_start ? `${r.period_start} to ${r.period_end}` : `balance at ${r.period_end}`; }
 
 const SCALES = { 10000000: "₹ crore", 100000: "₹ lakh", 1000000: "million" };
-const RULES = { label: "the row's label names the fact", distinct: "the figure is distinctive on its own", "per-share": "a per-share row under its heading" };
+const RULES = { label: "the row's label names the fact", distinct: "the figure is distinctive on its own", "per-share": "a per-share row under its heading", "label figure": "the figure printed inside the row's label" };
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function tag(text, on) { return el("span", "tag" + (on ? " on" : ""), text); }
 function gridOf(t, cols, rowCells) {

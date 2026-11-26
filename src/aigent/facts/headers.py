@@ -4,6 +4,7 @@ are read through OCR's slips (`31 .12.2022`, `Six.months`, `Sectember`, `CONSOUD
 
 from __future__ import annotations
 
+import calendar
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -274,9 +275,54 @@ def _neighbours_length(said: _Said, columns: dict[int, Column]) -> dict[int, Col
     return out
 
 
+def _date_parts(text: str) -> tuple[int | None, int | None, int | None]:
+    """A header's day, month and year, each when named: `As at 31 2026` is (31, None, 2026)."""
+    t = repair(text).lower()
+    years = re.findall(r"\b((?:19|20)\d{2})\b", t)
+    months = [m for w in re.findall(r"[a-z]{3,9}", t) if (m := MONTHS.get(w)) is not None]
+    days = [int(d) for d in re.findall(r"(?<![\d.,])(\d{1,2})(?:st|nd|rd|th)?\b(?![\d.,])", t)]
+    days = [d for d in days if 1 <= d <= 31]
+    year = int(years[-1]) if years else None
+    return (days[-1] if days else None, months[-1] if months else None, year)
+
+
+def _split_dates(said: _Said, columns: dict[int, Column]) -> dict[int, Column]:
+    """An undated column naming a year and part of a day completed from its neighbour's other
+    part (`As at 31 2026` beside `March 2025`, its month moved over), lengths from its own words."""
+    parts = {j: _date_parts(said.mine(j)) for j in range(1, said.width)}
+    out = dict(columns)
+    for j, (day, month, year) in parts.items():
+        if j in out or year is None or (day is None and month is None):
+            continue
+        near = [parts[k] for k in (j + 1, j - 1) if k in parts]
+        day = day or next((d for d, _, _ in near if d is not None), None)
+        month = month or next((m for _, m, _ in near if m is not None), None)
+        if day is None or month is None:
+            continue
+        try:
+            out[j] = Column(date(year, month, day), months_in(said.mine(j)))
+        except ValueError:
+            continue
+    return out
+
+
+def _month_ends(said: _Said, columns: dict[int, Column]) -> dict[int, Column]:
+    """A period's end read as its month's last day, OCR's `1 Mar'26` and `11 Sep` misread days;
+    1 April stays, a financial year's opening."""
+    out = dict(columns)
+    for j, c in columns.items():
+        if c.end is None or (c.end.month, c.end.day) == (4, 1):
+            continue
+        last = calendar.monthrange(c.end.year, c.end.month)[1]
+        out[j] = replace(c, end=c.end.replace(day=last))
+    return out
+
+
 _RESOLVE: tuple[Callable[[_Said, dict[int, Column]], dict[int, Column]], ...] = (
+    _split_dates,
     _shared_day,
     _neighbours_length,
+    _month_ends,
 )  # in order: the order is the rule
 
 
@@ -321,13 +367,13 @@ def header_bases(header: Sequence[Sequence[str]]) -> set[Basis]:
 
 def scale_in(text: str) -> float | None:
     """The last scale the text states as "in crore", "in lac" and the like."""
-    found = _SCALE.findall(text.lower())
+    found = _SCALE.findall(repair(text).lower())
     return CROSSCHECK_SCALES[found[-1]] if found else None
 
 
 def document_scale(text: str) -> float | None:
     """The scale a document states most often as "in crore", "in lac" and the like."""
-    found = _SCALE.findall(text.lower())
+    found = _SCALE.findall(repair(text).lower())
     if not found:
         return None
     return CROSSCHECK_SCALES[max(set(found), key=found.count)]

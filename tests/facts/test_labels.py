@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from aigent.facts.labels import label_match, label_share
+from aigent.facts.cfg_facts import CROSSCHECK_LABEL_FIGURES
+from aigent.facts.labels import label_figure, label_match, label_share
 
 
 @pytest.mark.parametrize(
@@ -226,3 +227,29 @@ def test_the_veto_named_is_the_best_labels() -> None:
         "Changes in inventories of finished goods",
     )
     assert (match.share, match.veto) == (1.0, None), match
+
+
+_FACE_VALUE = CROSSCHECK_LABEL_FIGURES["FaceValueOfEquityShareCapital"][0]
+
+
+@pytest.mark.parametrize(
+    ("text", "figure"),
+    [
+        pytest.param(
+            "Paid-up equity share capital (Face value of ₹10/- each)", 10.0, id="face value"
+        ),
+        pytest.param("(Face value Rs. 2 each)", 2.0, id="Rs."),
+        pytest.param("Paid-up equity share capital (Face value oft 10 each)", 10.0, id="OCR's oft"),
+        pytest.param("(Ordinary Shares of, 1/- each)", 1.0, id="ITC's ordinary shares"),
+        pytest.param("Paid up equity share capital (Par value 2 per share)", 2.0, id="par value"),
+        pytest.param("(Equity shares of par value ~2/- each)", 2.0, id="par value, a glyph"),
+        pytest.param("Earnings per share (Face value of ₹10)", 10.0, id="closed by a bracket"),
+        pytest.param("(Face value of share : ₹1/- each)", 1.0, id="of share :"),
+        pytest.param("Paid up equity share capital (Par value U per share)", None, id="unread"),
+        pytest.param("Face value per share ₹", None, id="no figure in the label"),
+        pytest.param("2,386 Equity Shares of 10 each held", None, id="shares of, no sign"),
+    ],
+)
+def test_label_figure(text: str, figure: float | None) -> None:
+    found = label_figure(_FACE_VALUE, text)
+    assert (found[0] if found else None) == figure, found

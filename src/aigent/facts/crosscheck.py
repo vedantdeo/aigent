@@ -26,6 +26,7 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_FILED_FRAMEWORK,
     CROSSCHECK_FRAMEWORKS,
     CROSSCHECK_HEADING_LEAD,
+    CROSSCHECK_LABEL_FIGURES,
     CROSSCHECK_LABEL_MIN,
     CROSSCHECK_NAVIGATION,
     CROSSCHECK_ROW_TURNS,
@@ -33,6 +34,7 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_SIGN_FREE,
     CROSSCHECK_SPAN_ROWS,
     CROSSCHECK_SYNONYMS,
+    CROSSCHECK_WHOLE_SHARE,
     VERIFY_OCR_TICKERS,
 )
 from aigent.facts.documents import (
@@ -56,14 +58,15 @@ from aigent.facts.headers import (
     months_of,
     scale_in,
 )
-from aigent.facts.labels import label_match, note, per_share_row, serial
+from aigent.facts.labels import label_figure, label_match, note, per_share_row, serial
 from aigent.facts.printed import MAIN_LINE, figure_row, number
 from aigent.facts.share_events import PER_SHARE
 from aigent.facts.store import XBRL_TIERS, demote_derived
+from aigent.facts.vocab import repair
 from aigent.retrieval.chunk import Document
 
 Outcome = Literal["agree", "differ", "unmatched"]
-Rule = Literal["label", "distinct", "per-share"]  # what let an equal figure count as the fact
+Rule = Literal["label", "distinct", "per-share", "label figure"]  # what let a figure count
 RowKind = Literal["heading", "main line", "figures"]
 _RANK: dict[Outcome, int] = {"unmatched": 0, "differ": 1, "agree": 2}
 TableLabel = tuple[int, int, "BasisLabel | None"]  # a table's index, page and basis label
@@ -89,6 +92,7 @@ CROSSCHECK_FINGERPRINT = fingerprint(
                 CROSSCHECK_FILED_FRAMEWORK,
                 CROSSCHECK_FRAMEWORKS,
                 CROSSCHECK_HEADING_LEAD,
+                CROSSCHECK_LABEL_FIGURES,
                 CROSSCHECK_LABEL_MIN,
                 CROSSCHECK_NAVIGATION,
                 CROSSCHECK_ROW_TURNS,
@@ -96,6 +100,7 @@ CROSSCHECK_FINGERPRINT = fingerprint(
                 CROSSCHECK_SIGN_FREE.pattern,
                 CROSSCHECK_SPAN_ROWS,
                 CROSSCHECK_SYNONYMS,
+                CROSSCHECK_WHOLE_SHARE,
                 VERIFY_OCR_TICKERS,
                 PER_SHARE,
             )
@@ -224,6 +229,7 @@ def sheets(document: Document) -> list[Sheet]:
         first = next((i for i, row in enumerate(table.rows) if figure_row(row)), None)
         if first is None:
             continue
+        cells_by_row = _points_for_commas(table.rows, cells_by_row, first)
         header = table.rows[:first]
         own = " ".join(" ".join(row) for row in header).lower()
         section = section.advance("\n".join(" ".join(c for c in row if c) for row in header))
@@ -289,6 +295,27 @@ def sheets(document: Document) -> list[Sheet]:
         rows = tuple(replace(x, named=named_as[x.row]) if x.row in named_as else x for x in read)
         out.append(Sheet(index, basis, scale, page, columns, tuple(cells), first, rows, framework))
         before_columns, before_width, before_page, before_heading = columns, width, page, heading
+    return out
+
+
+_POINT_FOR_COMMA = re.compile(r"\(?-?[1-9]\d{0,2}\.\d{3}\)?")  # 0.412 is a ratio
+
+
+def _points_for_commas(
+    rows: Sequence[Sequence[str]],
+    parsed: list[list[tuple[float, int, bool] | None]],
+    first: int,
+) -> list[list[tuple[float, int, bool] | None]]:
+    """In a body printing whole figures (`CROSSCHECK_WHOLE_SHARE` of them), a figure of exactly
+    three decimals and no comma read as OCR's point for a thousands comma: `5.731` as 5,731."""
+    body = [p for row in parsed[first:] for p in row if p is not None and not p[2]]
+    if not body or sum(p[1] == 0 for p in body) / len(body) < CROSSCHECK_WHOLE_SHARE:
+        return parsed
+    out = [list(row) for row in parsed]
+    for r in range(first, len(rows)):
+        for j, p in enumerate(out[r]):
+            if p is not None and p[1] == 3 and _POINT_FOR_COMMA.fullmatch(rows[r][j].strip()):
+                out[r][j] = (p[0] * 1000, 0, p[2])
     return out
 
 
@@ -400,10 +427,56 @@ def check_fact(fact: Fact, read: Sequence[Sheet]) -> Checked:
                 best = (share, sheet, cell)
     if agreed is not None:
         return _with(base, "agree", agreed[1], agreed[2], agreed[0], agreed[3])
+    if fact.concept in CROSSCHECK_LABEL_FIGURES:
+        return _in_label(fact, read, base, best)
     if vetoed is not None:
         base = replace(base, veto=f"{vetoed[1]}: {vetoed[2].label}")
     if best is not None:
         return _with(base, "differ", best[1], best[2], best[0], None)
+    return base
+
+
+def _in_label(
+    fact: Fact, read: Sequence[Sheet], base: Checked, best: tuple[float, Sheet, Cell] | None
+) -> Checked:
+    """A fact printed inside a label (`CROSSCHECK_LABEL_FIGURES`): `agree` on the first row of a
+    table its basis and framework allow whose label prints the phrase with its figure, the row or
+    the one above naming the company's own capital; else `differ` on the first printing another;
+    else `differ` on the best-labelled cell only when its row names the concept and prints no
+    phrase of its own (another company's shares); else unmatched."""
+    phrase, own, names = CROSSCHECK_LABEL_FIGURES[fact.concept]
+    other: Checked | None = None
+    for sheet in read:
+        if sheet.basis not in (None, "both", fact.basis):
+            continue
+        if sheet.framework not in (None, CROSSCHECK_FILED_FRAMEWORK):
+            continue
+        for i, row in enumerate(sheet.rows):
+            text = f"{row.heading} {row.label}"
+            above = sheet.rows[i - 1].label if i else ""
+            found = label_figure(phrase, text)
+            if found is None or not re.search(own, repair(f"{above} {text}"), re.IGNORECASE):
+                continue
+            value, printed = found
+            at = replace(
+                base,
+                page=sheet.page,
+                printed=printed,
+                row_label=row.label,
+                sheet=sheet.index,
+                row=row.row,
+                heading=row.heading,
+                share=1.0,
+            )
+            if abs(value - fact.value) < 1e-9:
+                return replace(at, outcome="agree", rule="label figure")
+            other = other or replace(at, outcome="differ")
+    if other is not None:
+        return other
+    if best is not None:
+        label = best[2].label
+        if re.search(names, repair(label), re.IGNORECASE) and label_figure(phrase, label) is None:
+            return _with(base, "differ", best[1], best[2], best[0], None)  # not another's shares
     return base
 
 

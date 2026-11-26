@@ -300,6 +300,138 @@ def test_a_tables_basis_label_decides_what_it_is_checked_against(
     assert check_fact(fact, sheets(document)).outcome == outcome
 
 
+_CAPITAL = (
+    "6",
+    "Paid-up equity share capital (Face value of ₹10/- each)",
+    "737",
+    "737",
+    "736",
+    "737",
+)
+_ORDINARY = (
+    ("7", "PAID UP EQUITY SHARE CAPITAL", "1,251", "1,248", "1,244", "1,248"),
+    ("", "(Ordinary Shares of ₹1/- each)", "", "", "", ""),
+)
+_INVESTED = ("8", "Equity shares of Tata Steel Ltd (face value ₹10 each)", "52", "51", "50", "51")
+_FACE_ROW = ("9", "Face value per share (₹)", "10", "10", "10", "10")
+
+
+def _face(value: float) -> Fact:
+    return _fact(
+        "FaceValueOfEquityShareCapital",
+        value,
+        ("Face value of equity share capital",),
+        unit="INRPerShare",
+        decimals=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("rows", "heading", "value", "outcome", "rule"),
+    [
+        pytest.param(
+            (_CAPITAL,), "STANDALONE RESULTS", 10.0, "agree", "label figure", id="in the label"
+        ),
+        pytest.param((_CAPITAL,), "STANDALONE RESULTS", 2.0, "differ", None, id="another figure"),
+        pytest.param(
+            _ORDINARY,
+            "STANDALONE RESULTS",
+            1.0,
+            "agree",
+            "label figure",
+            id="the row above names the capital",
+        ),
+        pytest.param(
+            (_INVESTED,),
+            "STANDALONE RESULTS",
+            10.0,
+            "unmatched",
+            None,
+            id="another company's shares",
+        ),
+        pytest.param(
+            (_FACE_ROW,), "STANDALONE RESULTS", 10.0, "agree", "label", id="a row of its own"
+        ),
+        pytest.param(
+            (_CAPITAL,),
+            "Report on Corporate Governance",
+            10.0,
+            "unmatched",
+            None,
+            id="a table of no basis",
+        ),
+        pytest.param(
+            ((_RESULTS[2]),),
+            "STANDALONE RESULTS",
+            10.0,
+            "unmatched",
+            None,
+            id="no phrase: no false differ",
+        ),
+        pytest.param(
+            (_FACE_ROW,), "STANDALONE RESULTS", 2.0, "differ", None, id="its own row, differing"
+        ),
+        pytest.param(
+            (_CAPITAL,), "Results under IFRS", 10.0, "unmatched", None, id="an IFRS table"
+        ),
+    ],
+)
+def test_a_figure_printed_inside_a_label(
+    rows: tuple[tuple[str, ...], ...], heading: str, value: float, outcome: str, rule: str | None
+) -> None:
+    document = _document(f"{heading} (₹ in crore)", (*_HEADER, *rows))
+    checked = check_fact(_face(value), sheets(document))
+    assert (checked.outcome, checked.rule) == (outcome, rule), checked
+
+
+@pytest.mark.parametrize(
+    ("printed", "rows", "value", "outcome"),
+    [
+        pytest.param("5.731", (), 5731e7, "agree", id="a point for a comma in whole figures"),
+        pytest.param("(5.731)", (), -5731e7, "agree", id="bracketed"),
+        pytest.param("0.412", (), 412e7, "differ", id="a leading zero is a ratio"),
+        pytest.param("5,731.250", (), 5731.25e7, "agree", id="a comma: decimals as printed"),
+        pytest.param(
+            "5.731",
+            (("2", "Other income", "7.12", "5.65", "5.44", "22.96"),),
+            5731e7,
+            "differ",
+            id="a table printing decimals",
+        ),
+    ],
+)
+def test_ocrs_point_for_a_comma(
+    printed: str, rows: tuple[tuple[str, ...], ...], value: float, outcome: str
+) -> None:
+    whole = ("1", "Interest earned", printed, "37,948", "33,327", "142,890")
+    others = rows or (
+        ("2", "Other income", "7,001", "5,648", "5,435", "22,957"),
+        ("3", "Fees", "1,234", "1,100", "990", "4,400"),
+        ("4", "Rent", "812", "800", "790", "3,200"),
+        ("5", "Total", "9,047", "7,548", "7,215", "30,557"),
+    )
+    document = _document("STANDALONE RESULTS (₹ in crore)", (*_HEADER, whole, *others))
+    assert check_fact(_fact(value=value), sheets(document)).outcome == outcome
+
+
+@pytest.mark.parametrize(
+    ("concept", "label", "outcome"),
+    [
+        pytest.param("CurrentTax", "(i) Current Tax", "agree", id="current tax as a deduction"),
+        pytest.param("DeferredTax", "(ii) Deferred Tax", "agree", id="deferred tax"),
+        pytest.param("FinanceCosts", "Add/(Less): Finance costs", "agree", id="finance costs"),
+        pytest.param("Revenue", "Revenue", "differ", id="another concept keeps its sign"),
+    ],
+)
+def test_a_tax_or_finance_cost_bracketed_as_a_deduction(
+    concept: str, label: str, outcome: str
+) -> None:
+    row = ("1", label, "(2,002.00)", "(1,947.00)", "(2,113.00)", "(8,100.00)")
+    document = _document("STANDALONE RESULTS (₹ in crore)", (*_HEADER, row))
+    fact = _fact(concept, 2002e7, (label.split(")")[-1].strip(" :"),))
+    assert check_fact(fact, sheets(document)).outcome == outcome
+
+
 def test_a_table_header_naming_a_basis_takes_it() -> None:
     document = _document("STANDALONE RESULTS (₹ in crore)", (("CONSOLIDATED",), *_RESULTS))
     assert sheets(document)[0].basis == "consolidated"
