@@ -36,6 +36,8 @@ scratch/
 
 # Per-fact cross-check rows: reproducible from the code and database, too large to keep.
 evals/reports/*.rows.jsonl
+# Cross-check reports of in-between rounds; each commit's run of record stays in evals/reports.
+evals/reports/untracked-crosschecks/
 
 # built review pages (images inlined); rebuilt by python -m aigent.facts review-page
 evals/review-pages/
