@@ -300,6 +300,90 @@ def test_a_tables_basis_label_decides_what_it_is_checked_against(
     assert check_fact(fact, sheets(document)).outcome == outcome
 
 
+_CAPITAL = (
+    "6",
+    "Paid-up equity share capital (Face value of ₹10/- each)",
+    "737",
+    "737",
+    "736",
+    "737",
+)
+_ORDINARY = (
+    ("7", "PAID UP EQUITY SHARE CAPITAL", "1,251", "1,248", "1,244", "1,248"),
+    ("", "(Ordinary Shares of ₹1/- each)", "", "", "", ""),
+)
+_INVESTED = ("8", "Equity shares of Tata Steel Ltd (face value ₹10 each)", "52", "51", "50", "51")
+_FACE_ROW = ("9", "Face value per share (₹)", "10", "10", "10", "10")
+
+
+def _face(value: float) -> Fact:
+    return _fact(
+        "FaceValueOfEquityShareCapital",
+        value,
+        ("Face value of equity share capital",),
+        unit="INRPerShare",
+        decimals=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("rows", "heading", "value", "outcome", "rule"),
+    [
+        pytest.param(
+            (_CAPITAL,), "STANDALONE RESULTS", 10.0, "agree", "label figure", id="in the label"
+        ),
+        pytest.param((_CAPITAL,), "STANDALONE RESULTS", 2.0, "differ", None, id="another figure"),
+        pytest.param(
+            _ORDINARY,
+            "STANDALONE RESULTS",
+            1.0,
+            "agree",
+            "label figure",
+            id="the row above names the capital",
+        ),
+        pytest.param(
+            (_INVESTED,),
+            "STANDALONE RESULTS",
+            10.0,
+            "unmatched",
+            None,
+            id="another company's shares",
+        ),
+        pytest.param(
+            (_FACE_ROW,), "STANDALONE RESULTS", 10.0, "agree", "label", id="a row of its own"
+        ),
+        pytest.param(
+            (_CAPITAL,),
+            "Report on Corporate Governance",
+            10.0,
+            "unmatched",
+            None,
+            id="a table of no basis",
+        ),
+        pytest.param(
+            ((_RESULTS[2]),),
+            "STANDALONE RESULTS",
+            10.0,
+            "unmatched",
+            None,
+            id="no phrase: no false differ",
+        ),
+        pytest.param(
+            (_FACE_ROW,), "STANDALONE RESULTS", 2.0, "differ", None, id="its own row, differing"
+        ),
+        pytest.param(
+            (_CAPITAL,), "Results under IFRS", 10.0, "unmatched", None, id="an IFRS table"
+        ),
+    ],
+)
+def test_a_figure_printed_inside_a_label(
+    rows: tuple[tuple[str, ...], ...], heading: str, value: float, outcome: str, rule: str | None
+) -> None:
+    document = _document(f"{heading} (₹ in crore)", (*_HEADER, *rows))
+    checked = check_fact(_face(value), sheets(document))
+    assert (checked.outcome, checked.rule) == (outcome, rule), checked
+
+
 def test_a_table_header_naming_a_basis_takes_it() -> None:
     document = _document("STANDALONE RESULTS (₹ in crore)", (("CONSOLIDATED",), *_RESULTS))
     assert sheets(document)[0].basis == "consolidated"

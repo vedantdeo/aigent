@@ -148,6 +148,17 @@ CROSSCHECK_RESUME_HEADINGS = (
     r"|segment(?:-wise)? (?:information|revenue|results|reporting)"
 )
 CROSSCHECK_RESUME_WORDS = 20
+# Concepts printed inside a label, not in a cell: the phrase printing the figure (read through
+# `vocab.repair`, so ₹ as `₹`), the words a row or the row above must carry for it to be the
+# company's own, and the words a row must name for a differing cell to count.
+CROSSCHECK_LABEL_FIGURES: dict[str, tuple[str, str, str]] = {
+    "FaceValueOfEquityShareCapital": (
+        r"(?:face|par)\s*value\s*(?:of\s*)?(?:share\s*:?\s*)?₹?\s*(\d+(?:\.\d+)?)\s*(?:/-?\s*)?"
+        r"(?:each|per\b|\))|shares?\s+of\s*₹\s*(\d+(?:\.\d+)?)\s*/-?\s*each",
+        r"share\s*capital|earnings\s*per|\beps\b",
+        r"(?:face|par)\s*value",
+    ),
+}
 CROSSCHECK_FILED_FRAMEWORK = "ind as"  # NSE's XBRL; tables under another are not checked
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.

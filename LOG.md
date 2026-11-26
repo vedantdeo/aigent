@@ -2949,4 +2949,22 @@
   In Crore)"), none false. **20,912 to 20,917**, 0 lost: Sun Pharma Jun-2023's tables, which
   had fallen back to the wrong document scale. A rule for glyphs glued to "in" proved redundant
   under mutation (the bracket rule with no space covers it) and went. 8/8 mutants; $0.00.
+- 11-26: face value read from the label it is printed in (Vedant: recover the differing facts;
+  face value first, the largest block). Re-triaging all 4,237 differing facts on the current
+  code: 3,220 are printed in no table; of the 1,017 whose value a table prints, matching on value
+  alone was mostly coincidence (face value's ₹10 in a BRSR headcount; Reliance's debt-equity
+  0.41 filed 0.0041, a filer error; Wipro's other expenses equal to its "Communication" line), and
+  146 were plausibly the right line, spread thin (labels 64, columns dated wrong 41, undated 31,
+  lengths 10); figures glued to OCR'd labels were mostly real label text ("0.5%", "Face value of
+  10"), so no split rule. Face value (370 facts, 323 differing against the share-capital figure)
+  is printed inside a label: "(Face value of ₹10/- each)", ITC's "(Ordinary Shares of ₹1/- each)",
+  Wipro's "(Par value ₹2 per share)". `CROSSCHECK_LABEL_FIGURES` maps a concept to its phrase,
+  read through `vocab.repair` (the rupee vocab, which also learned a closing bracket after an
+  amount for Bajaj's "(Face value oft 10)"); it counts only on a row naming the company's own
+  capital or EPS, or under one (ITC and Wipro print it a row below), so another company's
+  "(face value ₹10 each)" in an investments note is refused, for a differ too. A face-value
+  fact with no phrase found is unmatched, not a differ against ₹9,300 crore. **20,917 to 21,244
+  agree**, 0 lost; face value 22 to 349 agree, 2 differ, 19 unmatched. Vedant's verdicts on the
+  face-value groups now cover facts that agree by themselves; the queue drops them. 12/12
+  mutants and 1 for the bracket; $0.00.
   21/21 mutants; $0.00.

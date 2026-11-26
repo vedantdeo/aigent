@@ -88,6 +88,7 @@ def test_edits_and_one_off(a: str, b: str, n: int, near: bool) -> None:
             "a price of ~10,000 crore", "a price of ₹10,000 crore", id="an amount in crore"
         ),
         pytest.param("out of t 10 items", "out of t 10 items", id="a glyph before no unit"),
+        pytest.param("(Face value oft 10)", "(Face value of ₹10)", id="closed by a bracket"),
         pytest.param("at 10 each", "at 10 each", id="no glyph: none added"),
         pytest.param("USD 5 each", "USD 5 each", id="another currency"),
         pytest.param(

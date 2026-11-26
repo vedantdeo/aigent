@@ -89,7 +89,7 @@ _RUPEE: tuple[tuple[re.Pattern[str], str], ...] = (
     # an amount: of t 1/- each, oft 1/-, par value ~2 per share, Rs. 10 each
     (
         re.compile(
-            rf"\b(of|value|@|price|at)\s*(?:{_GLYPH}|{_WORD})\s?(?=\d[\d,]*(?:\.\d+)?\s*(?:/|each|per\b|crore|lakh|million))",
+            rf"\b(of|value|@|price|at)\s*(?:{_GLYPH}|{_WORD})\s?(?=\d[\d,]*(?:\.\d+)?\s*(?:/|each|per\b|\)|crore|lakh|million))",
             re.I,
         ),
         r"\1 ₹",
@@ -101,7 +101,8 @@ _RUPEE: tuple[tuple[re.Pattern[str], str], ...] = (
 def rupee(text: str) -> str:
     """The text with the rupee sign read where one must stand: OCR's glyphs (`VOCAB_RUPEE_GLYPHS`)
     and `Rs.` (`VOCAB_RUPEE_WORDS`) in a scale bracket before "in crore" and the like, or between
-    "of", "value", "@", "price" or "at" and an amount followed by "/-", "each", "per" or a scale;
+    "of", "value", "@", "price" or "at" and an amount followed by "/-", "each", "per", ")" or a
+    scale;
     `Rs.` before any figure."""
     for pattern, sign in _RUPEE:
         text = pattern.sub(sign, text)
