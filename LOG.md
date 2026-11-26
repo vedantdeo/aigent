@@ -2844,3 +2844,33 @@
   result, wrong reason; on the known issues). Taking braces as brackets (`{99)`) gained none and
   lost 9 (Tata's header fell over the wrong column), so they stay out until the header is fixed
   with them. $0.00.
+- 11-26: braces, note numbers and the joins they exposed (the handoff's next fix; Vedant: keep all
+  three, go through every changed table). `printed.FIGURE` and `number` read OCR's braces as
+  brackets (`{99)`, `(12.45}`): yesterday's 0 gained was `number` not reading them. The 9 Tata
+  Sep-2025 facts it lost came from the shared `September 30,` over the six-month columns, written
+  after its column's `2025` because a column's header phrases went in left to right; they now go
+  in top down (`header_rows`), and that column reads 6m Sep-2025 while the one beside it, wrongly
+  6m Sep-2025 before, reads none. A whole number ending in a point (`1.`, `2025.`) is no figure,
+  and `ENUMERATOR` takes `9.`. That freed second label columns, where two old weaknesses of
+  `wrapped` showed: a nil dash in a label column read as a hyphen to run on from, and nothing kept
+  `(b)` or `9.` off the item above (HDFC Bank FY24 securitisation, items 8 and 9 joined). Now a
+  nil mark is no label text and an item never joins a row that opened one; a first cut keeping
+  every item marker apart lost ITC's centred `c)` and one dropping every figure from labels lost
+  `Opening Balance as on April 1, | 2025`, both measured and narrowed. **20,730 to 20,738 agree:
+  8 gained, 0 lost**: 7 a brace figure on the row it names (ITC Jun-2025's two OCI tax lines,
+  Power Grid Sep-2025's receivables, taxes paid and dividend, Tata Jun-2025's OCI tax, Tata
+  Sep-2024's amount transferred to capital as OtherExpenses) and Tata Mar-2024 RapidOCR's
+  `(897.35)`, on a row whose label runs two segment lines together.
+  Tables: 278 changed against 11-25; every one with a figure moved was read, and none joins two
+  numbered items. ICICI Bank Mar-2024's HTML notes joined the table after them again (the wrong-
+  reason split undone; on the known issues). 11/11 mutants; $0.00.
+- 11-26: what the differing facts are (Vedant: tackle differ first). 100 tables drawn from run
+  rows (seed 20261126, weighted by differ facts; zero-valued fillers left out): 524 facts. 168 have
+  their XBRL value elsewhere in the same table or document (another row 71, another table 48,
+  elsewhere in the table 37, another column 12); 13 are one digit, a scale or a sign off. 343 were
+  not in any table; a full-text search of every reading (PDF text, RapidOCR, HTML), every scale,
+  found 32 of them printed (27 in Tata and Reliance segment tables RapidOCR re-rowed badly) and 17
+  by chance (control x1.37: 14). Of a 10-fact spot check, 4 are sums of printed lines (Power Grid
+  FY26's non-current financial liabilities = borrowings + lease + other, exactly), so XBRL-only
+  means the single figure is not printed. A one-digit-off search was dropped: its control matched
+  as often.

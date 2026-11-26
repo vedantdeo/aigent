@@ -13,7 +13,7 @@ import pypdfium2.raw as pdfium_c
 from docling_core.types.doc.items.table.table import TableItem
 
 from aigent.facts.cfg_facts import VERIFY_BAND_MIN_SHARE, VERIFY_LINE_GAP, VERIFY_WRAP_GAP
-from aigent.facts.printed import ENUMERATOR, figure_row, figures_only, is_figure
+from aigent.facts.printed import ENUMERATOR, NIL, figure_row, figures_only, is_figure
 
 Box = tuple[float, float, float, float]  # left, top, right, bottom on the page as displayed
 PdfBox = tuple[float, float, float, float]  # left, bottom, right, top in the page's own space
@@ -380,13 +380,16 @@ def header_rows(header: Rows, table: Layout, grid: Grid, words: Sequence[Word]) 
             for line in lines
             for phrase in phrases(joined(sorted(line, key=lambda w: w[1][0]), height), height)
         ]
+        singles: list[tuple[float, int, str]] = []
         for heading, at in stacks(found):
             over = grid.covered(at[0], at[2])
             if len(over) >= 2:
                 groups.setdefault(i, []).append((heading, over))
             else:
                 near = min(own, key=lambda k: _apart(at, grid.spans[k]))
-                put(i, over[0] if over else near, heading)
+                singles.append((at[1], over[0] if over else near, heading))
+        for _, k, heading in sorted(singles, key=lambda s: s[0]):  # a column reads top-down
+            put(i, k, heading)
     for i, found_ in groups.items():
         free = [k for k in grid.figures if not out[i][k]]  # those no heading of their own names
         for heading, k in grouped(found_, free):
@@ -425,11 +428,16 @@ def wrapped(
     into one row: one ending in a joining word or starting in lower case, or a pair of label lines
     with the row's figures printed between them."""
 
-    def label(cells: Sequence[str]) -> str:
-        return " ".join(c for j, c in enumerate(cells) if c and j in labels)
+    def label(cells: Sequence[str]) -> str:  # a nil dash in a label column is no label text
+        return " ".join(
+            c for j, c in enumerate(cells) if c and j in labels and not re.fullmatch(NIL, c.strip())
+        )
 
     def figures(cells: Sequence[str]) -> bool:
         return any(c for j, c in enumerate(cells) if j not in labels)
+
+    def siblings(above: Sequence[str], below: Sequence[str]) -> bool:  # (a) then (b), 8. then 9.
+        return bool(ENUMERATOR.match(label(above)) and ENUMERATOR.match(label(below)))
 
     def merge(*parts: Sequence[str]) -> list[str]:
         return [" ".join(p[j] for p in parts if p[j]) for j in range(len(parts[0]))]
@@ -445,13 +453,14 @@ def wrapped(
                 and not figures(prev)
                 and label(nxt)
                 and not figures(nxt)
+                and not siblings(prev, nxt)
                 and above < y < below
                 and below - above <= pitch
             ):
                 out[-1] = (below, merge(prev, cells, nxt))
                 k += 2
                 continue
-        if out and y - out[-1][0] <= pitch and label(cells):
+        if out and y - out[-1][0] <= pitch and label(cells) and not siblings(out[-1][1], cells):
             above, prev = out[-1]
             if (
                 label(prev)

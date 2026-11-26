@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from aigent.facts.printed import figure_row, figures_only, is_figure, number
+from aigent.facts.printed import ENUMERATOR, figure_row, figures_only, is_figure, number
 
 
 @pytest.mark.parametrize(
@@ -27,6 +27,9 @@ from aigent.facts.printed import figure_row, figures_only, is_figure, number
         pytest.param("5,5,959.31", (5959.31, 2, False), id="OCR's doubled lead group"),
         pytest.param("5,59,593", (559593.0, 0, False), id="an Indian lakh group is not doubled"),
         pytest.param("[555)", (-555.0, 0, False), id="OCR's square bracket opening a negative"),
+        pytest.param("{5,209)", (-5209.0, 0, False), id="OCR's brace opening a negative"),
+        pytest.param("(12.45}", (-12.45, 2, False), id="OCR's brace closing a negative"),
+        pytest.param("{U)", None, id="a braced word"),
         pytest.param("15.73 15.46", None, id="two numbers in a cell"),
         pytest.param("31.03.2025", None, id="a date"),
         pytest.param("June 30, 2024", None, id="a worded date"),
@@ -60,8 +63,10 @@ def test_figure_row(row: tuple[str, ...], figures: bool) -> None:
         ("[555)", True),
         ("(9.8%)", True),
         ("+4.2", True),
-        ("{12}", False),
+        pytest.param("{99)", True, id="OCR's brace for a bracket"),
         ("2.341.", True),
+        pytest.param("12.", False, id="a note number"),
+        pytest.param("2025.", False, id="a year ending a sentence"),
         ("Revenue", False),
         ("-", False),
         ("12 34", False),
@@ -69,6 +74,22 @@ def test_figure_row(row: tuple[str, ...], figures: bool) -> None:
 )
 def test_is_figure(word: str, figure: bool) -> None:
     assert is_figure(word) is figure
+
+
+@pytest.mark.parametrize(
+    ("label", "opens"),
+    [
+        pytest.param("a) Cigarettes", True, id="a lettered item"),
+        pytest.param("(ii) Deferred tax", True, id="a roman item"),
+        pytest.param("9. Amount of top up loans", True, id="a numbered item"),
+        pytest.param("10.", True, id="a number alone on its line"),
+        pytest.param("(i.e. the last", False, id="an abbreviation in brackets"),
+        pytest.param("1.5 crore shares", False, id="a decimal"),
+        pytest.param("2025 onwards", False, id="a year"),
+    ],
+)
+def test_enumerator(label: str, opens: bool) -> None:
+    assert bool(ENUMERATOR.match(label)) is opens, label
 
 
 @pytest.mark.parametrize(

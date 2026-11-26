@@ -11,8 +11,8 @@ NUMERIC_DATE = re.compile(r"(\d{1,2})[.,/-](\d{1,2})[.,/-](\d{4})")
 WORDED_DATE = re.compile(r"([a-z]{3,9})\.?\s*(\d{1,2})\s*,?\s*(\d{4})")
 YEAR = re.compile(r"((?:19|20)\d{2})\s*\*?")  # a header's year alone, as `2025` or `2024*`
 MAIN_LINE = re.compile(r"\s*(?:[IVX]{1,5}|[A-H])[.)]?\s")  # IX, XI, D., II. open a main line
-ENUMERATOR = re.compile(r"\(?(?:[a-z]|[ivx]+)[.)]")  # a), (ii) open a sub-row
-FIGURE = re.compile(r"[(\[]?[-+]?[\d,.]*\d[\d,.]*%?[)\]]?%?")  # 1,234.5 (12) [555) (9.8%)
+ENUMERATOR = re.compile(r"\(?(?:[a-z]|[ivx]+|\d{1,2})[.)](?=\s|$)")  # a), (ii), 9. open an item
+FIGURE = re.compile(r"(?!\d+\.$)[(\[{]?[-+]?[\d,.]*\d[\d,.]*%?[)\]}]?%?")  # (12) {99) 9.8%; no `1.`
 NIL = r"\.\.|[-–—]"  # what prints a nil figure
 
 
@@ -25,7 +25,8 @@ def number(text: str) -> tuple[float, int, bool] | None:
     if NUMERIC_DATE.search(t) or WORDED_DATE.search(t.lower()):
         return None
     t = re.sub(r"^[.\s~]+(?=[\d(])", "", t)  # a leader of dots before the figure
-    t = re.sub(r"(?<=\d);(?=\d)", ",", re.sub(r"^\[(?=\d)", "(", t))  # OCR's `[555)`, `1;331`
+    t = re.sub(r"^[\[{](?=\d)", "(", re.sub(r"(?<=\d)\}$", ")", t))  # OCR's `[555)`, `{99}`
+    t = re.sub(r"(?<=\d);(?=\d)", ",", t)  # OCR's `1;331`
     if re.fullmatch(r"[\d,]+\.\s+\d+", t):  # a stray space after the point
         t = re.sub(r"\s+", "", t)
     match = re.fullmatch(r"(\()?(-)?([\d,.]+)(\))?\s*(%)?", t)
