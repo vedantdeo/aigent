@@ -2844,3 +2844,97 @@
   result, wrong reason; on the known issues). Taking braces as brackets (`{99)`) gained none and
   lost 9 (Tata's header fell over the wrong column), so they stay out until the header is fixed
   with them. $0.00.
+- 11-26: braces, note numbers and the joins they exposed (the handoff's next fix; Vedant: keep all
+  three, go through every changed table). `printed.FIGURE` and `number` read OCR's braces as
+  brackets (`{99)`, `(12.45}`): yesterday's 0 gained was `number` not reading them. The 9 Tata
+  Sep-2025 facts it lost came from the shared `September 30,` over the six-month columns, written
+  after its column's `2025` because a column's header phrases went in left to right; they now go
+  in top down (`header_rows`), and that column reads 6m Sep-2025 while the one beside it, wrongly
+  6m Sep-2025 before, reads none. A whole number ending in a point (`1.`, `2025.`) is no figure,
+  and `ENUMERATOR` takes `9.`. That freed second label columns, where two old weaknesses of
+  `wrapped` showed: a nil dash in a label column read as a hyphen to run on from, and nothing kept
+  `(b)` or `9.` off the item above (HDFC Bank FY24 securitisation, items 8 and 9 joined). Now a
+  nil mark is no label text and an item never joins a row that opened one; a first cut keeping
+  every item marker apart lost ITC's centred `c)` and one dropping every figure from labels lost
+  `Opening Balance as on April 1, | 2025`, both measured and narrowed. **20,730 to 20,738 agree:
+  8 gained, 0 lost**: 7 a brace figure on the row it names (ITC Jun-2025's two OCI tax lines,
+  Power Grid Sep-2025's receivables, taxes paid and dividend, Tata Jun-2025's OCI tax, Tata
+  Sep-2024's amount transferred to capital as OtherExpenses) and Tata Mar-2024 RapidOCR's
+  `(897.35)`, on a row whose label runs two segment lines together.
+  Tables: 278 changed against 11-25; every one with a figure moved was read, and none joins two
+  numbered items. ICICI Bank Mar-2024's HTML notes joined the table after them again (the wrong-
+  reason split undone; on the known issues). 11/11 mutants; $0.00.
+- 11-26: what the differing facts are (Vedant: tackle differ first). 100 tables drawn from run
+  rows (seed 20261126, weighted by differ facts; zero-valued fillers left out): 524 facts. 168 have
+  their XBRL value elsewhere in the same table or document (another row 71, another table 48,
+  elsewhere in the table 37, another column 12); 13 are one digit, a scale or a sign off. 343 were
+  not in any table; a full-text search of every reading (PDF text, RapidOCR, HTML), every scale,
+  found 32 of them printed (27 in Tata and Reliance segment tables RapidOCR re-rowed badly) and 17
+  by chance (control x1.37: 14). Of a 10-fact spot check, 4 are sums of printed lines (Power Grid
+  FY26's non-current financial liabilities = borrowings + lease + other, exactly), so XBRL-only
+  means the single figure is not printed. A one-digit-off search was dropped: its control matched
+  as often.
+- 11-26: a table's accounting framework (Vedant, spot-checking: SEC and NSE copies follow
+  different rules; keep the 6-Ks, go with the plan). The 24 bank 6-Ks name Indian GAAP, the RBI and
+  SEBI's listing rules and no US GAAP or IFRS: they are the India results, re-filed. The mix is
+  Wipro's IFRS statements, printed in its own NSE results and annual reports beside the Ind AS ones;
+  147 Wipro facts had been checked on IFRS-only pages (93 agree, 54 differ), one other (Tata).
+  `sheets` now reads each table's framework as it reads basis, and `check_fact` checks an Ind AS
+  fact on Ind AS tables or tables naming none. Matching any IFRS mention marked Power Grid FY26's
+  tables IFRS through "governed by IFRS Foundation" (and would have through `IFRS S2`, glossaries,
+  the banks' "Ind AS converged with IFRS"); only a declaration counts now ("under IFRS", "in
+  compliance with IFRS"), with OCR's `lndAS` read for Ind AS, so only Wipro's own statements match
+  (and two Tata prose lines, which moved nothing). **20,738 to 20,692 agree, all 46 lost Wipro**:
+  consolidated cash flow and balance-sheet totals Wipro's quarterly results print only under IFRS.
+  138 moved from IFRS to Ind AS tables; 41 differences against IFRS tables now unmatched; 26 of the
+  lost now differ against Wipro's standalone tables (read consolidated: their "Audited Balance
+  Sheet" names no basis, an open issue) or OCR's `11.954` for 11,954. 6/6 mutants; $0.00.
+  Wipro stays Ind AS only (Vedant): no SEC or IFRS XBRL is loaded, and in the retrieval round
+  (after parsing lands, with the Total-row section labels) chunks get labelled with their
+  framework by `framework_in` and IFRS chunks are flagged unsearchable, kept for later use rather
+  than deleted.
+- 11-26: a table's basis is its section's (Vedant: divide the document into standalone and
+  consolidated sections, tables inheriting, not the table before). Basis had been the last
+  "standalone"/"consolidated" anywhere since the table before, so a note's prose ("publishes these
+  standalone financial results along with the consolidated financial results") made Wipro's
+  standalone balance sheet and cash flow consolidated. A section now opens at a heading line naming
+  one basis, capitalised or among its first four words; prose, a line naming both (ITC's cover
+  letter, "both Standalone and Consolidated") and a report's navigation strip (Tata FY26 prints
+  "FINANCIALS CONSOLIDATED" on 73 pages, standalone ones too) open none; the text before every
+  table is read, figures or not. Tried first: headings of at most 15 words (lost ITC's and Sun
+  Pharma's 16-word titles, 798 agreements), capitals only (lost Bajaj's "Statement of standalone
+  audited financial results"), and without the figureless tables (Tata's standalone auditor's
+  report heading dropped). **20,692 to 20,850 agree**: 176 won (Wipro's standalone statements),
+  18 lost, at most 3 a table. Tables with no basis 269 to 28 of 11,320, all annual-report front
+  matter before the first statement heading: corporate governance 15, AGM notice and director
+  details 7, dividend TDS 3, ESG 3. 9/9 mutants; $0.00. Next (Vedant): `both` for tables printing
+  both bases side by side (either basis's queries land; columns by their own basis), `no basis` as
+  a decision (non-statement headings pause a section, statement headings resume it), unlabelled
+  kept apart for review.
+- 11-26: basis labels (Vedant: `both` for tables printing both bases side by side, so either
+  basis's queries land; `no basis` a decision, kept apart from unlabelled; a part outside the
+  statements pauses a section, and tables after it inherit the section again). A heading of a part
+  outside the statements pauses (corporate governance, notice, BRSR, directors'/board's report,
+  MD&A, TDS on dividends, annexure, at a line's start); a statement title naming no basis resumes
+  ("Balance Sheet", "Financial Results", "Segment information"); a heading naming a basis sets it
+  and ends a pause. `check_fact` never checks `none`, checks `both` either way but by a column's
+  own basis where its header names one. **20,850 to 20,912 agree**: 71 won (ITC's and Power Grid's
+  side-by-side results, labelled standalone before), 9 lost, all zeros on dashes. Tables: 4,436
+  standalone, 4,876 consolidated, 66 both, 1,955 none, 0 unlabelled; the last 3 unlabelled were
+  HDFC FY25's sustainable finance and emissions, now paused by its "ESG STRATEGY" heading (Vedant),
+  and "financial highlights" resumes HDFC FY26's 10-year summary after it. Every pause heading
+  was read: BRSR about 900,
+  governance and MD&A about 230 each, board's report about 190, annexures, notice; in results, Power
+  Grid's security cover and issue-proceeds certificates and Sun Pharma's press-release snapshots.
+  Tried first: a document starting paused (front matter), which made `none` a fallback for
+  tables under no heading; a heading carried over every column to its right, which read ITC's
+  consolidated quarter as standalone where "Consolidated" sat in a lower cell (Power Grid Sep-2024
+  lost its heading to the parse); a period-repeat switch, broken by half-years misread as quarters.
+  A carried heading now counts only under a header row naming both. Lost too: ITC FY24/FY26's
+  directors' report "PROFITS" (4 facts), restated standalone figures under a paused report.
+  Resume by default (Vedant asked to try it: any heading that is not a pause heading resumes) was
+  run against it: 20,916 agree (+5, four zeros on dashes and the HDFC summary), none 1,968 to 204,
+  as about 1,720 BRSR, MD&A, governance, board's report and notice tables took the basis an
+  integrated report's highlights had named; kept the resume list (Vedant), since a wrong `none`
+  shows in the cross-check and a wrong basis on a BRSR table would not.
+  21/21 mutants; $0.00.

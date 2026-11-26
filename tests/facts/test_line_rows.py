@@ -356,6 +356,18 @@ _SPLIT = Layout(
             id="headings over their own columns each kept over theirs",
         ),
         pytest.param(
+            (("", "September 30, 2025 2024"),),
+            ((0, 1, 1, (130, 20, 260, 38)),),
+            [
+                _w("2025", 145, 30, 15),
+                _w("September", 160, 20, 18),
+                _w("30,", 180, 20, 6),
+                _w("2024", 232, 30, 15),
+            ],
+            (("", "September 30, 2025", "2024"),),
+            id="a column's heading read top down though its year prints further left",
+        ),
+        pytest.param(
             (("", "Quarter ended"),),
             ((0, 1, 2, (130, 30, 260, 38)),),
             [_w("Quarter", 200, 30, 25), _w("ended", 228, 30, 20)],
@@ -481,6 +493,42 @@ def test_wrapped(
     lines: list[tuple[float, tuple[str, ...]]], rows: tuple[tuple[str, ...], ...]
 ) -> None:
     assert line_rows.wrapped(lines, frozenset({0}), 20.0) == rows
+
+
+@pytest.mark.parametrize(
+    ("lines", "rows"),
+    [
+        pytest.param(
+            [(0, ("Directly received", "-", "5")), (10, ("Complaints outstanding", "", ""))],
+            (("Directly received", "-", "5"), ("Complaints outstanding", "", "")),
+            id="a nil in a label column is no hyphen to run on from",
+        ),
+        pytest.param(
+            [(0, ("8. Default rate", "asset class Vehicle -", "5")), (10, ("9. Top up", "", ""))],
+            (("8. Default rate", "asset class Vehicle -", "5"), ("9. Top up", "", "")),
+            id="a numbered item never runs into the one before",
+        ),
+        pytest.param(
+            [(0, ("(a) Received", "", "")), (5, ("", "", "5")), (10, ("(b) Outstanding", "", ""))],
+            (("(a) Received", "", ""), ("", "", "5"), ("(b) Outstanding", "", "")),
+            id="figures between two items join neither",
+        ),
+        pytest.param(
+            [(0, ("Changes in inventories of", "", "")), (10, ("c) work-in-progress", "", "5"))],
+            (("Changes in inventories of c) work-in-progress", "", "5"),),
+            id="an item's marker centred on its label's second line still joins it",
+        ),
+        pytest.param(
+            [(0, ("Opening Balance as on April 1,", "", "8")), (10, ("2025", "", ""))],
+            (("Opening Balance as on April 1, 2025", "", "8"),),
+            id="a year in a label column is label text",
+        ),
+    ],
+)
+def test_wrapped_over_two_label_columns(
+    lines: list[tuple[float, tuple[str, ...]]], rows: tuple[tuple[str, ...], ...]
+) -> None:
+    assert line_rows.wrapped(lines, frozenset({0, 1}), 20.0) == rows
 
 
 def test_a_table_docling_merged_columns_is_laid_out_by_its_printed_columns() -> None:

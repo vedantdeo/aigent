@@ -94,6 +94,7 @@ CROSSCHECK_SEED = 20261101
 CROSSCHECK_GROUP_EXAMPLES = 3  # distinct values a review group lists before "…"
 CROSSCHECK_SPOT_CHECKS = 3  # facts of a group a person checks before a `right` verdict applies
 CROSSCHECK_TRACE_WINDOW = 8  # rows either side of a traced cell's row, after the header rows
+CROSSCHECK_HEADING_LEAD = 4  # a lower-case basis among a line's first words heads a section
 CROSSCHECK_SPAN_ROWS = 3  # rows a column repeats one text down to be a spanning cell's copies
 # Review pages: the kinds of copy a batch is spread over, in order, its default size and seed, and
 # the page image's width and quality under the artifact's size limit.
@@ -126,6 +127,28 @@ TABLE_PAGE_TAGS: tuple[str, ...] = (
     "OCR text wrong",
 )
 CROSSCHECK_SCALES: dict[str, float] = {"crore": 1e7, "lac": 1e5, "lakh": 1e5, "million": 1e6}
+CROSSCHECK_FRAMEWORKS: dict[str, str] = {  # the words naming a table's accounting framework
+    "ind as": r"\b[il]nd[- ]?as\b|indian accounting standards?",  # OCR's `lndAS` too
+    "ifrs": r"\bunder ifrs\b"  # as a statement declares it, not `IFRS S2` or `IFRS Foundation`
+    r"|(?:accordance|compliance|conformity) with (?:ifrs\b|international financial reporting)",
+}
+CROSSCHECK_NAVIGATION = r"integrated report|statutory reports"  # a report's side tabs, no heading
+# Headings of a part outside the statements, which pause a section (a line starting so, past an
+# enumerator), and statement titles naming no basis, which resume it (a line of at most
+# `CROSSCHECK_RESUME_WORDS` words naming one).
+CROSSCHECK_PAUSE_HEADINGS = (
+    r"^\W*(?:[a-z\d]{1,3}(?:[.)]\d*)+\s*)*(?:report on corporate governance|corporate governance"
+    r"|notice\b|business responsibility|sustainability report|directors'? report|board'?s'? report"
+    r"|management discussion|tax deduct(?:ed|ible) at source|annexure\b|esg\b)"
+)
+CROSSCHECK_RESUME_HEADINGS = (
+    r"balance sheet|statement of (?:profit and loss|assets and liabilities|changes in equity)"
+    r"|cash ?flows?\b|financial (?:results|highlights)"
+    r"|notes (?:to|forming part of) (?:the )?financial statements"
+    r"|segment(?:-wise)? (?:information|revenue|results|reporting)"
+)
+CROSSCHECK_RESUME_WORDS = 20
+CROSSCHECK_FILED_FRAMEWORK = "ind as"  # NSE's XBRL; tables under another are not checked
 # Words read in full before labels are compared, and pairs where a fact naming one never takes a
 # row naming only the other.
 CROSSCHECK_SYNONYMS: dict[str, str] = {

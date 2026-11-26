@@ -341,6 +341,33 @@ def test_column_periods(header: tuple[tuple[str, ...], ...], expected: dict[int,
 
 
 @pytest.mark.parametrize(
+    ("header", "bases"),
+    [
+        pytest.param(
+            (
+                ("Particulars", "Standalone", "", "Consolidated", ""),
+                ("", "31.03.2025", "31.03.2024", "31.03.2025", "31.03.2024"),
+            ),
+            ("standalone", "standalone", "consolidated", "consolidated"),
+            id="both spanning one row: carried over their columns",
+        ),
+        pytest.param(
+            (
+                ("Particulars", "Standalone", "", "", ""),
+                ("", "31.03.2025", "31.03.2024", "31.03.2025", "Consolidated 31.03.2024"),
+            ),
+            ("standalone", None, None, "consolidated"),
+            id="one spanning, the other in a cell: own cells only",
+        ),
+    ],
+)
+def test_a_column_takes_the_basis_its_header_names(
+    header: tuple[tuple[str, ...], ...], bases: tuple[str | None, ...]
+) -> None:
+    assert tuple(c.basis for _, c in sorted(column_periods(header).items())) == bases
+
+
+@pytest.mark.parametrize(
     ("text", "scale"),
     [
         ("(₹ in crore) ... (₹ in crore) ... in lac", 1e7),

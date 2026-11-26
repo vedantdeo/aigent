@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from aigent.facts import __main__ as cli
-from aigent.facts.crosscheck import Checked
+from aigent.facts.crosscheck import Checked, TableLabel
 from aigent.facts.review import (
     Check,
     Decision,
@@ -362,6 +362,19 @@ def test_apply_rulings_makes_only_confirmed_facts_xbrl(crosscheck_db: sqlite3.Co
     ], rows
 
 
+def test_the_report_counts_tables_by_basis_and_lists_the_unlabelled(tmp_path: Path) -> None:
+    labels: dict[str, list[TableLabel]] = {
+        "results/A.pdf": [(0, 1, "standalone"), (1, 2, None), (2, 3, "both")],
+        "annual/B.pdf": [(4, 9, "none"), (5, 9, "consolidated")],
+    }
+    path = write_report([], [], {"run": "now"}, tmp_path / "r.md", (), labels)
+    text = path.read_text(encoding="utf-8")
+    for line in ("| standalone | 1 |", "| both | 1 |", "| none | 1 |", "| unlabelled | 1 |"):
+        assert line in text, text
+    assert "- results/A.pdf #1 p. 2" in text
+    assert "annual/B.pdf #4" not in text
+
+
 def test_the_report_groups_the_queue_and_lists_each_groups_facts(tmp_path: Path) -> None:
     checked = [
         _queued(1, "agree"),
@@ -453,7 +466,9 @@ def test_the_command_applies_a_right_decision_only_when_told(
     decisions.write_text(json.dumps(row) + "\n", encoding="utf-8")
     monkeypatch.setattr(cli, "FACTS_DB", db)
     monkeypatch.setattr(cli, "CROSSCHECK_DIR", tmp_path / "reports")
-    monkeypatch.setattr(cli, "crosscheck", lambda c, t: [checked_row(first, "unmatched")])
+    monkeypatch.setattr(
+        cli, "crosscheck", lambda c, t, labels=None: [checked_row(first, "unmatched")]
+    )
     cli.cross_check(NOW, write=write, decisions=decisions)
     after = sqlite3.connect(db).execute("SELECT tier FROM facts WHERE id = ?", (first,)).fetchone()
     assert after == (tier,)

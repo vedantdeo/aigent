@@ -57,7 +57,15 @@ from aigent.facts.coverage import (
     teacher_figures,
     write_report,
 )
-from aigent.facts.crosscheck import Checked, Sheet, apply, crosscheck, recheck, sheets
+from aigent.facts.crosscheck import (
+    Checked,
+    Sheet,
+    TableLabel,
+    apply,
+    crosscheck,
+    recheck,
+    sheets,
+)
 from aigent.facts.documents import (
     VERIFY_DIR,
     Entry,
@@ -346,7 +354,8 @@ def cross_check(
     `write`, make the agreements `xbrl-filed` and `right` groups `xbrl`."""
     conn = connect(FACTS_DB)
     try:
-        checked = crosscheck(conn, VERIFY_TICKERS)
+        labels: dict[str, list[TableLabel]] = {}
+        checked = crosscheck(conn, VERIFY_TICKERS, labels=labels)
         rulings = rule(review_groups(checked), read_decisions(decisions))
         manifest = read_manifest()
         origins = {r: origin_of(r, e) for n, e in manifest.items() for r in readings_of(n, e)}
@@ -381,7 +390,12 @@ def cross_check(
     }
     sample = review_sample(checked, CROSSCHECK_SAMPLE, CROSSCHECK_SEED)
     path = write_crosscheck_report(
-        checked, sample, header, CROSSCHECK_DIR / f"crosscheck-{now:%Y%m%d-%H%M}.md", rulings
+        checked,
+        sample,
+        header,
+        CROSSCHECK_DIR / f"crosscheck-{now:%Y%m%d-%H%M}.md",
+        rulings,
+        labels,
     )
     print(
         f"{len(checked)} facts, {agreed} agree, {moved} written xbrl-filed, "
