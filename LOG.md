@@ -2937,4 +2937,16 @@
   as about 1,720 BRSR, MD&A, governance, board's report and notice tables took the basis an
   integrated report's highlights had named; kept the resume list (Vedant), since a wrong `none`
   shows in the cross-check and a wrong basis on a BRSR table would not.
+- 11-26: the rupee sign read in the vocab (Vedant: add it to the existing vocab, not a new
+  layer; better text for the face-value rule and later the chunks). Mined first: where a ₹ must
+  stand (a scale bracket before "in crore", an amount after "of"/"value" followed by "/-" or
+  "each"), born-digital reports print ₹ (8,998), OCR layers print `~` `f` `t` `"` `'` `{` and
+  more, RapidOCR `€` `R` `天`, results `Rs.`; 27 glyphs and Rs/Re kept, sorted, in config.
+  `repair` reads them as ₹ only in those contexts, since `t`, `f` and `,` are ordinary
+  characters elsewhere; the scale readers now read through `repair`, so "(fin Million)" has a
+  scale. 4,932 replacements in 172 readings (Rs. before a figure 2,876; scale brackets 977;
+  amounts 1,079), samples of each risky form read ("off 1/- each", "of X 10/-", "of< 5 /-", "(€
+  In Crore)"), none false. **20,912 to 20,917**, 0 lost: Sun Pharma Jun-2023's tables, which
+  had fallen back to the wrong document scale. A rule for glyphs glued to "in" proved redundant
+  under mutation (the bracket rule with no space covers it) and went. 8/8 mutants; $0.00.
   21/21 mutants; $0.00.

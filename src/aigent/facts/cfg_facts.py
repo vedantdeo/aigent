@@ -167,6 +167,37 @@ CROSSCHECK_ROW_TURNS = frozenset(
     {"changes", "change", "decrease", "increase", "loss", "payment", "payments", "proceeds"}
     | {"profit", "purchase", "purchases"}
 )
+# OCR's misreads of the rupee sign, sorted; read as ₹ only where one must stand (`vocab.rupee`).
+VOCAB_RUPEE_GLYPHS: tuple[str, ...] = (
+    '"',
+    '"!',
+    "'",
+    "'<",
+    "'f",
+    "'t",
+    "'{",
+    ",",
+    "5'",
+    "<",
+    "?",
+    "R",
+    "X",
+    "Z",
+    "f",
+    "i!'",
+    "ii'",
+    "r",
+    "t",
+    "z",
+    "{",
+    "~",
+    "€",
+    "₹.",
+    "₹₹",
+    "ぼ",
+    "天",
+)
+VOCAB_RUPEE_WORDS: tuple[str, ...] = ("Re", "Re.", "Rs", "Rs.")  # ₹ before a figure or a scale
 # The words the header and label rules key on, sorted; an OCR'd word near exactly one is read as it.
 VOCAB_LEXICON: tuple[str, ...] = (
     "acquisition",

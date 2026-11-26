@@ -321,13 +321,13 @@ def header_bases(header: Sequence[Sequence[str]]) -> set[Basis]:
 
 def scale_in(text: str) -> float | None:
     """The last scale the text states as "in crore", "in lac" and the like."""
-    found = _SCALE.findall(text.lower())
+    found = _SCALE.findall(repair(text).lower())
     return CROSSCHECK_SCALES[found[-1]] if found else None
 
 
 def document_scale(text: str) -> float | None:
     """The scale a document states most often as "in crore", "in lac" and the like."""
-    found = _SCALE.findall(text.lower())
+    found = _SCALE.findall(repair(text).lower())
     if not found:
         return None
     return CROSSCHECK_SCALES[max(set(found), key=found.count)]
