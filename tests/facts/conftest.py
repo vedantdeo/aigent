@@ -12,13 +12,13 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from cltrplusf.chunk import Document, Table
 
 from aigent.facts.cfg_facts import NSE_INTEGRATED_LISTING, NSE_LEGACY_LISTING, NSE_PAGE_SIZE
 from aigent.facts.crosscheck import Checked
 from aigent.facts.reference import Fundamental
 from aigent.facts.store import FilingRow, Writer, connect, sync_xbrl_facts, upsert_filing
 from aigent.facts.xbrl import Fact as XbrlFact
-from aigent.retrieval.chunk import Document, Table
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LEGACY_Q4 = FIXTURES / "ITC-2024-03-31-C.xml"  # 2020 BSE taxonomy, FY24's March quarter

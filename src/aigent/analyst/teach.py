@@ -26,6 +26,9 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
+from cltrplusf.chunk import Chunk, context_block
+from cltrplusf.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
+from cltrplusf.keys import keyed_search
 from pydantic import BaseModel, Field, JsonValue, ValidationError
 from underhood.tooldata.labels import Label, check_call, printed
 
@@ -66,9 +69,6 @@ from aigent.llm.adapters.openai import OpenAI, function_tool
 from aigent.llm.core import Dispatch, Llm, Request
 from aigent.llm.messages import Block, Msg, Tool
 from aigent.llm.pricing import Budget, cost_usd
-from aigent.retrieval.chunk import Chunk, context_block
-from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
-from aigent.retrieval.keys import keyed_search
 from aigent.tools import CALCULATOR_TOOL, execute_tool, fence
 
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"

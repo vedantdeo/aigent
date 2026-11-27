@@ -12,6 +12,8 @@ from pydantic import JsonValue
 
 pytest.importorskip("langgraph")
 
+from cltrplusf.chunk import Chunk  # noqa: E402
+
 from aigent import agent_tasks, guardrails  # noqa: E402
 from aigent.agent import TOOLS  # noqa: E402
 from aigent.agent_graph import Traced  # noqa: E402
@@ -36,7 +38,6 @@ from aigent.evals.runner import EvalRun  # noqa: E402
 from aigent.llm import core as llm_core  # noqa: E402
 from aigent.llm.messages import Usage as NeutralUsage  # noqa: E402
 from aigent.llm.pricing import estimate_eval_usd, worst_case_usd  # noqa: E402
-from aigent.retrieval.chunk import Chunk  # noqa: E402
 from aigent.tools_config import MAX_WEB_SEARCHES, SANDBOX  # noqa: E402
 
 from .conftest import (  # noqa: E402

@@ -9,15 +9,18 @@ from typing import cast
 
 import numpy as np
 import pytest
+from cltrplusf.chunk import Chunk, Document, Inventory
+from cltrplusf.config import SEARCH_METHOD
+from cltrplusf.dense import DenseIndex
+from cltrplusf.embed import Embedder, Vectors
+from cltrplusf.hits import Hit
+from cltrplusf.rank import METHODS, Ranker
+from cltrplusf.testing import BagOfWordsEmbedder, KeywordReranker
 from pydantic import JsonValue
 
-from aigent.config import SEARCH_METHOD
 from aigent.evals.dataset import Case, DatasetError, digest
 from aigent.evals.runner import EvalRun
 from aigent.retrieval import evaluate
-from aigent.retrieval.chunk import Chunk, Document, Inventory
-from aigent.retrieval.dense import DenseIndex
-from aigent.retrieval.embed import Embedder, Vectors
 from aigent.retrieval.evaluate import (
     compare_chunking,
     compare_retrieval,
@@ -28,10 +31,6 @@ from aigent.retrieval.evaluate import (
     resolve,
     retrieval_task,
 )
-from aigent.retrieval.hits import Hit
-from aigent.retrieval.rank import METHODS, Ranker
-
-from ..conftest import BagOfWordsEmbedder, KeywordReranker
 
 Compare = Callable[
     [Sequence[Case], Sequence[Document], Embedder, int, Sequence[Path], int, bool], EvalRun

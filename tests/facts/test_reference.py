@@ -7,9 +7,9 @@ import re
 from typing import cast
 
 import pytest
+from cltrplusf.corpus import CORPUS_DIR, load_pdf_cached
 
 from aigent.facts.reference import FUNDAMENTALS, Fundamental, load_fundamentals
-from aigent.retrieval.corpus import CORPUS_DIR, load_pdf_cached
 
 TABLE = load_fundamentals()
 FIELDS = ["value", "unit", "printed", "doc_id", "page", "note"]

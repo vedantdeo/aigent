@@ -22,9 +22,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from cltrplusf.chunk import Chunk, Inventory, context_block
+from cltrplusf.config import TOP_K
+from cltrplusf.corpus import FY25_REPORTS, load_corpus
+from cltrplusf.dense import DenseIndex
+from cltrplusf.embed import Embedder, LocalEmbedder, Vectors
 from pydantic import BaseModel, Field, JsonValue
 
-from aigent.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, TOP_K, max_tokens
+from aigent.config import CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, max_tokens
 from aigent.evals.dataset import Case, digest, load_jsonl
 from aigent.evals.grade import Grader, Outcome, flag, hit_at_k, unparsed
 from aigent.evals.judge import JUDGE_SYSTEM, LlmJudge, Verdict
@@ -34,10 +39,6 @@ from aigent.llm.adapters import CLIENTS, judge_of, spec
 from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Msg
 from aigent.llm.pricing import estimate_eval_usd
-from aigent.retrieval.chunk import Chunk, Inventory, context_block
-from aigent.retrieval.corpus import FY25_REPORTS, load_corpus
-from aigent.retrieval.dense import DenseIndex
-from aigent.retrieval.embed import Embedder, LocalEmbedder, Vectors
 from aigent.retrieval.evaluate import DATASET, STRATEGIES, resolve
 
 REPO = Path(__file__).resolve().parents[3]

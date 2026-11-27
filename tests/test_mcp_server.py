@@ -10,6 +10,7 @@ from typing import cast
 
 import anyio
 import pytest
+from cltrplusf.chunk import Chunk
 from mcp import Client
 from mcp.types import CallToolResult, TextContent, Tool
 
@@ -21,7 +22,6 @@ from aigent.config import MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME
 from aigent.facts.lookup import Lookup
 from aigent.mcp_server import LazyFilings, LazySearch, build_server
 from aigent.report_tools import SEARCH_TOOL
-from aigent.retrieval.chunk import Chunk
 from aigent.tools import CALCULATOR_TOOL, READ_FILE_TOOL, WRITE_FILE_TOOL, fence
 from aigent.workflows.reports import REPORTS, Search
 

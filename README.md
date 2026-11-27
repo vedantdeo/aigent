@@ -8,7 +8,9 @@ It searches 1,100+ pages of filings (ITC, Reliance, Tata Motors), calls tools fo
 and the web, cites the passage behind each figure, resists prompt injection planted in the documents
 it reads, and is graded not only on its answers but on how it reached them. Its from-scratch
 counterpart, [underhood](https://github.com/vedantdeo/underhood), holds the shared tools and the
-fine-tuning of a small open model for one of the agent's jobs.
+fine-tuning of a small open model for one of the agent's jobs. Parsing and search live in
+[cltrplusf](https://github.com/vedantdeo/cltrplusf): the filings read with every number kept, chunked
+and searched, which aigent depends on.
 
 ## Highlights
 

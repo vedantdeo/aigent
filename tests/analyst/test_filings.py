@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from typing import cast
 
 import pytest
+from cltrplusf.chunk import Chunk
+from cltrplusf.hits import Hit
+from cltrplusf.rank import Scope
 
 from aigent.analyst import filings
 from aigent.analyst.filings import (
@@ -16,9 +19,6 @@ from aigent.analyst.filings import (
     scope,
     year_of,
 )
-from aigent.retrieval.chunk import Chunk
-from aigent.retrieval.hits import Hit
-from aigent.retrieval.rank import Scope
 
 CHUNKS = {
     "ITC-FY24#0001": Chunk("ITC-FY24#0001", "Dividend of 13.75 a share.", "ITC-FY24", 1, 0),

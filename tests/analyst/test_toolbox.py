@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import cast
 
 import pytest
+from cltrplusf.chunk import context_block
 
 from aigent.analyst import experts as listed
 from aigent.analyst.experts import (
@@ -24,17 +25,8 @@ from aigent.errors import SpecialistUnreachable
 from aigent.llm.core import Dispatch, Llm
 from aigent.mcp_client import connect
 from aigent.mcp_server import build_server
-from aigent.retrieval.chunk import context_block
 
-from ..conftest import (
-    PASSAGES,
-    FakeFilings,
-    FakeOpenAI,
-    FakeSearch,
-    MakeLlm,
-    asking,
-    completion,
-)
+from ..conftest import PASSAGES, FakeFilings, FakeOpenAI, FakeSearch, MakeLlm, asking, completion
 from .conftest import DIVIDEND, FIGURE, box, never, search, told
 
 

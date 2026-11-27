@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from cltrplusf.chunk import Chunk
 
 from aigent.report_tools import ReportSearch, Searched
-from aigent.retrieval.chunk import Chunk
 
 from .conftest import FakeSearch
 

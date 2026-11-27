@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
+from cltrplusf.corpus import FY25_REPORTS
 
-from aigent.retrieval.corpus import FY25_REPORTS
 from aigent.workflows import (
     chaining,
     evaluator_optimizer,

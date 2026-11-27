@@ -17,7 +17,11 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from aigent.facts import headers, labels, printed, vocab
+from cltrplusf import printed
+from cltrplusf.chunk import Document
+from cltrplusf.printed import MAIN_LINE, figure_row, number
+
+from aigent.facts import headers, labels, vocab
 from aigent.facts.cfg_facts import (
     CROSSCHECK_DIFFER_LABEL_MIN,
     CROSSCHECK_DISTINCT_DIGITS,
@@ -59,11 +63,9 @@ from aigent.facts.headers import (
     scale_in,
 )
 from aigent.facts.labels import label_figure, label_match, note, per_share_row, serial
-from aigent.facts.printed import MAIN_LINE, figure_row, number
 from aigent.facts.share_events import PER_SHARE
 from aigent.facts.store import XBRL_TIERS, demote_derived
 from aigent.facts.vocab import repair
-from aigent.retrieval.chunk import Document
 
 Outcome = Literal["agree", "differ", "unmatched"]
 Rule = Literal["label", "distinct", "per-share", "label figure"]  # what let a figure count

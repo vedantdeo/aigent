@@ -11,6 +11,8 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Literal, cast
 
+from cltrplusf.printed import NUMERIC_DATE, WORDED_DATE, YEAR
+
 from aigent.facts.cfg_facts import (
     CROSSCHECK_FRAMEWORKS,
     CROSSCHECK_HEADING_LEAD,
@@ -20,7 +22,6 @@ from aigent.facts.cfg_facts import (
     CROSSCHECK_RESUME_WORDS,
     CROSSCHECK_SCALES,
 )
-from aigent.facts.printed import NUMERIC_DATE, WORDED_DATE, YEAR
 from aigent.facts.vocab import repair
 
 MONTHS = {

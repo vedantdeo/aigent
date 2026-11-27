@@ -11,7 +11,6 @@ import contextvars
 import json
 import sqlite3
 import threading
-import zlib
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -20,7 +19,6 @@ from pathlib import Path
 from typing import Literal, cast
 
 import anthropic
-import numpy as np
 import pytest
 from anthropic import Omit
 from anthropic.lib.tools import BetaFunctionTool, BetaToolRunner
@@ -35,6 +33,8 @@ from anthropic.types import (
 from anthropic.types.beta import BetaMessage, BetaToolUnionParam
 from anthropic.types.beta.message_create_params import ParseMessageCreateParamsBase
 from anthropic.types.messages import MessageBatch, MessageBatchIndividualResponse
+from cltrplusf.chunk import Chunk
+from cltrplusf.testing import BagOfWordsEmbedder
 from openai.types import CompletionUsage
 from openai.types.chat import (
     ChatCompletion,
@@ -68,8 +68,6 @@ from aigent.llm.adapters.openai import OpenAI
 from aigent.llm.core import Llm
 from aigent.llm.messages import Usage as NeutralUsage
 from aigent.llm.pricing import PRICES, Budget
-from aigent.retrieval.chunk import Chunk
-from aigent.retrieval.embed import Vectors
 
 JUDGE_USAGE = Usage(input_tokens=200, output_tokens=30)
 
@@ -539,59 +537,6 @@ def box(tmp_path: Path) -> Path:
     (sandbox / "notes.txt").write_text("hello from the sandbox\n", encoding="utf-8")
     (tmp_path / "outside.txt").write_text("secret\n", encoding="utf-8")
     return sandbox
-
-
-class KeywordReranker:
-    """A deterministic stand-in for a cross-encoder: score by query words the passage contains.
-
-    Crude, and crucially **a different ordering from `BagOfWordsEmbedder`'s** — a fake reranker
-    that agreed with the fake retriever could not show that reranking changed anything.
-    """
-
-    def __init__(self, *, name: str = "keyword-rerank-fake") -> None:
-        self.name = name
-        self.seen: list[tuple[str, int]] = []
-
-    def scores(self, query: str, passages: Sequence[str]) -> list[float]:
-        self.seen.append((query, len(passages)))
-        terms = set(query.casefold().split())
-        return [float(sum(word in terms for word in p.casefold().split())) for p in passages]
-
-
-FAKE_DIMENSIONS = 32
-
-
-class BagOfWordsEmbedder:
-    """Deterministic word-overlap vectors, so a test can say "this query should find that chunk".
-
-    Hashed with CRC32 rather than `hash`, which Python randomises per process. `normalise=False`
-    breaks the contract on purpose.
-    """
-
-    def __init__(self, *, normalise: bool = True) -> None:
-        self.name = "bag-of-words-fake"
-        self.dimensions = FAKE_DIMENSIONS
-        self._normalise = normalise
-
-    def embed_documents(self, texts: Sequence[str]) -> Vectors:
-        if not texts:
-            return np.zeros((0, self.dimensions), dtype=np.float32)
-        return np.vstack([self._vector(text) for text in texts])
-
-    def embed_query(self, text: str) -> Vectors:
-        return self._vector(text)
-
-    def _vector(self, text: str) -> Vectors:
-        vector = np.zeros(self.dimensions, dtype=np.float32)
-        for word in text.casefold().split():
-            vector[zlib.crc32(word.encode()) % self.dimensions] += 1.0
-        if not self._normalise:
-            return vector + 1.0
-        norm = float(np.linalg.norm(vector))
-        if norm == 0.0:
-            vector[0] = 1.0
-            return vector
-        return cast(Vectors, vector / norm)
 
 
 @pytest.fixture

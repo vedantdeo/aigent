@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from importlib.metadata import version
 from pathlib import Path
 
 import pytest
+from cltrplusf.chunk import Document
+from cltrplusf.filed import load_lines_cached
+from cltrplusf.testing import docling
 from docling_core.types.doc.document import DoclingDocument
 from pypdf import PdfWriter
 from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
 
 from aigent.facts import documents
 from aigent.facts.cfg_facts import FACTS_TICKERS, VERIFY_TICKERS
-from aigent.retrieval.chunk import Document
-
-from ..retrieval.conftest import docling
 
 _TEXT = "Interest earned 4858681 Other income 922986 Total income 5781667 " * 5
 _HTML = """<html><body>
@@ -566,3 +567,8 @@ def test_a_reading_is_built_once_and_kept_under_its_fingerprint(
 
 def test_a_reading_of_a_scan_not_held_is_never_built(tmp_path: Path) -> None:
     assert not documents.reocr_built("results/NOPE-2025-03-31.pdf#rapidocr", tmp_path, tmp_path)
+
+
+def test_a_filed_pdf_is_read_re_rowed_by_default() -> None:
+    default = inspect.signature(documents.load_verify_document).parameters["pdf"].default
+    assert default is load_lines_cached

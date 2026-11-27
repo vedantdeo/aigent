@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from cltrplusf.chunk import Chunk, Document, Inventory
+from cltrplusf.hits import Hit
 from pydantic import JsonValue
 
 from aigent.analyst import teach as module
@@ -44,8 +46,6 @@ from aigent.extraction.research import SourcedFigure
 from aigent.llm.core import Dispatch, Llm
 from aigent.llm.messages import Msg
 from aigent.llm.pricing import cost_usd
-from aigent.retrieval.chunk import Chunk, Document, Inventory
-from aigent.retrieval.hits import Hit
 
 from ..conftest import FakeMessages, MakeLlm, tool_turn, turns
 

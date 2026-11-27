@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from cltrplusf.corpus import MANIFEST, TRAINING_MANIFEST
 
 from aigent import errors
 from aigent.analyst.run import PROBE
@@ -26,7 +27,6 @@ from aigent.facts.review import DECISIONS
 from aigent.facts.review_page import REVIEW_PAGES
 from aigent.facts.share_events import SHARE_EVENTS
 from aigent.facts.table_page import TABLE_PAGES
-from aigent.retrieval.corpus import MANIFEST, TRAINING_MANIFEST
 from aigent.retrieval.questions import DATASET
 
 from .conftest import RESTATED_EPS

@@ -35,6 +35,8 @@ from pathlib import Path
 from typing import cast
 
 import psutil
+from cltrplusf.chunk import Document, Table
+from cltrplusf.corpus import assembled, elements_of, parse_cached
 
 from aigent.facts.build import build
 from aigent.facts.cfg_facts import (
@@ -122,8 +124,6 @@ from aigent.facts.table_page import (
 from aigent.facts.table_page import TEMPLATE as TABLE_TEMPLATE
 from aigent.facts.taxonomy import TAXONOMY_DIR
 from aigent.facts.trace import trace, trace_json
-from aigent.retrieval.chunk import Document, Table
-from aigent.retrieval.corpus import assembled, elements_of, parse_cached
 
 REPORT = FACTS_DB.with_name("facts-build-report.json")
 CROSSCHECK_DIR = Path(__file__).resolve().parents[3] / "evals" / "reports"

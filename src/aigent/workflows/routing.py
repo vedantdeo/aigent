@@ -11,12 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from cltrplusf.chunk import context_block
 from pydantic import BaseModel, Field
 
 from aigent.config import MAX_TOKENS_ROUTE, MAX_TOKENS_ROUTED, MODEL, SMALL_MODEL
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm.core import Llm, Request
-from aigent.retrieval.chunk import context_block
 from aigent.workflows.reports import CATALOGUE, DocId, Search
 
 ROUTER = f"You route questions about three annual reports:\n{CATALOGUE}"

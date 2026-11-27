@@ -14,13 +14,17 @@ on:
         description: an underhood ref to test against instead of the one uv.lock pins
         type: string
         default: ""
+      cltrplusf:
+        description: a cltrplusf ref to test against instead of the one uv.lock pins
+        type: string
+        default: ""
 
 jobs:
   quality:
     name: lint · types · tests
     runs-on: ubuntu-latest
     steps:
-      # A saved checkout token would override UNDERHOOD_TOKEN and 403 the underhood clone.
+      # A saved checkout token would override UNDERHOOD_TOKEN and CLTRPLUSF_TOKEN and 403 their clones.
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
@@ -44,6 +48,14 @@ jobs:
           url."https://x-access-token:${{ secrets.UNDERHOOD_TOKEN }}@github.com/vedantdeo/underhood".insteadOf
           "https://github.com/vedantdeo/underhood"
 
+      # cltrplusf, parsing and search, is cloned the same way. CLTRPLUSF_TOKEN is a fine-grained
+      # token with Contents access to it, stored as a repo secret.
+      - name: Let git reach cltrplusf
+        run: >-
+          git config --global
+          url."https://x-access-token:${{ secrets.CLTRPLUSF_TOKEN }}@github.com/vedantdeo/cltrplusf".insteadOf
+          "https://github.com/vedantdeo/cltrplusf"
+
       # --locked fails if uv.lock has drifted from pyproject.toml, which is a
       # bug worth catching on its own. The `compare` group carries LangChain for
       # the framework comparison, `graph` carries LangGraph, and `adk` Google's ADK,
@@ -52,7 +64,7 @@ jobs:
       - name: Install the locked environment
         run: uv sync --locked --group compare --group graph --group adk
 
-      # Every later step runs with --no-sync, which would otherwise put the locked underhood back.
+      # Every later step runs with --no-sync, which would otherwise put the locked ones back.
       # Its dependencies come with it, at the versions that ref asks for: hostllm, from its main.
       - name: Swap in underhood ${{ inputs.underhood }}
         if: inputs.underhood != ''
@@ -61,6 +73,14 @@ jobs:
         run: |
           uv pip install --reinstall "underhood @ git+https://github.com/vedantdeo/underhood@$REF"
           echo "checking against underhood $REF"
+
+      - name: Swap in cltrplusf ${{ inputs.cltrplusf }}
+        if: inputs.cltrplusf != ''
+        env:
+          REF: ${{ inputs.cltrplusf }}
+        run: |
+          uv pip install --reinstall "cltrplusf @ git+https://github.com/vedantdeo/cltrplusf@$REF"
+          echo "checking against cltrplusf $REF"
 
       # Each check reports its own status rather than hiding behind the first
       # failure, so one red run tells you everything that is wrong.

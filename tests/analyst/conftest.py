@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from cltrplusf.chunk import context_block
 
 from aigent.analyst.experts import figures_expert
 from aigent.analyst.router import Router
 from aigent.analyst.specialists import FigureJob, Passage, Specialist, Told, check_figures
 from aigent.analyst.toolbox import Toolbox
 from aigent.facts.store import connect
-from aigent.retrieval.chunk import context_block
 
 from ..conftest import PASSAGES
 

@@ -11,12 +11,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from cltrplusf.chunk import Chunk, context_block, squeeze
 from pydantic import BaseModel, Field
 
 from aigent.config import MAX_TOKENS_FACTS, MAX_TOKENS_NOTE
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm.core import Llm, Request
-from aigent.retrieval.chunk import Chunk, context_block, squeeze
 from aigent.workflows.reports import Search
 
 # Below this a quote proves nothing: "the company" is in every passage.

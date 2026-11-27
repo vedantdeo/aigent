@@ -10,10 +10,10 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol, cast
 
 from anthropic.types import ToolParam
+from cltrplusf.chunk import Chunk, context_block
+from cltrplusf.corpus import MANIFEST, load_corpus
+from cltrplusf.keys import keyed_search
 
-from aigent.retrieval.chunk import Chunk, context_block
-from aigent.retrieval.corpus import MANIFEST, load_corpus
-from aigent.retrieval.keys import keyed_search
 from aigent.tools import fence
 
 _DOCUMENTS = cast(

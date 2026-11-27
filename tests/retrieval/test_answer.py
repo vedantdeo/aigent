@@ -12,6 +12,9 @@ from typing import cast
 
 import pytest
 from anthropic.types import MessageTokensCount, Usage
+from cltrplusf.chunk import Document, Inventory, by_sentence, context_block
+from cltrplusf.dense import DenseIndex
+from cltrplusf.testing import BagOfWordsEmbedder
 
 from aigent.config import CLIENT, MAX_TOKENS_ANSWER, MODEL, THINKING_EVAL_PARAM
 from aigent.evals.dataset import Case
@@ -22,10 +25,8 @@ from aigent.retrieval.answer import (
     answer_task,
     spread,
 )
-from aigent.retrieval.chunk import Document, Inventory, by_sentence, context_block
-from aigent.retrieval.dense import DenseIndex
 
-from ..conftest import CAPPED, BagOfWordsEmbedder, ParsedReply
+from ..conftest import CAPPED, ParsedReply
 
 REVENUE = "Revenue for the year rose seven per cent on stronger retail volumes across the country. "
 DIVIDEND = "The board recommended a final dividend of ten rupees per equity share for the year. "

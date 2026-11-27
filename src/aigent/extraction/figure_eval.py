@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from cltrplusf.chunk import Inventory, by_sentence
+from cltrplusf.corpus import FY25_REPORTS, MANIFEST, load_corpus
 from pydantic import JsonValue
 
 from aigent.config import FIGURE_LABEL_SEED
@@ -46,8 +48,6 @@ from aigent.extraction.figures import (
     same_figure,
     unit_key,
 )
-from aigent.retrieval.chunk import Inventory, by_sentence
-from aigent.retrieval.corpus import FY25_REPORTS, MANIFEST, load_corpus
 
 
 def passages() -> dict[str, str]:

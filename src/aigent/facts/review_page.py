@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Literal, TypedDict, cast
 
 import pypdfium2
+from cltrplusf.printed import number
 
 from aigent.facts.cfg_facts import (
     REVIEW_PAGE_IMAGE_WIDTH,
@@ -23,7 +24,6 @@ from aigent.facts.cfg_facts import (
 )
 from aigent.facts.crosscheck import Checked
 from aigent.facts.documents import VERIFY_DIR, Entry, filed_of, origin_of
-from aigent.facts.printed import number
 from aigent.facts.share_events import PER_SHARE
 
 PageOutcome = Literal["agree", "differ"]

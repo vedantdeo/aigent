@@ -24,525 +24,440 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
 ## Contents
 
 <!-- generated:toc (uv run python scripts/graph_doc.py --write) -->
-- L548 0. Orientation
-- L634 1. Shape of the system
-- L704 2. Nodes
-  - L708 2.1 Modules
-    - L710 `config`
-    - L715 `llm.pricing`
-    - L722 `llm`
-    - L729 `llm.messages`
-    - L736 `llm.adapters`
-    - L745 `llm.adapters.openai.function_tool`
-    - L752 `llm.adapters.cfg_hostllm`
-    - L759 `llm.adapters.retry`
-    - L768 `llm.core`
-    - L777 `guardrails`
-    - L785 `errors`
-    - L793 `tracing`
-    - L800 `transcript`
-    - L807 `tools`
-    - L815 `report_tools`
-    - L822 `mcp_server`
-    - L830 `mcp_client`
-    - L838 `analyst.specialists`
-    - L845 `analyst.cfg_analyst`
-    - L852 `analyst.router`
-    - L860 `analyst.served`
-    - L868 `analyst.toolbox`
-    - L875 `analyst.experts`
-    - L882 `analyst.memo`
-    - L889 `analyst.graph`
-    - L897 `analyst.run`
-    - L904 `analyst.desk`
-    - L912 `analyst.metric_tools`
-    - L920 `analyst.teach`
-    - L927 `tools_config`
-    - L934 `analyst`
-    - L940 `analyst.filings`
-    - L947 `analyst.fundamentals`
-    - L955 `facts`
-    - L962 `facts.cfg_facts`
-    - L968 `facts.xbrl`
-    - L976 `facts.nse`
-    - L981 `facts.store`
-    - L989 `facts.check`
-    - L994 `facts.build`
-    - L1001 `facts.taxonomy`
-    - L1009 `facts.lookup`
-    - L1017 `facts.reference`
-    - L1025 `facts.formulas`
-    - L1032 `facts.derived_concepts`
-    - L1039 `facts.share_events`
-    - L1048 `facts.coverage`
-    - L1056 `facts.documents`
-    - L1064 `facts.line_rows`
-    - L1072 `facts.printed`
-    - L1078 `facts.crosscheck`
-    - L1086 `facts.headers`
-    - L1093 `facts.labels`
-    - L1100 `facts.vocab`
-    - L1107 `facts.rounds`
-    - L1114 `facts.review`
-    - L1122 `facts.trace`
-    - L1130 `facts.review_page`
-    - L1138 `facts.table_page`
-    - L1146 `extraction.figures`
-    - L1155 `extraction.research`
-    - L1162 `extraction.figure_training`
-    - L1170 `extraction.figure_eval`
-    - L1177 `extraction.headline_eval`
-    - L1184 `extraction.synthetic`
-    - L1191 `extraction.baseline`
-    - L1199 `extraction.headlines`
-    - L1204 `evals.dataset`
-    - L1208 `evals.grade`
-    - L1215 `evals.judge`
-    - L1219 `evals.runner`
-    - L1223 `evals.report`
-    - L1227 `retrieval.chunk`
-    - L1235 `retrieval.embed`
-    - L1242 `retrieval.dense`
-    - L1249 `retrieval.corpus`
-    - L1257 `retrieval.questions`
-    - L1261 `retrieval.evaluate`
-    - L1268 `retrieval.langchain_rag`
-    - L1273 `retrieval.sparse`
-    - L1277 `retrieval.fuse`
-    - L1281 `retrieval.rerank`
-    - L1286 `retrieval.hits`
-    - L1291 `retrieval.rank`
-    - L1297 `retrieval.keys`
-    - L1304 `workflows.reports`
-    - L1308 `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}`
-    - L1311 `workflows.orchestrator_workers_graph`
-    - L1318 `agent`
-    - L1325 `agent_graph`
-    - L1332 `agent_adk`
-    - L1340 `agent_tasks`
-    - L1349 `retrieval.answer`
-  - L1354 2.2 Settings (`config`)
-    - L1358 `config.MODEL`
-    - L1363 `config.JUDGE_MODEL`
-    - L1369 `config.SMALL_MODEL`
-    - L1376 `config.MAX_USD_PER_REQUEST`
-    - L1381 `config.MAX_USD_PER_TURN`
-    - L1388 `config.MAX_USD_PER_RUN`
-    - L1392 `config.WEB_SEARCH_RESULT_TOKENS`
-    - L1399 `config.MAX_USD_PER_EVAL`
-    - L1403 `config.MAX_USD_PER_TASK`
-    - L1410 `config.DEFAULT_MAX_TOKENS`
-    - L1418 `config.MAX_AGENT_TURNS`
-    - L1425 `config.MIN_TOKENS_FINAL_ANSWER`
-    - L1429 `config.MAX_PARALLEL_CALLS`
-    - L1434 `config.EVAL_WORKERS`
-    - L1441 `config.BATCH_POLL_SECONDS`
-    - L1447 `config.THINKING_WORKFLOW_PARAM`
-    - L1453 `config.MAX_PLAN_TASKS`
-    - L1458 `config.MAX_GRAPH_STEPS`
-    - L1462 `config.MAX_FAILURES_SHOWN`
-    - L1466 `config.TRACING`
-    - L1471 `config.MAX_TASK_CHARS`
-    - L1475 `config.MCP_SERVER_NAME`
-    - L1481 `config.MCP_CALL_TIMEOUT_SECONDS`
-    - L1487 `analyst.cfg_analyst.SPECIALIST_TRIES`
-    - L1493 config.GENERALIST_MODEL and the analyst's other settings (moved)
-    - L1498 `config.EMBED_MODEL`
-    - L1504 `config.EMBED_LOG_EVERY`
-    - L1508 `config.EMBED_SAVE_EVERY`
-    - L1514 `config.EMBED_QUERY_PREFIXES`
-    - L1521 `config.LOCAL_MODEL_DTYPE`
-    - L1528 `config.CHUNK_*`
-    - L1533 `config.ELEMENT_*`
-    - L1539 `config.HEADING_*`
-    - L1542 `config.PASSAGE_MIN_CHARS`
-    - L1548 `config.TOP_K`
-    - L1552 `config.BM25_K1`
-    - L1557 `config.FUSE_DEPTH`
-    - L1562 `config.RRF_K`
-    - L1568 `config.RERANK_*`
-    - L1573 `config.KEY_DEPTH`
-    - L1577 `config.SEARCH_METHOD`
-    - L1585 `config.FURNITURE_*`
-    - L1590 `config.THINKING_EVAL_PARAM`
-    - L1598 `config.CACHE_TTL`
-    - L1605 `config.FIGURE_LABEL_*`
-    - L1611 `config.RESEARCH_*`
-    - L1616 `config.SYNTHETIC_*`
-    - L1621 `config.BASELINE_*`
-    - L1627 `config.PAGE_SEPARATOR`
-    - L1631 `config.DOCLING_OCR`
-    - L1639 `llm.adapters.anthropic.has_credentials`
-    - L1646 `llm.adapters.anthropic.get_client`
-    - L1653 `llm.adapters.anthropic.batch_params`
-  - L1658 2.3 Cost and budget (`pricing`)
-    - L1667 `llm.pricing.Price`
-    - L1674 `llm.pricing.PRICES`
-    - L1681 `llm.pricing.PRICE_PER_WEB_SEARCH`
-    - L1686 `llm.pricing.BATCH_DISCOUNT`
-    - L1694 `llm.pricing.cost_usd`
-    - L1700 `llm.messages.Usage`
-    - L1707 `llm.messages.Failed`
-    - L1712 `llm.pricing.usage_cost`
-    - L1716 `llm.pricing.describe_usage`
-    - L1720 `errors.BudgetExceeded`
-    - L1725 `errors.BatchUnfinished`
-    - L1733 `llm.pricing.worst_case_usd`
-    - L1741 `llm.pricing.affordable_output_tokens`
-    - L1746 `llm.pricing.estimate_eval_usd`
-    - L1752 `llm.pricing.assert_request_within_budget`
-    - L1760 `llm.pricing.Budget`
-    - L1768 `llm.pricing.Budget.admit`
-    - L1776 `llm.pricing.Budget.held_usd`
-    - L1783 `llm.pricing.Budget.tripped`
-  - L1788 2.4 The model door (`llm`)
-    - L1797 `llm.core.Request`
-    - L1804 `llm.core.Llm`
-    - L1809 `llm.core.Llm.for_eval`
-    - L1815 `llm.core.Llm._traced`
-    - L1822 `llm.core.Llm.count`
-    - L1827 `llm.core.Llm.create`
-    - L1832 `llm.core.Llm.parse`
-    - L1839 `llm.core.Llm.stream`
-    - L1843 `llm.core.Llm.gather_text`
-    - L1848 `llm.core.Llm.batch_records`
-    - L1856 `llm.core.Llm._admit`
-    - L1863 `llm.core.Rehearsed`
-    - L1868 `errors.SpecialistUnreachable`
-    - L1875 `errors.StepFailed`
-    - L1880 `llm.core.describe`
-    - L1885 `llm.messages.is_client_tool`
-    - L1890 `llm.core._writes_cache`
-    - L1895 `llm.core.Llm.run_tools`
-    - L1902 `llm.core.Llm.price`
-    - L1909 `llm.core.Llm.turn`
-    - L1916 `llm.core.ToolRun`
-    - L1921 `llm.core.Llm._last_answer`
-    - L1927 `llm.core.Llm._admit_turn`
-    - L1931 `llm.core.Llm._held`
-    - L1936 `errors.TurnsExhausted`
-    - L1941 `llm.core.Dispatch`
-    - L1946 `llm.adapters.anthropic._runnable`
-  - L1951 2.5 Tools (`tools`, `report_tools`)
-    - L1958 `tools.calculate`
-    - L1962 `tools.current_time`
-    - L1966 `tools.read_file`
-    - L1971 `tools.write_file`
-    - L1979 `tools_config.SANDBOX`
-    - L1984 `tools_config.MAX_WEB_SEARCHES`
-    - L1990 `tools.CALCULATOR_TOOL`
-    - L1995 `tools.ALL_TOOLS`
-    - L2002 `tools.WEB_SEARCH_TOOL`
-    - L2009 `tools.execute_tool`
-    - L2016 `tools.WRITE_TOOLS`
-    - L2022 `report_tools.SEARCH_TOOL`
-    - L2027 `report_tools.ReportSearch`
-    - L2032 `report_tools.Searched`
-  - L2036 2.7 Project 1a (`extraction`)
-    - L2038 `extraction.headlines.Extraction`
-    - L2044 `extraction.headlines.METRICS`
-    - L2051 `extraction.headlines.QUARTERS`
-    - L2057 `extraction.headlines.Resolver`
-    - L2064 `extraction.headlines.report_unresolved`
-    - L2069 `extraction.headlines.load_directory`
-    - L2073 `extraction.headlines.Variant`
-    - L2078 `extraction.headlines.CACHE_VARIANTS`
-    - L2086 `extraction.headlines.THINKING`
-    - L2093 `extraction.headlines.measure`
-    - L2100 `extraction.headlines.VARIANTS`
-    - L2106 `extraction.headlines.extraction_task`
-    - L2113 `extraction.headlines.main`
-  - L2121 2.8 Retrieval (`retrieval`)
-    - L2127 `retrieval.chunk.Document`
-    - L2132 `retrieval.chunk.Chunk`
-    - L2137 `retrieval.chunk.Inventory`
-    - L2143 `retrieval.chunk.squeeze`
-    - L2150 `retrieval.chunk.Inventory.containing`
-    - L2156 `retrieval.chunk.fixed`
-    - L2162 `retrieval.chunk.sentences`
-    - L2169 `retrieval.chunk.by_sentence`
-    - L2177 `retrieval.chunk.headings`
-    - L2182 `retrieval.chunk.by_heading`
-    - L2189 `retrieval.chunk.by_element`
-    - L2197 `retrieval.embed.Embedder`
-    - L2202 `retrieval.embed.query_prefix_of`
-    - L2208 `retrieval.embed.LocalEmbedder`
-    - L2215 `retrieval.embed.LocalEmbedder.embed_query`
-    - L2220 `retrieval.embed.LocalEmbedder.count_truncated`
-    - L2225 `retrieval.hits.Hit`
-    - L2230 `retrieval.dense.DenseIndex`
-    - L2235 `retrieval.dense.DenseIndex.build`
-    - L2243 `retrieval.dense.DenseIndex.search`
-    - L2248 `retrieval.dense.DenseIndex.build_cached`
-    - L2255 `retrieval.dense.store_file`
-    - L2262 `retrieval.hits.rank_ids`
-    - L2266 `retrieval.corpus.read_pages`
-    - L2275 `retrieval.corpus.normalise`
-    - L2280 `retrieval.corpus._skeleton`
-    - L2285 `retrieval.corpus.strip_furniture`
-    - L2293 `retrieval.corpus.to_document`
-    - L2299 `retrieval.corpus.load_pdf`
-    - L2304 `retrieval.questions.Question`
-    - L2309 `retrieval.questions.eligible`
-    - L2314 `retrieval.questions.sample_passages`
-    - L2319 `retrieval.questions.verify`
-    - L2327 `retrieval.questions.generate`
-    - L2332 `retrieval.corpus.cache_file`
-    - L2338 `retrieval.corpus.load_pdf_cached`
-    - L2346 `retrieval.corpus.load_corpus`
-    - L2353 `retrieval.evaluate.STRATEGIES`
-    - L2360 `retrieval.evaluate.graders`
-    - L2365 `retrieval.evaluate.load_cases`
-    - L2372 `retrieval.evaluate.label_of`
-    - L2379 `retrieval.evaluate.report_of`
-    - L2386 `retrieval.evaluate.resolve`
-    - L2392 `retrieval.evaluate.retrieval_task`
-    - L2399 `retrieval.evaluate.main`
-    - L2406 `retrieval.langchain_rag.prepare`
-    - L2412 `retrieval.langchain_rag.langchain_task`
-    - L2417 `retrieval.sparse.tokenise`
-    - L2422 `retrieval.sparse.SparseIndex`
-    - L2427 `retrieval.fuse.reciprocal_rank_fusion`
-    - L2433 `retrieval.rerank.Reranker`
-    - L2438 `retrieval.rerank.LocalReranker`
-    - L2445 `retrieval.keys.build_keys`
-    - L2450 `retrieval.keys.table_context`
-    - L2454 `retrieval.keys.ParentRanker`
-    - L2459 `retrieval.keys.keyed_search`
-    - L2464 `retrieval.rerank.rerank`
-    - L2470 `retrieval.rank.METHODS`
-    - L2477 `retrieval.rank.Ranker`
-    - L2482 `retrieval.rank.Indexes`
-    - L2490 `retrieval.rank.DenseRanker`
-    - L2495 `retrieval.rank.HybridRanker`
-    - L2499 `retrieval.rank.Reranked`
-    - L2504 `retrieval.rank.scoped`
-    - L2511 `retrieval.rank.build_ranker`
-    - L2516 `retrieval.chunk.context_block`
-    - L2523 `retrieval.evaluate.ranker_task`
-    - L2530 `retrieval.evaluate.compare_retrieval`
-    - L2537 `retrieval.answer.ARMS`
-    - L2542 `retrieval.answer.Answer`
-    - L2547 `retrieval.answer.answer_task`
-    - L2554 `retrieval.answer.graders`
-    - L2560 `retrieval.answer.main`
-  - L2567 2.9 The workflow patterns (`workflows`)
-    - L2575 `workflows.reports.DocId`
-    - L2580 `workflows.reports.Search`
-    - L2585 `workflows.reports.build_search`
-    - L2592 `workflows.chaining`
-    - L2598 `workflows.routing`
-    - L2603 `workflows.parallelization`
-    - L2608 `workflows.orchestrator_workers`
-    - L2613 `workflows.evaluator_optimizer`
-    - L2618 `workflows.orchestrator_workers_graph.build`
-  - L2624 2.10 The first agent (`agent`)
-    - L2641 `agent.TOOLS`
-    - L2646 `agent.cited`
-    - L2651 `agent.WebSources`
-    - L2658 `agent.run`
-    - L2663 `agent.FINISH`
-  - L2667 2.11 The eval harness (`evals`)
-    - L2672 `evals.dataset.Case`
-    - L2677 `evals.dataset.load_jsonl`
-    - L2682 `evals.dataset.digest`
-    - L2687 `evals.grade.Outcome`
-    - L2692 `evals.grade.Score`
-    - L2697 `evals.grade.Grader`
-    - L2702 `evals.grade.BatchGrader`
-    - L2707 `evals.grade.exact_match`
-    - L2712 `evals.grade.regex`
-    - L2718 `evals.grade.pydantic_valid`
-    - L2722 `evals.grade.field_match`
-    - L2727 `evals.grade.flag`
-    - L2734 `evals.grade.right_tools`
-    - L2741 `evals.grade.resolvable`
-    - L2747 `evals.grade.recall_at_k`
-    - L2753 `evals.grade.hit_at_k`
-    - L2760 `evals.grade.reciprocal_rank`
-    - L2765 `evals.judge.LlmJudge`
-    - L2772 `evals.judge.Verdict`
-    - L2777 `evals.runner.Task`
-    - L2782 `evals.runner.RowResult`
-    - L2787 `evals.runner.EvalRun`
-    - L2792 `evals.runner.run_eval`
-    - L2800 `evals.runner.combine`
-    - L2806 `evals.report.to_markdown`
-    - L2811 `evals.report._metrics_table`
-    - L2816 `evals.report._grading_models`
-    - L2820 `evals.report.write_report`
-  - L2827 2.12 Tests
-    - L2829 `tests.llm.test_pricing`
-    - L2836 `tests.test_tools`
-    - L2843 `tests.llm.test_core`
-    - L2850 `tests.conftest.FakeAnthropic`
-    - L2856 `tests.workflows.test_<pattern>`
-    - L2862 `tests.test_agent`
-    - L2867 `tests.test_agent_graph`
-    - L2874 `tests.test_agent_adk`
-    - L2881 `tests.test_agent_tasks`
-    - L2888 `tests.llm.test_batch`
-    - L2895 `tests.test_report_tools`
-    - L2900 `tests.workflows.test_patterns`
-    - L2905 `tests.workflows.test_reports`
-    - L2912 `tests.conftest.make_judge`
-    - L2917 `tests.conftest.CAPPED`
-    - L2924 `tests.test_api_smoke`
-    - L2928 `tests.evals.test_dataset`
-    - L2933 `tests.evals.test_graders`
-    - L2940 `tests.conftest.KeywordReranker`
-    - L2945 `tests.conftest.BagOfWordsEmbedder`
-    - L2950 `tests.retrieval.test_chunk`
-    - L2955 `tests.retrieval.test_corpus`
-    - L2962 `tests.retrieval.test_questions`
-    - L2968 `tests.retrieval.test_answer`
-    - L2973 `tests.retrieval.test_langchain_rag`
-    - L2979 `tests.retrieval.test_sparse`
-    - L2984 `tests.retrieval.test_fuse`
-    - L2990 `tests.retrieval.test_rerank`
-    - L2995 `tests.retrieval.test_evaluate`
-    - L3002 `tests.retrieval.test_keys`
-    - L3009 `tests.retrieval.test_embed`
-    - L3016 `tests.retrieval.test_rank`
-    - L3021 `tests.retrieval.test_dense`
-    - L3029 `tests.evals.test_runner`
-    - L3036 `tests.extraction.test_synthetic`
-    - L3043 `tests.extraction.test_baseline`
-    - L3050 `tests.extraction.test_headlines`
-    - L3057 `tests.test_underhood`
-    - L3064 `tests.test_mcp_server`
-    - L3072 `tests.test_mcp_client`
-    - L3080 `tests.analyst.test_specialists`
-    - L3087 `tests.analyst.test_router`
-    - L3094 `tests.analyst.test_served`
-    - L3101 `tests.analyst.test_toolbox`
-    - L3108 `tests.analyst.test_fundamentals`
-    - L3115 `tests.analyst.test_teach`
-    - L3122 `tests.analyst.test_graph`
-    - L3129 `tests.analyst.test_desk`
-    - L3136 `tests.analyst.test_metric_tools`
-    - L3143 `tests.test_reference_data`
-    - L3151 `tests.evals.test_report`
-    - L3156 `tests.test_graph_doc`
-    - L3164 `tests.facts`
-  - L3171 2.13 Non-code nodes
-    - L3173 `sandbox/`
-    - L3178 `evals/`
-    - L3184 `evals/reference/nse-tickers.json`
-    - L3191 `evals/datasets/headlines.jsonl`
-    - L3199 `corpus/`
-    - L3205 `evals/reference/corpus-manifest.json`
-    - L3211 `scripts/fetch-corpus.sh`
-    - L3217 `evals/datasets/retrieval.jsonl`
-    - L3225 `evals/datasets/retrieval-tables.jsonl`
-    - L3233 `evals/datasets/retrieval-paraphrased.jsonl`
-    - L3241 `evals/datasets/tasks.jsonl`
-    - L3248 `docs/framework-comparison.md`
-    - L3253 `docs/tool-runner.md`
-    - L3257 `docs/langgraph.md`
-    - L3262 `docs/agent-frameworks.md`
-    - L3269 `docs/v0.2-agent.md`
-    - L3276 `docs/capstone.md`
-    - L3283 `docs/facts-db.md`
-    - L3289 corpus cache: `corpus/.cache/xbrl/`, `taxonomy/`, `facts.sqlite`
-    - L3294 `evals/reference/fundamentals.json`
-    - L3301 `evals/reference/table-figures.json`
-    - L3308 `docs/context-management.md`
-    - L3313 `LOG.md`
-    - L3319 `docs/development.md`
-    - L3325 `README.md`
-    - L3331 `pyproject.toml`
-    - L3338 `.env.example`
-    - L3342 `CLAUDE.md`
-    - L3349 `.githooks/pre-commit`
-    - L3356 `scripts/check-knowledge-graph.sh`
-    - L3363 `.github/workflows/knowledge-graph.yml`
-    - L3368 `scripts/graph_doc.py`
-    - L3377 `.github/workflows/checks.yml`
-    - L3385 `.github/workflows/main.yml`
-    - L3392 `.github/workflows/release.yml`
-    - L3400 roadmap
-- L3407 3. Edges
-  - L3411 Imports (generated)
-  - L4051 Layering rules (checked)
-  - L4112 Reads and writes
-  - L4126 Enforcement and control flow
-  - L4179 Tested-by
-  - L4215 Environment
-- L4243 4. Invariants
-    - L4247 Invariant 1: Every paid call is preceded by a free count and the per-request check
-    - L4253 Invariant 2: Cost is reported, always
-    - L4257 Invariant 3: The assistant turn is echoed back verbatim
-    - L4260 Invariant 4: All tool results for one turn go back in ONE user message
-    - L4265 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
-    - L4269 Invariant 6: Both loops are capped
-    - L4276 Invariant 7: A file tool resolves before it compares
-    - L4282 Invariant 8: One home each for constants, clients, prices and model calls
-    - L4289 Invariant 9: Paid tests carry `@pytest.mark.live`
-    - L4292 Invariant 10: Types are complete
-    - L4295 Invariant 11: An eval survives its own bad rows
-    - L4299 Invariant 12: Every dollar an eval spends lands in one budget
-    - L4306 Invariant 13: A model is asked to read, never to join
-    - L4311 Invariant 14: The harness imports no capability module
-    - L4315 Invariant 15: An eval is a measurement, so nothing about it may wobble
-    - L4321 Invariant 16: A prompt never quotes its own test set
-    - L4328 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
-    - L4333 Invariant 18: Retrieval is graded before generation, and it is free
-    - L4338 Invariant 19: A page never leaves the page sequence
-    - L4343 Invariant 20: A retrieval label must identify one document, not merely appear in one
-    - L4349 Invariant 21: The ranking that is measured is the ranking that is used
-    - L4355 Invariant 22: A ceiling refuses spending before it happens, not only after
-    - L4362 Invariant 23: Every error the package defines lives in `errors`
-    - L4367 Invariant 24: A call is shaped by the client it goes to
-    - L4373 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
-    - L4379 Invariant 26: Tracing observes and never steers
-    - L4385 Invariant 27: A request is sent again only if it cannot have been billed
-    - L4391 Invariant 28: Text someone else wrote reaches the model fenced
-    - L4397 Invariant 29: A write runs only where a caller opted in, and never overwrites
-    - L4403 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
-    - L4409 Invariant 31: A per-share figure is compared only on one share basis
-    - L4415 Invariant 32: A filed figure is matched only against text, and its stamp names the copy and the reading
-    - L4421 Invariant 33: A machine check lasts only as long as the reading it agreed by
-- L4427 5. Where the next work attaches
-  - L4431 5.1 Open seams
-    - L4433 Seam: Facts database — step 2
-    - L4439 Seam: Week 6 — LangGraph agent
-    - L4443 Seam: Week 5 — async and batch evals
-    - L4450 Seam: Week 4 — compaction, when a task outgrows a turn
-    - L4456 Seam: Week 3 — measure a pattern
-    - L4461 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
-    - L4466 Seam: Week 3 — anything that searches the reports
-    - L4473 Seam: adding a tool
-    - L4477 Seam: adding a grader
-  - L4481 5.2 Consumed and superseded seams
-    - L4483 Seam: Week 1 — Project 1a
-    - L4488 Seam: Week 1 — prompt caching
-    - L4494 Seam: superseded — caching as two variants of one eval
-    - L4499 Seam: Week 1 — measure the un-saturated eval
-    - L4505 Seam: Week 1 — label the backlog
-    - L4510 Seam: Week 1 — break things on purpose
-    - L4516 Seam: Week 2 — retrieval metrics
-    - L4522 Seam: Week 2 — the four modules
-    - L4528 Seam: Week 2 — the corpus
-    - L4534 Seam: Week 2 — the retrieval dataset
-    - L4539 Seam: Week 2 — the measured run
-    - L4545 Seam: superseded — questions labelled with a quote
-    - L4550 Seam: Week 2 — hybrid and rerank
-    - L4556 Seam: Week 2 — answer-level eval
-    - L4564 Seam: Week 2 — RAG milestone `v0.1-rag`
-    - L4570 Seam: Week 3 — every model call through `llm`
-    - L4577 Seam: Week 3 — the five workflow patterns
-    - L4583 Seam: Week 3 — orchestrator-workers as a graph
-    - L4590 Seam: Week 4 — the toy fine-tune
-    - L4596 Seam: Week 3 — answer locally, judge on Anthropic
-    - L4602 Seam: Week 3 — context management
-    - L4607 Seam: Week 3 — server-side web search
-    - L4614 Seam: Week 5 — SDK tool runner
-    - L4620 Seam: Week 5 — tracing
-    - L4627 Seam: Week 5 — explicit retries
-    - L4633 Seam: Week 5 — guardrails
-    - L4640 Seam: Week 6 — MCP client
-- L4648 Maintenance
+- L463 0. Orientation
+- L561 1. Shape of the system
+- L631 2. Nodes
+  - L635 2.1 Modules
+    - L637 `config`
+    - L642 `llm.pricing`
+    - L649 `llm`
+    - L656 `llm.messages`
+    - L663 `llm.adapters`
+    - L672 `llm.adapters.openai.function_tool`
+    - L679 `llm.adapters.cfg_hostllm`
+    - L686 `llm.adapters.retry`
+    - L695 `llm.core`
+    - L704 `guardrails`
+    - L712 `errors`
+    - L720 `tracing`
+    - L727 `transcript`
+    - L734 `tools`
+    - L742 `report_tools`
+    - L749 `mcp_server`
+    - L757 `mcp_client`
+    - L765 `analyst.specialists`
+    - L772 `analyst.cfg_analyst`
+    - L779 `analyst.router`
+    - L787 `analyst.served`
+    - L795 `analyst.toolbox`
+    - L802 `analyst.experts`
+    - L809 `analyst.memo`
+    - L816 `analyst.graph`
+    - L824 `analyst.run`
+    - L831 `analyst.desk`
+    - L839 `analyst.metric_tools`
+    - L847 `analyst.teach`
+    - L854 `tools_config`
+    - L861 `analyst`
+    - L867 `analyst.filings`
+    - L874 `analyst.fundamentals`
+    - L882 `facts`
+    - L889 `facts.cfg_facts`
+    - L895 `facts.xbrl`
+    - L903 `facts.nse`
+    - L908 `facts.store`
+    - L916 `facts.check`
+    - L921 `facts.build`
+    - L928 `facts.taxonomy`
+    - L936 `facts.lookup`
+    - L944 `facts.reference`
+    - L952 `facts.formulas`
+    - L959 `facts.derived_concepts`
+    - L966 `facts.share_events`
+    - L975 `facts.coverage`
+    - L983 `facts.documents`
+    - L991 `facts.crosscheck`
+    - L999 `facts.headers`
+    - L1006 `facts.labels`
+    - L1013 `facts.vocab`
+    - L1020 `facts.rounds`
+    - L1027 `facts.review`
+    - L1035 `facts.trace`
+    - L1043 `facts.review_page`
+    - L1051 `facts.table_page`
+    - L1059 `extraction.figures`
+    - L1068 `extraction.research`
+    - L1075 `extraction.figure_training`
+    - L1083 `extraction.figure_eval`
+    - L1090 `extraction.headline_eval`
+    - L1097 `extraction.synthetic`
+    - L1104 `extraction.baseline`
+    - L1112 `extraction.headlines`
+    - L1117 `evals.dataset`
+    - L1121 `evals.grade`
+    - L1128 `evals.judge`
+    - L1132 `evals.runner`
+    - L1136 `evals.report`
+    - L1140 `retrieval.questions`
+    - L1144 `retrieval.evaluate`
+    - L1151 `retrieval.langchain_rag`
+    - L1156 `workflows.reports`
+    - L1160 `workflows.{chaining, routing, parallelization, orchestrator_workers, evaluator_optimizer}`
+    - L1163 `workflows.orchestrator_workers_graph`
+    - L1170 `agent`
+    - L1177 `agent_graph`
+    - L1184 `agent_adk`
+    - L1192 `agent_tasks`
+    - L1201 `retrieval.answer`
+  - L1206 2.2 Settings (`config`)
+    - L1210 `config.MODEL`
+    - L1215 `config.JUDGE_MODEL`
+    - L1221 `config.SMALL_MODEL`
+    - L1228 `config.MAX_USD_PER_REQUEST`
+    - L1233 `config.MAX_USD_PER_TURN`
+    - L1240 `config.MAX_USD_PER_RUN`
+    - L1244 `config.WEB_SEARCH_RESULT_TOKENS`
+    - L1251 `config.MAX_USD_PER_EVAL`
+    - L1255 `config.MAX_USD_PER_TASK`
+    - L1262 `config.DEFAULT_MAX_TOKENS`
+    - L1270 `config.MAX_AGENT_TURNS`
+    - L1277 `config.MIN_TOKENS_FINAL_ANSWER`
+    - L1281 `config.MAX_PARALLEL_CALLS`
+    - L1286 `config.EVAL_WORKERS`
+    - L1293 `config.BATCH_POLL_SECONDS`
+    - L1299 `config.THINKING_WORKFLOW_PARAM`
+    - L1305 `config.MAX_PLAN_TASKS`
+    - L1310 `config.MAX_GRAPH_STEPS`
+    - L1314 `config.MAX_FAILURES_SHOWN`
+    - L1318 `config.TRACING`
+    - L1323 `config.MAX_TASK_CHARS`
+    - L1327 `config.MCP_SERVER_NAME`
+    - L1333 `config.MCP_CALL_TIMEOUT_SECONDS`
+    - L1339 `analyst.cfg_analyst.SPECIALIST_TRIES`
+    - L1345 config.GENERALIST_MODEL and the analyst's other settings (moved)
+    - L1350 `config.CHUNK_*`
+    - L1355 `config.ELEMENT_*`
+    - L1361 `config.HEADING_*`
+    - L1364 `config.PASSAGE_MIN_CHARS`
+    - L1370 `config.RERANK_*`
+    - L1375 `config.FURNITURE_*`
+    - L1380 `config.THINKING_EVAL_PARAM`
+    - L1388 `config.CACHE_TTL`
+    - L1395 `config.FIGURE_LABEL_*`
+    - L1401 `config.RESEARCH_*`
+    - L1406 `config.SYNTHETIC_*`
+    - L1411 `config.BASELINE_*`
+    - L1417 `llm.adapters.anthropic.has_credentials`
+    - L1424 `llm.adapters.anthropic.get_client`
+    - L1431 `llm.adapters.anthropic.batch_params`
+  - L1436 2.3 Cost and budget (`pricing`)
+    - L1445 `llm.pricing.Price`
+    - L1452 `llm.pricing.PRICES`
+    - L1459 `llm.pricing.PRICE_PER_WEB_SEARCH`
+    - L1464 `llm.pricing.BATCH_DISCOUNT`
+    - L1472 `llm.pricing.cost_usd`
+    - L1478 `llm.messages.Usage`
+    - L1485 `llm.messages.Failed`
+    - L1490 `llm.pricing.usage_cost`
+    - L1494 `llm.pricing.describe_usage`
+    - L1498 `errors.BudgetExceeded`
+    - L1503 `errors.BatchUnfinished`
+    - L1511 `llm.pricing.worst_case_usd`
+    - L1519 `llm.pricing.affordable_output_tokens`
+    - L1524 `llm.pricing.estimate_eval_usd`
+    - L1530 `llm.pricing.assert_request_within_budget`
+    - L1538 `llm.pricing.Budget`
+    - L1546 `llm.pricing.Budget.admit`
+    - L1554 `llm.pricing.Budget.held_usd`
+    - L1561 `llm.pricing.Budget.tripped`
+  - L1566 2.4 The model door (`llm`)
+    - L1575 `llm.core.Request`
+    - L1582 `llm.core.Llm`
+    - L1587 `llm.core.Llm.for_eval`
+    - L1593 `llm.core.Llm._traced`
+    - L1600 `llm.core.Llm.count`
+    - L1605 `llm.core.Llm.create`
+    - L1610 `llm.core.Llm.parse`
+    - L1617 `llm.core.Llm.stream`
+    - L1621 `llm.core.Llm.gather_text`
+    - L1626 `llm.core.Llm.batch_records`
+    - L1634 `llm.core.Llm._admit`
+    - L1641 `llm.core.Rehearsed`
+    - L1646 `errors.SpecialistUnreachable`
+    - L1653 `errors.StepFailed`
+    - L1658 `llm.core.describe`
+    - L1663 `llm.messages.is_client_tool`
+    - L1668 `llm.core._writes_cache`
+    - L1673 `llm.core.Llm.run_tools`
+    - L1680 `llm.core.Llm.price`
+    - L1687 `llm.core.Llm.turn`
+    - L1694 `llm.core.ToolRun`
+    - L1699 `llm.core.Llm._last_answer`
+    - L1705 `llm.core.Llm._admit_turn`
+    - L1709 `llm.core.Llm._held`
+    - L1714 `errors.TurnsExhausted`
+    - L1719 `llm.core.Dispatch`
+    - L1724 `llm.adapters.anthropic._runnable`
+  - L1729 2.5 Tools (`tools`, `report_tools`)
+    - L1736 `tools.calculate`
+    - L1740 `tools.current_time`
+    - L1744 `tools.read_file`
+    - L1749 `tools.write_file`
+    - L1757 `tools_config.SANDBOX`
+    - L1762 `tools_config.MAX_WEB_SEARCHES`
+    - L1768 `tools.CALCULATOR_TOOL`
+    - L1773 `tools.ALL_TOOLS`
+    - L1780 `tools.WEB_SEARCH_TOOL`
+    - L1787 `tools.execute_tool`
+    - L1794 `tools.WRITE_TOOLS`
+    - L1800 `report_tools.SEARCH_TOOL`
+    - L1805 `report_tools.ReportSearch`
+    - L1810 `report_tools.Searched`
+  - L1814 2.7 Project 1a (`extraction`)
+    - L1816 `extraction.headlines.Extraction`
+    - L1822 `extraction.headlines.METRICS`
+    - L1829 `extraction.headlines.QUARTERS`
+    - L1835 `extraction.headlines.Resolver`
+    - L1842 `extraction.headlines.report_unresolved`
+    - L1847 `extraction.headlines.load_directory`
+    - L1851 `extraction.headlines.Variant`
+    - L1856 `extraction.headlines.CACHE_VARIANTS`
+    - L1864 `extraction.headlines.THINKING`
+    - L1871 `extraction.headlines.measure`
+    - L1878 `extraction.headlines.VARIANTS`
+    - L1884 `extraction.headlines.extraction_task`
+    - L1891 `extraction.headlines.main`
+  - L1899 2.8 Retrieval (`retrieval`)
+    - L1905 `retrieval.questions.Question`
+    - L1910 `retrieval.questions.eligible`
+    - L1915 `retrieval.questions.sample_passages`
+    - L1920 `retrieval.questions.verify`
+    - L1928 `retrieval.questions.generate`
+    - L1933 `retrieval.evaluate.STRATEGIES`
+    - L1940 `retrieval.evaluate.graders`
+    - L1945 `retrieval.evaluate.load_cases`
+    - L1952 `retrieval.evaluate.label_of`
+    - L1959 `retrieval.evaluate.report_of`
+    - L1966 `retrieval.evaluate.resolve`
+    - L1972 `retrieval.evaluate.retrieval_task`
+    - L1979 `retrieval.evaluate.main`
+    - L1986 `retrieval.langchain_rag.prepare`
+    - L1992 `retrieval.langchain_rag.langchain_task`
+    - L1997 `retrieval.evaluate.ranker_task`
+    - L2004 `retrieval.evaluate.compare_retrieval`
+    - L2011 `retrieval.answer.ARMS`
+    - L2016 `retrieval.answer.Answer`
+    - L2021 `retrieval.answer.answer_task`
+    - L2028 `retrieval.answer.graders`
+    - L2034 `retrieval.answer.main`
+  - L2041 2.9 The workflow patterns (`workflows`)
+    - L2049 `workflows.reports.DocId`
+    - L2054 `workflows.reports.Search`
+    - L2059 `workflows.reports.build_search`
+    - L2066 `workflows.chaining`
+    - L2072 `workflows.routing`
+    - L2077 `workflows.parallelization`
+    - L2082 `workflows.orchestrator_workers`
+    - L2087 `workflows.evaluator_optimizer`
+    - L2092 `workflows.orchestrator_workers_graph.build`
+  - L2098 2.10 The first agent (`agent`)
+    - L2115 `agent.TOOLS`
+    - L2120 `agent.cited`
+    - L2125 `agent.WebSources`
+    - L2132 `agent.run`
+    - L2137 `agent.FINISH`
+  - L2141 2.11 The eval harness (`evals`)
+    - L2146 `evals.dataset.Case`
+    - L2151 `evals.dataset.load_jsonl`
+    - L2156 `evals.dataset.digest`
+    - L2161 `evals.grade.Outcome`
+    - L2166 `evals.grade.Score`
+    - L2171 `evals.grade.Grader`
+    - L2176 `evals.grade.BatchGrader`
+    - L2181 `evals.grade.exact_match`
+    - L2186 `evals.grade.regex`
+    - L2192 `evals.grade.pydantic_valid`
+    - L2196 `evals.grade.field_match`
+    - L2201 `evals.grade.flag`
+    - L2208 `evals.grade.right_tools`
+    - L2215 `evals.grade.resolvable`
+    - L2221 `evals.grade.recall_at_k`
+    - L2227 `evals.grade.hit_at_k`
+    - L2234 `evals.grade.reciprocal_rank`
+    - L2239 `evals.judge.LlmJudge`
+    - L2246 `evals.judge.Verdict`
+    - L2251 `evals.runner.Task`
+    - L2256 `evals.runner.RowResult`
+    - L2261 `evals.runner.EvalRun`
+    - L2266 `evals.runner.run_eval`
+    - L2274 `evals.runner.combine`
+    - L2280 `evals.report.to_markdown`
+    - L2285 `evals.report._metrics_table`
+    - L2290 `evals.report._grading_models`
+    - L2294 `evals.report.write_report`
+  - L2301 2.12 Tests
+    - L2303 `tests.llm.test_pricing`
+    - L2310 `tests.test_tools`
+    - L2317 `tests.llm.test_core`
+    - L2324 `tests.conftest.FakeAnthropic`
+    - L2330 `tests.workflows.test_<pattern>`
+    - L2336 `tests.test_agent`
+    - L2341 `tests.test_agent_graph`
+    - L2348 `tests.test_agent_adk`
+    - L2355 `tests.test_agent_tasks`
+    - L2362 `tests.llm.test_batch`
+    - L2369 `tests.test_report_tools`
+    - L2374 `tests.workflows.test_patterns`
+    - L2379 `tests.workflows.test_reports`
+    - L2386 `tests.conftest.make_judge`
+    - L2391 `tests.conftest.CAPPED`
+    - L2398 `tests.test_api_smoke`
+    - L2402 `tests.evals.test_dataset`
+    - L2407 `tests.evals.test_graders`
+    - L2414 `tests.conftest.BagOfWordsEmbedder`
+    - L2419 `tests.retrieval.test_questions`
+    - L2425 `tests.retrieval.test_answer`
+    - L2430 `tests.retrieval.test_langchain_rag`
+    - L2436 `tests.retrieval.test_evaluate`
+    - L2443 `tests.evals.test_runner`
+    - L2450 `tests.extraction.test_synthetic`
+    - L2457 `tests.extraction.test_baseline`
+    - L2464 `tests.extraction.test_headlines`
+    - L2471 `tests.test_underhood`
+    - L2478 `tests.test_mcp_server`
+    - L2486 `tests.test_mcp_client`
+    - L2494 `tests.analyst.test_specialists`
+    - L2501 `tests.analyst.test_router`
+    - L2508 `tests.analyst.test_served`
+    - L2515 `tests.analyst.test_toolbox`
+    - L2522 `tests.analyst.test_fundamentals`
+    - L2529 `tests.analyst.test_teach`
+    - L2536 `tests.analyst.test_graph`
+    - L2543 `tests.analyst.test_desk`
+    - L2550 `tests.analyst.test_metric_tools`
+    - L2557 `tests.test_reference_data`
+    - L2565 `tests.evals.test_report`
+    - L2570 `tests.test_graph_doc`
+    - L2578 `tests.facts`
+  - L2585 2.13 Non-code nodes
+    - L2587 `cltrplusf`
+    - L2594 `sandbox/`
+    - L2599 `evals/`
+    - L2605 `evals/reference/nse-tickers.json`
+    - L2612 `evals/datasets/headlines.jsonl`
+    - L2620 `corpus/`
+    - L2626 `evals/reference/corpus-manifest.json`
+    - L2632 `scripts/fetch-corpus.sh`
+    - L2638 `evals/datasets/retrieval.jsonl`
+    - L2646 `evals/datasets/retrieval-tables.jsonl`
+    - L2654 `evals/datasets/retrieval-paraphrased.jsonl`
+    - L2662 `evals/datasets/tasks.jsonl`
+    - L2669 `docs/framework-comparison.md`
+    - L2674 `docs/tool-runner.md`
+    - L2678 `docs/langgraph.md`
+    - L2683 `docs/agent-frameworks.md`
+    - L2690 `docs/v0.2-agent.md`
+    - L2697 `docs/capstone.md`
+    - L2704 `docs/facts-db.md`
+    - L2710 corpus cache: `corpus/.cache/xbrl/`, `taxonomy/`, `facts.sqlite`
+    - L2715 `evals/reference/fundamentals.json`
+    - L2722 `evals/reference/table-figures.json`
+    - L2729 `docs/context-management.md`
+    - L2734 `LOG.md`
+    - L2740 `docs/development.md`
+    - L2746 `README.md`
+    - L2752 `pyproject.toml`
+    - L2759 `.env.example`
+    - L2763 `CLAUDE.md`
+    - L2770 `.githooks/pre-commit`
+    - L2777 `scripts/check-knowledge-graph.sh`
+    - L2784 `.github/workflows/knowledge-graph.yml`
+    - L2789 `scripts/graph_doc.py`
+    - L2798 `.github/workflows/checks.yml`
+    - L2806 `.github/workflows/main.yml`
+    - L2813 `.github/workflows/release.yml`
+    - L2821 roadmap
+- L2828 3. Edges
+  - L2832 Imports (generated)
+  - L3417 Layering rules (checked)
+  - L3467 Reads and writes
+  - L3481 Enforcement and control flow
+  - L3534 Tested-by
+  - L3570 Environment
+- L3598 4. Invariants
+    - L3602 Invariant 1: Every paid call is preceded by a free count and the per-request check
+    - L3608 Invariant 2: Cost is reported, always
+    - L3612 Invariant 3: The assistant turn is echoed back verbatim
+    - L3615 Invariant 4: All tool results for one turn go back in ONE user message
+    - L3620 Invariant 5: Tool errors are `tool_result` with `is_error: True`, never exceptions
+    - L3624 Invariant 6: Both loops are capped
+    - L3631 Invariant 7: A file tool resolves before it compares
+    - L3637 Invariant 8: One home each for constants, clients, prices and model calls
+    - L3644 Invariant 9: Paid tests carry `@pytest.mark.live`
+    - L3647 Invariant 10: Types are complete
+    - L3650 Invariant 11: An eval survives its own bad rows
+    - L3654 Invariant 12: Every dollar an eval spends lands in one budget
+    - L3661 Invariant 13: A model is asked to read, never to join
+    - L3666 Invariant 14: The harness imports no capability module
+    - L3670 Invariant 15: An eval is a measurement, so nothing about it may wobble
+    - L3676 Invariant 16: A prompt never quotes its own test set
+    - L3683 Invariant 17: A chunk id belongs to one inventory, and the inventory names its strategy
+    - L3688 Invariant 18: Retrieval is graded before generation, and it is free
+    - L3693 Invariant 19: A page never leaves the page sequence
+    - L3698 Invariant 20: A retrieval label must identify one document, not merely appear in one
+    - L3704 Invariant 21: The ranking that is measured is the ranking that is used
+    - L3710 Invariant 22: A ceiling refuses spending before it happens, not only after
+    - L3717 Invariant 23: Every error the package defines lives in `errors`
+    - L3722 Invariant 24: A call is shaped by the client it goes to
+    - L3728 Invariant 25: A cache is keyed by everything that made its contents, and is asked for, never assumed
+    - L3734 Invariant 26: Tracing observes and never steers
+    - L3740 Invariant 27: A request is sent again only if it cannot have been billed
+    - L3746 Invariant 28: Text someone else wrote reaches the model fenced
+    - L3752 Invariant 29: A write runs only where a caller opted in, and never overwrites
+    - L3758 Invariant 30: The facts database's XBRL rows are what the filing states, or an issue
+    - L3764 Invariant 31: A per-share figure is compared only on one share basis
+    - L3770 Invariant 32: A filed figure is matched only against text, and its stamp names the copy and the reading
+    - L3776 Invariant 33: A machine check lasts only as long as the reading it agreed by
+- L3782 5. Where the next work attaches
+  - L3786 5.1 Open seams
+    - L3788 Seam: Facts database — step 2
+    - L3794 Seam: Week 6 — LangGraph agent
+    - L3798 Seam: Week 5 — async and batch evals
+    - L3805 Seam: Week 4 — compaction, when a task outgrows a turn
+    - L3811 Seam: Week 3 — measure a pattern
+    - L3816 Seam: Week 3 — tool-description experiment (**postponed 2026-09-22**)
+    - L3821 Seam: Week 3 — anything that searches the reports
+    - L3828 Seam: adding a tool
+    - L3832 Seam: adding a grader
+  - L3836 5.2 Consumed and superseded seams
+    - L3838 Seam: Week 1 — Project 1a
+    - L3843 Seam: Week 1 — prompt caching
+    - L3849 Seam: superseded — caching as two variants of one eval
+    - L3854 Seam: Week 1 — measure the un-saturated eval
+    - L3860 Seam: Week 1 — label the backlog
+    - L3865 Seam: Week 1 — break things on purpose
+    - L3871 Seam: Week 2 — retrieval metrics
+    - L3877 Seam: Week 2 — the four modules
+    - L3883 Seam: Week 2 — the corpus
+    - L3889 Seam: Week 2 — the retrieval dataset
+    - L3894 Seam: Week 2 — the measured run
+    - L3900 Seam: superseded — questions labelled with a quote
+    - L3905 Seam: Week 2 — hybrid and rerank
+    - L3911 Seam: Week 2 — answer-level eval
+    - L3919 Seam: Week 2 — RAG milestone `v0.1-rag`
+    - L3925 Seam: Week 3 — every model call through `llm`
+    - L3932 Seam: Week 3 — the five workflow patterns
+    - L3938 Seam: Week 3 — orchestrator-workers as a graph
+    - L3945 Seam: Week 4 — the toy fine-tune
+    - L3951 Seam: Week 3 — answer locally, judge on Anthropic
+    - L3957 Seam: Week 3 — context management
+    - L3962 Seam: Week 3 — server-side web search
+    - L3969 Seam: Week 5 — SDK tool runner
+    - L3975 Seam: Week 5 — tracing
+    - L3982 Seam: Week 5 — explicit retries
+    - L3988 Seam: Week 5 — guardrails
+    - L3995 Seam: Week 6 — MCP client
+- L4003 Maintenance
 <!-- /generated:toc -->
 
 ## 0. Orientation
@@ -553,7 +468,7 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
 > (Project 1a) and `week02/` became `retrieval/`; the test tree mirrors it. Roadmap weeks still
 > appear in §5, where they are dates rather than module names.
 >
-> **Snap and roll, twice a week, both repos as one** (2026-10-07; one joint run since 2026-10-08):
+> **Snap and roll, twice a week, the repos as one** (2026-10-07; one joint run since 2026-10-08; cltrplusf joined 2026-11-27, making a trio):
 > aigent's `release.yml`, Mon and Thu 00:07 IST. `snap` branches underhood's `main` and then
 > aigent's, re-pinned to it on the snap branch only, as `snap-YYYY-MM-DD` (the last eight kept in each); `roll-underhood` and
 > `roll-aigent` run each repo's checks on its snap; `stable`, only if both pass, tags both snaps
@@ -571,6 +486,18 @@ decisions behind it. It is ~90k tokens, so search and slice it; never read it wh
 > date. underhood declares no dependencies, its model stack being in dependency groups only its
 > own `uv sync` installs, so aigent gets `config` and `gpu/` and never torch through it. It is the
 > seam for starting a GPU session for a local model from aigent.
+>
+> **cltrplusf is a dependency** (2026-11-27, Vedant's call): parsing and search moved out with
+> their git history, so `retrieval.{chunk,corpus,dense,embed,fuse,hits,keys,rank,rerank,sparse}`,
+> `facts.printed`, `facts.line_rows` and the words half of `facts.documents` are now
+> `cltrplusf.{…}` and `cltrplusf.filed`, and their settings `cltrplusf.config`. Their nodes moved
+> to cltrplusf's own `docs/knowledge-graph.md`, history included. aigent keeps every model call
+> (`retrieval.answer`, `retrieval.questions`), the retrieval eval and `facts`. It is pinned exactly
+> as underhood is, on `branch = "main"`, re-pinned at each snap, and `release.yml` snaps and rolls
+> the three repos together. `aigent/__init__.py` names this checkout as `CLTRPLUSF_HOME`, so
+> cltrplusf reads aigent's `corpus/`. The move changed no function body: the Docling, ingest and
+> words fingerprints held; the lines fingerprint moved with `line_rows`'s import lines, and the
+> rebuilt lines cache matched the old one file for file (90 of 90).
 >
 > **Everything that talks to a model lives in `llm/`** (2026-10-07): `core` (the door, which was
 > `llm.py`), `messages`, `pricing` and `adapters/`, moved whole with history. `llm/__init__.py`
@@ -635,7 +562,7 @@ If the code has moved since, trust the code and update this file (see [Maintenan
 
 ```mermaid
 graph TD
-    subgraph retrieval["retrieval/ — chunk, embed, rank"]
+    subgraph retrieval["cltrplusf — chunk, embed, rank (a dependency)"]
         CHK["chunk<br/>Document → Chunk"]
         EMB["embed<br/>local vectors, free"]
         STR["dense<br/>brute-force cosine"]
@@ -1061,20 +988,6 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 - **History:** 2026-11-24: filed PDFs re-rowed by their printed lines, through three cache layers (Vedant: every table, for one reading; cache only what is expensive and stable, nothing twice). 2026-10-31: created. 9 of HDFC Bank's 12 NSE results PDFs FY24-FY26 and 16 pages of ICICI Bank's Sep-2024 are scans; OCR was tried (RapidOCR, read cleanly) and dropped for the same filings' text on SEC EDGAR, filed as 6-K exhibits for the banks' ADRs. 2026-11-02: every ICICI Bank results PDF and three of HDFC Bank's turned out to be scans with an OCR text layer, which the text-less test missed; `ocr_pages` added and those 14 replaced by their SEC copies, checked figure by figure against the PDFs. 2026-11-07: the seven ind-as companies' 84 quarterly results fetched from NSE (76 are scans with OCR text behind, as their sites and NSE's integrated filings also hold; BSE refuses automated clients) and their 21 annual reports, all with text; OCR'd scans read for `VERIFY_OCR_TICKERS` (Vedant: one tier with text PDFs, told apart by the stamp). Five annual reports also in the retrieval corpus (ITC FY25, Reliance and Tata Motors FY24-FY25) are its copies, `copied_from`, since the parse cache holds one entry per name and two editions evict each other. 2026-11-08: verify documents cached under `doc_id_of` names (200 entries moved, 16 copied where an identical corpus or training PDF keeps the old name), after seven training reports turned out to clash; Bajaj Auto FY24 (130 photos up to 88 MP, 18.7 GB) parsed on Kaggle at `main`, its fingerprints matching.
 - **Decided in:** LOG.md 10-31 · `docs/facts-db.md`
 
-#### `facts.line_rows`
-- **At:** `src/aigent/facts/line_rows.py`
-- **Is:** module. **A filed PDF's tables re-laid by where their printed words sit**: Docling keeps each table's box, its header cells and its columns of words; the figure columns, the header over them and each body row come from the PDF's own text. `page_words(page)` reads a page's characters and pdfium's text runs, `split_runs` splits each run at the spaces between its characters (a piece boxed by its own, found through a `GRID`-point index; a run none of whose characters lie in it kept whole), each word flagged with whether a space follows it, measured from the crop box (`crop_box`, the media box when there is none); `displayed`/`on_display` place them on the page as displayed by its stated rotation. `layout(item, rows, height)` is what Docling settled: the box, the header (every row above the first `facts.printed.figure_row`, so a row of bare years is header), the body's top, each column's edges as the median of its single-column cells, each header cell's row, column, span and box, and its `text` columns (body cells mostly words, a dash or a cell of figures counting as figures). `line_rows(header, layout, words)` keeps the words in the table's box and below its header, groups them into lines (a word within `VERIFY_LINE_GAP` of a line's height of its middle shares it), joins a word with no space after it to the next within a line's height (`joined`), cuts a run of several figures where its characters fall (`split_figures`), then finds the **figure columns** (`bands`: figures and dashes clustered by right edge, neighbours never sharing a line joined, one on under `VERIFY_BAND_MIN_SHARE` of the figure lines or centred in a column of words dropped, and of two overlapping the one on fewer lines). `grid_of` lays them among Docling's columns of words (one across the left when it placed none); `Grid.place` puts a figure in the column it overlaps, a word in the figure column holding its middle, a word left of every figure in its nearest label column (so a long label's last word stays in it), else the nearest column. `header_rows` lays Docling's header over that grid: a cell of a word column kept there, a cell over one figure column (or spanning several, or with no box) at Docling's column when that maps to one, and a cell Docling merged over several split into `phrases` and `stacks` (a heading over several lines read as one), a stack over one column given to it, top down when several fall in one column (Tata's shared `September 30,` over its column's `2025`), and stacks over several placed by `grouped` (equal blocks of the columns no heading of their own names, else the first each is printed over). `wrapped` joins a label wrapped over lines within `VERIFY_WRAP_GAP` line heights: a label line ending in a joining word (`of`, `and`, `at`, `-`, ...) or followed by one starting in lower case (not an enumerator `a)`/`(ii)`/`9.`, nor `less`/`add`/`of which`), a lower-case or joined line below a row's figures, and two label lines with the figures printed between them; only the label columns left of the figures count, a nil mark in one is no label text, and a line opening an item never joins a row that opened one (`(a)` then `(b)`, `8.` then `9.`), though an item's marker centred on its label's second line still joins. Columns empty throughout are dropped, and spaced separators closed (`17 , 009` to `17,009`). With no figure column found, or text printed up the page (`_upright`), Docling's columns and header are kept and each word goes to the column it overlaps most (`column`).
-- **Contract:** `layout` is None for a table split across pages, with no row of two figures, or under two placed columns; `line_rows` is None when no word lies in the body. Words are in points from the displayed page's top-left, as Docling's top-left boxes are. A table's width is its printed columns', not Docling's.
-- **Gotchas:** pdfium returns a row of figures in a space-laid table as one run (HDFC Bank's ten-year table), hence the split; an OCR layer prints a word as letters and figures as fragments (`11 ,216.4`), hence the join and the separators. Character-level words with gap rules merged far more cells than runs split at spaces. The page's stated rotation was right on all 7,862 pages with tables, so the check against Docling's figure cells was dropped. Docling's column edges can be only as wide as a column's dashes, so a column is judged a column of words by its cells, not its edges. A wrapped line sits about 2.0 line heights below the one before and a new row about 2.4 (Reliance), so wraps are told by their words, not the gap. ITC prints each year's heading over the last two of its three columns, hence `grouped`'s equal blocks.
-- **History:** 2026-11-24: created (Vedant: improve the parsing; every table, not only those Docling merged, for one reading). 17,724 to 18,114 of 38,510 agree; merged figure cells in OCR layers 5,850 to 3,232, totals footing 47% to 56%. 2026-11-25: figure columns, header and wrapped labels from the printed words (Vedant: recreate the original table as closely as possible, after the table pages' top-ten faults): 18,115 to 19,624 of 38,510 agree, 1,529 gained and 20 lost (OCR-layer edge cases: a serial number now its own column, Power Grid's EPS lines run together, a garbled `φ` label); see LOG.md 11-25 for the audit flags. Rotated tables kept on Docling's columns, which read them no better. 2026-11-26: header phrases top down in a column, nil marks out of labels, sibling items kept apart, with `facts.printed`'s braces and note numbers: 20,730 to 20,738 agree, none lost.
-- **Decided in:** LOG.md 11-24, 11-26
-
-#### `facts.printed`
-- **At:** `src/aigent/facts/printed.py`
-- **Is:** module. `is_figure(word)` and `figures_only(cell)`, the one figure test (`FIGURE`, used by `facts.line_rows`, `facts.table_page` and, with `NIL`, the HTML reader; OCR's braces as brackets, `{99)`, and a whole number ending in a point, a note's `1.`, no figure), `MAIN_LINE` and `ENUMERATOR` (`a)`, `(ii)`, `9.`, followed by a space or nothing), the prefixes of printed labels; `number(text)`, a printed figure read to its value, decimal places and whether it is a percentage (OCR's `[555)`, `{99)`, `(12.45}` and `1;331` read as `(555)`, `(99)`, `(12.45)` and `1,331`), with `ZERO`, `NUMERIC_DATE`, `WORDED_DATE` and `YEAR` (a header's year alone, `2025` or `2024*`); `figure_row(row)`, two or more figures not all years, where a table's body begins. Free of the cross-check, so `facts.line_rows` (under `facts.documents`, which `facts.crosscheck` imports) can use it without a cycle.
-- **History:** 2026-11-24: moved out of `facts.crosscheck`. 2026-11-25: `figure_row` and `YEAR`, so Tata Motors' `2025 | 2025* | 2024*` line is header. 2026-11-26: braces read as brackets, note numbers no figures, `ENUMERATOR` takes numbered items.
-- **Decided in:** LOG.md 11-24, 11-26
-
 #### `facts.crosscheck`
 - **At:** `src/aigent/facts/crosscheck.py`
 - **Is:** module. **The XBRL cross-check** (header reading in `facts.headers`, label matching in `facts.labels`, word reading in `facts.vocab` since 2026-11-25): each XBRL fact of `VERIFY_TICKERS` against the documents it is printed in (`facts.documents`): its year's annual report, then its quarter's results, `python -m aigent.facts crosscheck [--write]`, free. `documents_for(fact, filed)` → the stems tried, an annual report first for a year's figure or 31 March balance in a March filing; `facts_to_check` yields a fact once per readable document (`documents.refusal`), then once per re-OCR'd reading built (`documents.reocr_built`), an image-only scan by its reading alone; `crosscheck(conn, tickers)` → a `Checked` per fact, its best outcome (`agree`, `differ`, `unmatched`) across its documents, stopping at the first agreement, a tie kept by the first; `apply` makes each agreeing `xbrl-ai` fact `xbrl-filed`, stamped with its document's origin. What is not agreed goes to `facts.review`.
@@ -1224,36 +1137,6 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 - **At:** `src/aigent/evals/report.py`
 - **Is:** module. Four Markdown tables and the file they are written to.
 
-#### `retrieval.chunk`
-- **At:** `src/aigent/retrieval/chunk.py`
-- **Is:** module. `Document` (with the `Table`s and `Heading`s the parser found, each a span of its text; a `Table` keeps its cells row by row and its `header_rows`), `Chunk`, `Inventory`, and the five splitters: fixed, fixed-with-overlap, by sentence, by heading, and **by element**.
-- **Contract:** `Inventory.containing` resolves a labelled quote to the ids that hold it.
-- **Invariants:** Imports `config` and nothing else internal (checked: §3 rules).
-- **History:** **By element** (2026-10-20).
-- **Decided in:** LOG.md 10-20
-
-#### `retrieval.embed`
-- **At:** `src/aigent/retrieval/embed.py`
-- **Is:** module. The `Embedder` protocol and `LocalEmbedder`, `sentence-transformers` on MPS, loaded at `LOCAL_MODEL_DTYPE` with the query prefix `query_prefix_of` gives.
-- **Contract:** The one part of aigent that thinks with someone else's weights, and the only capability module that spends nothing at all.
-- **History:** Dtype and per-model prefix (2026-10-21).
-- **Decided in:** LOG.md 10-21
-
-#### `retrieval.dense`
-- **At:** `src/aigent/retrieval/dense.py`
-- **Is:** module. `DenseIndex`: ids, a normalised matrix, and brute-force cosine search. No approximate index, no database, exact answers.
-- **Contract:** **Keeps a copy on disk**: `build_cached` stores the vectors in `corpus/.cache/`, keyed by everything that produced them, so an inventory embedded once is read back in 0.01s rather than embedded again in 48s. **Vectors are cached per text**: one store per embedder, `vectors-{model}-{key}.npz`, keyed by each text's hash, shared by every index, so an index embeds only text no index has embedded before (a vector depends on its text alone: batched against one at a time on 64 chunks, cosine ≥ 0.9999999).
-- **History:** Disk copy (2026-09-28). Per-text vectors (2026-10-21).
-- **Decided in:** LOG.md 09-28, 10-21
-
-#### `retrieval.corpus`
-- **At:** `src/aigent/retrieval/corpus.py`
-- **Is:** module. Annual report PDFs into `Document`s: **Docling per page**, its text, headings and tables in reading order, normalised, furniture stripped from text but never from a heading or a table, joined while recording page offsets and each table's and heading's span (`assembled`). Plus the opt-in disk cache, which stores the tables and headings too.
-- **Contract:** The only module that touches the parser. Docling labels page headers and footers as furniture, which `iterate_items` leaves out.
-- **Gotchas:** Editing its parse-step code forces a full re-parse (~92 minutes).
-- **History:** Docling since 2026-10-20, Vedant; it was `pypdf`. **Why Docling** (2026-10-20, measured on the three eval reports, free): the retrieval labels' quotes found in the text, pypdf 54/54 with tables scattered a cell a line, pdfplumber's plain text 14/54 (it reads a printed line straight across two columns), pdfminer's layout analysis with pdfplumber's table finder 48/54 (columns merged into one flow on side-by-side profiles, and the finder took Bajaj's page frames for tables and missed its borderless statements), **Docling 54/54** rendered by us, with 1,364 tables read as grids with their header rows; about 1.3 s a page with OCR off on the Mac's GPU.
-- **Decided in:** LOG.md 10-20
-
 #### `retrieval.questions`
 - **At:** `src/aigent/retrieval/questions.py`
 - **Is:** module. The question set's generator and, more importantly, its gate: `verify` is what a label must survive whether a model wrote it or a person did.
@@ -1269,37 +1152,6 @@ Stable IDs are `module.Symbol`. Cite them in future notes; they survive line dri
 - **At:** `src/aigent/retrieval/langchain_rag.py`
 - **Is:** module. **The framework comparison**: the same pipeline in LangChain, scored by the same harness.
 - **Invariants:** Its packages are in the non-default `compare` dependency group and imported inside functions, so the core package never depends on the framework it is measured against.
-
-#### `retrieval.sparse`
-- **At:** `src/aigent/retrieval/sparse.py`
-- **Is:** module. `SparseIndex`: BM25 as an inverted index over the same `Inventory` the dense index holds. The lexical half of hybrid retrieval, written out rather than imported.
-
-#### `retrieval.fuse`
-- **At:** `src/aigent/retrieval/fuse.py`
-- **Is:** module. Reciprocal rank fusion: several rankings of the same ids into one, using ranks because the scores are not commensurable.
-
-#### `retrieval.rerank`
-- **At:** `src/aigent/retrieval/rerank.py`
-- **Is:** module. A `Reranker` protocol and a local cross-encoder.
-- **Contract:** The expensive second stage: reads query and passage *together*, so it cannot be precomputed and never runs over the corpus.
-
-#### `retrieval.hits`
-- **At:** `src/aigent/retrieval/hits.py`
-- **Is:** module. `Hit` and `rank_ids`: what every index, ranker, fusion and reranker returns.
-- **Invariants:** Its own module so none of them imports another to get the type.
-
-#### `retrieval.rank`
-- **At:** `src/aigent/retrieval/rank.py`
-- **Is:** module. **The rankers.** `build_ranker(method, indexes)` turns any of the six method names into a `Ranker`, whose one method is `rank(query, k, doc_id=)`.
-- **Contract:** `DenseRanker` and `SparseRanker` each wrap one index; `HybridRanker` holds the two and fuses them; `Reranked` wraps any of the three. The indexes are built once in `Indexes` and shared.
-- **Invariants:** The eval ranks through these and so does anything else (invariant 21).
-
-#### `retrieval.keys`
-- **At:** `src/aigent/retrieval/keys.py`
-- **Is:** module. **Search keys and the keyed search.** Every `by_element` chunk is indexed under several short texts that point back to it: its own text, one key per labelled table row (section path, basis, row label, column years; **no figures**), one per table piece listing its rows, and one per sentence of a text chunk of two or more.
-- **Contract:** `keyed_search(name, documents, cache=)` builds the chunks, the keys and their `Indexes`, ranks keys by `SEARCH_METHOD`'s base read to `KEY_DEPTH`, returns each chunk once at its best key (`ParentRanker`), and has the reranker read whole chunks. Every production search uses it, under its own index name.
-- **History:** 2026-10-21, Vedant: created; no figures in keys (Vedant: "the numbers dont have a place there"). **Measured 2026-10-21 on the 88 questions, `bge-large` + `bge-reranker-v2-m3`, each in its own report:** chunks only hit@5 0.909 (tables 0.82); with row and table keys 0.909 (0.85); with sentence keys too 0.920 (0.85), MRR 0.743 → 0.764; before reranking 0.761 → 0.841, tables 0.59 → 0.74. The stronger the reranker, the less the keys add (MiniLM on the full index 0.818, `bge-reranker-base` 0.886).
-- **Decided in:** LOG.md 10-21
 
 #### `workflows.reports`
 - **At:** `src/aigent/workflows/reports.py`
@@ -1495,36 +1347,6 @@ Values, plus the one function that turns them into a client. No arithmetic lives
 - **History:** Moved out of `config` on 2026-10-14 into `analyst.cfg_analyst`, which see.
 - **Decided in:** LOG.md 10-14
 
-#### `config.EMBED_MODEL`
-- **At:** `src/aigent/config.py:167`
-- **Is:** constant. `BAAI/bge-large-en-v1.5` — 1024 dimensions, 512 tokens, 335M parameters, runs on MPS, free.
-- **History:** Since 2026-10-21 (Vedant; `bge-small-en-v1.5` before). **Screened 2026-10-21 on the 88 questions, `by_element`, each in its own report, hybrid hit@5:** `bge-small` 0.636 (tables 0.47), `bge-large` 0.773 (0.62), `gte-modernbert-base` 0.602 (0.47; its half-precision load checked against full: cosine ≥ 0.9994, same top 5s), `Qwen3-Embedding-0.6B` 0.773 (0.68, prose 0.83, 2.5× slower to embed). Only models that run no downloaded code were screened.
-- **Decided in:** LOG.md 10-21
-
-#### `config.EMBED_LOG_EVERY`
-- **At:** `src/aigent/config.py:169`
-- **Is:** constant. 1,024: texts `DenseIndex.build` embeds between progress lines.
-
-#### `config.EMBED_SAVE_EVERY`
-- **At:** `src/aigent/config.py:170`
-- **Is:** constant. 4,096: texts `DenseIndex.build_cached` embeds between writes of its store, about three minutes of `bge-large` on the Mac; a stopped build loses at most the batch in progress.
-- **History:** 2026-10-22, Vedant: a run stopped at 91% on 10-21 had saved nothing.
-- **Decided in:** LOG.md 10-21, 10-22
-
-#### `config.EMBED_QUERY_PREFIXES`
-- **At:** `src/aigent/config.py:174`
-- **Is:** dict. The query prefix of each model that does not declare one in its `prompts`, from its card, keyed by model; `""` for one that wants none.
-- **Invariants:** **A model on neither is refused** (`query_prefix_of`).
-- **Gotchas:** A query embedded without its prefix, or with another model's, still ranks plausibly, just worse, with nothing to say so.
-- **History:** `EMBED_QUERY_PREFIX` used to be every undeclared model's fallback and so handed BGE's instruction to any other model.
-
-#### `config.LOCAL_MODEL_DTYPE`
-- **At:** `src/aigent/config.py:181`
-- **Is:** constant. `float32`: what the local embedder and reranker load at, **whatever their files declare**.
-- **Gotchas:** `transformers` loads a checkpoint at its declared precision: Qwen3-Embedding declares bfloat16, whose normalised vectors missed unit length by ~0.3% and were refused by `DenseIndex`; gte-modernbert declares float16, which passed that check unnoticed.
-- **History:** 2026-10-21: created.
-- **Decided in:** LOG.md 10-21
-
 #### `config.CHUNK_*`
 - **Is:** constants. `CHARS` 1200, `OVERLAP_CHARS` 200, `OVERLAP_SENTENCES` 1, `MAX_CHARS` 2000, `MIN_CHARS` 80.
 - **Contract:** `MIN_CHARS` is the floor below which a fragment is dropped rather than embedded.
@@ -1540,47 +1362,15 @@ Values, plus the one function that turns them into a client. No arithmetic lives
 - **Is:** constants. What `by_heading` accepts as a heading in text whose markup extraction destroyed: `MAX_CHARS` 80, `MAX_WORDS` 12, `MIN_CAPITAL_RATIO` 0.6.
 
 #### `config.PASSAGE_MIN_CHARS`
-- **At:** `src/aigent/config.py:200`
+- **At:** `src/aigent/config.py:167`
 - **Is:** constants `PASSAGE_MIN_CHARS` / `PASSAGE_MIN_ALPHA`: `400` and `0.85`, what `retrieval.questions.eligible` asks of a passage before it is worth a question.
 - **History:** Lived in `questions.py` until 2026-10-07.
 - **Decided in:** LOG.md 10-07
-
-#### `config.TOP_K`
-- **At:** `src/aigent/config.py:204`
-- **Is:** constant. `5`. How many chunks a retriever returns, and therefore how many an answer can cite.
-
-#### `config.BM25_K1`
-- **At:** `src/aigent/config.py:211`
-- **Is:** constants `BM25_K1` / `BM25_B`: `1.5` and `0.75`, where the literature settled. `K1` is where term frequency saturates, `B` how hard a long chunk is penalised.
-- **Invariants:** Not tuned here — tuning them on the eval set is how you overfit a retriever to 54 questions.
-
-#### `config.FUSE_DEPTH`
-- **At:** `src/aigent/config.py:216`
-- **Is:** constant. `100`. How deep each ranker's list goes into fusion.
-- **Contract:** Fusing the whole corpus adds runtime and tail noise; cutting at `TOP_K` would throw away the rank-20-lexically, rank-4-densely chunk that fusion exists to promote.
-
-#### `config.RRF_K`
-- **At:** `src/aigent/config.py:221`
-- **Is:** constant. `60`. **The constant that decides what fusion means.**
-- **Contract:** At 0, rank 1 scores 1.0 against rank 2's 0.5, so whichever ranker shouted first wins. At 60 the two are 1/61 and 1/62, so agreement across rankers outweighs a single first place.
-- **History:** Measured consequence: on the original question set that property *cost* four rows, because BM25 had them at rank 1 and dense had them nowhere.
 
 #### `config.RERANK_*`
 - **Is:** constants. `MODEL` `BAAI/bge-reranker-v2-m3` (568M, reads 8,192 tokens, so a long table whole), `CANDIDATES` 20, `BATCH` 32.
 - **History:** Since 2026-10-21 (Vedant). **Screened 2026-10-21 on `bge-large`'s hybrid shortlist, 88 questions:** MiniLM-L6 hit@5 0.807 (tables 0.71), `bge-reranker-base` 0.864 (0.82), `bge-reranker-v2-m3` 0.898 (0.85), `gte-reranker-modernbert-base` 0.830 (0.74). **20 candidates scored the same as 30** on the keyed search (0.920 hit@5, MRR 0.766 against 0.764) at 3.6 s a search on the Mac. On 2026-09-20, with MiniLM, 30 → 100 had hurt `dense+rerank`: a small cross-encoder given more candidates promotes more plausible wrong chunks.
 - **Decided in:** LOG.md 09-20, 10-21
-
-#### `config.KEY_DEPTH`
-- **At:** `src/aigent/config.py:233`
-- **Is:** constant. 400: how many keys a keyed search reads from each of its rankers, enough to reach `RERANK_CANDIDATES` distinct chunks when one chunk owns many keys.
-
-#### `config.SEARCH_METHOD`
-- **At:** `src/aigent/config.py:230`
-- **Is:** constant. `hybrid+rerank`, the method to rank with outside the eval, and the method `keyed_search` ranks the keys by.
-- **Contract:** A test holds it to `METHODS`.
-- **Invariants:** **Chosen on the paraphrased set, not the original**: a caller's queries are written by a user or a model, never from the passages. The banner's finding, applied.
-- **History:** On questions not written from the passages `hybrid+rerank` was the best of six (hit@5 0.481 against `bm25+rerank`'s 0.426), where on the original set it came second. Since 2026-10-21 it ranks the keys.
-- **Decided in:** LOG.md 10-21
 
 #### `config.FURNITURE_*`
 - **Is:** constants. What `strip_furniture` calls a running header: `MIN_PAGES` 4, `EDGE_LINES` 2, `RATIO` 0.2.
@@ -1623,18 +1413,6 @@ Values, plus the one function that turns them into a client. No arithmetic lives
 - **Gotchas:** The grid goes in through `set_params`, because pyright types sklearn's untyped parameters from their defaults (`Cs=10` reads as `int`).
 - **History:** 2026-09-30: created.
 - **Decided in:** LOG.md 09-30
-
-#### `config.PAGE_SEPARATOR`
-- **At:** `src/aigent/config.py:243`
-- **Is:** constant. `\n\n`. What joins two pages into one document text, so a page break reads as a paragraph break to every splitter.
-
-#### `config.DOCLING_OCR`
-- **At:** `src/aigent/config.py:246`
-- **Is:** constants `DOCLING_OCR` / `DOCLING_DEVICE` / `DOCLING_QUEUE_MAX_SIZE`, and `PDF_RUPEE_KEYS`. Docling's settings: OCR off, the reports carrying a text layer; the device `auto`, Docling's pick of what the machine has, MPS here and CPU in CI.
-- **Contract:** `DOCLING_OCR` and `DOCLING_DEVICE` feed the cache fingerprint, with Docling's version. **`DOCLING_QUEUE_MAX_SIZE`** (8) does not: it bounds the pages held between Docling's pipeline stages, memory only, set by `corpus._queue_capped` before each parse. **`PDF_RUPEE_KEYS`**: the fonts that draw ₹ on a keyboard key, by family, and the keys each draws it on — `` ` `` for `Rupee`, `RupeeForadian` and `IndianRupee`, `CDEHIJKL` for `ITFRupee` — every one seen before an amount across the 15 reports, and also fingerprinted.
-- **Gotchas:** With OCR on, 17 s a page against 0.9 to 1.3 s off. Foradian is a full font: TATAMOTORS-FY25 sets chart labels and digits in it, ITC-FY24 its nil dashes, HDFCBANK-FY24 a printed "R 23,768", so nothing beyond the listed keys maps.
-- **History:** 2026-10-20: created; **`PDF_RUPEE_KEYS`** (2026-10-20); `DOCLING_QUEUE_MAX_SIZE` (2026-11-08: Docling's 100 pages in flight per stage grew one process to 17 GB on a 16 GB Mac and froze it; 8 held Power Grid FY25 at 9 GB).
-- **Decided in:** LOG.md 10-20
 
 #### `llm.adapters.anthropic.has_credentials`
 - **At:** `src/aigent/llm/adapters/anthropic.py:421`
@@ -2124,183 +1902,6 @@ Written by hand in Week 2, and green: 58 tests across `test_chunk`, `test_store`
 Nothing here calls the Anthropic API, which is why every number it produces can be re-measured as
 often as the question is worth asking.
 
-#### `retrieval.chunk.Document`
-- **At:** `src/aigent/retrieval/chunk.py:70`
-- **Is:** frozen dataclass. `doc_id`, `text`, `source`, `page_starts`.
-- **Contract:** `page_of(offset)` turns a character offset back into a 1-indexed page by bisect, which is what lets a retrieved passage be cited rather than only quoted.
-
-#### `retrieval.chunk.Chunk`
-- **At:** `src/aigent/retrieval/chunk.py:88`
-- **Is:** frozen dataclass. `id`, `text`, `doc_id`, `ordinal`, `start`, `page`, `heading`.
-- **Contract:** `citation` renders `doc · p.N · heading`.
-
-#### `retrieval.chunk.Inventory`
-- **At:** `src/aigent/retrieval/chunk.py:111`
-- **Is:** frozen dataclass. Every chunk of every document under **one** strategy, plus `by_id`.
-- **Contract:** All three splitters must drop fragments under `CHUNK_MIN_CHARS` (a marooned heading, a surviving page number) and number the survivors contiguously — so a heading has to travel with its span rather than its ordinal, or one dropped fragment shifts every heading after it by one. `build` refuses two documents sharing a `doc_id`.
-- **Gotchas:** `name` is load-bearing: ids are positional, so two inventories built by different splitters use the same ids for different text. Two documents sharing a `doc_id` would collide: `by_id` would keep whichever came last, and every label naming one would resolve to the wrong text with nothing raised. Same shape as the `setdefault` near-miss in the ticker directory a week earlier.
-
-#### `retrieval.chunk.squeeze`
-- **At:** `src/aigent/retrieval/chunk.py:42`
-- **Is:** function. The comparison two texts meet in: whitespace collapsed, case folded, curly quotes and dashes folded to ASCII, and **whitespace before punctuation closed up**.
-- **Contract:** Leniency is safe *here* and nowhere else — it is the matching function, not the text a citation shows.
-- **History:** Public since 2026-09-18, when `questions.verify` became a second caller. Each rule answers a real corpus artefact: a hand-typed label writes `ITC's` where the PDF holds `ITC’s`, and extraction leaves `lawyers .` and `52 %` on 10% of passages.
-- **Decided in:** LOG.md 09-18
-
-#### `retrieval.chunk.Inventory.containing`
-- **At:** `src/aigent/retrieval/chunk.py:147`
-- **Is:** method. A labelled quote → the ids that hold it, whitespace-, typography- and case-insensitively.
-- **Contract:** `squeeze` folds curly quotes and dashes to ASCII before comparing, because a label is typed by hand and a PDF is not: the corpus holds `ITC’s` and `—`, a label holds `ITC's` and `-`, and without the fold a correct label silently resolves to nothing. An empty list is a finding, not a bug — the quote straddles a boundary, so no single chunk can answer, and the strategy has capped its own recall before the embedder runs.
-- **Invariants:** **This is how a label survives a re-chunk** and the Week 2 instance of invariant 13: the dataset names the sentence that answers the question, code resolves it to ids in *this* inventory, and the model is never asked where the answer lives.
-
-#### `retrieval.chunk.fixed`
-- **At:** `src/aigent/retrieval/chunk.py:176`
-- **Is:** factory. A sliding window, stepping `size - overlap`.
-- **Contract:** `overlap=0` is the plain split; the roadmap's "fixed with overlap" is the same function with a second number.
-- **Invariants:** **Does not snap to word boundaries, on purpose**: it is the baseline the other three are measured against, and a baseline quietly improved flatters everything compared to it.
-
-#### `retrieval.chunk.sentences`
-- **At:** `src/aigent/retrieval/chunk.py:254`
-- **Is:** function. Sentence spans by regex with an abbreviation guard.
-- **Contract:** **Only `_ABBREVIATION_LOOKBACK` (64) characters before a break are examined.** `_ABBREVIATIONS` is annual-report specific — `Rs.` and `Cr.` open every other line of one, and breaking on them shears a figure off its unit. Single initials (`J. K. Sharma`) are guarded too.
-- **Gotchas:** Not a parser and does not pretend to be; that is an argument for measuring it against the others, not for importing one.
-- **History:** Slicing the whole prefix to read one word made this quadratic and cost 46.9s on this corpus against 0.05s now — it was the single most expensive thing in the pipeline, more than parsing 1,148 PDF pages, and it looked like a caching problem until it was profiled.
-
-#### `retrieval.chunk.by_sentence`
-- **At:** `src/aigent/retrieval/chunk.py:274`
-- **Is:** factory. Packs whole sentences to `max_chars`, stepping back `overlap_sentences`.
-- **Contract:** No chunk ends mid-clause, which is what makes a passage quotable. **A span holding no sentence break is cut on the character budget** (`emit_capped`). **`whole_sentences=True`** (`by_element` only) splits such a span at its line breaks instead, packing whole lines to the budget and keeping a line past it whole: in Docling's text a line ends a paragraph or list item, and the spans it is for are lists and address blocks without a full stop (193 of 60,417 sentences over 1,000 characters across 12 reports, up to 5,347), whose longest line is 2,086 characters, under the embedder's 512 tokens.
-- **Gotchas:** The embedder reads 512 tokens, so text past that is not indexed while its chunk goes on claiming to contain it — an uncut mega-chunk is not a fairer comparison, it is a chunk that lies.
-- **History:** `emit_capped` (2026-09-18), reversing the earlier rule that such a span became one chunk however long it ran. The earlier rule was argued from the comparison with `fixed` and was wrong about the corpus: financial tables carry almost no sentence-ending punctuation, so 172 chunks came out over 2,000 characters holding 11.5% of the corpus, the largest of them 14,947 characters with seven breaks in it. Cutting took truncated chunks from 185 to 47 and recall@5 from 0.581 to 0.609. **`whole_sentences=True`** (2026-10-22).
-- **Decided in:** LOG.md 09-18, 10-22
-
-#### `retrieval.chunk.headings`
-- **At:** `src/aigent/retrieval/chunk.py:400`
-- **Is:** function. Heading detection over text whose markup extraction destroyed.
-- **Contract:** Three signals: short, does not end like a sentence, and either numbered or mostly capitalised.
-
-#### `retrieval.chunk.by_heading`
-- **At:** `src/aigent/retrieval/chunk.py:416`
-- **Is:** factory. One chunk per section, sub-split by sentence when a section runs long; every piece keeps its heading.
-- **Contract:** **Degrades to `by_sentence` when no headings are found**, which is the honest behaviour — a structural splitter cannot find structure that ingestion destroyed, and a plausible chunk count would hide a broken ingest.
-- **History:** **Kept but not run as an eval variant, decided 2026-09-18.** It is dominated on both axes: 85.3% of sentences survive it against `by_sentence`'s 100%, while it produces the most chunks of any strategy (7,506, averaging 538 characters) — the signature of heading detection firing on kerning damage (`ST ANDALONE FINANCIAL ST A TEMENTS`) and fragmenting sections. Worth improving later, not worth a column now.
-- **Decided in:** LOG.md 09-18
-
-#### `retrieval.chunk.by_element`
-- **At:** `src/aigent/retrieval/chunk.py:594`
-- **Is:** factory. **A chunk starts at every heading and every table the parser found.** Budgets `ELEMENT_TABLE_CHARS` 1,000 and `ELEMENT_TEXT_CHARS` 1,000.
-- **Contract:** Text runs pack by whole sentence up to `ELEMENT_TEXT_CHARS` (`by_sentence(whole_sentences=True)`), each piece keeping its section heading (a heading alone, with its table next, is no chunk). A table is one chunk opened by `table_label`, `[Table · {doc} p.{page} · {section} · {basis} · {scale} · columns: {years}]`: the scale copied verbatim from its top rows or its section above and followed by the multiplier it names as a plain number (`(H In Crore) = ×10000000`, `multiplier_of`, "lakh crore" read before "crore"), so the model copies the multiplier rather than converting a word, and not as a power of ten, so a scale that is none can be added as a row; `check_call` still reads only powers of ten; the phrase stays, for its exceptions such as "except per share data" and because `check_call` reads the scale as a word. The basis is the last `consolidated`/`standalone` its section names, nothing made up when none is stated. Failing its top rows and its section, the scale is any its page states. **A text chunk opens with a line too** (`text_label`), `[{doc} p.{page} · {section} · {scale} = ×{multiplier}]`, when a scale stated above it in its section or on its page governs its amounts and it names none itself (no "in crore" phrase, no scale word after a number); 2,173 of 14,127 text chunks over the training reports. `_SCALE` reads a currency sign (₹, Rs, INR, US$, $) then the scale word, inside brackets, an amount between them not a scale. **The scale is copied tidy**: a bracketed phrase with "in" to its closing bracket, exceptions kept ("(C in millions, except per share data)", "(Amount in ₹ crore)"), a bracketed currency and scale ("(₹ crore)"), or an unbracketed "₹ in Million" / "In Crore" ending at its word, so a label no longer carries a header row's stray digits and dates ("025 ₹ in Million As at March 31, 2024"). Past `ELEMENT_TABLE_CHARS` a table splits at rows (a rendered row is one line; a row past the budget stays whole in its own piece), every piece repeating the label, the column-header rows and **the section row it continues under** (rows Docling marks `row_section`, such as "Quoted:", kept as `Table.sections`; one matched by its first cell, so a row with figures is never repeated). **The basis falls back to the page's running header** (`Document.running`: Docling's `page_header` furniture and the lines stripped as furniture, such as "Notes to standalone financial statements … (Contd.)"); text labels carry the basis too. **Labels name the section path** (`section_path`): Docling gives every heading level 1, so depth comes from numbering — lettered (`a)`) and roman (`ii.`) subsections nest under a numbered note ("16. Segment reporting › a) Treasury › i. Digital banking"), `i`/`v`/`x` read as a letter after `h`/`u`/`w`, and any other heading starts afresh. The label is what lets a scaled figure be checked against its own chunk (`underhood.tooldata.labels.check_call` reads the scale there); underhood's `check_call` reads the `= ×N` (`_MULTIPLIER`).
-- **Gotchas:** Docling's reading order can put a page's "(C in millions …)" line after the table, hence the whole-page lookup. The median citation barely moves with smaller budgets: most chunks were already under the budget, so citing a row needs a unit inside the chunk.
-- **History:** 2026-10-20, Vedant, approaches 2 to 4 of the literature: element chunking, whole tables split only at rows, a context line. Multiplier as a plain number: Vedant, 2026-10-20. **Measured 2026-10-20 on the 47 figures v4's first full teacher run dropped for an unproven scale**: provable from one chunk under pypdf `by_sentence` 18, Docling `by_sentence` 32, `by_element` with table labels 34, with text labels 37, with the whole-page lookup 39; of the 8 left, 4 are the teacher's wrong scale or arithmetic, rightly refused, 1 a dash read as 0, and 3 with no scale the labels read: Wipro's two AOC-1 forms, whose only scale is the footnote "Value is less than One Million Rupees" at the form's end, and an HDFC segment table whose page does say `(₹ crore)`, which `_SCALE` missed for want of "in" (HDFC writes it so about 105 times a report); `_SCALE` reads it since 2026-10-20. Tidy scale (2026-10-20, later): over the nine training reports 5,271 chunks name a multiplier, 49 more than before; none of them is blind to `check_call`'s unscaled-money check, where 1,008 were. Inheriting a scale from the section before was examined and not taken: for the AOC-1 tables the nearest is the Notes', a different section, right only by coincidence. Hybrid + rerank retrieval unchanged by the labels (hit@5 0.889, recall@5 0.881, MRR 0.745). Section rows carried (2026-10-20). Running-header basis: on BAJAJ-AUTO-FY25 table labels with a basis rose from 29 to 166 of 265, on HDFCBANK-FY24 from 78 to 84 of 398, whose running headers name sections, not a basis. Section path: a first version that also nested unnumbered headings and treated "Notes to …" and the auditor's report as parts gave wrong parents throughout (a never-closing auditor's report over the notes, "Notes to Investments" over notes 42 and 43, prose's numbered points adopting headings), so it was narrowed. The 44 v4 trajectories dropped on 2026-10-19 for a scale their chunk did not name were what labels fix. **Budgets 1,000 and 1,000 since 2026-10-22** (Vedant, the first step toward citing a row or a sentence, not a whole table; was 2,000 for tables and 1,200 for text). Measured on the 88 questions, keyed search, each in its own report: tables at 1,000 alone left hit@5 at 0.920 and cut a search's top 5 from a median 1,693 Qwen3 tokens (90th 3,091) to 1,432 (2,190) and the largest cited chunk from 1,130 to 753; tables at 600 lost a table question (0.909) for a 90th of 1,615 and a largest of 442. Both at 1,000: hit@5 0.909, recall@5 0.903, MRR 0.760, tables 29/34, prose 51/54; median 1,352 tokens a search (90th 2,197), cited chunk median 220, max 753; 7,712 chunks, 34,416 keys. The prose question lost, `rq-003`, cites the same unchanged chunk, now 6th behind smaller pieces of the ITCMAARS prose.
-- **Decided in:** LOG.md 10-19, 10-20, 10-22
-
-#### `retrieval.embed.Embedder`
-- **At:** `src/aigent/retrieval/embed.py:21`
-- **Is:** Protocol. `name`, `dimensions`, `embed_documents`, `embed_query`.
-- **Contract:** A protocol so a test can hand the dense index a deterministic fake without importing torch, and so a hosted provider drops in later as a second column in the same table.
-
-#### `retrieval.embed.query_prefix_of`
-- **At:** `src/aigent/retrieval/embed.py:35`
-- **Is:** function. The prefix a model's queries take: the one it declares, else `EMBED_QUERY_PREFIXES`'s, else a ValueError naming the model.
-- **History:** 2026-10-21: created.
-- **Decided in:** LOG.md 10-21
-
-#### `retrieval.embed.LocalEmbedder`
-- **At:** `src/aigent/retrieval/embed.py:47`
-- **Is:** class. `sentence-transformers` on MPS when available, else CPU. Returns L2-normalised float32.
-- **Contract:** Heavy imports are **deferred into `__init__`** — importing torch costs seconds, and no test of the chunker or the harness should pay that. Weights load at `LOCAL_MODEL_DTYPE`.
-- **History:** Dtype (2026-10-21).
-- **Decided in:** LOG.md 10-21
-
-#### `retrieval.embed.LocalEmbedder.embed_query`
-- **At:** `src/aigent/retrieval/embed.py:83`
-- **Is:** method. Prefixes the model's own query prefix (`query_prefix_of`); `embed_documents` does not.
-- **Gotchas:** The asymmetry is the model's training, not a preference.
-
-#### `retrieval.embed.LocalEmbedder.count_truncated`
-- **At:** `src/aigent/retrieval/embed.py:89`
-- **Is:** method. How many chunks the 512-token limit actually cut.
-- **Gotchas:** Text past the limit is not down-weighted or summarised — it is **not read**, while the chunk goes on claiming to contain it. Run it once over a new inventory; a chunking strategy whose recall looks bad should be checked here before it is blamed.
-
-#### `retrieval.hits.Hit`
-- **At:** `src/aigent/retrieval/hits.py:10`
-- **Is:** frozen dataclass. `chunk_id`, `score`.
-- **Gotchas:** **What the score means is the ranker's own** — cosine, BM25, a fused rank, a cross-encoder logit — so scores compare only within one ranking.
-
-#### `retrieval.dense.DenseIndex`
-- **At:** `src/aigent/retrieval/dense.py:111`
-- **Is:** frozen dataclass. Ids and a normalised matrix, aligned row for row.
-- **Contract:** Holds no chunks — `Inventory` does — so the two rebuild independently.
-
-#### `retrieval.dense.DenseIndex.build`
-- **At:** `src/aigent/retrieval/dense.py:122`
-- **Is:** classmethod.
-- **Contract:** Refuses two shapes rather than trusting them: a vector count that does not match the inventory (a misalignment returns real ids attached to another chunk's vector — every score plausible, every citation wrong, nothing raised), and un-normalised rows, which would make cosine wrong by a different factor per chunk. Both checks live in `_checked`, which `load` goes through too. **Embeds `EMBED_LOG_EVERY` (1,024) texts at a time, logging each slice** to `aigent.retrieval.dense` (count, percent, model, elapsed), since a first build with `bge-large` runs tens of minutes.
-- **Gotchas:** The slicing lives here, not in `embed_documents`, whose source is part of the cache key.
-- **History:** Slice logging (2026-10-21).
-- **Decided in:** LOG.md 10-21
-
-#### `retrieval.dense.DenseIndex.search`
-- **At:** `src/aigent/retrieval/dense.py:183`
-- **Is:** method. `matrix @ query`, then a **stable** sort.
-- **Contract:** Ties break by position in the inventory: arbitrary, but not free to wobble between two identical runs — the same rule that turned thinking off for evals, applied to the one place NumPy would otherwise decide it.
-
-#### `retrieval.dense.DenseIndex.build_cached`
-- **At:** `src/aigent/retrieval/dense.py:132`
-- **Is:** classmethod. `build`, embedding only the texts the embedder's store lacks.
-- **Contract:** Logs how many texts it reused and how many it embeds, **writes the store every `EMBED_SAVE_EVERY` new texts and at the end** (`embedded`'s `save` callback, each write whole through `.partial`, so a stopped build keeps every batch it saved and the next embeds only the rest), and serves each row by its text's key, so order, duplicates and other indexes' texts cannot misalign it. A missing or damaged store is started afresh, never raised on.
-- **History:** Per-text store (2026-10-21; a whole-index file per inventory before, so one changed chunk re-embedded all of them and two indexes holding the same report each embedded it). Periodic writes (2026-10-22).
-- **Decided in:** LOG.md 10-21, 10-22
-
-#### `retrieval.dense.store_file`
-- **At:** `src/aigent/retrieval/dense.py:71`
-- **Is:** functions `store_file` / `text_key` / `read_store` / `write_store`. The store is `vectors-{model}-{key}.npz`, the key a hash of the embedder's name, dimensions and **the source of its `embed_documents`**, so another model or an edit to how a passage is embedded opens a new store.
-- **Contract:** `write_store` writes it whole or not at all and deletes that model's older versions. A text's key is its SHA-256 (32 hex digits; a test holds 5,000 near-identical texts to 5,000 keys). `read_store` refuses keys and rows that disagree and a key held twice.
-- **History:** On 2026-10-21 the eval's two whole-index caches were moved in after each text was proven identical by recomputing the old file's hash: 39,031 vectors became 29,623, chunks being their own keys.
-- **Decided in:** LOG.md 10-21
-
-#### `retrieval.hits.rank_ids`
-- **At:** `src/aigent/retrieval/hits.py:18`
-- **Is:** function. Hits → the ranked list of ids the retrieval graders read.
-
-#### `retrieval.corpus.read_pages`
-- **At:** `src/aigent/retrieval/corpus.py:402`
-- **Is:** function. Raw extracted text, one string per page: each page's `Element`s joined, a table one row a line. `read_elements` is the pages as elements.
-- **Contract:** `convert` is **the only function that touches the parser**, handed the PDF through `rupees_decoded`: each font `config.PDF_RUPEE_KEYS` names gets a ToUnicode reading its keys as ₹ — an existing map edited entry by entry (`_rupee_entries`, only entries already reading as a key), a WinAnsi font without one given a map built from its encoding and `/Differences` (`_simple_font_map`), any other encoding untouched — in memory, the path passed on unchanged when no font needed it. **Every font a page's resources reach, form XObjects included** (`_fonts_of`). **Then `captions_restored`**: with `generate_parsed_pages` on, Docling's own printed lines are kept, and each line inside a table's box, in none of its cells and level with or above its first row (`_stray_caption`), becomes a caption *of that table* (`table.captions`), not loose text; one already its caption is not added again. `elements_of` prints a table's captions (Docling's own, such as "Table 6: Standalone Profit and Loss Statement", and the restored) as its first rows, counted as header rows, and its footnotes as its last rows (`_notes`; `_captions` is the parse step's own copy, kept apart so rendering can change without re-parsing), so they ride in its chunk, repeat on every split and are read for its scale. Then a `DocumentConverter` built once (`_converter`, OCR `DOCLING_OCR` off, device `DOCLING_DEVICE`); `elements_of` turns a `DoclingDocument` into elements, text, heading (`SectionHeaderItem`, `TitleItem`) or table, text drawn inside a picture included (`traverse_pictures`: ITC's "6.50 per share (Interim)" dividend sits in one), a page with nothing on it kept as an empty page (invariant 19); `table_rows` gives a cell spanning columns once, in its first; `header_rows` counts the leading rows Docling marked as column headers.
-- **Invariants:** Tests run on a fake converter over `DoclingDocument`s built in code (`tests/retrieval/conftest.py`), so CI never downloads Docling's models.
-- **Gotchas:** Every report sets ₹ in a legacy font that draws it on a keyboard key, so the text layer said `` ` ``, `C`, `H`… and no parser could read ₹ — hence `rupees_decoded`. WIPRO-FY25 draws its statements' "(C in millions …)" from XObjects holding 8 ITFRupee font objects no page lists, which a page-level walk left as "C" 273 times. Docling's table model often draws a table's box around its caption and scale line, and its cell matching drops what falls in no cell — "(₹ crore)" over an HDFC investments table, column-group headers such as "Gross block" — hence `captions_restored`.
-- **History:** `rupees_decoded` (2026-10-20). Measured over the 15 reports by pypdf text before and after: about 19,000 characters changed, every one a listed key to ₹. `_fonts_of` (2026-10-20): an exhaustive audit of every run in a rupee font over the 15 reports, and of the text for stand-ins, found nothing else (HDFC's three "C"s and one Sun Pharma backtick in Lato are printed as such). After the fix the other 14 reports decode to identical text. `captions_restored` (2026-10-20): on BAJAJ-AUTO-FY24: 29 lines restored, rendered ₹ 415 → 422 of pypdf's 426; the rest are "(₹" pieces dropped from inside a header cell whose scale words survive, which every label on those pages still reads as ×10000000. `traverse_pictures` (2026-10-20).
-- **Decided in:** LOG.md 10-20
-
-#### `retrieval.corpus.normalise`
-- **At:** `src/aigent/retrieval/corpus.py:407`
-- **Is:** function. One page, cleaned of what extraction did to it and nothing else: NFKC (ligatures, thin and non-breaking spaces, `CO₂`→`CO2`), tabs to spaces, runs of spaces collapsed, a word hyphenated across a line break rejoined, blank-line runs collapsed.
-- **Invariants:** **It deliberately does not fold curly quotes or dashes** — those are what the document says, not an artefact, so they stay in the citation and `_squeeze` handles them at match time.
-
-#### `retrieval.corpus._skeleton`
-- **At:** `src/aigent/retrieval/corpus.py:421`
-- **Is:** function. A line with its digits masked.
-- **Contract:** Small, and the reason the furniture rule works at all: `\d+` collapses a run to one `#`, so two printings of one header match and page 9 matches page 147.
-
-#### `retrieval.corpus.strip_furniture`
-- **At:** `src/aigent/retrieval/corpus.py:456`
-- **Is:** function. Running headers, footers and page numbers, by repetition among **edge lines with digits masked**.
-- **Contract:** Candidacy is decided at the edges — `(Rs. in crore)` repeats on 86 ITC pages mid-table and is content — but a skeleton that qualifies is then removed wherever it appears, since extraction sometimes drops a footer mid-stream. Counted over a **set per page**, so a header printed twice on one page is one page, not two. A page that was nothing but furniture stays, empty: dropping it would renumber every citation after it. **`furniture` finds the lines and `assembled` strips them from text elements only.**
-- **Gotchas:** Known cost — Reliance's `CONSOLIDATED FINANCIAL STATEMENTS` runs on 52 pages and goes with them, so `by_heading` loses that section label. With Docling a statement page opens with its heading and its table's scale row, `(H In Crore)`, the very edge lines that repeat on a hundred Bajaj pages, so stripping them from tables would delete every scale.
-- **History:** Measured on the corpus: 326 lines out of ITC, 434 out of Reliance, 1,778 out of Tata Motors. **Since 2026-10-20** text elements only.
-- **Decided in:** LOG.md 10-20
-
-#### `retrieval.corpus.to_document`
-- **At:** `src/aigent/retrieval/corpus.py:469`
-- **Is:** function. Joins pages with `PAGE_SEPARATOR`, recording the offset each starts at.
-- **Invariants:** `page_starts` must be built **while joining the normalised pages**.
-- **Gotchas:** Computed from the raw ones it is wrong by however much normalisation removed, which shows up as citations drifting a page late in long documents and as nothing at all in a short test.
-
-#### `retrieval.corpus.load_pdf`
-- **At:** `src/aigent/retrieval/corpus.py:551`
-- **Is:** function. `read_elements`, then `assembled`: normalise each element, strip furniture from text, join, record the spans.
-- **Gotchas:** `doc_id` defaults to the filename stem, so renaming a file renames every chunk in it.
-
 #### `retrieval.questions.Question`
 - **At:** `src/aigent/retrieval/questions.py:59`
 - **Is:** Pydantic model. `usable`, `question`, `quote`, `topic` — one generated question before checking.
@@ -2328,27 +1929,6 @@ often as the question is worth asking.
 - **At:** `src/aigent/retrieval/questions.py:139`
 - **Is:** function. The paid path, one call per passage, through the `Llm` that `main` builds with a real eval budget — so each call is admitted on top of the whole-run check.
 - **Gotchas:** **Unused by the shipped dataset**, which was authored by hand (see the dataset node); kept as the reproducible regeneration route and covered by its own tests.
-
-#### `retrieval.corpus.cache_file`
-- **At:** `src/aigent/retrieval/corpus.py:653`
-- **Is:** function. Where a PDF's extracted text is kept, named `{doc_id}-{pdf digest}-{ingest fingerprint}`.
-- **Contract:** **Both halves are load-bearing.** The bytes catch a company republishing a report; the fingerprint — a hash of `read_pages`, `normalise`, `_skeleton`, `strip_furniture`, `to_document` and the constants they read — catches an edit to the ingestion code. There is no version number to remember to bump.
-- **Gotchas:** A filename-keyed or bytes-only cache would serve text the current code never produced, and would do it silently.
-
-#### `retrieval.corpus.load_pdf_cached`
-- **At:** `src/aigent/retrieval/corpus.py:741`
-- **Is:** function. `load_pdf` memoised on disk in `corpus/.cache/` (git-ignored). Reached only through `load_corpus(cache=True)`, never by default.
-- **Contract:** Written to a `.partial` and moved into place, so an interrupted run leaves nothing readable behind; a corrupt or truncated entry is deleted and re-parsed rather than raised on; superseded entries for the same document are swept. **Two layers**, `parse_fingerprint()` naming the lower one's key: beneath the rendered document, `parse_cached` keeps Docling's own reading of the PDF (`{doc}.{digest}-{parse fingerprint}.docling`, Docling's JSON) keyed by `_PARSE_FINGERPRINT` alone — the converter, `rupees_decoded` and its helpers, Docling's version, `DOCLING_OCR`, `PDF_RUPEE_KEYS` — so a change to rendering (`elements_of` down to `assembled`) re-renders from the kept parse in seconds rather than re-parsing for hours; `_INGEST_FINGERPRINT` hashes the parse fingerprint with the rendering code. Same `.partial`, truncation and sweep rules for both layers. `parse_cached` caps Docling's queue (`_queue_capped`, outside the fingerprint) before converting.
-- **Gotchas:** **The cache keeps one entry per `doc_id`**, sweeping the rest, so two different PDFs under one name evict each other; hence `facts.documents.doc_id_of`. **Cold 27.8s, warm 0.04s** (pypdf; Docling's cold parse is about 8 minutes a report on MPS).
-- **History:** **Two layers since 2026-10-20.**
-- **Decided in:** LOG.md 10-20
-
-#### `retrieval.corpus.load_corpus`
-- **At:** `src/aigent/retrieval/corpus.py:762`
-- **Is:** function. Every PDF directly in a directory, in filename order.
-- **Contract:** **Directly, not recursively**: the fine-tune's training reports live in `corpus/training/` (`TRAINING_DIR`), listed in `evals/reference/training-manifest.json` (`TRAINING_MANIFEST`), so they never enter retrieval, `search_reports` or an eval; a test fails if a report in that folder is loaded. **`cache=False` by default, opt-in only**: reading the PDFs is always correct, while a cache is correct until it is not, and a stale hit is wrong *quietly* — the one failure mode the keying works hard to prevent but cannot rule out. 28 seconds is a price worth paying unless a caller has a reason, and then the caller says so at the call site where it can be seen. A test pins the default, so it cannot drift back. **Raises on an empty directory** rather than returning nothing — an empty corpus scores zero recall on every question and reads exactly like a bad retriever. **`doc_ids`** loads exactly the reports named and raises on one that is missing, so a typo cannot shrink the corpus; every published eval passes `FY25_REPORTS` (`ITC-FY25`, `RELIANCE-FY25`, `TATAMOTORS-FY25`), and only the capstone reads all six.
-- **History:** Not recursive (2026-10-10). Opt-in cache (decided 2026-09-18). **`doc_ids`** (2026-10-12), since the FY24 reports joined `corpus/`.
-- **Decided in:** LOG.md 09-18, 10-10, 10-12
 
 #### `retrieval.evaluate.STRATEGIES`
 - **At:** `src/aigent/retrieval/evaluate.py:67`
@@ -2414,112 +1994,6 @@ often as the question is worth asking.
 - **Is:** function. Reads ids back out of metadata.
 - **Contract:** **Errors rather than skipping** when a chunk carries none: dropping it is exactly what turned a broken adapter into a clean-looking report of zeros.
 
-#### `retrieval.sparse.tokenise`
-- **At:** `src/aigent/retrieval/sparse.py:29`
-- **Is:** function. Lowercased words and numbers, with `34,000` and `52.3` surviving as one token — splitting them hands the digits back to the same blur BM25 exists to fix.
-- **Contract:** No stemming, no stopword list: `idf` already discounts a term that appears everywhere, which is what a stopword list approximates.
-
-#### `retrieval.sparse.SparseIndex`
-- **At:** `src/aigent/retrieval/sparse.py:39`
-- **Is:** frozen dataclass. An inverted index over an `Inventory`: `postings` maps a term to the rows holding it, so scoring touches only chunks sharing a term.
-- **Contract:** Ids are the inventory's ids, which is what makes a hit here fusable with a `DenseIndex` hit (invariant 17). `score` returns a **sparse dict on purpose** — an absent row is *no match*, distinguishable from *matched badly* without a threshold, and `search` therefore drops zero-scorers rather than padding out to k. The `+1` in the idf keeps a term present in every chunk at a small positive weight; without it, a chunk would rank higher for **not** containing a query word.
-
-#### `retrieval.fuse.reciprocal_rank_fusion`
-- **At:** `src/aigent/retrieval/fuse.py:19`
-- **Is:** function. Ranks only, never scores.
-- **Contract:** Cosine lives in [-1, 1] and BM25 is unbounded and corpus-dependent, so averaging them is meaningless and normalising them is a per-corpus tuning problem. Ties break by first appearance so two identical runs cannot disagree — the same rule `DenseIndex.search` follows.
-- **Gotchas:** The fused number is a position, not a similarity; do not read it as one.
-
-#### `retrieval.rerank.Reranker`
-- **At:** `src/aigent/retrieval/rerank.py:25`
-- **Is:** Protocol. `name` and `scores(query, passages)`.
-- **Contract:** A protocol for the reason `Embedder` is one: a test substitutes a fake ordering without importing torch.
-
-#### `retrieval.rerank.LocalReranker`
-- **At:** `src/aigent/retrieval/rerank.py:37`
-- **Is:** class. A `sentence-transformers` CrossEncoder, heavy imports deferred into `__init__`, weights at `LOCAL_MODEL_DTYPE`.
-- **Gotchas:** Returns unbounded logits — not probabilities, not comparable across models; only their order within one call means anything.
-- **History:** Dtype (2026-10-21).
-- **Decided in:** LOG.md 10-21
-
-#### `retrieval.keys.build_keys`
-- **At:** `src/aigent/retrieval/keys.py:100`
-- **Is:** function. The keys of an inventory's chunks, with each key's parent and kind (`Keyed`).
-- **Contract:** A row key points at the piece of a split table that prints it, else the first piece; a row whose label is a placeholder (`row_label`: no cell of words with two letters) gets none. Key ids are `{doc}#k{n}`, the inventory `{name}-keys`.
-
-#### `retrieval.keys.table_context`
-- **At:** `src/aigent/retrieval/keys.py:49`
-- **Is:** function. A table label's section path and basis: report and page, scale (`chunk.scale_of`) and column years dropped.
-
-#### `retrieval.keys.ParentRanker`
-- **At:** `src/aigent/retrieval/keys.py:172`
-- **Is:** dataclass. Wraps a ranker over keys: reads `KEY_DEPTH` of them, returns each parent chunk once at its best key's place and score.
-- **Contract:** A table with five matching rows scores as its best row.
-
-#### `retrieval.keys.keyed_search`
-- **At:** `src/aigent/retrieval/keys.py:192`
-- **Is:** function. Chunks by element, builds keys and `Indexes` over them (cached as `{name}-keys`), and composes `SEARCH_METHOD`: its base over keys in a `ParentRanker`, then `Reranked` over the **chunks** when the method ends `+rerank`.
-- **Contract:** Returns the chunk inventory and the ranker.
-
-#### `retrieval.rerank.rerank`
-- **At:** `src/aigent/retrieval/rerank.py:74`
-- **Is:** function. Reorder candidates and keep k.
-- **Contract:** Takes the candidate *texts* rather than an `Inventory`, so the module stays testable against plain strings. Ties break by the first stage's order, so the cheap ranker settles what the expensive one is indifferent about.
-- **Invariants:** **It cannot retrieve**: a chunk outside the candidate set cannot be reordered into it, so this moves MRR and precision and moves recall only as far as `RERANK_CANDIDATES` does. A test asserts exactly that.
-
-#### `retrieval.rank.METHODS`
-- **At:** `src/aigent/retrieval/rank.py:25`
-- **Is:** tuple. The six retrieval arms: three bases (`dense`, `bm25`, `hybrid`) each with and without `+rerank`.
-- **Contract:** A grid rather than a list, so the table separates what **reach** buys from what **ordering** buys. All six rank one `by_sentence` inventory, so they share labels and are six tasks of **one** run — unlike the chunking strategies, which disagree about the labels and need `combine`.
-- **History:** Lived in `evaluate` until 2026-09-21.
-- **Decided in:** LOG.md 09-21
-
-#### `retrieval.rank.Ranker`
-- **At:** `src/aigent/retrieval/rank.py:38`
-- **Is:** Protocol. One method: `rank(query, k, *, doc_id=None) -> list[Hit]`.
-- **Contract:** A protocol, as `Embedder` and `Reranker` are, because the rankers share an interface and no code.
-
-#### `retrieval.rank.Indexes`
-- **At:** `src/aigent/retrieval/rank.py:45`
-- **Is:** frozen dataclass. The inventory, the embedder, the `DenseIndex` and the `SparseIndex`, built once and handed to every ranker.
-- **Contract:** `cache=True` takes the dense half from `DenseIndex.build_cached`; off by default, as the corpus cache is, and `agent_tasks` and `retrieval.evaluate` pass their `--cache` through.
-- **Gotchas:** Embedding the corpus is the slow part — **~65s** on the M4 — so building it per ranker would cost the eval six times over.
-- **History:** `--cache` passed through (2026-09-28).
-- **Decided in:** LOG.md 09-28
-
-#### `retrieval.rank.DenseRanker`
-- **At:** `src/aigent/retrieval/rank.py:79`
-- **Is:** frozen dataclasses `DenseRanker` / `SparseRanker`. One index each.
-- **Gotchas:** `DenseRanker` embeds the query itself, which means the eval's four dense-based methods each embed a question the eval used to embed once; identical vectors, a few seconds, and the rerun proved it.
-
-#### `retrieval.rank.HybridRanker`
-- **At:** `src/aigent/retrieval/rank.py:102`
-- **Is:** frozen dataclass. Holds a dense and a sparse ranker, reads each to `FUSE_DEPTH` rather than to `k`, and fuses by reciprocal rank — dense first, since fusion breaks ties by first appearance.
-
-#### `retrieval.rank.Reranked`
-- **At:** `src/aigent/retrieval/rank.py:121`
-- **Is:** frozen dataclass. Wraps **any** ranker: takes its best `candidates`, has the cross-encoder reorder them, keeps `k`.
-- **Contract:** This is what makes `+rerank` a suffix on any base rather than three more kinds of ranker. The base decides what is reachable; the reranker only decides order within it.
-
-#### `retrieval.rank.scoped`
-- **At:** `src/aigent/retrieval/rank.py:65`
-- **Is:** function. **A scope ranks every chunk, then drops the other reports** — rather than filtering the global top k, which returns nothing for a report that ranks low overall and reads as "the report does not say".
-- **Contract:** Exact rather than approximate, because a matrix-vector product and a BM25 pass over 5,193 chunks are cheap. Idf stays corpus-wide under a scope. Without a scope it is exactly the ranking the eval measured, and a test pins that. A scope (`Scope`) is one report, a set of them (the capstone's 'ITC, both years') or None for all.
-- **History:** Sets of reports since 2026-10-12.
-- **Decided in:** LOG.md 10-12
-
-#### `retrieval.rank.build_ranker`
-- **At:** `src/aigent/retrieval/rank.py:138`
-- **Is:** function. Method name → ranker.
-- **Contract:** `"bm25+rerank"` is `Reranked(SparseRanker(...))`, `"hybrid"` is `HybridRanker(DenseRanker(...), SparseRanker(...))`, and a test asserts all six compositions as written-out strings. A `+rerank` method loads the local cross-encoder unless handed one; the eval hands one, so it loads once.
-
-#### `retrieval.chunk.context_block`
-- **At:** `src/aigent/retrieval/chunk.py:158`
-- **Is:** function. The passages, one XML element each, tagged with the chunk id the model must cite it by.
-- **Contract:** One element per passage rather than a concatenated blob: a citation that names no passage cannot be checked against the label, and an unfalsifiable citation is worse than none because it reads as evidence.
-- **History:** Moved from `retrieval.answer` on 2026-09-21, and lives beside `Chunk.citation`, which it prints.
-- **Decided in:** LOG.md 09-21
-
 #### `retrieval.evaluate.ranker_task`
 - **At:** `src/aigent/retrieval/evaluate.py:167`
 - **Is:** function. One arm: the question through one `Ranker`. Passes the case's report as `doc_id` (`report_of`).
@@ -2535,30 +2009,30 @@ often as the question is worth asking.
 - **Decided in:** LOG.md 10-21
 
 #### `retrieval.answer.ARMS`
-- **At:** `src/aigent/retrieval/answer.py:93`
+- **At:** `src/aigent/retrieval/answer.py:94`
 - **Is:** dict. `closed_book` and `rag` over the identical questions.
 - **Contract:** The gap between the two columns is what retrieval bought, which no single-arm number can state — an absolute RAG score conflates what the retriever found with what the model already knew about three large Indian companies.
 
 #### `retrieval.answer.Answer`
-- **At:** `src/aigent/retrieval/answer.py:77`
+- **At:** `src/aigent/retrieval/answer.py:78`
 - **Is:** Pydantic model. `answered`, `answer`, `cited`.
 - **Contract:** `answered` is a field rather than an empty string because declining and failing are different outcomes that an empty answer would merge. `cited` is what makes the citation checkable.
 
 #### `retrieval.answer.answer_task`
-- **At:** `src/aigent/retrieval/answer.py:107`
+- **At:** `src/aigent/retrieval/answer.py:108`
 - **Is:** function. Retrieves (in the `rag` arm), prompts, and parses through `Llm.for_eval`.
 - **Contract:** Sets `Outcome.raw` to the answer text alone, so `LlmJudge` grades the fact against the reference and never sees the chunk ids — those are a hint at best and noise at worst in a correctness judgement. Query vectors are computed once outside the task, so a row's score cannot move because its question was embedded on a different pass. **Its `model` and the judge's default to None**, meaning "whatever this client serves" — resolved from `llm.adapters.spec(client)` rather than from `config.MODEL`, which names the *configured* client's model and is wrong the moment an eval is pointed at a local server. **Its output cap follows the same rule**: `max_tokens("ANSWER", its client)`, never the import-time constant.
 - **History:** `model` None (2026-09-23): a live run found this sending `claude-opus-5` to `mlx_lm.server`. Output cap per client (2026-09-28).
 - **Decided in:** LOG.md 09-23, 09-28
 
 #### `retrieval.answer.graders`
-- **At:** `src/aigent/retrieval/answer.py:168`
+- **At:** `src/aigent/retrieval/answer.py:169`
 - **Is:** function. Two free, one paid, read as a funnel: did it answer, did it cite a passage that holds the answer, was the answer right.
 - **Contract:** `answered` is `flag` and is what keeps an abstention distinguishable from a confabulation — `correct` fails both. `cites_relevant` is `hit_at_k` pointed at the **cited** ids rather than the retrieved ones, so a citation is checked against the label rather than trusted; it costs nothing, which is the whole argument for reusing the grader rather than asking the judge. `correct` is the judge against the labelled quote.
 - **History:** `cites_relevant` measured 0.667 against the retriever's own hit@5 of 0.685 — the model cites what it was given.
 
 #### `retrieval.answer.main`
-- **At:** `src/aigent/retrieval/answer.py:241`
+- **At:** `src/aigent/retrieval/answer.py:242`
 - **Is:** function. **Dry run by default**, `--yes` to send.
 - **Contract:** `--client` names who answers and `--judge-client` who grades (default: the answering client), each through its own `Llm`, which counts that client's half of the run, so every model, cap and price printed or admitted is read off the client that will serve it. `--cache` reuses PDF text and chunk vectors: a dry run of 23s warm against 76s cold.
 - **History:** Per-client counting (2026-09-28). **This retired the scratch harness** behind the 09-24 comparison, which embedded the corpus again for every model, kept a cache keyed on ids alone, and recorded no dataset digest — every report it wrote reads `unrecorded` where the digest belongs.
@@ -2848,7 +2322,7 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **Decided in:** LOG.md 09-21, 09-22, 09-28, 10-07
 
 #### `tests.conftest.FakeAnthropic`
-- **At:** `tests/conftest.py:418`
+- **At:** `tests/conftest.py:416`
 - **Is:** fixtures `FakeAnthropic` / `make_llm`, free. A client whose reply is a function of **what was sent** — model, system, messages, schema — and which records each call's top-level `cache_control`, from `extra_body` too, rather than of arrival order, so a concurrent batch gets the answers meant for it.
 - **Contract:** Fakes `create`, `parse`, `stream` and `count_tokens`, and a reply may be a whole `Message` to script tool use, or an exception to raise. **`beta.messages.tool_runner` returns the SDK's real `BetaToolRunner`** over the fake, putting the tools it runs on the wire before raw server tools, as the SDK does, so `run_tools` is tested against the runner's own loop rather than a copy of it; `tool_turn`, `turns` and `tool_results` script and read a tool conversation. `input_tokens` and `count_error` decide what the free count says, which is how the catalogue tests provoke a rejection or an oversized request. `make_llm` wraps it in an `Llm` with a budget of its own.
 - **History:** Also home to `FakeSearch` and its `search` fixture (one passage per report), moved up from `tests/workflows/conftest.py` when the agent needed it too.
@@ -2910,12 +2384,12 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **Decided in:** LOG.md 10-07
 
 #### `tests.conftest.make_judge`
-- **At:** `tests/conftest.py:137`
+- **At:** `tests/conftest.py:135`
 - **Is:** fixture, free. The one scripted `LlmJudge` fixture: a verdict decided in the test, a fixed `JUDGE_USAGE`, and a log of prompts, output caps and pre-flight counts; `client=` puts it on another client.
 - **Contract:** Shared so the grader tests and the runner tests cannot drift apart about what a judge costs.
 
 #### `tests.conftest.CAPPED`
-- **At:** `tests/conftest.py:157`
+- **At:** `tests/conftest.py:155`
 - **Is:** client and fixture (`CAPPED` / `capped`), free. The Anthropic client under another name, with `ANSWER` and `JUDGE` caps no default has, registered in `CLIENTS` for one test by the `capped` fixture.
 - **Contract:** What lets a test tell which client's cap a call went out with — the import-time constant or its own.
 - **History:** 2026-09-28: created.
@@ -2937,27 +2411,10 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **History:** Lock test (2026-10-07). Batch judging (2026-10-07).
 - **Decided in:** LOG.md 10-07
 
-#### `tests.conftest.KeywordReranker`
-- **At:** `tests/conftest.py:544`
-- **Is:** fixture class. The shared fake cross-encoder: score a passage by how many query words it holds.
-- **Contract:** Crude, and crucially a **different ordering** from `BagOfWordsEmbedder`'s, so a rerank test can prove the second stage moved something.
-
 #### `tests.conftest.BagOfWordsEmbedder`
-- **At:** `tests/conftest.py:564`
+- **At:** `tests/conftest.py:37`
 - **Is:** fixture class, free. The shared fake embedder: words hashed into 32 buckets by **CRC32, not `hash`**, which Python randomises per process — a fake that embeds differently on Tuesday is worse than no fake.
 - **Contract:** Similarity is real if crude, so a test can say "this query should find that chunk" without importing torch. `normalise=False` breaks the contract on purpose, for the test that the dense index notices.
-
-#### `tests.retrieval.test_chunk`
-- **At:** `tests/retrieval/test_chunk.py`
-- **Is:** test module, free. The four splitters as tables over the text they must survive.
-- **Contract:** The abbreviation table is the load-bearing one — `Rs.` opens every other sentence in an annual report, and a splitter that breaks on it shears the figure off its unit, which surfaces as a retrieval failure three layers later. Then: the fixed window's mid-word cut asserted rather than apologised for, headings recognised in text that lost its markup, ordinals staying contiguous across a dropped fragment, a page number derived from an offset, and the two ends of quote resolution — a quote found in the chunk that holds it, and a quote **split across a boundary resolving to nothing**, which is the finding that a chunking strategy has capped its own recall.
-
-#### `tests.retrieval.test_corpus`
-- **At:** `tests/retrieval/test_corpus.py`
-- **Is:** test module, free. The corpus, 24 tests.
-- **Contract:** `normalise` is an eleven-row table of extraction artefacts, each row naming the one thing it fixes. `build_pdf` writes a real uncompressed PDF in the test — byte offsets, xref and all — so `load_pdf` and `read_pages` are covered end to end without a binary in the repo. The load-bearing test is the page-offset one: every citation downstream names a page, and offsets taken before normalisation are wrong in a way nothing else in the pipeline notices. Then the cache, tested for the ways it could go *silently* wrong rather than loudly: a second load that does not re-parse (counted, not timed), a republished report invalidating on bytes, an ingestion-code change invalidating on fingerprint, a truncated entry re-parsed instead of raised on, superseded entries swept, and **the default pinned as no-cache** so an opt-in convenience cannot quietly become the norm. Every guard mutation-checked.
-- **History:** **The rupee sign** (2026-10-20): `build_pdf` draws a part of a line in braces in a second font, with its own encoding and optional ToUnicode, and a fourteen-row table holds what becomes ₹ and what must not — each rupee font's keys, a key moved by `/Differences`, an existing map changing only its key; Foradian's R, letters, digits and dashes, ITFRupee's other keys, a non-rupee font, a family merely containing "Rupee", a non-WinAnsi encoding all unchanged — plus `Picture` pieces in `conftest.docling`, text inside one read where it stands; grids laid out on the page (`box`, a caption `band`, an empty `margin`) and a caption Docling found, with a nine-row table of printed lines a table takes as its leading header rows or leaves — a scale line in the band, several lines top to bottom, one level with the first row beside its cells taken; text beside lower rows, a line in a cell, one outside the box, a table without cell boxes left — and a found caption made the first row and not restored twice; running headers as a page's context and never its text; a footnote as a table's last row and section rows counted past its caption; the cache keeping `running` and `sections`; and in `test_chunk` the basis from the running header and the section's first, the section path in a label, an eight-row table of heading sequences and their paths, a text label's basis, and a split table repeating the section row each piece continues under; the parse layer of the cache — a rendering change reading the kept parse, a parsing change re-parsing, a truncated parse re-parsed, one parse per document — a rupee font inside a form XObject repaired too, and a form that draws itself walked once; plus the written map checked by code (pypdf's extractor decodes `/Differences` before the map, which hides a missing entry), a PDF with no rupee font passed on as its path, and a decoded one keeping its file name.
-- **Decided in:** LOG.md 10-20
 
 #### `tests.retrieval.test_questions`
 - **At:** `tests/retrieval/test_questions.py`
@@ -2976,55 +2433,12 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **Contract:** Two load-bearing tests: **the inventory's ids and the metadata's ids are identical by construction**, and **a retrieved chunk carrying no `chunk_id` is an error row, not a quiet miss.**
 - **History:** The first real run of that module scored 0.000 on every metric and raised nothing, because unmappable chunks were dropped and an empty id list grades as a clean miss.
 
-#### `tests.retrieval.test_sparse`
-- **At:** `tests/retrieval/test_sparse.py`
-- **Is:** test module, free. BM25's two jobs a dense retriever cannot do.
-- **Contract:** The rare-token test is the reason the module exists — `SACE` beating a chunk that merely shares `the`, `company` and `year` is idf doing the work. The no-match test is what keeps a fused ranking honest: a chunk sharing no query term is absent, not ranked last. Plus a tokeniser table where the grouped-figure rows (`34,000`, `52.3`) are the whole argument for having a lexical ranker.
-
-#### `tests.retrieval.test_fuse`
-- **At:** `tests/retrieval/test_fuse.py`
-- **Is:** test module, free. Arithmetic over positions.
-- **Contract:** The damping test is load-bearing and exact: same inputs, `damping=0` lets a single first place win, `damping=60` lets presence in both rankings win. It also records what RRF does **not** promise — given equal rank sums it prefers the lopsided pair, since `1/(k+r)` is convex, so (1,3) beats (2,2).
-- **History:** That was a wrong assumption in the first draft of this file, caught by the test.
-
-#### `tests.retrieval.test_rerank`
-- **At:** `tests/retrieval/test_rerank.py`
-- **Is:** test module, free. Against `conftest.KeywordReranker`, which deliberately **disagrees** with `BagOfWordsEmbedder` — a fake reranker that agreed with the fake retriever could not show reranking changed anything.
-- **Contract:** The last test is the one that matters: reranking cannot retrieve what the first stage missed, without which someone reads a rerank column as if it fixed misses.
-
 #### `tests.retrieval.test_evaluate`
 - **At:** `tests/retrieval/test_evaluate.py`
 - **Is:** test module, free. The retrieval eval's own logic.
 - **Contract:** `resolve` as a five-row table (one chunk, two chunks, a straddling quote, no quote, a non-text quote), an unresolved label kept in the set rather than dropped, both ranking tasks against fakes including a case with no query vector, and `report_unresolved`'s two outcomes. Two files load as one set in order, an id they share is refused, one file keeps its own label, the joined digest moves with either file, and both comparisons run end to end on fakes (`BagOfWordsEmbedder`, `KeywordReranker`) over two files and report them as one set.
 - **History:** 2026-10-07: created. Since 2026-10-21: the two-file tests — the test that caught the strategy loop's `name` overwriting the dataset name.
 - **Decided in:** LOG.md 10-07, 10-21
-
-#### `tests.retrieval.test_keys`
-- **At:** `tests/retrieval/test_keys.py`
-- **Is:** test module, free. The keys over Docling documents built in code.
-- **Contract:** Every chunk its own key; a table's number-free row keys and one table key, none for placeholder or figure-only rows; row keys homed to the piece of a split table that prints them; sentence keys under the heading without repeating it, none for a one-sentence chunk; `table_context`, `row_label`, `column_headers`/`years_in` as tables; `ParentRanker`'s dedupe, depth and scope; `keyed_search` with and without a reranker over the fakes, chunk ids out and whole chunks reranked. Every guard mutation-checked.
-- **History:** 2026-10-21: created.
-- **Decided in:** LOG.md 10-21
-
-#### `tests.retrieval.test_embed`
-- **At:** `tests/retrieval/test_embed.py`
-- **Is:** test module, free.
-- **Contract:** `query_prefix_of` as a table (declared, configured, an empty declaration, a model wanting none), an unknown model refused, the configured `EMBED_MODEL` listed, and both local models loaded at `LOCAL_MODEL_DTYPE` against fake sentence-transformers classes.
-- **History:** 2026-10-21: created.
-- **Decided in:** LOG.md 10-21
-
-#### `tests.retrieval.test_rank`
-- **At:** `tests/retrieval/test_rank.py`
-- **Is:** test module, free. Three tables.
-- **Contract:** **Each method builds the composition its name says**, asserted as a written-out string (`"Reranked(HybridRanker(DenseRanker, SparseRanker))"`), so the design is readable from the test. **A scoped ranking stays in its report**, a row per method, over a corpus built so the *other* report ranks higher overall; the dense and bm25 rows fail if scoping degrades to filtering the global top k (checked by mutation — the hybrid and rerank rows cannot, since their depth covers a four-chunk corpus). **An unscoped ranking is exactly what the eval measured**, one row per base plus one for the rerank wrapper. Then an unknown method refused, `SEARCH_METHOD` held to `METHODS`, and `Indexes` reusing stored vectors only when asked, two rows.
-
-#### `tests.retrieval.test_dense`
-- **At:** `tests/retrieval/test_dense.py`
-- **Is:** test module, free. The dense index's arithmetic and its two guards, against the fake.
-- **Contract:** Ranking, k larger and smaller than the inventory, an empty index, ties breaking identically across five runs, and the two builds it refuses: un-normalised vectors, and a matrix one row short the way a batching bug drops the last batch. The store: only unseen text embedded (a changed, added or reordered chunk, another model, other embedding code, as exact counts), indexes sharing text sharing vectors, a repeated text embedded once, a damaged store (truncated, empty, foreign, misaligned, a key twice) started afresh, one file per model written whole, its log line, and near-identical texts never sharing a key; every guard mutation-checked.
-- **Gotchas:** Whether a *real* model ranks the right chunk first is a question for an eval over labelled data — confusing the two produces a suite that passes while retrieval is broken.
-- **History:** **The copy on disk** (2026-09-28): a round trip; a loaded file held to the two guards, two rows; a second build served without embedding, counted rather than timed; a five-row table of what must rebuild the cache — nothing changed, a chunk's text changed under the same id, a chunk added, another model, another `embed_documents` — whose second row is the case a cache keyed on ids alone serves stale, as the scratch one was; four damaged files rebuilt rather than raised on; and one file kept per strategy. Checked by mutation: keying on ids alone, leaving the code out of the key, trusting a loaded file's ids, skipping the sweep, handing `np.savez` a path and loading without the guards each failed the row written for it. Since 2026-10-21 the store tests.
-- **Decided in:** LOG.md 09-28, 10-21
 
 #### `tests.evals.test_runner`
 - **At:** `tests/evals/test_runner.py`
@@ -3169,6 +2583,13 @@ call, which is what lets Week 2 hand it a retrieval function that spends nothing
 - **Decided in:** LOG.md 10-22
 
 ### 2.13 Non-code nodes
+
+#### `cltrplusf`
+- **Is:** an external package, the repo `vedantdeo/cltrplusf`: parsing (Docling, rupee fonts, words, tables re-rowed), chunking and search (`chunk`, `corpus`, `filed`, `line_rows`, `printed`, `embed`, `dense`, `sparse`, `fuse`, `rerank`, `rank`, `hits`, `keys`, `config`, `testing`).
+- **Contract:** imports nothing from aigent and calls no hosted model; reads `corpus/` under `CLTRPLUSF_HOME`, which `aigent/__init__.py` sets to this checkout. Its fakes (`testing.BagOfWordsEmbedder`, `KeywordReranker`, the Docling builders and `fake_docling`) are the ones aigent's tests use.
+- **Gotchas:** pinned in `uv.lock`; a change there reaches aigent only through a re-lock (`uv lock --upgrade-package cltrplusf`) or the release's snap. Its own graph is `docs/knowledge-graph.md` in that repo.
+- **History:** 2026-11-27: moved out of aigent with its history; see the dependency note in §1.
+- **Decided in:** `LOG.md 11-27`.
 
 #### `sandbox/`
 - **At:** `sandbox/`
@@ -3507,9 +2928,9 @@ analyst.experts —imports→ analyst.toolbox.Expert
 analyst.experts —imports→ anthropic.types.ToolParam
 analyst.experts —imports→ llm.core.{Dispatch, Llm}
 analyst.filings —imports→ anthropic.types.ToolParam
-analyst.filings —imports→ retrieval.chunk.{Chunk, context_block}
-analyst.filings —imports→ retrieval.corpus.{MANIFEST, load_corpus}
-analyst.filings —imports→ retrieval.keys.keyed_search
+analyst.filings —imports→ cltrplusf.chunk.{Chunk, context_block}
+analyst.filings —imports→ cltrplusf.corpus.{MANIFEST, load_corpus}
+analyst.filings —imports→ cltrplusf.keys.keyed_search
 analyst.filings —imports→ tools.fence
 analyst.fundamentals —imports→ anthropic.types.ToolParam
 analyst.fundamentals —imports→ facts.cfg_facts.{COMPANY_SCOPES, COMPARE_AGREE_SHARE, FACTS_LOOKUP_K, FACTS_TICKERS, FACTS_YEARS}
@@ -3568,16 +2989,19 @@ analyst.served —imports→ llm.adapters.openai.UNREACHABLE
 analyst.served —imports→ llm.core.{Dispatch, Llm, Request}
 analyst.served —imports→ llm.messages.{Block, Cache, Msg, Reply, Tool}
 analyst.served —imports→ tools.{CALCULATOR_TOOL, execute_tool}
+analyst.specialists —imports→ cltrplusf.chunk.squeeze
 analyst.specialists —imports→ extraction.figures.CHANGE
 analyst.specialists —imports→ extraction.research.{BASES, SourcedFigure, parse_sourced}
 analyst.specialists —imports→ llm.messages.Msg
-analyst.specialists —imports→ retrieval.chunk.squeeze
 analyst.specialists —imports→ underhood.tooldata.labels.{Label, check_call}
 analyst.teach —imports→ analyst.cfg_analyst.{SPECIALIST_TOOL_TURNS, max_tokens}
 analyst.teach —imports→ analyst.run.in_parallel
 analyst.teach —imports→ analyst.served.{opening, research, turn_request}
 analyst.teach —imports→ analyst.specialists.{FigureJob, Found, Invalid, Passage, Told, check_figures, passages_in}
 analyst.teach —imports→ analyst.toolbox.SEARCH
+analyst.teach —imports→ cltrplusf.chunk.{Chunk, context_block}
+analyst.teach —imports→ cltrplusf.corpus.{TRAINING_DIR, TRAINING_MANIFEST, load_corpus}
+analyst.teach —imports→ cltrplusf.keys.keyed_search
 analyst.teach —imports→ config.{CLIENT, MAX_USD_RESEARCH_TEACH, RESEARCH_DESCRIPTION_WORDS, RESEARCH_TEACHER_MODEL, RESEARCH_TEACH_CACHE, RESEARCH_TEACH_NAMED_SHARE, RESEARCH_TEACH_PAIRED_SHARE, RESEARCH_TEACH_QUESTIONS, RESEARCH_TEACH_SEED, RESEARCH_TEACH_WORKERS, RESEARCH_TYPICAL_OUTPUT, RESEARCH_TYPICAL_TURNS, SEARCH_RESULT_TOKENS}
 analyst.teach —imports→ extraction.figures.{CHANGE, Figure, Labelled, TOOL}
 analyst.teach —imports→ extraction.research.{REPORT_SEARCH_TOOL, SourcedFigure, research_messages}
@@ -3588,9 +3012,6 @@ analyst.teach —imports→ llm.core.{Dispatch, Llm, Request}
 analyst.teach —imports→ llm.messages.{Block, Msg, Tool}
 analyst.teach —imports→ llm.pricing.{Budget, cost_usd}
 analyst.teach —imports→ pydantic.{BaseModel, Field, JsonValue, ValidationError}
-analyst.teach —imports→ retrieval.chunk.{Chunk, context_block}
-analyst.teach —imports→ retrieval.corpus.{TRAINING_DIR, TRAINING_MANIFEST, load_corpus}
-analyst.teach —imports→ retrieval.keys.keyed_search
 analyst.teach —imports→ tools.{CALCULATOR_TOOL, execute_tool, fence}
 analyst.teach —imports→ underhood.tooldata.labels.{Label, check_call, printed}
 analyst.toolbox —imports→ analyst.router.Router
@@ -3640,14 +3061,16 @@ extraction.baseline —imports→ numpy
 extraction.baseline —imports→ sklearn.feature_extraction.text.TfidfVectorizer
 extraction.baseline —imports→ sklearn.linear_model.LogisticRegressionCV
 extraction.baseline —imports→ sklearn.pipeline.Pipeline
+extraction.figure_eval —imports→ cltrplusf.chunk.{Inventory, by_sentence}
+extraction.figure_eval —imports→ cltrplusf.corpus.{FY25_REPORTS, MANIFEST, load_corpus}
 extraction.figure_eval —imports→ config.FIGURE_LABEL_SEED
 extraction.figure_eval —imports→ evals.dataset.{Case, load_jsonl}
 extraction.figure_eval —imports→ evals.grade.Outcome
 extraction.figure_eval —imports→ extraction.figure_training.source_of
 extraction.figure_eval —imports→ extraction.figures.{CURRENCIES, DATASET, Figure, Figures, TOOL, _printed, described, figure_messages, figures_match, parse_figures, same_figure, unit_key}
 extraction.figure_eval —imports→ pydantic.JsonValue
-extraction.figure_eval —imports→ retrieval.chunk.{Inventory, by_sentence}
-extraction.figure_eval —imports→ retrieval.corpus.{FY25_REPORTS, MANIFEST, load_corpus}
+extraction.figure_training —imports→ cltrplusf.chunk.{Chunk, Inventory, by_sentence}
+extraction.figure_training —imports→ cltrplusf.corpus.{TRAINING_DIR, TRAINING_MANIFEST, load_corpus}
 extraction.figure_training —imports→ config.{CLIENT, FIGURE_ANSWER_CACHE, FIGURE_ANSWER_SLICE, FIGURE_LABEL_CORE_PER_DOC, FIGURE_LABEL_MODEL, FIGURE_LABEL_PLAIN_PER_DOC, FIGURE_LABEL_QUESTIONS, FIGURE_LABEL_SCALED_PER_DOC, FIGURE_LABEL_SEED, MAX_USD_FIGURE_LABELS, THINKING_EVAL_PARAM, max_tokens}
 extraction.figure_training —imports→ extraction.figures.{CHANGE, Labelled, METRICS, RATE_METRICS, SYSTEM, TOOL, figure_messages}
 extraction.figure_training —imports→ llm.adapters.spec
@@ -3655,12 +3078,10 @@ extraction.figure_training —imports→ llm.core.{Llm, Request}
 extraction.figure_training —imports→ llm.messages.{Failed, Parsed}
 extraction.figure_training —imports→ llm.pricing.{Budget, estimate_eval_usd}
 extraction.figure_training —imports→ pydantic.{BaseModel, Field, JsonValue}
-extraction.figure_training —imports→ retrieval.chunk.{Chunk, Inventory, by_sentence}
-extraction.figure_training —imports→ retrieval.corpus.{TRAINING_DIR, TRAINING_MANIFEST, load_corpus}
+extraction.figures —imports→ cltrplusf.chunk.squeeze
 extraction.figures —imports→ evals.dataset.Case
 extraction.figures —imports→ evals.grade.{Outcome, Score}
 extraction.figures —imports→ pydantic.{BaseModel, Field, JsonValue, ValidationError}
-extraction.figures —imports→ retrieval.chunk.squeeze
 extraction.figures —imports→ tools.CALCULATOR_TOOL
 extraction.headline_eval —imports→ config.{SYNTHETIC_CLIENT, max_tokens}
 extraction.headline_eval —imports→ evals.dataset.{Case, digest, load_jsonl}
@@ -3690,6 +3111,8 @@ extraction.synthetic —imports→ evals.dataset.load_jsonl
 extraction.synthetic —imports→ extraction.headlines.{DATASET, Extraction, METRICS, VARIANTS, headline_request, load_directory, word_runs}
 extraction.synthetic —imports→ llm.adapters.{build, spec}
 extraction.synthetic —imports→ llm.adapters.openai.OpenAI
+facts.__main__ —imports→ cltrplusf.chunk.{Document, Table}
+facts.__main__ —imports→ cltrplusf.corpus.{assembled, elements_of, parse_cached}
 facts.__main__ —imports→ facts.build.build
 facts.__main__ —imports→ facts.cfg_facts.{CROSSCHECK_SAMPLE, CROSSCHECK_SEED, FACTS_MATCH_METHOD, FACTS_TICKERS, FACTS_YEARS, REVIEW_PAGE_SEED, TABLE_PAGE_SEED, TAXONOMY_PACKAGES, VERIFY_REOCR_MAX_GB, VERIFY_REOCR_POLL_S, VERIFY_TICKERS}
 facts.__main__ —imports→ facts.coverage.{evaluate, fundamentals_figures, table_figures, teacher_figures, write_report}
@@ -3707,8 +3130,6 @@ facts.__main__ —imports→ facts.table_page.{CardSource, TABLE_PAGES, TEMPLATE
 facts.__main__ —imports→ facts.taxonomy.TAXONOMY_DIR
 facts.__main__ —imports→ facts.trace.{trace, trace_json}
 facts.__main__ —imports→ psutil
-facts.__main__ —imports→ retrieval.chunk.{Document, Table}
-facts.__main__ —imports→ retrieval.corpus.{assembled, elements_of, parse_cached}
 facts.build —imports→ facts.check.{Checked, check_fundamentals, check_sums}
 facts.build —imports→ facts.nse.{Get, fetch, list_filings, read_manifest, write_manifest}
 facts.build —imports→ facts.reference.Fundamental
@@ -3723,20 +3144,25 @@ facts.coverage —imports→ facts.cfg_facts.{COVERAGE_DEFINITIONS, COVERAGE_FOU
 facts.coverage —imports→ facts.check.tolerance
 facts.coverage —imports→ facts.lookup.{Lookup, NotFound, span}
 facts.coverage —imports→ facts.reference.Fundamental
+facts.crosscheck —imports→ cltrplusf.printed
+facts.crosscheck —imports→ cltrplusf.chunk.Document
+facts.crosscheck —imports→ cltrplusf.printed.{MAIN_LINE, figure_row, number}
 facts.crosscheck —imports→ facts.cfg_facts.{CROSSCHECK_DIFFER_LABEL_MIN, CROSSCHECK_DISTINCT_DIGITS, CROSSCHECK_EXCLUSIVE, CROSSCHECK_FACT_ACTIONS, CROSSCHECK_FILED_FRAMEWORK, CROSSCHECK_FRAMEWORKS, CROSSCHECK_HEADING_LEAD, CROSSCHECK_LABEL_FIGURES, CROSSCHECK_LABEL_MIN, CROSSCHECK_NAVIGATION, CROSSCHECK_ROW_TURNS, CROSSCHECK_SCALES, CROSSCHECK_SIGN_FREE, CROSSCHECK_SPAN_ROWS, CROSSCHECK_SYNONYMS, CROSSCHECK_WHOLE_SHARE, VERIFY_OCR_TICKERS}
 facts.crosscheck —imports→ facts.documents.{Entry, VERIFY_DIR, filed_of, load_verify_document, read_manifest, reading_fingerprint, reocr_built, usable_readings}
 facts.crosscheck —imports→ facts.headers.{BasisLabel, Column, Section, column_periods, document_scale, framework_in, header_bases, months_of, scale_in}
 facts.crosscheck —imports→ facts.labels.{label_figure, label_match, note, per_share_row, serial}
-facts.crosscheck —imports→ facts.printed.{MAIN_LINE, figure_row, number}
 facts.crosscheck —imports→ facts.share_events.PER_SHARE
 facts.crosscheck —imports→ facts.store.{XBRL_TIERS, demote_derived}
 facts.crosscheck —imports→ facts.vocab.repair
-facts.crosscheck —imports→ retrieval.chunk.Document
 facts.derived_concepts —imports→ facts.cfg_facts.COMPANY_SCOPES
 facts.derived_concepts —imports→ facts.formulas.FORMULAS
 facts.derived_concepts —imports→ facts.lookup.{Period, as_time, instants, opening_of, span}
 facts.derived_concepts —imports→ facts.store.{Writer, XBRL_TIERS, covers, normal_scope, scope_refusal, scopes_of, write_derived_concept}
-facts.documents —imports→ config.{DOCLING_DEVICE, DOCLING_QUEUE_MAX_SIZE}
+facts.documents —imports→ cltrplusf.{corpus, printed}
+facts.documents —imports→ cltrplusf.chunk.Document
+facts.documents —imports→ cltrplusf.config.{DOCLING_DEVICE, DOCLING_QUEUE_MAX_SIZE}
+facts.documents —imports→ cltrplusf.corpus.{CACHE_DIR, CORPUS_DIR, Element, StoredDocument, assembled, captions_restored, document_from_json, elements_of, header_rows, section_rows, table_rows, write_cached}
+facts.documents —imports→ cltrplusf.filed.{lines_fingerprint, load_lines_cached}
 facts.documents —imports→ docling.datamodel.accelerator_options.{AcceleratorDevice, AcceleratorOptions}
 facts.documents —imports→ docling.datamodel.base_models.InputFormat
 facts.documents —imports→ docling.datamodel.pipeline_options.{OcrMode, PdfPipelineOptions, RapidOcrOptions}
@@ -3746,36 +3172,27 @@ facts.documents —imports→ docling_core.types.doc.document.DoclingDocument
 facts.documents —imports→ docling_core.types.doc.items.node.DocItem
 facts.documents —imports→ docling_core.types.doc.items.table.table.TableItem
 facts.documents —imports→ docling_core.types.doc.items.text.{SectionHeaderItem, TextItem, TitleItem}
-facts.documents —imports→ facts.cfg_facts.{VERIFY_BAND_MIN_SHARE, VERIFY_LINE_GAP, VERIFY_MAX_TEXT_LESS_SHARE, VERIFY_MIN_TEXT_CHARS, VERIFY_OCR_TICKERS, VERIFY_REOCR, VERIFY_WRAP_GAP}
-facts.documents —imports→ facts.line_rows
-facts.documents —imports→ facts.printed
+facts.documents —imports→ facts.cfg_facts.{VERIFY_MAX_TEXT_LESS_SHARE, VERIFY_MIN_TEXT_CHARS, VERIFY_OCR_TICKERS, VERIFY_REOCR}
 facts.documents —imports→ pypdfium2
 facts.documents —imports→ pypdfium2.raw
-facts.documents —imports→ retrieval.chunk.{Document, Table}
-facts.documents —imports→ retrieval.corpus.{CACHE_DIR, CORPUS_DIR, Element, StoredDocument, assembled, captions_restored, document_from_json, elements_of, header_rows, parse_cached, rupees_decoded, section_rows, table_rows, write_cached}
+facts.headers —imports→ cltrplusf.printed.{NUMERIC_DATE, WORDED_DATE, YEAR}
 facts.headers —imports→ facts.cfg_facts.{CROSSCHECK_FRAMEWORKS, CROSSCHECK_HEADING_LEAD, CROSSCHECK_NAVIGATION, CROSSCHECK_PAUSE_HEADINGS, CROSSCHECK_RESUME_HEADINGS, CROSSCHECK_RESUME_WORDS, CROSSCHECK_SCALES}
-facts.headers —imports→ facts.printed.{NUMERIC_DATE, WORDED_DATE, YEAR}
 facts.headers —imports→ facts.vocab.repair
 facts.labels —imports→ facts.cfg_facts.{CROSSCHECK_EXCLUSIVE, CROSSCHECK_FACT_ACTIONS, CROSSCHECK_ROW_TURNS, CROSSCHECK_SYNONYMS}
 facts.labels —imports→ facts.vocab.{STOP, one_off, repair, tokens, words}
-facts.line_rows —imports→ docling_core.types.doc.items.table.table.TableItem
-facts.line_rows —imports→ facts.cfg_facts.{VERIFY_BAND_MIN_SHARE, VERIFY_LINE_GAP, VERIFY_WRAP_GAP}
-facts.line_rows —imports→ facts.printed.{ENUMERATOR, NIL, figure_row, figures_only, is_figure}
-facts.line_rows —imports→ pypdfium2
-facts.line_rows —imports→ pypdfium2.raw
+facts.lookup —imports→ cltrplusf.chunk.{Chunk, Inventory}
+facts.lookup —imports→ cltrplusf.embed.Embedder
+facts.lookup —imports→ cltrplusf.rank.{Indexes, Ranker, build_ranker}
 facts.lookup —imports→ facts.cfg_facts.{FACTS_LOOKUP_K, FACTS_MATCH_DEPTH, FACTS_MATCH_METHOD}
 facts.lookup —imports→ facts.store.{CHECKED_TIERS, connect}
-facts.lookup —imports→ retrieval.chunk.{Chunk, Inventory}
-facts.lookup —imports→ retrieval.embed.Embedder
-facts.lookup —imports→ retrieval.rank.{Indexes, Ranker, build_ranker}
 facts.nse —imports→ facts.cfg_facts.{NSE_INTEGRATED_LISTING, NSE_LEGACY_LISTING, NSE_PAGE_SIZE, NSE_REQUEST_INTERVAL_S, NSE_SYMBOLS, NSE_TIMEOUT_S, NSE_USER_AGENT}
+facts.review —imports→ cltrplusf.printed.number
 facts.review —imports→ facts.cfg_facts.{CROSSCHECK_GROUP_EXAMPLES, CROSSCHECK_SEED, CROSSCHECK_SPOT_CHECKS}
 facts.review —imports→ facts.crosscheck.{Checked, TableLabel}
-facts.review —imports→ facts.printed.number
+facts.review_page —imports→ cltrplusf.printed.number
 facts.review_page —imports→ facts.cfg_facts.{REVIEW_PAGE_IMAGE_WIDTH, REVIEW_PAGE_JPEG_QUALITY, REVIEW_PAGE_KINDS, REVIEW_PAGE_MAX_MB}
 facts.review_page —imports→ facts.crosscheck.Checked
 facts.review_page —imports→ facts.documents.{Entry, VERIFY_DIR, filed_of, origin_of}
-facts.review_page —imports→ facts.printed.number
 facts.review_page —imports→ facts.share_events.PER_SHARE
 facts.review_page —imports→ pypdfium2
 facts.rounds —imports→ facts.crosscheck.sheets   (inside a function)
@@ -3786,18 +3203,19 @@ facts.share_events —imports→ facts.store.{RESTATING_KINDS, Writer, XBRL_TIER
 facts.store —imports→ facts.cfg_facts.{COMPANY_SCOPES, SCOPES}
 facts.store —imports→ facts.taxonomy.Labels
 facts.store —imports→ facts.xbrl.{Fact, label_of}
+facts.table_page —imports→ cltrplusf.printed
+facts.table_page —imports→ cltrplusf.chunk.Table
+facts.table_page —imports→ cltrplusf.printed.number
 facts.table_page —imports→ facts.cfg_facts.{REVIEW_PAGE_KINDS, REVIEW_PAGE_MAX_MB, TABLE_PAGE_FLAGGED_SHARE, TABLE_PAGE_MAX_ROWS, TABLE_PAGE_TAGS}
 facts.table_page —imports→ facts.crosscheck.Sheet
 facts.table_page —imports→ facts.headers.Column
-facts.table_page —imports→ facts.printed.number
 facts.table_page —imports→ facts.review_page.shares
 facts.table_page —imports→ facts.trace.period_text
-facts.table_page —imports→ retrieval.chunk.Table
 facts.taxonomy —imports→ facts.nse.Get
+facts.trace —imports→ cltrplusf.chunk.Document
 facts.trace —imports→ facts.cfg_facts.CROSSCHECK_TRACE_WINDOW
 facts.trace —imports→ facts.crosscheck.{Checked, RowRead, Rule, Sheet}
 facts.trace —imports→ facts.headers.Column
-facts.trace —imports→ retrieval.chunk.Document
 facts.vocab —imports→ facts.cfg_facts.{CROSSCHECK_SYNONYMS, VOCAB_LEXICON, VOCAB_RUPEE_GLYPHS, VOCAB_RUPEE_WORDS}
 facts.xbrl —imports→ facts.cfg_facts.XBRL_SKIP_CONTEXTS
 guardrails —imports→ config.{MAX_ANSWER_CHARS, MAX_TASK_CHARS}
@@ -3873,6 +3291,7 @@ mcp_client —imports→ mcp.types.TextContent
 mcp_client —imports→ tools.fence
 mcp_server —imports→ analyst.filings.{FilingSearch, SEARCH_FILINGS_TOOL, build_filings_search}
 mcp_server —imports→ analyst.fundamentals.{COMPARE_TOOL, Company, FUNDAMENTALS_TOOL, FinancialYear, FundamentalsTool, GET_METRIC_TOOL}
+mcp_server —imports→ cltrplusf.chunk.Chunk
 mcp_server —imports→ config.{MCP_SERVER_LOG_LEVEL, MCP_SERVER_NAME}
 mcp_server —imports→ errors.GuardrailTripped
 mcp_server —imports→ facts.lookup.{Basis, Length, Lookup, Quarter, concept_index}
@@ -3882,15 +3301,19 @@ mcp_server —imports→ mcp.server.mcpserver.MCPServer
 mcp_server —imports→ mcp.server.mcpserver.exceptions.ToolError
 mcp_server —imports→ mcp.types.ToolAnnotations
 mcp_server —imports→ report_tools.{ReportSearch, SEARCH_TOOL}
-mcp_server —imports→ retrieval.chunk.Chunk
 mcp_server —imports→ tools.{CALCULATOR_TOOL, READ_FILE_TOOL, WRITE_FILE_TOOL, execute_tool}
 mcp_server —imports→ tools_config.SANDBOX
 mcp_server —imports→ workflows.reports.{CATALOGUE, DocId, Search, build_search}
 report_tools —imports→ anthropic.types.ToolParam
-report_tools —imports→ retrieval.chunk.context_block
+report_tools —imports→ cltrplusf.chunk.context_block
 report_tools —imports→ tracing
 report_tools —imports→ workflows.reports.{REPORTS, Search}
-retrieval.answer —imports→ config.{CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, TOP_K, max_tokens}
+retrieval.answer —imports→ cltrplusf.chunk.{Chunk, Inventory, context_block}
+retrieval.answer —imports→ cltrplusf.config.TOP_K
+retrieval.answer —imports→ cltrplusf.corpus.{FY25_REPORTS, load_corpus}
+retrieval.answer —imports→ cltrplusf.dense.DenseIndex
+retrieval.answer —imports→ cltrplusf.embed.{Embedder, LocalEmbedder, Vectors}
+retrieval.answer —imports→ config.{CLIENT, MAX_USD_PER_EVAL, THINKING_EVAL_PARAM, max_tokens}
 retrieval.answer —imports→ evals.dataset.{Case, digest, load_jsonl}
 retrieval.answer —imports→ evals.grade.{Grader, Outcome, flag, hit_at_k, unparsed}
 retrieval.answer —imports→ evals.judge.{JUDGE_SYSTEM, LlmJudge, Verdict}
@@ -3901,64 +3324,24 @@ retrieval.answer —imports→ llm.core.{Llm, Request}
 retrieval.answer —imports→ llm.messages.Msg
 retrieval.answer —imports→ llm.pricing.estimate_eval_usd
 retrieval.answer —imports→ pydantic.{BaseModel, Field, JsonValue}
-retrieval.answer —imports→ retrieval.chunk.{Chunk, Inventory, context_block}
-retrieval.answer —imports→ retrieval.corpus.{FY25_REPORTS, load_corpus}
-retrieval.answer —imports→ retrieval.dense.DenseIndex
-retrieval.answer —imports→ retrieval.embed.{Embedder, LocalEmbedder, Vectors}
 retrieval.answer —imports→ retrieval.evaluate.{DATASET, STRATEGIES, resolve}
-retrieval.chunk —imports→ config.{CHUNK_CHARS, CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, CHUNK_OVERLAP_CHARS, CHUNK_OVERLAP_SENTENCES, ELEMENT_TABLE_CHARS, ELEMENT_TEXT_CHARS, HEADING_MAX_CHARS, HEADING_MAX_WORDS, HEADING_MIN_CAPITAL_RATIO}
-retrieval.corpus —imports→ config.{DOCLING_DEVICE, DOCLING_OCR, DOCLING_QUEUE_MAX_SIZE, FURNITURE_EDGE_LINES, FURNITURE_MIN_PAGES, FURNITURE_RATIO, PAGE_SEPARATOR, PDF_RUPEE_KEYS}
-retrieval.corpus —imports→ docling.datamodel.accelerator_options.{AcceleratorDevice, AcceleratorOptions}
-retrieval.corpus —imports→ docling.datamodel.base_models.{DocumentStream, InputFormat}
-retrieval.corpus —imports→ docling.datamodel.pipeline_options.PdfPipelineOptions
-retrieval.corpus —imports→ docling.document_converter.{DocumentConverter, PdfFormatOption}
-retrieval.corpus —imports→ docling_core.types.doc.base.BoundingBox
-retrieval.corpus —imports→ docling_core.types.doc.common.content_layer.ContentLayer
-retrieval.corpus —imports→ docling_core.types.doc.common.reference.{ProvenanceItem, RefItem}
-retrieval.corpus —imports→ docling_core.types.doc.document.DoclingDocument
-retrieval.corpus —imports→ docling_core.types.doc.items.node.DocItem
-retrieval.corpus —imports→ docling_core.types.doc.items.table.table.TableItem
-retrieval.corpus —imports→ docling_core.types.doc.items.table.table_data.TableData
-retrieval.corpus —imports→ docling_core.types.doc.items.text.{SectionHeaderItem, TextItem, TitleItem}
-retrieval.corpus —imports→ docling_core.types.doc.labels.DocItemLabel
-retrieval.corpus —imports→ pypdf.PdfWriter
-retrieval.corpus —imports→ pypdf._codecs.adobe_glyphs.adobe_glyphs
-retrieval.corpus —imports→ pypdf.generic.{ArrayObject, DecodedStreamObject, DictionaryObject, NameObject, PdfObject, StreamObject}
-retrieval.corpus —imports→ retrieval.chunk.{Document, Heading, Table}
-retrieval.dense —imports→ config.{EMBED_LOG_EVERY, EMBED_SAVE_EVERY, TOP_K}
-retrieval.dense —imports→ numpy
-retrieval.dense —imports→ retrieval.chunk.Inventory
-retrieval.dense —imports→ retrieval.corpus.CACHE_DIR
-retrieval.dense —imports→ retrieval.embed.{Embedder, Vectors}
-retrieval.dense —imports→ retrieval.hits.Hit
-retrieval.embed —imports→ config.{EMBED_BATCH, EMBED_MODEL, EMBED_QUERY_PREFIXES, LOCAL_MODEL_DTYPE}
-retrieval.embed —imports→ numpy
-retrieval.embed —imports→ numpy.typing.NDArray
-retrieval.embed —imports→ sentence_transformers.SentenceTransformer   (inside a function)
-retrieval.embed —imports→ torch   (inside a function)
-retrieval.evaluate —imports→ config.{CHUNK_CHARS, CHUNK_OVERLAP_CHARS, RERANK_CANDIDATES, SEARCH_METHOD, TOP_K}
+retrieval.evaluate —imports→ cltrplusf.chunk.{Document, Inventory, Splitter, by_element, by_sentence, fixed}
+retrieval.evaluate —imports→ cltrplusf.config.{CHUNK_CHARS, CHUNK_OVERLAP_CHARS, RERANK_CANDIDATES, SEARCH_METHOD, TOP_K}
+retrieval.evaluate —imports→ cltrplusf.corpus.{FY25_REPORTS, load_corpus}
+retrieval.evaluate —imports→ cltrplusf.dense.DenseIndex
+retrieval.evaluate —imports→ cltrplusf.embed.{Embedder, LocalEmbedder, Vectors}
+retrieval.evaluate —imports→ cltrplusf.hits.rank_ids
+retrieval.evaluate —imports→ cltrplusf.keys.keyed_search
+retrieval.evaluate —imports→ cltrplusf.rank.{Indexes, METHODS, Ranker, build_ranker, scoped}
+retrieval.evaluate —imports→ cltrplusf.rerank.LocalReranker
 retrieval.evaluate —imports→ evals.dataset.{Case, DatasetError, digest, load_jsonl}
 retrieval.evaluate —imports→ evals.grade.{Grader, Outcome, hit_at_k, recall_at_k, reciprocal_rank, resolvable}
 retrieval.evaluate —imports→ evals.report.write_report
 retrieval.evaluate —imports→ evals.runner.{EvalRun, Task, combine, run_eval}
 retrieval.evaluate —imports→ pydantic.JsonValue
-retrieval.evaluate —imports→ retrieval.chunk.{Document, Inventory, Splitter, by_element, by_sentence, fixed}
-retrieval.evaluate —imports→ retrieval.corpus.{FY25_REPORTS, load_corpus}
-retrieval.evaluate —imports→ retrieval.dense.DenseIndex
-retrieval.evaluate —imports→ retrieval.embed.{Embedder, LocalEmbedder, Vectors}
-retrieval.evaluate —imports→ retrieval.hits.rank_ids
-retrieval.evaluate —imports→ retrieval.keys.keyed_search
-retrieval.evaluate —imports→ retrieval.rank.{Indexes, METHODS, Ranker, build_ranker, scoped}
-retrieval.evaluate —imports→ retrieval.rerank.LocalReranker
-retrieval.fuse —imports→ config.{RRF_K, TOP_K}
-retrieval.fuse —imports→ retrieval.hits.Hit
-retrieval.keys —imports→ config.{KEY_DEPTH, RERANK_CANDIDATES, SEARCH_METHOD, TOP_K}
-retrieval.keys —imports→ retrieval.chunk.{Chunk, Document, Inventory, Table, by_element, scale_of, sentences, squeeze}
-retrieval.keys —imports→ retrieval.embed.Embedder
-retrieval.keys —imports→ retrieval.hits.Hit
-retrieval.keys —imports→ retrieval.rank.{Indexes, Ranker, Reranked, Scope, build_ranker}
-retrieval.keys —imports→ retrieval.rerank.{LocalReranker, Reranker}
-retrieval.langchain_rag —imports→ config.{CHUNK_CHARS, CHUNK_OVERLAP_CHARS, EMBED_MODEL, TOP_K}
+retrieval.langchain_rag —imports→ cltrplusf.chunk.{Chunk, Inventory}
+retrieval.langchain_rag —imports→ cltrplusf.config.{CHUNK_CHARS, CHUNK_OVERLAP_CHARS, EMBED_MODEL, TOP_K}
+retrieval.langchain_rag —imports→ cltrplusf.corpus.CORPUS_DIR
 retrieval.langchain_rag —imports→ evals.dataset.{Case, digest, load_jsonl}
 retrieval.langchain_rag —imports→ evals.grade.Outcome
 retrieval.langchain_rag —imports→ evals.report.write_report
@@ -3969,31 +3352,14 @@ retrieval.langchain_rag —imports→ langchain_core.vectorstores.InMemoryVector
 retrieval.langchain_rag —imports→ langchain_huggingface.HuggingFaceEmbeddings   (inside a function)
 retrieval.langchain_rag —imports→ langchain_text_splitters.RecursiveCharacterTextSplitter   (inside a function)
 retrieval.langchain_rag —imports→ pydantic.JsonValue
-retrieval.langchain_rag —imports→ retrieval.chunk.{Chunk, Inventory}
-retrieval.langchain_rag —imports→ retrieval.corpus.CORPUS_DIR
 retrieval.langchain_rag —imports→ retrieval.evaluate.{DATASET, graders, resolve}
+retrieval.questions —imports→ cltrplusf.chunk.{Chunk, Document, Inventory, by_sentence, squeeze}
+retrieval.questions —imports→ cltrplusf.corpus.{FY25_REPORTS, MANIFEST, load_corpus}
 retrieval.questions —imports→ config.{MAX_TOKENS_QUESTION, MAX_USD_PER_EVAL, MODEL, PASSAGE_MIN_ALPHA, PASSAGE_MIN_CHARS, THINKING_EVAL_PARAM}
 retrieval.questions —imports→ llm.core.{Llm, Request}
 retrieval.questions —imports→ llm.messages.Msg
 retrieval.questions —imports→ llm.pricing.{Budget, estimate_eval_usd, usage_cost}
 retrieval.questions —imports→ pydantic.{BaseModel, Field}
-retrieval.questions —imports→ retrieval.chunk.{Chunk, Document, Inventory, by_sentence, squeeze}
-retrieval.questions —imports→ retrieval.corpus.{FY25_REPORTS, MANIFEST, load_corpus}
-retrieval.rank —imports→ config.{FUSE_DEPTH, RERANK_CANDIDATES, TOP_K}
-retrieval.rank —imports→ retrieval.chunk.Inventory
-retrieval.rank —imports→ retrieval.dense.DenseIndex
-retrieval.rank —imports→ retrieval.embed.{Embedder, LocalEmbedder}
-retrieval.rank —imports→ retrieval.fuse.reciprocal_rank_fusion
-retrieval.rank —imports→ retrieval.hits.{Hit, rank_ids}
-retrieval.rank —imports→ retrieval.rerank.{LocalReranker, Reranker, rerank}
-retrieval.rank —imports→ retrieval.sparse.SparseIndex
-retrieval.rerank —imports→ config.{LOCAL_MODEL_DTYPE, RERANK_BATCH, RERANK_MODEL, TOP_K}
-retrieval.rerank —imports→ retrieval.hits.Hit
-retrieval.rerank —imports→ sentence_transformers.CrossEncoder   (inside a function)
-retrieval.rerank —imports→ torch   (inside a function)
-retrieval.sparse —imports→ config.{BM25_B, BM25_K1, TOP_K}
-retrieval.sparse —imports→ retrieval.chunk.Inventory
-retrieval.sparse —imports→ retrieval.hits.Hit
 tools —imports→ anthropic.types.{ToolParam, WebSearchTool20260318Param}
 tools —imports→ tools_config.{MAX_WEB_SEARCHES, SANDBOX}
 tools —imports→ underhood.tools.files
@@ -4009,41 +3375,41 @@ tracing —imports→ langfuse.api.ScoreDataType   (inside a function)
 tracing —imports→ llm.messages.Usage
 transcript —imports→ llm.messages.Usage
 transcript —imports→ tracing.{Kind, Observation}
+workflows.chaining —imports→ cltrplusf.chunk.{Chunk, context_block, squeeze}
 workflows.chaining —imports→ config.{MAX_TOKENS_FACTS, MAX_TOKENS_NOTE, THINKING_WORKFLOW_PARAM}
 workflows.chaining —imports→ llm.core.{Llm, Request}
 workflows.chaining —imports→ pydantic.{BaseModel, Field}
-workflows.chaining —imports→ retrieval.chunk.{Chunk, context_block, squeeze}
 workflows.chaining —imports→ workflows.reports.Search
+workflows.evaluator_optimizer —imports→ cltrplusf.chunk.context_block
 workflows.evaluator_optimizer —imports→ config.{JUDGE_MODEL, MAX_REFINE_ROUNDS, MAX_TOKENS_CRITIQUE, MAX_TOKENS_DRAFT, THINKING_WORKFLOW_PARAM}
 workflows.evaluator_optimizer —imports→ llm.core.{Llm, Request}
 workflows.evaluator_optimizer —imports→ pydantic.{BaseModel, Field}
-workflows.evaluator_optimizer —imports→ retrieval.chunk.context_block
 workflows.evaluator_optimizer —imports→ workflows.reports.Search
+workflows.orchestrator_workers —imports→ cltrplusf.chunk.context_block
 workflows.orchestrator_workers —imports→ config.{MAX_PLAN_TASKS, MAX_TOKENS_PLAN, MAX_TOKENS_SYNTHESIS, MAX_TOKENS_WORKER, THINKING_WORKFLOW_PARAM}
 workflows.orchestrator_workers —imports→ llm.core.{Llm, Request}
 workflows.orchestrator_workers —imports→ pydantic.{BaseModel, Field}
-workflows.orchestrator_workers —imports→ retrieval.chunk.context_block
 workflows.orchestrator_workers —imports→ workflows.reports.{CATALOGUE, DocId, Search}
+workflows.orchestrator_workers_graph —imports→ cltrplusf.chunk.context_block
 workflows.orchestrator_workers_graph —imports→ config.{MAX_GRAPH_STEPS, MAX_PLAN_TASKS, MAX_TOKENS_PLAN, MAX_TOKENS_SYNTHESIS, MAX_TOKENS_WORKER, THINKING_WORKFLOW_PARAM}
 workflows.orchestrator_workers_graph —imports→ langgraph.graph.{END, START, StateGraph}
 workflows.orchestrator_workers_graph —imports→ langgraph.graph.state.CompiledStateGraph
 workflows.orchestrator_workers_graph —imports→ langgraph.types.Send
 workflows.orchestrator_workers_graph —imports→ llm.core.{Llm, Request}
-workflows.orchestrator_workers_graph —imports→ retrieval.chunk.context_block
 workflows.orchestrator_workers_graph —imports→ workflows.orchestrator_workers.{Orchestrated, PLAN, Plan, SYNTHESISE, Subtask, WORK}
 workflows.orchestrator_workers_graph —imports→ workflows.reports.Search
+workflows.parallelization —imports→ cltrplusf.chunk.context_block
 workflows.parallelization —imports→ config.{MAX_TOKENS_SECTION, MAX_TOKENS_VOTE, THINKING_WORKFLOW_PARAM}
 workflows.parallelization —imports→ llm.core.{Llm, Request}
 workflows.parallelization —imports→ pydantic.{BaseModel, Field}
-workflows.parallelization —imports→ retrieval.chunk.context_block
 workflows.parallelization —imports→ workflows.reports.{REPORTS, Search}
-workflows.reports —imports→ retrieval.chunk.Chunk
-workflows.reports —imports→ retrieval.corpus.{FY25_REPORTS, MANIFEST, load_corpus}
-workflows.reports —imports→ retrieval.keys.keyed_search
+workflows.reports —imports→ cltrplusf.chunk.Chunk
+workflows.reports —imports→ cltrplusf.corpus.{FY25_REPORTS, MANIFEST, load_corpus}
+workflows.reports —imports→ cltrplusf.keys.keyed_search
+workflows.routing —imports→ cltrplusf.chunk.context_block
 workflows.routing —imports→ config.{MAX_TOKENS_ROUTE, MAX_TOKENS_ROUTED, MODEL, SMALL_MODEL, THINKING_WORKFLOW_PARAM}
 workflows.routing —imports→ llm.core.{Llm, Request}
 workflows.routing —imports→ pydantic.{BaseModel, Field}
-workflows.routing —imports→ retrieval.chunk.context_block
 workflows.routing —imports→ workflows.reports.{CATALOGUE, DocId, Search}
 ```
 <!-- /generated:imports -->
@@ -4070,18 +3436,7 @@ when a module's independence is load-bearing, and keep the lines sorted by impor
 - `extraction.figure_eval` —never-imports→ `llm`
 - `extraction.headline_eval` —never-imports→ `llm.core`
 - `extraction.baseline` —never-imports→ `llm`
-- `retrieval.chunk` —only-imports→ `config`
-- `retrieval.hits` —only-imports→ nothing
-- `retrieval.fuse` —only-imports→ `config`, `retrieval.hits`
-- `retrieval.chunk` —never-imports→ `retrieval.corpus`
-- `retrieval.corpus` —never-imports→ `llm`
-- `retrieval.dense` —never-imports→ `llm`
-- `retrieval.embed` —never-imports→ `llm`
 - `retrieval.evaluate` —never-imports→ `llm`
-- `retrieval.keys` —never-imports→ `llm`
-- `retrieval.rank` —never-imports→ `llm`
-- `retrieval.rerank` —never-imports→ `llm`
-- `retrieval.sparse` —never-imports→ `llm`
 - `facts` —never-imports→ `analyst`
 - `facts.xbrl` —only-imports→ `facts.cfg_facts`
 - `facts.cfg_facts` —only-imports→ nothing

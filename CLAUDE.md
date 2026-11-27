@@ -103,6 +103,9 @@ this machine. Edit both, or neither.
   holds the capstone analyst's models, loop caps, run ceilings and its own output caps (`MEMO`,
   `VERDICT`). Its `max_tokens` reads a client's cap first, then the analyst's, then
   `config.DEFAULT_MAX_TOKENS`, so the analyst overrides the shared table without restating it.
+- *Split by isolation, one repo over:* the parsing and search settings (chunk budgets, embedding
+  and reranker models, ranking depths, Docling options) live in `cltrplusf.config`, beside the code
+  that moved to cltrplusf on 2026-11-27, not here.
 - Staying put: `report.REPORTS_DIR`, a location computed from `__file__` rather than a knob.
 
 ## Tests
@@ -316,13 +319,28 @@ underhood. Every call to a hosted LLM goes through aigent. aigent grades.
 **Why:** one place per concern. Paid calls stay behind the machinery built to admit them, and a
 fine-tune is scored by the same grader as the agent that uses it.
 
+## Parsing and search live in cltrplusf; model calls live in aigent
+
+**The rule (2026-11-27):** reading filings and finding things in them — Docling parsing, the words a
+PDF prints, tables re-rowed, chunking, the rankers and keyed search — lives in cltrplusf. aigent asks
+the questions, makes every hosted-LLM call, cross-checks against XBRL and grades.
+
+- **cltrplusf** never imports aigent and calls no hosted model. aigent depends on it as a git source
+  on `main`, exactly as on underhood, and names its corpus with `CLTRPLUSF_HOME` (set in
+  `aigent/__init__.py`).
+- **The seam:** cltrplusf returns data (documents, chunks, hits, rows); answering, judging and the
+  cross-check stay here. Test fakes for search and Docling come from `cltrplusf.testing`.
+
+**Why:** one place per concern. Parsing and search are measured and reused on their own, and a paid
+call can only ever start behind aigent's budgets.
+
 ## `main` only takes pull requests
 
-Since 2026-10-09 both repos are public, and `main` in each is guarded by a ruleset, "main via PR":
+Since 2026-10-09 both repos are public (cltrplusf too, since 2026-11-27), and `main` in each is guarded by a ruleset, "main via PR":
 no direct push, no force push, no deletion, and the required checks pass before a merge. They are
 matched by *job* name:
 
-- `mains / lint · types · tests` (both repos: `main.yml`, which calls `checks.yml`)
+- `mains / lint · types · tests` (every repo: `main.yml`, which calls `checks.yml`)
 - `graph moves with the code` (aigent only: `.github/workflows/knowledge-graph.yml`)
 
 No approval is required, because GitHub never lets an author approve their own PR: Vedant's merge

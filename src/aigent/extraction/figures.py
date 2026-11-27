@@ -13,11 +13,11 @@ import math
 import re
 from pathlib import Path
 
+from cltrplusf.chunk import squeeze
 from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from aigent.evals.dataset import Case
 from aigent.evals.grade import Outcome, Score
-from aigent.retrieval.chunk import squeeze
 from aigent.tools import CALCULATOR_TOOL
 
 DATASET = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "figures.jsonl"

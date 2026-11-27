@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from cltrplusf.chunk import Document
 
 from aigent.facts import __main__ as cli
 from aigent.facts.crosscheck import sheets
@@ -31,7 +32,6 @@ from aigent.facts.table_page import (
     unfooted,
     write_table_list,
 )
-from aigent.retrieval.chunk import Document
 
 from .conftest import CROSSCHECK_HEADER, crosscheck_document
 

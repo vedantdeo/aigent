@@ -6,9 +6,9 @@ import json
 import threading
 from typing import Literal, Protocol, cast
 
-from aigent.retrieval.chunk import Chunk
-from aigent.retrieval.corpus import FY25_REPORTS, MANIFEST, load_corpus
-from aigent.retrieval.keys import keyed_search
+from cltrplusf.chunk import Chunk
+from cltrplusf.corpus import FY25_REPORTS, MANIFEST, load_corpus
+from cltrplusf.keys import keyed_search
 
 # As a schema field, this holds the model to a real report. A test holds it to FY25_REPORTS.
 DocId = Literal["ITC-FY25", "RELIANCE-FY25", "TATAMOTORS-FY25"]
