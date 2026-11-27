@@ -27,15 +27,23 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
-from pydantic import JsonValue
-
-from aigent.config import (
+from cltrplusf.chunk import Document, Inventory, Splitter, by_element, by_sentence, fixed
+from cltrplusf.config import (
     CHUNK_CHARS,
     CHUNK_OVERLAP_CHARS,
     RERANK_CANDIDATES,
     SEARCH_METHOD,
     TOP_K,
 )
+from cltrplusf.corpus import FY25_REPORTS, load_corpus
+from cltrplusf.dense import DenseIndex
+from cltrplusf.embed import Embedder, LocalEmbedder, Vectors
+from cltrplusf.hits import rank_ids
+from cltrplusf.keys import keyed_search
+from cltrplusf.rank import METHODS, Indexes, Ranker, build_ranker, scoped
+from cltrplusf.rerank import LocalReranker
+from pydantic import JsonValue
+
 from aigent.evals.dataset import Case, DatasetError, digest, load_jsonl
 from aigent.evals.grade import (
     Grader,
@@ -47,14 +55,6 @@ from aigent.evals.grade import (
 )
 from aigent.evals.report import write_report
 from aigent.evals.runner import EvalRun, Task, combine, run_eval
-from aigent.retrieval.chunk import Document, Inventory, Splitter, by_element, by_sentence, fixed
-from aigent.retrieval.corpus import FY25_REPORTS, load_corpus
-from aigent.retrieval.dense import DenseIndex
-from aigent.retrieval.embed import Embedder, LocalEmbedder, Vectors
-from aigent.retrieval.hits import rank_ids
-from aigent.retrieval.keys import keyed_search
-from aigent.retrieval.rank import METHODS, Indexes, Ranker, build_ranker, scoped
-from aigent.retrieval.rerank import LocalReranker
 
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "evals" / "datasets" / "retrieval.jsonl"

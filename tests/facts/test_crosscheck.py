@@ -15,6 +15,7 @@ from pathlib import Path
 
 import psutil
 import pytest
+from cltrplusf.chunk import Document, Table
 
 from aigent.facts import __main__ as cli
 from aigent.facts import crosscheck as crosscheck_module
@@ -37,7 +38,6 @@ from aigent.facts.crosscheck import (
 from aigent.facts.documents import Entry
 from aigent.facts.store import DerivedRow, FilingRow, sync_xbrl_facts, upsert_filing, write_derived
 from aigent.facts.xbrl import Fact as XbrlFact
-from aigent.retrieval.chunk import Document, Table
 
 from .conftest import (
     CROSSCHECK_HEADER,

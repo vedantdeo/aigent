@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from cltrplusf.chunk import squeeze
 from pydantic import JsonValue
 
 from aigent.evals.dataset import Case, load_jsonl
@@ -23,7 +24,6 @@ from aigent.extraction.figures import (
     parse_figures,
     unit_key,
 )
-from aigent.retrieval.chunk import squeeze
 from aigent.retrieval.questions import DATASET as RETRIEVAL
 
 STATED = "stated in the passage"

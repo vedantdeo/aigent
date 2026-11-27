@@ -14,13 +14,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, cast
 
+from cltrplusf.printed import number
+
 from aigent.facts.cfg_facts import (
     CROSSCHECK_GROUP_EXAMPLES,
     CROSSCHECK_SEED,
     CROSSCHECK_SPOT_CHECKS,
 )
 from aigent.facts.crosscheck import Checked, TableLabel
-from aigent.facts.printed import number
 
 Issue = Literal["xbrl zero", "printed x100", "differs", "not printed"]
 Verdict = Literal["right", "wrong", "elsewhere"]

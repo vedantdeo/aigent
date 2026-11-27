@@ -1,5 +1,5 @@
-# The mains CI: aigent's main against underhood's main as it is when the run starts. underhood's own
-# mains CI starts this after a green push.
+# The mains CI: aigent's main against underhood's and cltrplusf's mains as they are when the run
+# starts. Each of their own mains CIs starts this after a green push.
 name: mains
 
 on:
@@ -20,5 +20,6 @@ jobs:
     uses: ./.github/workflows/checks.yml
     with:
       underhood: main
+      cltrplusf: main
     secrets: inherit
 

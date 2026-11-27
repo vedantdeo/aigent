@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from cltrplusf.testing import BagOfWordsEmbedder
 
 from aigent.facts import __main__ as cli
 from aigent.facts.cfg_facts import COVERAGE_FOUND_AT
@@ -38,7 +39,7 @@ from aigent.facts.store import FilingRow, apply_labels, connect, sync_xbrl_facts
 from aigent.facts.taxonomy import Labels
 from aigent.facts.xbrl import Fact
 
-from ..conftest import FACTS_NOW, FACTS_WRITER, BagOfWordsEmbedder
+from ..conftest import FACTS_NOW, FACTS_WRITER
 from .conftest import fundamental
 
 _FY25 = (date(2024, 4, 1), date(2025, 3, 31))

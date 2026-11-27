@@ -14,6 +14,8 @@ from anthropic.types import ToolParam
 
 pytest.importorskip("langgraph")
 
+from cltrplusf.testing import BagOfWordsEmbedder
+
 from aigent.analyst.fundamentals import (  # noqa: E402
     COMPARE_TOOL,
     FUNDAMENTALS_TOOL,
@@ -36,7 +38,7 @@ from aigent.facts.derived_concepts import SEEDED, seed  # noqa: E402
 from aigent.facts.lookup import Lookup, concept_index  # noqa: E402
 from aigent.facts.store import Writer, connect, verify_derived_concept  # noqa: E402
 
-from ..conftest import BagOfWordsEmbedder, share_event, share_filing  # noqa: E402
+from ..conftest import share_event, share_filing  # noqa: E402
 from .conftest import ADV25, DEP25, EPS25, OP24, OP25, UNVERIFIED, evidence_of  # noqa: E402
 
 # A snapshot planned as at Q4's end is fetched as at Q4, not over the year.

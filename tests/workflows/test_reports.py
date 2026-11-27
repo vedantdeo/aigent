@@ -8,10 +8,10 @@ import time
 from dataclasses import dataclass, field
 
 import pytest
+from cltrplusf.chunk import Chunk
+from cltrplusf.corpus import FY25_REPORTS
+from cltrplusf.hits import Hit
 
-from aigent.retrieval.chunk import Chunk
-from aigent.retrieval.corpus import FY25_REPORTS
-from aigent.retrieval.hits import Hit
 from aigent.workflows import reports
 
 from ..conftest import PASSAGES

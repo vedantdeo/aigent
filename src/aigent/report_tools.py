@@ -9,9 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from anthropic.types import ToolParam
+from cltrplusf.chunk import context_block
 
 from aigent import tracing
-from aigent.retrieval.chunk import context_block
 from aigent.workflows.reports import REPORTS, Search
 
 SEARCH_TOOL: ToolParam = {

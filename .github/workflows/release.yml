@@ -1,8 +1,9 @@
-# Snap and roll both repos as a pair, Mon and Thu 00:07 IST. snap branches both mains as snap-DATE,
-# aigent's re-pinned to underhood's snap; roll runs each repo's checks on its snap; if both pass,
-# stable tags both snaps roll-DATE, the day they rolled, and stable. All or nothing. main is left
-# pinned to underhood's main.
+# Snap and roll the three repos together, Mon and Thu 00:07 IST. snap branches each main as
+# snap-DATE, aigent's re-pinned to underhood's and cltrplusf's snaps; roll runs each repo's checks on
+# its snap; if all pass, stable tags every snap roll-DATE, the day they rolled, and stable. All or
+# nothing. main is left pinned to underhood's and cltrplusf's mains.
 # UNDERHOOD_TOKEN: fine-grained, underhood only, Contents read and write.
+# CLTRPLUSF_TOKEN: fine-grained, cltrplusf only, Contents read and write.
 name: release
 
 on:
@@ -11,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       step:
-        description: snap then roll, roll the latest snaps again, or repin aigent's snap to underhood's then roll
+        description: snap then roll, roll the latest snaps again, or repin aigent's snap to the others' then roll
         type: choice
         options: [snap, roll, repin]
         required: true
@@ -25,6 +26,7 @@ concurrency:
 
 env:
   UNDERHOOD: https://github.com/vedantdeo/underhood
+  CLTRPLUSF: https://github.com/vedantdeo/cltrplusf
   KEEP: 8 # snap branches kept in each repo: a month of them
 
 jobs:
@@ -35,8 +37,9 @@ jobs:
       branch: ${{ steps.snap.outputs.branch }}
       aigent: ${{ steps.snap.outputs.aigent }}
       underhood: ${{ steps.snap.outputs.underhood }}
+      cltrplusf: ${{ steps.snap.outputs.cltrplusf }}
     steps:
-      # Without persisted credentials, the job's token cannot shadow UNDERHOOD_TOKEN.
+      # Without persisted credentials, the job's token cannot shadow the other repos' tokens.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -46,9 +49,10 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Let git reach underhood, and push here
+      - name: Let git reach underhood and cltrplusf, and push here
         env:
           UNDERHOOD_TOKEN: ${{ secrets.UNDERHOOD_TOKEN }}
+          CLTRPLUSF_TOKEN: ${{ secrets.CLTRPLUSF_TOKEN }}
           GH_TOKEN: ${{ github.token }}
         run: .github/release/setup-git.sh
 
@@ -62,17 +66,25 @@ jobs:
               branch="snap-$(TZ=Asia/Kolkata date +%F)"
               git fetch -q "$UNDERHOOD" main
               under=$(git rev-parse FETCH_HEAD)
+              git fetch -q "$CLTRPLUSF" main
+              cltr=$(git rev-parse FETCH_HEAD)
               git push -f "$UNDERHOOD" "$under:refs/heads/$branch"
+              git push -f "$CLTRPLUSF" "$cltr:refs/heads/$branch"
               git checkout -B "$branch" origin/main
               pinned=$(.github/release/pin-underhood.sh "branch = \"$branch\"")
               if [ "$pinned" != "$under" ]; then
                 echo "::error::locked underhood $pinned, not its $branch head $under"
                 exit 1
               fi
-              git commit -am "Point underhood at its $branch"
+              pinned=$(.github/release/pin-cltrplusf.sh "branch = \"$branch\"")
+              if [ "$pinned" != "$cltr" ]; then
+                echo "::error::locked cltrplusf $pinned, not its $branch head $cltr"
+                exit 1
+              fi
+              git commit -am "Point underhood and cltrplusf at their $branch"
               git push -f "$AIGENT" "$branch"
-              echo "snapped underhood at $under and aigent, pinned to it, as $branch"
-              for repo in "$UNDERHOOD" "$AIGENT"; do
+              echo "snapped underhood at $under, cltrplusf at $cltr and aigent, pinned to them, as $branch"
+              for repo in "$UNDERHOOD" "$CLTRPLUSF" "$AIGENT"; do
                 git ls-remote --heads "$repo" 'snap-*' | sed 's|.*refs/heads/||' | sort | head -n "-$KEEP" |
                   while read -r old; do git push "$repo" --delete "$old"; echo "pruned $old"; done
               done
@@ -84,11 +96,11 @@ jobs:
             repin)
               branch=$(git ls-remote --heads "$AIGENT" 'snap-*' | sed 's|.*refs/heads/||' | sort | tail -n 1)
               git checkout -B "$branch" "origin/$branch"
-              uv lock --upgrade-package underhood
+              uv lock --upgrade-package underhood --upgrade-package cltrplusf
               if git diff --quiet uv.lock; then
-                echo "$branch already pins its underhood snap's head"
+                echo "$branch already pins its underhood and cltrplusf snaps' heads"
               else
-                git commit -m "Re-pin underhood to its $branch head" uv.lock
+                git commit -m "Re-pin underhood and cltrplusf to their $branch heads" uv.lock
                 git push "$AIGENT" "$branch"
               fi
               ;;
@@ -97,14 +109,17 @@ jobs:
           git fetch -q "$AIGENT" "$aigent"
           under=$(git show "$aigent:uv.lock" | .github/release/pinned-underhood.sh)
           [ -n "$under" ] || { echo "::error::$branch pins no underhood commit"; exit 1; }
-          echo "the pair: aigent $aigent, underhood $under"
+          cltr=$(git show "$aigent:uv.lock" | .github/release/pinned-cltrplusf.sh)
+          [ -n "$cltr" ] || { echo "::error::$branch pins no cltrplusf commit"; exit 1; }
+          echo "the trio: aigent $aigent, underhood $under, cltrplusf $cltr"
           {
             echo "branch=$branch"
             echo "aigent=$aigent"
             echo "underhood=$under"
+            echo "cltrplusf=$cltr"
           } >> "$GITHUB_OUTPUT"
 
-  # A reusable workflow's ref cannot be an expression, so underhood's checks run as of its main.
+  # A reusable workflow's ref cannot be an expression, so the others' checks run as of their mains.
   roll-underhood:
     name: roll underhood
     needs: snap
@@ -113,6 +128,15 @@ jobs:
       ref: ${{ needs.snap.outputs.underhood }}
     secrets:
       token: ${{ secrets.UNDERHOOD_TOKEN }}
+
+  roll-cltrplusf:
+    name: roll cltrplusf
+    needs: snap
+    uses: vedantdeo/cltrplusf/.github/workflows/checks.yml@main
+    with:
+      ref: ${{ needs.snap.outputs.cltrplusf }}
+    secrets:
+      token: ${{ secrets.CLTRPLUSF_TOKEN }}
 
   roll-aigent:
     name: roll aigent
@@ -123,8 +147,8 @@ jobs:
     secrets: inherit
 
   stable:
-    name: tag both roll-DATE and stable
-    needs: [snap, roll-underhood, roll-aigent]
+    name: tag all three roll-DATE and stable
+    needs: [snap, roll-underhood, roll-cltrplusf, roll-aigent]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -132,21 +156,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Let git reach underhood, and push here
+      - name: Let git reach underhood and cltrplusf, and push here
         env:
           UNDERHOOD_TOKEN: ${{ secrets.UNDERHOOD_TOKEN }}
+          CLTRPLUSF_TOKEN: ${{ secrets.CLTRPLUSF_TOKEN }}
           GH_TOKEN: ${{ github.token }}
         run: .github/release/setup-git.sh
 
-      - name: Tag the pair that passed
+      - name: Tag the trio that passed
         env:
           BRANCH: ${{ needs.snap.outputs.branch }}
           AIGENT_SHA: ${{ needs.snap.outputs.aigent }}
           UNDERHOOD_SHA: ${{ needs.snap.outputs.underhood }}
+          CLTRPLUSF_SHA: ${{ needs.snap.outputs.cltrplusf }}
         run: |
           tag="roll-$(TZ=Asia/Kolkata date +%F)"
           git fetch -q "$UNDERHOOD" "$UNDERHOOD_SHA"
+          git fetch -q "$CLTRPLUSF" "$CLTRPLUSF_SHA"
           git fetch -q "$AIGENT" "$AIGENT_SHA"
           git push -f "$UNDERHOOD" "$UNDERHOOD_SHA:refs/tags/$tag" "$UNDERHOOD_SHA:refs/tags/stable"
+          git push -f "$CLTRPLUSF" "$CLTRPLUSF_SHA:refs/tags/$tag" "$CLTRPLUSF_SHA:refs/tags/stable"
           git push -f "$AIGENT" "$AIGENT_SHA:refs/tags/$tag" "$AIGENT_SHA:refs/tags/stable"
-          echo "rolled $BRANCH: underhood $UNDERHOOD_SHA and aigent $AIGENT_SHA as $tag, now stable"
+          echo "rolled $BRANCH: underhood $UNDERHOOD_SHA, cltrplusf $CLTRPLUSF_SHA and aigent $AIGENT_SHA as $tag, now stable"

@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+from cltrplusf.chunk import Chunk
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
@@ -37,7 +38,6 @@ from aigent.errors import GuardrailTripped
 from aigent.facts.lookup import Basis, Length, Lookup, Quarter, concept_index
 from aigent.facts.store import FACTS_DB
 from aigent.report_tools import SEARCH_TOOL, ReportSearch
-from aigent.retrieval.chunk import Chunk
 from aigent.tools import CALCULATOR_TOOL, READ_FILE_TOOL, WRITE_FILE_TOOL, execute_tool
 from aigent.tools_config import SANDBOX
 from aigent.workflows.reports import CATALOGUE, DocId, Search, build_search

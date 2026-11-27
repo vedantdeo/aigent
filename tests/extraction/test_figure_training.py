@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+from cltrplusf.chunk import Chunk
 from pydantic import BaseModel
 
 from aigent.config import FIGURE_ANSWER_CACHE, FIGURE_LABEL_MODEL
@@ -27,7 +28,6 @@ from aigent.extraction.figure_training import (
 from aigent.extraction.figures import METRICS, SYSTEM, TOOL, Labelled, figure_messages
 from aigent.llm.core import Request
 from aigent.llm.messages import Failed, Parsed, Usage
-from aigent.retrieval.chunk import Chunk
 
 CORE = "Revenue from operations was 1,234 for the year."
 SCALED = "The plant added capacity worth Rs 1,250 crore in the year."

@@ -79,10 +79,6 @@ NSE_TIMEOUT_S = 30.0
 # with more than this share of its pages text-less or OCR'd is refused as a scan.
 VERIFY_MIN_TEXT_CHARS = 200
 VERIFY_MAX_TEXT_LESS_SHARE = 0.10
-VERIFY_LINE_GAP = 0.5  # a word this many line heights below a line's middle starts the next line
-VERIFY_BAND_MIN_SHARE = 0.15  # a figure column prints on at least this share of figure lines
-VERIFY_WRAP_GAP = 2.6  # a label wraps onto a line at most this many line heights below
-
 # Cross-check: a row label shares this share of a fact's label words to count as its row, a
 # printed figure needs this many significant digits to count without one, and agreements are
 # sampled for a person at this size and seed.

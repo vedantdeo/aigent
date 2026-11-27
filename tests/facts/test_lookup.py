@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from cltrplusf.testing import BagOfWordsEmbedder
 
 from aigent.facts.lookup import (
     ConceptIndex,
@@ -21,7 +22,7 @@ from aigent.facts.lookup import (
 )
 from aigent.facts.store import connect
 
-from ..conftest import DECEMBER_URL, MARCH_URL, BagOfWordsEmbedder
+from ..conftest import DECEMBER_URL, MARCH_URL
 
 
 @pytest.mark.parametrize(

@@ -23,15 +23,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from cltrplusf.chunk import Chunk, Inventory
+from cltrplusf.config import CHUNK_CHARS, CHUNK_OVERLAP_CHARS, EMBED_MODEL, TOP_K
+from cltrplusf.corpus import CORPUS_DIR
 from pydantic import JsonValue
 
-from aigent.config import CHUNK_CHARS, CHUNK_OVERLAP_CHARS, EMBED_MODEL, TOP_K
 from aigent.evals.dataset import Case, digest, load_jsonl
 from aigent.evals.grade import Outcome
 from aigent.evals.report import write_report
 from aigent.evals.runner import Task, run_eval
-from aigent.retrieval.chunk import Chunk, Inventory
-from aigent.retrieval.corpus import CORPUS_DIR
 from aigent.retrieval.evaluate import DATASET, graders, resolve
 
 if TYPE_CHECKING:

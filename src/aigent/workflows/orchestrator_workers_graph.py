@@ -10,6 +10,7 @@ from __future__ import annotations
 import operator
 from typing import Annotated, TypedDict, cast
 
+from cltrplusf.chunk import context_block
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
@@ -23,7 +24,6 @@ from aigent.config import (
 )
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm.core import Llm, Request
-from aigent.retrieval.chunk import context_block
 from aigent.workflows.orchestrator_workers import (
     PLAN,
     SYNTHESISE,

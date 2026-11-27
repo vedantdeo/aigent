@@ -19,6 +19,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
+from cltrplusf.chunk import Chunk, Inventory, by_sentence
+from cltrplusf.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
 from pydantic import BaseModel, Field, JsonValue
 
 from aigent.config import (
@@ -48,8 +50,6 @@ from aigent.llm.adapters import spec
 from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Failed, Parsed
 from aigent.llm.pricing import Budget, estimate_eval_usd
-from aigent.retrieval.chunk import Chunk, Inventory, by_sentence
-from aigent.retrieval.corpus import TRAINING_DIR, TRAINING_MANIFEST, load_corpus
 
 QUESTIONS = TRAINING_DIR / "figure-questions.jsonl"
 ANSWERS = TRAINING_DIR / "figure-answers.jsonl"

@@ -19,6 +19,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from cltrplusf.chunk import Chunk, Document, Inventory, by_sentence, squeeze
+from cltrplusf.corpus import FY25_REPORTS, MANIFEST, load_corpus
 from pydantic import BaseModel, Field
 
 from aigent.config import MAX_TOKENS_QUESTION as MAX_TOKENS
@@ -32,8 +34,6 @@ from aigent.config import (
 from aigent.llm.core import Llm, Request
 from aigent.llm.messages import Msg
 from aigent.llm.pricing import Budget, estimate_eval_usd, usage_cost
-from aigent.retrieval.chunk import Chunk, Document, Inventory, by_sentence, squeeze
-from aigent.retrieval.corpus import FY25_REPORTS, MANIFEST, load_corpus
 
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "evals" / "datasets" / "retrieval.jsonl"

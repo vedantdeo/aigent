@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pypdfium2
 import pytest
+from cltrplusf.chunk import Document
 from PIL import Image
 
 from aigent.facts import __main__ as cli
@@ -34,7 +35,6 @@ from aigent.facts.review_page import (
     shares,
     write_page_list,
 )
-from aigent.retrieval.chunk import Document
 
 from .conftest import CROSSCHECK_RESULTS, checked_row, crosscheck_document
 

@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from cltrplusf.chunk import context_block
 from pydantic import BaseModel, Field
 
 from aigent.config import MAX_PLAN_TASKS, MAX_TOKENS_PLAN, MAX_TOKENS_SYNTHESIS, MAX_TOKENS_WORKER
 from aigent.config import THINKING_WORKFLOW_PARAM as THINKING
 from aigent.llm.core import Llm, Request
-from aigent.retrieval.chunk import context_block
 from aigent.workflows.reports import CATALOGUE, DocId, Search
 
 PLAN = (

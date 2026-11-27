@@ -9,6 +9,7 @@ from typing import cast
 import httpx2 as httpx
 import openai
 import pytest
+from cltrplusf.chunk import Chunk, context_block
 from openai.types.chat import ChatCompletion
 
 from aigent.analyst.cfg_analyst import GENERALIST_MODEL, MAX_TOKENS, SPECIALIST_TOOL_TURNS
@@ -24,7 +25,6 @@ from aigent.llm.adapters.openai import function_tool
 from aigent.llm.core import Llm
 from aigent.llm.messages import Cache, Usage
 from aigent.llm.pricing import cost_usd
-from aigent.retrieval.chunk import Chunk, context_block
 from aigent.tools import fence
 
 from ..conftest import (

@@ -7,10 +7,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 
+from cltrplusf.chunk import Document
+
 from aigent.facts.cfg_facts import CROSSCHECK_TRACE_WINDOW
 from aigent.facts.crosscheck import Checked, RowRead, Rule, Sheet
 from aigent.facts.headers import Column
-from aigent.retrieval.chunk import Document
 
 
 @dataclass(frozen=True)

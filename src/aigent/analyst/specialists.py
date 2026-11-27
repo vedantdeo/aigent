@@ -9,12 +9,12 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from cltrplusf.chunk import squeeze
 from underhood.tooldata.labels import Label, check_call
 
 from aigent.extraction.figures import CHANGE
 from aigent.extraction.research import BASES, SourcedFigure, parse_sourced
 from aigent.llm.messages import Msg
-from aigent.retrieval.chunk import squeeze
 
 _PASSAGE = re.compile(r'<passage id="([^"]+)" source="([^"]*)">\n(.*?)\n</passage>', re.S)
 

@@ -14,7 +14,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TypedDict, cast
 
-from aigent.facts import printed
+from cltrplusf import printed
+from cltrplusf.chunk import Table
+from cltrplusf.printed import number
+
 from aigent.facts.cfg_facts import (
     REVIEW_PAGE_KINDS,
     REVIEW_PAGE_MAX_MB,
@@ -24,10 +27,8 @@ from aigent.facts.cfg_facts import (
 )
 from aigent.facts.crosscheck import Sheet
 from aigent.facts.headers import Column
-from aigent.facts.printed import number
 from aigent.facts.review_page import shares
 from aigent.facts.trace import period_text
-from aigent.retrieval.chunk import Table
 
 TABLE_PAGES = Path(__file__).resolve().parents[3] / "evals" / "reference" / "table-pages"
 TEMPLATE = Path(__file__).with_name("table_page.html")

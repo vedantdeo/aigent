@@ -2994,3 +2994,18 @@
   exactly one of day or month could not be told apart from at least one under mutation and was
   simplified. 5/5 mutants; $0.00.
   21/21 mutants; $0.00.
+- 11-27: parsing and search moved to cltrplusf (Vedant: a repo around retrieval that aigent
+  inherits; the name his). `git filter-repo` kept 86 commits of history for
+  `retrieval.{chunk,corpus,dense,embed,fuse,hits,keys,rank,rerank,sparse}`, `facts.printed`,
+  `facts.line_rows` and the words half of `facts.documents` (now `cltrplusf.filed`); their
+  settings went to `cltrplusf.config`, the shared fakes to `cltrplusf.testing`. aigent keeps every
+  model call, the retrieval eval and `facts`. A move, not a change, checked four ways: 3,296 tests
+  before, 2,885 + 411 after; the parse, ingest and words fingerprints unchanged (no re-parse); the
+  lines fingerprint moved with `line_rows`'s import lines, and its rebuilt cache matched the old
+  one file for file, 90 of 90, in 36 s; and the retrieval eval (`--compare retrieval --cache`, 616
+  rows) gave identical results and failures before and after, keys+hybrid+rerank hit@5 80/88. The
+  cross-check's stamp moved too (it hashes `crosscheck.py` itself); it was already behind HEAD,
+  since `recheck --write` has not run since 11-26. cltrplusf is wired exactly as underhood is: a
+  git source on `main`, `checks.yml` and the mains CI against its main, and `release.yml` now
+  snaps, rolls and tags the three repos together (`CLTRPLUSF_TOKEN` here,
+  `AIGENT_DISPATCH_TOKEN` there, both Vedant's). $0.00.

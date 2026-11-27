@@ -9,12 +9,12 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from cltrplusf.chunk import Document, Table
 
 from aigent.facts import __main__ as cli
 from aigent.facts.crosscheck import Checked, Fact, RowRead, check_fact, sheets
 from aigent.facts.headers import Column
 from aigent.facts.trace import period_text, trace, trace_json
-from aigent.retrieval.chunk import Document, Table
 
 from .conftest import CROSSCHECK_Q1, CROSSCHECK_RESULTS, crosscheck_document
 
